@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v02_2026-03-22
+  @version   v03_2026-03-22
   @chat      Air-02_Firebase同期対応
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
+    v03_2026-03-22 - Google認証対応・ユーザー紐づけ
 -->
 <html lang="ja">
 <head>
@@ -16,9 +17,10 @@
 import { initializeApp }    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, doc, setDoc, onSnapshot, getDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const CONFIG_KEY = 'couple-tasks-firebase-config-v1';
-const USER_KEY   = 'couple-tasks-uid-v1';
 
 function loadConfig(){
   try{ const s=localStorage.getItem(CONFIG_KEY); return s?JSON.parse(s):null; }catch{ return null; }
@@ -38,22 +40,46 @@ window._parseFirebaseConfig = function(text){
   return null;
 };
 
-let db = null;
+let db = null, auth = null;
 let _unsubscribe = null;
 
 function initFirebase(cfg){
   if(!cfg||!cfg.apiKey) return false;
   try{
     const app = initializeApp(cfg);
-    db = getFirestore(app);
+    db   = getFirestore(app);
+    auth = getAuth(app);
     window._db = db;
+
+    // Google認証
+    window._googleLogin = async () => {
+      try{
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({prompt:'select_account'});
+        await signInWithPopup(auth, provider);
+      }catch(e){
+        console.error('login error:',e);
+        if(window._onAuthError) window._onAuthError(e);
+      }
+    };
+
+    window._googleLogout = async () => {
+      if(_unsubscribe){ _unsubscribe(); _unsubscribe=null; }
+      await signOut(auth);
+    };
+
+    // 認証状態の変化を監視
+    onAuthStateChanged(auth, user => {
+      if(window._onAuthStateChanged) window._onAuthStateChanged(user);
+    });
+
     return true;
   }catch(e){ console.error('Firebase init error:',e); return false; }
 }
 
 // Firestoreへ保存
 window._saveToFirestore = async function(data){
-  if(!db) return;
+  if(!db||!auth||!auth.currentUser) return;
   try{
     await setDoc(doc(db,'couple-tasks','main'), data);
   }catch(e){ console.error('Firestore write error:',e); }
@@ -61,7 +87,7 @@ window._saveToFirestore = async function(data){
 
 // Firestoreから初回読み込み
 window._loadFromFirestore = async function(){
-  if(!db) return null;
+  if(!db||!auth||!auth.currentUser) return null;
   try{
     const snap = await getDoc(doc(db,'couple-tasks','main'));
     return snap.exists() ? snap.data() : null;
@@ -81,7 +107,6 @@ window._startSync = function(onData){
 const savedConfig = loadConfig();
 if(savedConfig) initFirebase(savedConfig);
 window._firebaseReady = !!savedConfig;
-window._firebaseConfigLoaded = savedConfig;
 
 // 設定UIから保存
 window._applyConfigFromUI = function(){
@@ -403,14 +428,46 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
   <div class="lcard">
     <div class="llogo">ふたりの<span>タスク</span></div>
     <div class="lsub">夫婦で共有するタスク管理</div>
-    <div class="mnote">🛠 動作確認モード。ユーザーを選んでログイン。</div>
-    <div class="ugrid" id="ugrid"></div>
-    <div class="ldiv">または新規ユーザー</div>
-    <div class="nrow">
-      <input id="newname" class="txin" type="text" placeholder="名前を入力">
-      <button class="bsm" id="btnAddUser">追加</button>
+    <div id="login-body">
+      <!-- Firebase未設定時 -->
+      <div id="login-no-config" style="display:none">
+        <div class="mnote">⚠️ Firebase未設定です。まず設定を行ってください。</div>
+        <div style="font-size:.8rem;color:var(--mt);line-height:1.7;margin-bottom:16px">
+          1. Firebaseコンソールでプロジェクトを作成<br>
+          2. firebaseConfigをコピー<br>
+          3. 下の入力欄に貼り付けて保存
+        </div>
+        <textarea id="login-config-input" class="fi" rows="7"
+          placeholder='firebaseConfigを貼り付けてください&#10;&#10;{&#10;  apiKey: "AIza...",&#10;  ...&#10;}'
+          style="font-family:monospace;font-size:.75rem;resize:vertical;margin-bottom:8px"></textarea>
+        <button class="bsm" style="width:100%" onclick="window._applyConfigFromUI && window._applyConfigFromUI('login')">保存して接続</button>
+        <div id="login-config-msg" style="font-size:.78rem;min-height:18px;margin-top:6px"></div>
+      </div>
+      <!-- Firebase設定済み時 -->
+      <div id="login-with-google" style="display:none">
+        <button class="ubtn" id="btnGoogleLogin" style="justify-content:center;gap:12px;width:100%;margin-bottom:8px">
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="22" height="22" alt="Google">
+          <div><div class="unm">Googleでログイン</div><div class="uhint">Googleアカウントで認証</div></div>
+        </button>
+        <div id="loginerr" style="color:var(--red);font-size:.78rem;margin-top:8px;min-height:18px"></div>
+      </div>
     </div>
-    <div id="loginerr" style="color:var(--red);font-size:.78rem;margin-top:8px;min-height:18px"></div>
+  </div>
+</div>
+
+<!-- ユーザー紐づけモーダル -->
+<div class="lb" id="link-modal" style="align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:20px;padding:28px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div style="font-size:1rem;font-weight:700;margin-bottom:6px">はじめまして！</div>
+    <div id="link-google-name" style="font-size:.85rem;color:var(--mt);margin-bottom:16px"></div>
+    <div style="font-size:.88rem;font-weight:700;margin-bottom:10px">あなたはどちらですか？</div>
+    <div id="link-user-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+    <div style="font-size:.78rem;color:var(--mt);margin-bottom:10px;text-align:center">— または新規ユーザーを作成 —</div>
+    <div style="display:flex;gap:8px">
+      <input id="link-newname" class="txin" type="text" placeholder="名前を入力" style="flex:1">
+      <button class="bsm" id="btnLinkNew">作成</button>
+    </div>
+    <div id="linkerr" style="color:var(--red);font-size:.78rem;margin-top:6px;min-height:16px"></div>
   </div>
 </div>
 
@@ -877,47 +934,77 @@ const WL=['日','月','火','水','木','金','土'];
 //  LOGIN
 // ══════════════════════════════════════════
 function renderLogin(){
-  const grid = G('ugrid');
-  grid.innerHTML = '';
-  // Firebase未設定の場合は注記を表示
   if(!window._firebaseReady){
-    const note = document.createElement('div');
-    note.style.cssText='font-size:.78rem;color:var(--red);background:#fdecea;border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6';
-    note.textContent='⚠️ Firebase未設定です。ログイン後、設定画面でfirebaseConfigを入力してください。';
-    grid.appendChild(note);
-  }
-  ST.users.forEach(u=>{
-    const btn = CE('button',{className:'ubtn'});
-    btn.innerHTML = `<div class="uav">${u.name.charAt(0)}</div>
-      <div><div class="unm">${esc(u.name)}</div><div class="uhint">タップしてログイン</div></div>`;
-    btn.addEventListener('click', ()=>loginAs(u.id));
-    grid.appendChild(btn);
-  });
-  // ユーザーが0件の場合
-  if(!ST.users.length){
-    const hint = document.createElement('div');
-    hint.style.cssText='font-size:.82rem;color:var(--mt);text-align:center;padding:8px 0';
-    hint.textContent='まず新規ユーザーを追加してください';
-    grid.appendChild(hint);
+    G('login-no-config').style.display  = 'block';
+    G('login-with-google').style.display = 'none';
+    // login画面のconfig入力をsettingsと共用
+    window._applyConfigFromUI = function(src){
+      const inputId = src==='login' ? 'login-config-input' : 'firebase-config-input';
+      const msgId   = src==='login' ? 'login-config-msg'   : 'firebase-config-msg';
+      const ta  = document.getElementById(inputId);
+      const msg = document.getElementById(msgId);
+      if(!ta) return;
+      const cfg = window._parseFirebaseConfig(ta.value);
+      if(!cfg||!cfg.apiKey){
+        if(msg){ msg.textContent='❌ 解析できませんでした。'; msg.style.color='var(--red)'; } return;
+      }
+      window._saveFirebaseConfig(cfg);
+      location.reload();
+    };
+  } else {
+    G('login-no-config').style.display  = 'none';
+    G('login-with-google').style.display = 'block';
   }
 }
 
 function loginAs(uid){
   ST.uid = uid;
-  localStorage.setItem('couple-tasks-uid-v1', uid);
   const u = getU(uid);
-  G('login').style.display = 'none';
-  G('app').style.display   = 'flex';
+  G('login').style.display  = 'none';
+  G('link-modal').classList.remove('open');
+  G('app').style.display    = 'flex';
   G('sav').textContent = u.name.charAt(0);
   G('sav').style.cssText=`width:34px;height:34px;border-radius:50%;${uStyle(uid)};display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;flex-shrink:0`;
   G('snm').textContent = u.name;
   autoGen();
   renderAll();
-  // onSnapshot開始（ログイン後）
-  if(window._startSync) window._startSync(data=>{
-    // 自分の操作中は無視しない（他端末の変更を即反映）
-    applyRemoteData(data);
+  if(window._startSync) window._startSync(applyRemoteData);
+}
+
+// Google認証成功後: googleUidとST.usersを紐づけ
+function onGoogleUser(user){
+  // 既存ユーザーにgoogleUidが紐づいているか確認
+  const linked = ST.users.find(u => u.googleUid === user.uid);
+  if(linked){
+    loginAs(linked.id);
+    return;
+  }
+  // 紐づけモーダルを表示
+  G('link-google-name').textContent = `Googleアカウント: ${user.displayName || user.email}`;
+  const list = G('link-user-list');
+  list.innerHTML = '';
+  ST.users.forEach(u => {
+    const btn = CE('button', {className:'ubtn'});
+    btn.innerHTML = `<div class="uav" style="${uStyle(u.id)}">${u.name.charAt(0)}</div>
+      <div><div class="unm">${esc(u.name)}</div><div class="uhint">これが自分です</div></div>`;
+    btn.addEventListener('click', () => {
+      u.googleUid = user.uid;
+      save();
+      loginAs(u.id);
+    });
+    list.appendChild(btn);
   });
+  G('link-modal').classList.add('open');
+  G('linkerr').textContent = '';
+  // 新規ユーザー作成
+  G('btnLinkNew').onclick = () => {
+    const name = G('link-newname').value.trim();
+    if(!name){ G('linkerr').textContent='名前を入力してください'; return; }
+    const uid = 'u' + Date.now();
+    ST.users.push({id:uid, name, color:'#b5c4f0', googleUid: user.uid});
+    save();
+    loginAs(uid);
+  };
 }
 
 // ══════════════════════════════════════════
@@ -1674,17 +1761,18 @@ G('bn-tasks').addEventListener('click',    ()=>showPage('tasks'));
 G('bn-recur').addEventListener('click',    ()=>showPage('recur'));
 G('bn-settings').addEventListener('click', ()=>showPage('settings'));
 
-// ログイン
-G('btnAddUser').addEventListener('click',()=>{
-  const name=G('newname').value.trim();
-  if(!name){G('loginerr').textContent='❌ 名前を入力してください';return;}
-  const uid='u'+Date.now(); ST.users.push({id:uid,name,color:'#b5c4f0'});
-  G('loginerr').textContent=''; G('newname').value=''; loginAs(uid); save();
-});
-G('newname').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddUser').click();});
+// Googleログインボタン
+if(G('btnGoogleLogin')){
+  G('btnGoogleLogin').addEventListener('click', ()=>{
+    if(window._googleLogin) window._googleLogin();
+    else G('loginerr').textContent='Firebase未設定です';
+  });
+}
+G('newname') && G('newname').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddUser')&&G('btnAddUser').click();});
 G('btnLogout').addEventListener('click',()=>{
   cfmDlg('ログアウトしますか？',()=>{
-    ST.uid=null; localStorage.removeItem('couple-tasks-uid-v1');
+    ST.uid=null;
+    if(window._googleLogout) window._googleLogout();
     G('app').style.display='none'; G('login').style.display='flex'; renderLogin();
   },'ログアウト');
 });
@@ -1724,7 +1812,8 @@ G('rffreq').addEventListener('change',updFreq);
 // 設定
 G('btnSettingsLogout').addEventListener('click',()=>{
   cfmDlg('ログアウトしますか？',()=>{
-    ST.uid=null; localStorage.removeItem('couple-tasks-uid-v1');
+    ST.uid=null;
+    if(window._googleLogout) window._googleLogout();
     G('app').style.display='none';
     G('login').style.display='flex';
     renderLogin();
@@ -2106,17 +2195,6 @@ initTagInput();
 //  INIT
 // ══════════════════════════════════════════
 async function init(){
-  // Firestoreからデータを読み込む
-  if(window._loadFromFirestore){
-    const data = await window._loadFromFirestore();
-    if(data){
-      ST.users  = data.users  || [];
-      ST.cats   = data.cats   || [];
-      ST.tasks  = data.tasks  || [];
-      ST.recurs = data.recurs || [];
-    }
-  }
-
   // Settings画面のFirebase接続状態を表示
   const statusEl = G('firebase-status');
   if(statusEl){
@@ -2129,13 +2207,37 @@ async function init(){
     }
   }
 
-  // localStorageにUIDが残っていれば自動ログイン
-  const savedUid = localStorage.getItem('couple-tasks-uid-v1');
-  if(savedUid && ST.users.find(u=>u.id===savedUid)){
-    loginAs(savedUid);
-  } else {
+  if(!window._firebaseReady){
+    // Firebase未設定 → 設定案内を表示
     renderLogin();
+    return;
   }
+
+  // Google認証状態の変化を監視
+  window._onAuthStateChanged = async function(user){
+    if(user){
+      // ログイン済み → Firestoreからデータ読み込み
+      const data = await window._loadFromFirestore();
+      if(data){
+        ST.users  = data.users  || [];
+        ST.cats   = data.cats   || [];
+        ST.tasks  = data.tasks  || [];
+        ST.recurs = data.recurs || [];
+      }
+      onGoogleUser(user);
+    } else {
+      // 未ログイン → ログイン画面
+      ST.uid = null;
+      G('app').style.display   = 'none';
+      G('login').style.display = 'flex';
+      renderLogin();
+    }
+  };
+
+  window._onAuthError = function(e){
+    const err = G('loginerr');
+    if(err) err.textContent = '❌ ログインに失敗しました: ' + (e.code || e.message);
+  };
 }
 
 init();
