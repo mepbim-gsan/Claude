@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v03_2026-03-22.2
+  @version   v03_2026-03-22.3
   @chat      Air-02_Firebase同期対応
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
-    v03_2026-03-22.2 - Google認証対応・ユーザー紐づけ
+    v03_2026-03-22.3 - Google認証対応・ユーザー紐づけ
 -->
 <html lang="ja">
 <head>
@@ -489,7 +489,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v03_2026-03-22.2</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v03_2026-03-22.3</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -562,7 +562,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v03_2026-03-22.2</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v03_2026-03-22.3</div>
         </div>
       </div>
       <div class="ssec">
@@ -827,11 +827,13 @@ function save(){
 
 function applyRemoteData(data){
   if(!data) return;
-  // 自分のUID（ログイン選択）は変えない
   const uid = ST.uid;
+  // 既存タスクのimgs（base64）を保持するためマージ
+  const prevImgs = {};
+  ST.tasks.forEach(t=>{ if(t.imgs&&t.imgs.length) prevImgs[t.id]=t.imgs; });
   ST.users  = data.users  || [];
   ST.cats   = data.cats   || [];
-  ST.tasks  = data.tasks  || [];
+  ST.tasks  = (data.tasks || []).map(t=>({...t, imgs: prevImgs[t.id]||t.imgs||[]}));
   ST.recurs = data.recurs || [];
   ST.uid    = uid;
   renderAll();
