@@ -488,7 +488,10 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-recur"><span class="nic">🔁</span>定期タスク<span class="nbd" id="bdg-recur" style="background:var(--gn)">0</span></button>
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
-    <div class="sbbot"><button class="blogout" id="btnLogout">🔓 ログアウト</button></div>
+    <div class="sbbot">
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v03_2026-03-22</div>
+      <button class="blogout" id="btnLogout">🔓 ログアウト</button>
+    </div>
   </div>
 
   <!-- MAIN -->
@@ -556,6 +559,10 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
             <div class="sdesc">現在ログイン中のユーザー</div>
           </div>
           <button class="bdanger" id="btnSettingsLogout">ログアウト</button>
+        </div>
+        <div class="srow" style="padding-top:10px;padding-bottom:10px">
+          <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v03_2026-03-22</div>
         </div>
       </div>
       <div class="ssec">
@@ -2213,7 +2220,18 @@ async function init(){
   };
 }
 
+// moduleスクリプトから呼ばれる
 window._appInit = function(){ init(); };
+
+// moduleが動作しない環境（sandbox等）向けフォールバック
+// 500ms後にまだinitが呼ばれていなければ直接renderLoginを実行
+setTimeout(()=>{
+  if(!window._appInitCalled){
+    window._firebaseReady = false;
+    renderLogin();
+  }
+}, 500);
+window._appInit = function(){ window._appInitCalled=true; init(); };
 </script>
 </body>
 </html>
