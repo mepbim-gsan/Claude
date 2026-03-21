@@ -450,6 +450,11 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
           style="font-family:monospace;font-size:.75rem;resize:vertical;margin-bottom:8px"></textarea>
         <button class="bsm" style="width:100%" id="btnLoginSaveConfig">保存して接続</button>
         <div id="login-config-msg" style="font-size:.78rem;min-height:18px;margin-top:6px"></div>
+        <div class="ldiv" style="margin:16px 0">または</div>
+        <button class="ubtn" id="btnDemoLogin2" style="justify-content:center;gap:12px;width:100%;border-style:dashed">
+          <span style="font-size:1.2rem">🧪</span>
+          <div><div class="unm">サンプルデータで試す</div><div class="uhint">Firebaseなし・データは保存されません</div></div>
+        </button>
       </div>
       <!-- Firebase設定済み時 -->
       <div id="login-with-google" style="display:none">
@@ -458,24 +463,13 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
           <div><div class="unm">Googleでログイン</div><div class="uhint">Googleアカウントで認証</div></div>
         </button>
         <div id="loginerr" style="color:var(--red);font-size:.78rem;margin-top:8px;min-height:18px"></div>
+        <div class="ldiv" style="margin:16px 0">または</div>
+        <button class="ubtn" id="btnDemoLogin" style="justify-content:center;gap:12px;width:100%;border-style:dashed">
+          <span style="font-size:1.2rem">🧪</span>
+          <div><div class="unm">サンプルデータで試す</div><div class="uhint">Firebaseなし・データは保存されません</div></div>
+        </button>
       </div>
     </div>
-  </div>
-</div>
-
-<!-- ユーザー紐づけモーダル -->
-<div class="lb" id="link-modal" style="align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:20px;padding:28px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-    <div style="font-size:1rem;font-weight:700;margin-bottom:6px">はじめまして！</div>
-    <div id="link-google-name" style="font-size:.85rem;color:var(--mt);margin-bottom:16px"></div>
-    <div style="font-size:.88rem;font-weight:700;margin-bottom:10px">あなたはどちらですか？</div>
-    <div id="link-user-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
-    <div style="font-size:.78rem;color:var(--mt);margin-bottom:10px;text-align:center">— または新規ユーザーを作成 —</div>
-    <div style="display:flex;gap:8px">
-      <input id="link-newname" class="txin" type="text" placeholder="名前を入力" style="flex:1">
-      <button class="bsm" id="btnLinkNew">作成</button>
-    </div>
-    <div id="linkerr" style="color:var(--red);font-size:.78rem;margin-top:6px;min-height:16px"></div>
   </div>
 </div>
 
@@ -588,25 +582,6 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="bsm" id="btnExport">⬇ JSONを書き出す</button>
             <label class="bsm" style="cursor:pointer">⬆ JSONを読み込む<input type="file" id="importFile" accept=".json" style="display:none"></label>
-          </div>
-        </div>
-      </div>
-      <!-- Firebase設定 -->
-      <div class="ssec" id="sec-firebase">
-        <div class="sttl">Firebase 設定</div>
-        <div style="padding:14px 20px;display:flex;flex-direction:column;gap:10px">
-          <div id="firebase-status" style="font-size:.82rem;color:var(--mt)">読み込み中…</div>
-          <textarea id="firebase-config-input" class="fi" rows="7"
-            placeholder='ここにfirebaseConfigのオブジェクトを貼り付けてください&#10;&#10;例:&#10;{&#10;  apiKey: "AIza...",&#10;  authDomain: "xxx.firebaseapp.com",&#10;  projectId: "xxx",&#10;  ...&#10;}'
-            style="font-family:monospace;font-size:.78rem;resize:vertical"></textarea>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="bsm" onclick="window._applyConfigFromUI()">保存して接続</button>
-            <button class="bsm" style="background:var(--bg2);color:var(--sub)" onclick="window._clearConfigFromUI()">設定を削除</button>
-          </div>
-          <div id="firebase-config-msg" style="font-size:.78rem;min-height:18px"></div>
-          <div style="font-size:.75rem;color:var(--mt);line-height:1.7">
-            configはこの端末のlocalStorageに保存されます。<br>
-            GitHubには保存されません。2人それぞれの端末で設定してください。
           </div>
         </div>
       </div>
@@ -967,7 +942,6 @@ function loginAs(uid){
   ST.uid = uid;
   const u = getU(uid);
   G('login').style.display  = 'none';
-  G('link-modal').classList.remove('open');
   G('app').style.display    = 'flex';
   G('sav').textContent = u.name.charAt(0);
   G('sav').style.cssText=`width:34px;height:34px;border-radius:50%;${uStyle(uid)};display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;flex-shrink:0`;
@@ -977,7 +951,7 @@ function loginAs(uid){
   if(window._startSync) window._startSync(applyRemoteData);
 }
 
-// Google認証成功後: googleUidとST.usersを紐づけ
+// Google認証成功後: googleUidとST.usersを紐づけ（自動）
 function onGoogleUser(user){
   // 既存ユーザーにgoogleUidが紐づいているか確認
   const linked = ST.users.find(u => u.googleUid === user.uid);
@@ -985,37 +959,31 @@ function onGoogleUser(user){
     loginAs(linked.id);
     return;
   }
-  // 紐づけモーダルを表示
-  G('link-google-name').textContent = `Googleアカウント: ${user.displayName || user.email}`;
-  const list = G('link-user-list');
-  list.innerHTML = '';
-  ST.users.forEach(u => {
-    const btn = CE('button', {className:'ubtn'});
-    btn.innerHTML = `<div class="uav" style="${uStyle(u.id)}">${u.name.charAt(0)}</div>
-      <div><div class="unm">${esc(u.name)}</div><div class="uhint">これが自分です</div></div>`;
-    btn.addEventListener('click', () => {
-      u.googleUid = user.uid;
-      save();
-      loginAs(u.id);
-    });
-    list.appendChild(btn);
-  });
-  G('link-modal').classList.add('open');
-  G('linkerr').textContent = '';
-  // 新規ユーザー作成
-  G('btnLinkNew').onclick = () => {
-    const name = G('link-newname').value.trim();
-    if(!name){ G('linkerr').textContent='名前を入力してください'; return; }
-    const uid = 'u' + Date.now();
-    ST.users.push({id:uid, name, color:'#b5c4f0', googleUid: user.uid});
-    save();
-    loginAs(uid);
-  };
+  // 初回: Googleの表示名でユーザーを自動作成
+  const name = user.displayName || user.email || 'ユーザー';
+  const uid  = 'u' + Date.now();
+  ST.users.push({id:uid, name, color:'#b5c4f0', googleUid: user.uid});
+  save();
+  loginAs(uid);
 }
 
-// ══════════════════════════════════════════
-//  NAV
-// ══════════════════════════════════════════
+// デモモード（サンプルデータ・保存なし）
+function loginDemo(){
+  ST.users  = [{id:'u1',name:'おとうさん',color:'#b5c4f0'},{id:'u2',name:'おかあさん',color:'#f4a7b9'}];
+  ST.cats   = [
+    {id:'c1',name:'家事',color:'#f7c59f'},{id:'c2',name:'買い物',color:'#f4a7b9'},
+    {id:'c3',name:'子ども',color:'#a8d8c8'},{id:'c4',name:'手続き',color:'#b5c4f0'},
+  ];
+  ST.tasks  = [
+    {id:'t1',title:'牛乳・卵の買い出し',cid:'c2',aids:['u1'],due:'2026-03-25',done:false,memo:'セール中に買う',url:'',imgs:[],subs:[{id:'s1',tx:'牛乳2本',done:false},{id:'s2',tx:'卵Mサイズ',done:true}],tags:['週次'],doneAt:null,at:new Date().toISOString()},
+    {id:'t2',title:'洗濯物を畳む',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'',url:'',imgs:[],subs:[],tags:['週次'],doneAt:new Date().toISOString(),at:new Date().toISOString()},
+    {id:'t3',title:'子どもの持ち物チェック',cid:'c3',aids:['u2'],due:'2026-03-28',done:false,memo:'入学式までに全て準備',url:'',imgs:[],subs:[{id:'s3a',tx:'上履き',done:true},{id:'s3b',tx:'体育着',done:false}],tags:['入学準備'],doneAt:null,at:new Date().toISOString()},
+    {id:'t4',title:'台所の掃除',cid:'c1',aids:['u2'],due:'2026-03-24',done:false,memo:'',url:'',imgs:[],subs:[],tags:[],doneAt:null,at:new Date().toISOString()},
+  ];
+  ST.recurs = [];
+  // saveを呼ばない（デモは保存しない）
+  loginAs('u1');
+}
 function showPage(p){
   ['dash','tasks','recur','settings'].forEach(x=>{
     G('page-'+x).style.display = x===p?'block':'none';
@@ -1774,6 +1742,10 @@ if(G('btnGoogleLogin')){
     else G('loginerr').textContent='Firebase未設定です';
   });
 }
+// サンプルデータボタン（Firebase設定済み側・未設定側どちらも）
+['btnDemoLogin','btnDemoLogin2'].forEach(id=>{
+  const btn = G(id); if(btn) btn.addEventListener('click', loginDemo);
+});
 G('newname') && G('newname').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddUser')&&G('btnAddUser').click();});
 G('btnLogout').addEventListener('click',()=>{
   cfmDlg('ログアウトしますか？',()=>{
@@ -2201,20 +2173,7 @@ initTagInput();
 //  INIT
 // ══════════════════════════════════════════
 async function init(){
-  // Settings画面のFirebase接続状態を表示
-  const statusEl = G('firebase-status');
-  if(statusEl){
-    if(window._firebaseReady){
-      statusEl.textContent = '✅ Firebase接続済み';
-      statusEl.style.color = 'var(--gn)';
-    } else {
-      statusEl.textContent = '⚠️ 未接続 — 下のconfigを入力してください';
-      statusEl.style.color = 'var(--red)';
-    }
-  }
-
   if(!window._firebaseReady){
-    // Firebase未設定 → 設定案内を表示
     renderLogin();
     return;
   }
@@ -2222,7 +2181,6 @@ async function init(){
   // Google認証状態の変化を監視
   window._onAuthStateChanged = async function(user){
     if(user){
-      // ログイン済み → Firestoreからデータ読み込み
       const data = await window._loadFromFirestore();
       if(data){
         ST.users  = data.users  || [];
@@ -2232,7 +2190,6 @@ async function init(){
       }
       onGoogleUser(user);
     } else {
-      // 未ログイン → ログイン画面
       ST.uid = null;
       G('app').style.display   = 'none';
       G('login').style.display = 'flex';
@@ -2246,10 +2203,7 @@ async function init(){
   };
 }
 
-// moduleスクリプトの準備完了後に呼ばれる
 window._appInit = function(){ init(); };
-// moduleより先にDOMContentLoadedが発火した場合のフォールバック不要
-// （module側のsetTimeoutで呼ばれる）
 </script>
 </body>
 </html>
