@@ -1725,15 +1725,18 @@ function delRecur(){
 // ══════════════════════════════════════════
 //  IMAGE COMPRESS
 // ══════════════════════════════════════════
-function compress(dataUrl,cb){
-  const img=new Image();
-  img.onload=()=>{
-    const s=Math.min(1,800/Math.max(img.width,img.height));
-    const cv=document.createElement('canvas');
-    cv.width=Math.round(img.width*s); cv.height=Math.round(img.height*s);
-    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-    cb(cv.toDataURL('image/jpeg',.75));
-  }; img.src=dataUrl;
+function compress(dataUrl){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      const s=Math.min(1,800/Math.max(img.width,img.height));
+      const cv=document.createElement('canvas');
+      cv.width=Math.round(img.width*s); cv.height=Math.round(img.height*s);
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      resolve(cv.toDataURL('image/jpeg',.75));
+    };
+    img.src=dataUrl;
+  });
 }
 
 // ══════════════════════════════════════════
@@ -1786,14 +1789,15 @@ G('btnAddSub').addEventListener('click',()=>{
 G('fsubin').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddSub').click();});
 
 // 画像
-G('fimgin').addEventListener('change',e=>{
+G('fimgin').addEventListener('change',async e=>{
   const files = Array.from(e.target.files);
   e.target.value='';
-  files.forEach(f=>{
-    const r=new FileReader();
-    r.onload=ev=>compress(ev.target.result,c=>{mImgs.push(c);renderMImgs();});
-    r.readAsDataURL(f);
-  });
+  for(const f of files){
+    const dataUrl = await new Promise(res=>{ const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(f); });
+    const compressed = await compress(dataUrl);
+    mImgs.push(compressed);
+    renderMImgs();
+  }
 });
 
 // 定期モーダル
