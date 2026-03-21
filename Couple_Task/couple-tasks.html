@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v03_2026-03-22.3
+  @version   v04_2026-03-22.3
   @chat      Air-02_Firebase同期対応
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
-    v03_2026-03-22.3 - Google認証対応・ユーザー紐づけ
+    v04_2026-03-22.3 - Google認証対応・ユーザー紐づけ
 -->
 <html lang="ja">
 <head>
@@ -19,6 +19,8 @@ import { getFirestore, doc, setDoc, onSnapshot, getDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 const CONFIG_KEY = 'couple-tasks-firebase-config-v1';
 
@@ -40,15 +42,16 @@ window._parseFirebaseConfig = function(text){
   return null;
 };
 
-let db = null, auth = null;
+let db = null, auth = null, storage = null;
 let _unsubscribe = null;
 
 function initFirebase(cfg){
   if(!cfg||!cfg.apiKey) return false;
   try{
     const app = initializeApp(cfg);
-    db   = getFirestore(app);
-    auth = getAuth(app);
+    db      = getFirestore(app);
+    auth    = getAuth(app);
+    storage = getStorage(app);
     window._db = db;
 
     // Google認証
@@ -68,6 +71,24 @@ function initFirebase(cfg){
       await signOut(auth);
     };
 
+    // 画像をStorageにアップロードしてURLを返す
+    window._uploadImg = async function(blob, path){
+      if(!storage) return null;
+      try{
+        const r = ref(storage, path);
+        await uploadBytes(r, blob);
+        return await getDownloadURL(r);
+      }catch(e){ console.error('Storage upload error:',e); return null; }
+    };
+
+    // StorageのパスリストをまとめてDeleteする
+    window._deleteImgPaths = async function(paths){
+      if(!storage||!paths||!paths.length) return;
+      for(const p of paths){
+        try{ await deleteObject(ref(storage, p)); }catch(e){ /* 既に削除済みは無視 */ }
+      }
+    };
+
     // 認証状態の変化を監視
     onAuthStateChanged(auth, user => {
       if(window._onAuthStateChanged) window._onAuthStateChanged(user);
@@ -82,7 +103,10 @@ window._saveToFirestore = async function(data){
   if(!db||!auth||!auth.currentUser) return;
   try{
     await setDoc(doc(db,'couple-tasks','main'), data);
-  }catch(e){ console.error('Firestore write error:',e); }
+  }catch(e){
+    console.error('Firestore write error:',e);
+    if(window.showMsg) window.showMsg('⚠️ 保存に失敗しました: '+e.code);
+  }
 };
 
 // Firestoreから初回読み込み
@@ -489,7 +513,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v03_2026-03-22.3</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v04_2026-03-22.3</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -562,7 +586,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v03_2026-03-22.3</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v04_2026-03-22.3</div>
         </div>
       </div>
       <div class="ssec">
@@ -815,25 +839,33 @@ const ST = {
 //  FIRESTORE SAVE / LOAD
 // ══════════════════════════════════════════
 let _saveTimer = null;
+let _isSaving  = false;
 function save(){
-  // 画像（base64）を除いて保存（Firestoreの1MB制限対策）
-  const tasksNoImg = ST.tasks.map(t=>({...t, imgs:[]}));
-  const data = { users:ST.users, cats:ST.cats, tasks:tasksNoImg, recurs:ST.recurs };
+  const cleanImgs = imgs => (imgs||[]).map(img=>{
+    if(typeof img==='string') return {url:img, path:''};
+    return {url:img.url||'', path:img.path||''};
+  });
+  const tasks = ST.tasks.map(t=>({...t, imgs:cleanImgs(t.imgs)}));
+  const data  = { users:ST.users, cats:ST.cats, tasks, recurs:ST.recurs };
   if(window._saveToFirestore){
     clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(()=>window._saveToFirestore(data), 400);
+    _isSaving = true;
+    _saveTimer = setTimeout(async ()=>{
+      await window._saveToFirestore(data);
+      // 保存完了後1秒はonSnapshotの上書きを無視
+      setTimeout(()=>{ _isSaving=false; }, 1000);
+    }, 400);
   }
 }
 
 function applyRemoteData(data){
   if(!data) return;
+  // 自分の保存直後のonSnapshotは無視（保存中に上書きされるのを防ぐ）
+  if(_isSaving) return;
   const uid = ST.uid;
-  // 既存タスクのimgs（base64）を保持するためマージ
-  const prevImgs = {};
-  ST.tasks.forEach(t=>{ if(t.imgs&&t.imgs.length) prevImgs[t.id]=t.imgs; });
   ST.users  = data.users  || [];
   ST.cats   = data.cats   || [];
-  ST.tasks  = (data.tasks || []).map(t=>({...t, imgs: prevImgs[t.id]||t.imgs||[]}));
+  ST.tasks  = (data.tasks || []).map(t=>({...t, imgs: t.imgs||[]}));
   ST.recurs = data.recurs || [];
   ST.uid    = uid;
   renderAll();
@@ -909,6 +941,7 @@ function cfmDlg(msg,onYes,yesLabel){
   no.onclick=()=>cleanup();
 }
 function showMsg(msg){
+  window.showMsg = showMsg; // _saveToFirestoreから呼べるようにwindowに公開
   G("cfm-msg").textContent=msg;
   G("cfm").classList.add("open");
   const yes=G("cfm-yes"),no=G("cfm-no");
@@ -1158,6 +1191,7 @@ function buildTaskCard(t){
   delBtn.addEventListener('click',e=>{
     e.stopPropagation();
     cfmDlg(`「${t.title}」を削除しますか？`,()=>{
+      if(window._deleteImgPaths) window._deleteImgPaths((t.imgs||[]).map(i=>i.path).filter(Boolean));
       ST.tasks=ST.tasks.filter(x=>x.id!==t.id);
       wrap.remove(); updateBdg(); renderTagBar(); save();
     });
@@ -1247,8 +1281,9 @@ function buildTaskCard(t){
       sec.innerHTML='<div class="elbl">画像</div>';
       const gal=CE('div',{className:'igal'});
       t.imgs.forEach((img,i)=>{
-        const th=CE('img',{className:'ith',src:img,alt:''});
-        th.addEventListener('click',e=>{e.stopPropagation();G('lbimg').src=img;G('lb').classList.add('open');});
+        const src = typeof img==='string' ? img : img.url;
+        const th=CE('img',{className:'ith',src,alt:''});
+        th.addEventListener('click',e=>{e.stopPropagation();G('lbimg').src=src;G('lb').classList.add('open');});
         gal.appendChild(th);
       });
       sec.appendChild(gal); exp.appendChild(sec);
@@ -1593,9 +1628,20 @@ function renderMSubs(){
 function renderMImgs(){
   const el=G('fimgs'); el.innerHTML='';
   mImgs.forEach((img,i)=>{
-    const th=CE('img',{className:'ith',src:img,alt:''});
-    th.addEventListener('click',()=>{ G('lbimg').src=img; G('lb').classList.add('open'); });
-    el.appendChild(th);
+    const src = typeof img==='string' ? img : img.url;
+    const th=CE('img',{className:'ith',src,alt:''});
+    th.addEventListener('click',()=>{ G('lbimg').src=src; G('lb').classList.add('open'); });
+    // 削除ボタン
+    const wrap=document.createElement('div'); wrap.style.cssText='position:relative;display:inline-block';
+    const del=CE('button',{}); del.innerHTML='✕';
+    del.style.cssText='position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:none;font-size:.65rem;font-weight:700;cursor:pointer;line-height:1;z-index:1';
+    del.addEventListener('click',e=>{
+      e.stopPropagation();
+      // Storageから削除
+      if(window._deleteImgPaths&&img.path) window._deleteImgPaths([img.path]);
+      mImgs.splice(i,1); renderMImgs();
+    });
+    wrap.appendChild(th); wrap.appendChild(del); el.appendChild(wrap);
   });
 }
 
@@ -1613,6 +1659,8 @@ function saveTask(){
 function delTask(){
   if(!editTid)return;
   cfmDlg('このタスクを削除しますか？',()=>{
+    const t=ST.tasks.find(x=>x.id===editTid);
+    if(t&&window._deleteImgPaths) window._deleteImgPaths((t.imgs||[]).map(i=>i.path).filter(Boolean));
     ST.tasks=ST.tasks.filter(x=>x.id!==editTid);
     closeTModal(); renderAll(); save();
   });
@@ -1725,20 +1773,27 @@ function delRecur(){
 }
 
 // ══════════════════════════════════════════
-//  IMAGE COMPRESS
+//  IMAGE COMPRESS + UPLOAD
 // ══════════════════════════════════════════
-function compress(dataUrl){
+function compressToBlob(dataUrl){
   return new Promise(resolve=>{
     const img=new Image();
     img.onload=()=>{
-      const s=Math.min(1,800/Math.max(img.width,img.height));
+      const s=Math.min(1,1200/Math.max(img.width,img.height));
       const cv=document.createElement('canvas');
       cv.width=Math.round(img.width*s); cv.height=Math.round(img.height*s);
       cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-      resolve(cv.toDataURL('image/jpeg',.75));
+      cv.toBlob(blob=>resolve(blob),'image/jpeg',0.80);
     };
     img.src=dataUrl;
   });
+}
+
+async function uploadImgToStorage(blob, taskId){
+  if(!window._uploadImg) return null;
+  const path = `task-images/${taskId}/${Date.now()}_${Math.random().toString(36).slice(2,7)}.jpg`;
+  const url = await window._uploadImg(blob, path);
+  return url ? {url, path} : null;
 }
 
 // ══════════════════════════════════════════
@@ -1794,10 +1849,27 @@ G('fsubin').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddSub').cli
 G('fimgin').addEventListener('change',async e=>{
   const files = Array.from(e.target.files);
   e.target.value='';
+  // アップロード中表示
+  const el=G('fimgs');
   for(const f of files){
     const dataUrl = await new Promise(res=>{ const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(f); });
-    const compressed = await compress(dataUrl);
-    mImgs.push(compressed);
+    const blob = await compressToBlob(dataUrl);
+    if(window._uploadImg){
+      // Storageにアップロード → URL保存
+      const spinner=document.createElement('div');
+      spinner.style.cssText='width:72px;height:72px;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:.72rem;color:var(--mt)';
+      spinner.textContent='⬆️';
+      el.appendChild(spinner);
+      // taskIdは新規作成時はまだないのでモーダルのeditTidか仮IDを使う
+      const tid = editTid || ('tmp_'+Date.now());
+      const result = await uploadImgToStorage(blob, tid);
+      spinner.remove();
+      if(result) mImgs.push(result);
+    } else {
+      // デモモード: base64のまま
+      const reader=new FileReader(); reader.readAsDataURL(blob);
+      await new Promise(res=>{ reader.onload=ev=>{ mImgs.push({url:ev.target.result,path:null}); res(); }; });
+    }
     renderMImgs();
   }
 });
@@ -2088,19 +2160,21 @@ function renderMaintenance(){
   if(!allImgs.length){ lib.style.display='none'; libEmp.style.display='block'; return; }
   libEmp.style.display='none'; lib.style.display='flex';
   allImgs.forEach(({taskId,taskTitle,img,idx})=>{
+    const src = typeof img==='string' ? img : img.url;
     const wrap=CE('div',{});
     wrap.style.cssText='position:relative;width:72px;height:72px;flex-shrink:0';
-    const thumb=CE('img',{src:img,alt:taskTitle});
+    const thumb=CE('img',{src,alt:taskTitle});
     thumb.style.cssText='width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--bd);cursor:pointer';
-    thumb.addEventListener('click',()=>{ G('lbimg').src=img; G('lb').classList.add('open'); });
+    thumb.addEventListener('click',()=>{ G('lbimg').src=src; G('lb').classList.add('open'); });
     const del=CE('button',{});
     del.innerHTML='✕';
     del.style.cssText='position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:none;font-size:.65rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1';
     del.addEventListener('click',()=>{
       cfmDlg(`「${taskTitle}」の画像を削除しますか？`,()=>{
         const t=ST.tasks.find(x=>x.id===taskId); if(!t)return;
+        if(window._deleteImgPaths&&img.path) window._deleteImgPaths([img.path]);
         t.imgs.splice(idx,1);
-        renderMaintenance(); renderAll();
+        renderMaintenance(); renderAll(); save();
       });
     });
     wrap.appendChild(thumb); wrap.appendChild(del); lib.appendChild(wrap);
