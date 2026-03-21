@@ -440,7 +440,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         <textarea id="login-config-input" class="fi" rows="7"
           placeholder='firebaseConfigを貼り付けてください&#10;&#10;{&#10;  apiKey: "AIza...",&#10;  ...&#10;}'
           style="font-family:monospace;font-size:.75rem;resize:vertical;margin-bottom:8px"></textarea>
-        <button class="bsm" style="width:100%" onclick="window._applyConfigFromUI && window._applyConfigFromUI('login')">保存して接続</button>
+        <button class="bsm" style="width:100%" id="btnLoginSaveConfig">保存して接続</button>
         <div id="login-config-msg" style="font-size:.78rem;min-height:18px;margin-top:6px"></div>
       </div>
       <!-- Firebase設定済み時 -->
@@ -937,19 +937,17 @@ function renderLogin(){
   if(!window._firebaseReady){
     G('login-no-config').style.display  = 'block';
     G('login-with-google').style.display = 'none';
-    // login画面のconfig入力をsettingsと共用
-    window._applyConfigFromUI = function(src){
-      const inputId = src==='login' ? 'login-config-input' : 'firebase-config-input';
-      const msgId   = src==='login' ? 'login-config-msg'   : 'firebase-config-msg';
-      const ta  = document.getElementById(inputId);
-      const msg = document.getElementById(msgId);
-      if(!ta) return;
+    const btn = G('btnLoginSaveConfig');
+    if(btn) btn.onclick = () => {
+      const ta  = G('login-config-input');
+      const msg = G('login-config-msg');
       const cfg = window._parseFirebaseConfig(ta.value);
       if(!cfg||!cfg.apiKey){
-        if(msg){ msg.textContent='❌ 解析できませんでした。'; msg.style.color='var(--red)'; } return;
+        msg.textContent='❌ 解析できませんでした。'; msg.style.color='var(--red)'; return;
       }
       window._saveFirebaseConfig(cfg);
-      location.reload();
+      msg.textContent='✅ 保存しました。リロードします…'; msg.style.color='var(--gn)';
+      setTimeout(()=>location.reload(), 1200);
     };
   } else {
     G('login-no-config').style.display  = 'none';
