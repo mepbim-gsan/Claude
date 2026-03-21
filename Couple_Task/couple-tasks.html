@@ -953,16 +953,16 @@ function loginAs(uid){
 
 // Google認証成功後: googleUidとST.usersを紐づけ（自動）
 function onGoogleUser(user){
-  // 既存ユーザーにgoogleUidが紐づいているか確認
   const linked = ST.users.find(u => u.googleUid === user.uid);
   if(linked){
+    linked.googleDisplayName = user.displayName || user.email || '';
+    save();
     loginAs(linked.id);
     return;
   }
-  // 初回: Googleの表示名でユーザーを自動作成
   const name = user.displayName || user.email || 'ユーザー';
   const uid  = 'u' + Date.now();
-  ST.users.push({id:uid, name, color:'#b5c4f0', googleUid: user.uid});
+  ST.users.push({id:uid, name, color:'#b5c4f0', googleUid: user.uid, googleDisplayName: user.displayName || user.email || ''});
   save();
   loginAs(uid);
 }
@@ -1380,7 +1380,15 @@ function renderSettings(){
     desc.style.cssText='font-size:.72rem;color:var(--mt);margin-top:2px';
     const nameWrap=CE('div',{});
     nameWrap.appendChild(nameIn); nameWrap.appendChild(desc);
-    left.appendChild(av); left.appendChild(nameWrap); row.appendChild(left);
+    left.appendChild(av); left.appendChild(nameWrap);
+    // Googleアカウント名を右側に表示
+    if(u.googleDisplayName){
+      const gname=CE('div',{textContent:'🔗 '+u.googleDisplayName});
+      gname.style.cssText='font-size:.72rem;color:var(--mt);margin-left:auto;text-align:right;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0';
+      row.appendChild(left); row.appendChild(gname);
+    } else {
+      row.appendChild(left);
+    }
     // スワイプ/右クリックで削除（自分以外）
     const uWrap=CE('div',{className:'srow-wrap'});
     uWrap.appendChild(row);
