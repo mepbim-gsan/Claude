@@ -108,7 +108,7 @@ const savedConfig = loadConfig();
 if(savedConfig) initFirebase(savedConfig);
 window._firebaseReady = !!savedConfig;
 
-// 設定UIから保存
+// 設定UIから保存（Settings画面用）
 window._applyConfigFromUI = function(){
   const ta  = document.getElementById('firebase-config-input');
   const msg = document.getElementById('firebase-config-msg');
@@ -136,6 +136,14 @@ window._clearConfigFromUI = function(){
   if(msg){ msg.textContent='🗑 configを削除しました。リロードします…'; msg.style.color='var(--mt)'; }
   setTimeout(()=>location.reload(), 1200);
 };
+
+// moduleの準備完了後にinitを呼ぶ
+// DOMContentLoadedが既に発火済みの場合も考慮
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{ if(window._appInit) window._appInit(); });
+} else {
+  setTimeout(()=>{ if(window._appInit) window._appInit(); }, 0);
+}
 </script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Josefin+Sans:wght@400;600&display=swap');
@@ -2238,7 +2246,10 @@ async function init(){
   };
 }
 
-init();
+// moduleスクリプトの準備完了後に呼ばれる
+window._appInit = function(){ init(); };
+// moduleより先にDOMContentLoadedが発火した場合のフォールバック不要
+// （module側のsetTimeoutで呼ばれる）
 </script>
 </body>
 </html>
