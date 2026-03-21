@@ -1,9 +1,117 @@
 <!DOCTYPE html>
+<!--
+  @tool      ふたりのタスク
+  @version   v02_2026-03-22
+  @chat      Air-02_Firebase同期対応
+  @changelog
+    v01_2026-03-20 - 初版（モックモード）
+    v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
+-->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ふたりのタスク</title>
+<script type="module">
+import { initializeApp }    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, doc, setDoc, onSnapshot, getDoc }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const CONFIG_KEY = 'couple-tasks-firebase-config-v1';
+const USER_KEY   = 'couple-tasks-uid-v1';
+
+function loadConfig(){
+  try{ const s=localStorage.getItem(CONFIG_KEY); return s?JSON.parse(s):null; }catch{ return null; }
+}
+window._saveFirebaseConfig = cfg => localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+window._clearFirebaseConfig = () => localStorage.removeItem(CONFIG_KEY);
+
+window._parseFirebaseConfig = function(text){
+  if(!text||!text.trim()) return null;
+  try{ return JSON.parse(text.trim()); }catch{}
+  try{
+    let s = text.replace(/\/\/.*$/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
+    const m = s.match(/\{[\s\S]*\}/); if(!m) return null;
+    const jsonStr = m[0].replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":').replace(/'/g,'"');
+    return JSON.parse(jsonStr);
+  }catch{}
+  return null;
+};
+
+let db = null;
+let _unsubscribe = null;
+
+function initFirebase(cfg){
+  if(!cfg||!cfg.apiKey) return false;
+  try{
+    const app = initializeApp(cfg);
+    db = getFirestore(app);
+    window._db = db;
+    return true;
+  }catch(e){ console.error('Firebase init error:',e); return false; }
+}
+
+// Firestoreへ保存
+window._saveToFirestore = async function(data){
+  if(!db) return;
+  try{
+    await setDoc(doc(db,'couple-tasks','main'), data);
+  }catch(e){ console.error('Firestore write error:',e); }
+};
+
+// Firestoreから初回読み込み
+window._loadFromFirestore = async function(){
+  if(!db) return null;
+  try{
+    const snap = await getDoc(doc(db,'couple-tasks','main'));
+    return snap.exists() ? snap.data() : null;
+  }catch(e){ console.error('Firestore read error:',e); return null; }
+};
+
+// リアルタイム同期開始
+window._startSync = function(onData){
+  if(!db) return;
+  if(_unsubscribe){ _unsubscribe(); _unsubscribe=null; }
+  _unsubscribe = onSnapshot(doc(db,'couple-tasks','main'), snap=>{
+    if(snap.exists()) onData(snap.data());
+  });
+};
+
+// 起動時にconfig読み込んで初期化
+const savedConfig = loadConfig();
+if(savedConfig) initFirebase(savedConfig);
+window._firebaseReady = !!savedConfig;
+window._firebaseConfigLoaded = savedConfig;
+
+// 設定UIから保存
+window._applyConfigFromUI = function(){
+  const ta  = document.getElementById('firebase-config-input');
+  const msg = document.getElementById('firebase-config-msg');
+  if(!ta) return;
+  const cfg = window._parseFirebaseConfig(ta.value);
+  if(!cfg||!cfg.apiKey){
+    msg.textContent='❌ 解析できませんでした。形式を確認してください。';
+    msg.style.color='var(--red)'; return;
+  }
+  window._saveFirebaseConfig(cfg);
+  const ok = initFirebase(cfg);
+  if(ok){
+    msg.textContent='✅ 保存しました。ページをリロードします…';
+    msg.style.color='var(--gn)';
+    setTimeout(()=>location.reload(), 1200);
+  } else {
+    msg.textContent='❌ 初期化に失敗しました。configを確認してください。';
+    msg.style.color='var(--red)';
+  }
+};
+
+window._clearConfigFromUI = function(){
+  window._clearFirebaseConfig();
+  const msg = document.getElementById('firebase-config-msg');
+  if(msg){ msg.textContent='🗑 configを削除しました。リロードします…'; msg.style.color='var(--mt)'; }
+  setTimeout(()=>location.reload(), 1200);
+};
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Josefin+Sans:wght@400;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -418,12 +526,30 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
           </div>
         </div>
       </div>
+      <!-- Firebase設定 -->
+      <div class="ssec" id="sec-firebase">
+        <div class="sttl">Firebase 設定</div>
+        <div style="padding:14px 20px;display:flex;flex-direction:column;gap:10px">
+          <div id="firebase-status" style="font-size:.82rem;color:var(--mt)">読み込み中…</div>
+          <textarea id="firebase-config-input" class="fi" rows="7"
+            placeholder='ここにfirebaseConfigのオブジェクトを貼り付けてください&#10;&#10;例:&#10;{&#10;  apiKey: "AIza...",&#10;  authDomain: "xxx.firebaseapp.com",&#10;  projectId: "xxx",&#10;  ...&#10;}'
+            style="font-family:monospace;font-size:.78rem;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="bsm" onclick="window._applyConfigFromUI()">保存して接続</button>
+            <button class="bsm" style="background:var(--bg2);color:var(--sub)" onclick="window._clearConfigFromUI()">設定を削除</button>
+          </div>
+          <div id="firebase-config-msg" style="font-size:.78rem;min-height:18px"></div>
+          <div style="font-size:.75rem;color:var(--mt);line-height:1.7">
+            configはこの端末のlocalStorageに保存されます。<br>
+            GitHubには保存されません。2人それぞれの端末で設定してください。
+          </div>
+        </div>
+      </div>
       <div class="ssec">
-        <div class="sttl">Firebase移行時の画像について</div>
+        <div class="sttl">画像について</div>
         <div style="padding:14px 20px;font-size:.82rem;line-height:1.8;color:var(--sub)">
-          無料 (Spark)：Storage 5GB・転送 1GB/日<br>
-          推奨：Canvas APIで300KB以下に圧縮 → Storage保存 → URLだけFirestoreに保存<br>
-          現在：画像はBase64でメモリ内のみ（リロードで消えます）
+          現在：画像はBase64でメモリ内のみ（リロードで消えます）<br>
+          将来：Firebase Storage連携で圧縮してクラウド保存予定
         </div>
       </div>
 
@@ -631,47 +757,39 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 //  STATE
 // ══════════════════════════════════════════
 const ST = {
-  uid: null,
-  users: [{id:'u1',name:'おとうさん',color:'#b5c4f0'},{id:'u2',name:'おかあさん',color:'#f4a7b9'}],
-  cats: [
-    {id:'c1',name:'家事',    color:'#f7c59f'},
-    {id:'c2',name:'買い物',  color:'#f4a7b9'},
-    {id:'c3',name:'子ども',  color:'#a8d8c8'},
-    {id:'c4',name:'手続き',  color:'#b5c4f0'},
-    {id:'c5',name:'お金',    color:'#fce4a8'},
-    {id:'c6',name:'家のこと',color:'#b8dce8'},
-  ],
-  tasks: [
-    {id:'t1', title:'牛乳・卵の買い出し',     cid:'c2',aids:['u1'],      due:'2026-03-22',done:false,memo:'セール中に買う',             url:'',imgs:[],subs:[{id:'s1',tx:'牛乳2本',done:false},{id:'s2',tx:'卵Mサイズ',done:true}],  tags:['週次'],      doneAt:null,at:'2026-03-20T09:00:00.000Z'},
-    {id:'t2', title:'入学式の連絡帳記入',     cid:'c3',aids:['u2'],      due:'2026-03-26',done:false,memo:'担任の先生へのひとこともあると良い',url:'',imgs:[],subs:[],                                                              tags:['入学準備'],  doneAt:null,at:'2026-03-19T08:00:00.000Z'},
-    {id:'t3', title:'洗濯物を畳む',           cid:'c1',aids:['u1','u2'], due:'',          done:true, memo:'',                             url:'',imgs:[],subs:[],                                                                  tags:['週次'],      doneAt:'2026-03-21T10:30:00.000Z',at:'2026-03-18T07:00:00.000Z'},
-    {id:'t4', title:'ドラッグストアで日用品', cid:'c2',aids:['u2'],      due:'2026-03-23',done:false,memo:'シャンプー・ボディソープ・歯ブラシ',url:'',imgs:[],subs:[{id:'s4a',tx:'シャンプー',done:false},{id:'s4b',tx:'ボディソープ',done:false},{id:'s4c',tx:'歯ブラシ×2',done:false}],tags:[],doneAt:null,at:'2026-03-20T10:00:00.000Z'},
-    {id:'t5', title:'入学式の服を準備',star:true,cid:'c3',aids:['u2'],   due:'2026-03-28',done:false,memo:'子どもの靴サイズ確認すること',  url:'',imgs:[],subs:[{id:'s5a',tx:'子ども服アイロン',done:true},{id:'s5b',tx:'自分のスーツ確認',done:false},{id:'s5c',tx:'靴を磨く',done:false}],tags:['入学準備'],doneAt:null,at:'2026-03-15T09:00:00.000Z'},
-    {id:'t6', title:'入学祝いのお返し手配',   cid:'c4',aids:['u2'],      due:'2026-03-30',done:false,memo:'いただいた方のリストを確認',    url:'',imgs:[],subs:[],                                                                  tags:['入学準備'],  doneAt:null,at:'2026-03-16T11:00:00.000Z'},
-    {id:'t7', title:'ランドセルの名前付け',star:true,cid:'c3',aids:['u1','u2'],due:'2026-03-25',done:false,memo:'体育着・上履き袋なども', url:'',imgs:[],subs:[{id:'s7a',tx:'ランドセル',done:true},{id:'s7b',tx:'体育着',done:false},{id:'s7c',tx:'上履き袋',done:false}],tags:['入学準備'],doneAt:null,at:'2026-03-17T08:30:00.000Z'},
-    {id:'t8', title:'トイレ掃除',             cid:'c1',aids:['u1'],      due:'',          done:true, memo:'',                             url:'',imgs:[],subs:[],                                                                  tags:[],            doneAt:'2026-03-21T09:00:00.000Z',at:'2026-03-14T07:00:00.000Z'},
-    {id:'t9', title:'台所の排水口掃除',       cid:'c1',aids:['u2'],      due:'2026-03-24',done:false,memo:'パイプクリーナー使う',          url:'',imgs:[],subs:[],                                                                  tags:[],            doneAt:null,at:'2026-03-18T09:00:00.000Z'},
-    {id:'t10',title:'転入届の提出',           cid:'c4',aids:['u1'],      due:'2026-03-25',done:false,memo:'印鑑・マイナンバーカード持参',  url:'',imgs:[],subs:[{id:'s10a',tx:'書類準備',done:true},{id:'s10b',tx:'窓口へ行く',done:false}],tags:['手続き'],doneAt:null,at:'2026-03-19T10:00:00.000Z'},
-    {id:'t11',title:'健康診断の予約',         cid:'c4',aids:['u1','u2'], due:'2026-04-05',done:false,memo:'',                             url:'',imgs:[],subs:[],                                                                  tags:[],            doneAt:null,at:'2026-03-20T14:00:00.000Z'},
-    {id:'t12',title:'冷蔵庫の整理',           cid:'c1',aids:['u2'],      due:'',          done:true, memo:'賞味期限切れチェック',          url:'',imgs:[],subs:[],                                                                  tags:[],            doneAt:'2026-03-20T18:00:00.000Z',at:'2026-03-13T09:00:00.000Z'},
-    {id:'t13',title:'学資保険の確認',         cid:'c5',aids:['u1'],      due:'2026-04-10',done:false,memo:'証書の保管場所も確認',          url:'',imgs:[],subs:[],                                                                  tags:[],            doneAt:null,at:'2026-03-10T10:00:00.000Z'},
-    {id:'t14',title:'学校の持ち物チェック',   cid:'c3',aids:['u2'],      due:'2026-03-27',done:false,memo:'入学式までに全て準備',          url:'',imgs:[],subs:[{id:'s14a',tx:'上履き',done:true},{id:'s14b',tx:'体育着',done:true},{id:'s14c',tx:'手提げ袋',done:false},{id:'s14d',tx:'ネームテープ貼り',done:false}],tags:['入学準備'],doneAt:null,at:'2026-03-21T07:30:00.000Z'},
-    {id:'t15',title:'給食費の口座登録',       cid:'c4',aids:['u1'],      due:'2026-03-28',done:false,memo:'学校から書類が来たら記入',       url:'',imgs:[],subs:[],                                                                  tags:['入学準備','手続き'],doneAt:null,at:'2026-03-20T20:00:00.000Z'},
-    {id:'t16',title:'ベランダの掃除',         cid:'c1',aids:['u1','u2'], due:'',          done:true, memo:'',                             url:'',imgs:[],subs:[],                                                                  tags:[],            doneAt:'2026-03-19T15:00:00.000Z',at:'2026-03-12T09:00:00.000Z'},
-    {id:'t17',title:'子どもの歯科検診',       cid:'c3',aids:['u2'],      due:'2026-04-02',done:false,memo:'半年ぶり・フッ素希望',          url:'',imgs:[],subs:[],                                                                  tags:[],            doneAt:null,at:'2026-03-18T11:00:00.000Z'},
-    {id:'t18',title:'クレジットカード明細確認',cid:'c5',aids:['u1'],     due:'2026-03-31',done:false,memo:'先月の不明な引き落とし確認',    url:'',imgs:[],subs:[],                                                                  tags:[],            doneAt:null,at:'2026-03-21T08:00:00.000Z'},
-    {id:'t19',title:'子ども部屋の模様替え',   cid:'c6',aids:['u1','u2'], due:'2026-03-29',done:false,memo:'入学前に机を設置する',          url:'',imgs:[],subs:[{id:'s19a',tx:'机の組み立て',done:false},{id:'s19b',tx:'棚の配置',done:false},{id:'s19c',tx:'照明の確認',done:false}],tags:['入学準備'],doneAt:null,at:'2026-03-16T09:00:00.000Z'},
-    {id:'t21',title:'古い完了タスク（35日前）',  cid:'c1',aids:['u1'],      due:'',done:true,memo:'30日以上前の削除テスト用',url:'',imgs:[],subs:[],tags:['テスト'],doneAt:'2026-02-14T10:00:00.000Z',at:'2026-02-13T09:00:00.000Z'},
-    {id:'t22',title:'古い完了タスク（65日前）',  cid:'c2',aids:['u2'],      due:'',done:true,memo:'60日以上前の削除テスト用',url:'',imgs:[],subs:[],tags:['テスト'],doneAt:'2026-01-15T10:00:00.000Z',at:'2026-01-14T09:00:00.000Z'},
-    {id:'t23',title:'古い完了タスク（95日前）',  cid:'c1',aids:['u1','u2'], due:'',done:true,memo:'90日以上前の削除テスト用',url:'',imgs:[],subs:[],tags:['テスト'],doneAt:'2025-12-16T10:00:00.000Z',at:'2025-12-15T09:00:00.000Z'},
-    {id:'t24',title:'最近の完了タスク（昨日）',  cid:'c2',aids:['u1'],      due:'',done:true,memo:'削除されないはずのタスク', url:'',imgs:[],subs:[],tags:['テスト'],doneAt:'2026-03-20T10:00:00.000Z',at:'2026-03-20T09:00:00.000Z'},
-    {id:'t20',title:'週末の夕食メニュー決め', cid:'c2',aids:['u1','u2'], due:'2026-03-22',done:false,memo:'',                             url:'',imgs:[],subs:[],                                                                  tags:['週次'],      doneAt:null,at:'2026-03-21T12:00:00.000Z'},
-  ],
-  recurs: [
-    {id:'r1',title:'お風呂掃除',catId:'c1',aids:['u1','u2'],freq:'weekly',wdays:[5,6],mday:1,memo:'スポンジ使って',lastGen:'',tags:[]},
-    {id:'r2',title:'ゴミ出し（燃えるゴミ）',catId:'c1',aids:[],freq:'weekly',wdays:[1,3],mday:1,memo:'',lastGen:'',tags:[]},
-  ]
+  uid:    null,
+  users:  [],
+  cats:   [],
+  tasks:  [],
+  recurs: []
 };
+
+// ══════════════════════════════════════════
+//  FIRESTORE SAVE / LOAD
+// ══════════════════════════════════════════
+let _saveTimer = null;
+function save(){
+  // 画像（base64）を除いて保存（Firestoreの1MB制限対策）
+  const tasksNoImg = ST.tasks.map(t=>({...t, imgs:[]}));
+  const data = { users:ST.users, cats:ST.cats, tasks:tasksNoImg, recurs:ST.recurs };
+  if(window._saveToFirestore){
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(()=>window._saveToFirestore(data), 400);
+  }
+}
+
+function applyRemoteData(data){
+  if(!data) return;
+  // 自分のUID（ログイン選択）は変えない
+  const uid = ST.uid;
+  ST.users  = data.users  || [];
+  ST.cats   = data.cats   || [];
+  ST.tasks  = data.tasks  || [];
+  ST.recurs = data.recurs || [];
+  ST.uid    = uid;
+  renderAll();
+  if(document.getElementById('page-settings').style.display!=='none') renderSettings();
+}
 
 let editTid  = null;  // タスクモーダル編集中ID
 let editRid  = null;  // 定期モーダル編集中ID
@@ -761,6 +879,13 @@ const WL=['日','月','火','水','木','金','土'];
 function renderLogin(){
   const grid = G('ugrid');
   grid.innerHTML = '';
+  // Firebase未設定の場合は注記を表示
+  if(!window._firebaseReady){
+    const note = document.createElement('div');
+    note.style.cssText='font-size:.78rem;color:var(--red);background:#fdecea;border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6';
+    note.textContent='⚠️ Firebase未設定です。ログイン後、設定画面でfirebaseConfigを入力してください。';
+    grid.appendChild(note);
+  }
   ST.users.forEach(u=>{
     const btn = CE('button',{className:'ubtn'});
     btn.innerHTML = `<div class="uav">${u.name.charAt(0)}</div>
@@ -768,10 +893,18 @@ function renderLogin(){
     btn.addEventListener('click', ()=>loginAs(u.id));
     grid.appendChild(btn);
   });
+  // ユーザーが0件の場合
+  if(!ST.users.length){
+    const hint = document.createElement('div');
+    hint.style.cssText='font-size:.82rem;color:var(--mt);text-align:center;padding:8px 0';
+    hint.textContent='まず新規ユーザーを追加してください';
+    grid.appendChild(hint);
+  }
 }
 
 function loginAs(uid){
   ST.uid = uid;
+  localStorage.setItem('couple-tasks-uid-v1', uid);
   const u = getU(uid);
   G('login').style.display = 'none';
   G('app').style.display   = 'flex';
@@ -780,6 +913,11 @@ function loginAs(uid){
   G('snm').textContent = u.name;
   autoGen();
   renderAll();
+  // onSnapshot開始（ログイン後）
+  if(window._startSync) window._startSync(data=>{
+    // 自分の操作中は無視しない（他端末の変更を即反映）
+    applyRemoteData(data);
+  });
 }
 
 // ══════════════════════════════════════════
@@ -891,7 +1029,7 @@ function buildTaskCard(t){
   chk.textContent=t.done?'✓':'';
   chk.addEventListener('click',e=>{
     e.stopPropagation();
-    t.done=!t.done; t.doneAt=t.done?new Date().toISOString():null; renderAll();
+    t.done=!t.done; t.doneAt=t.done?new Date().toISOString():null; renderAll(); save();
   });
 
   // タイトルエリア
@@ -951,7 +1089,7 @@ function buildTaskCard(t){
     e.stopPropagation();
     cfmDlg(`「${t.title}」を削除しますか？`,()=>{
       ST.tasks=ST.tasks.filter(x=>x.id!==t.id);
-      wrap.remove(); updateBdg(); renderTagBar();
+      wrap.remove(); updateBdg(); renderTagBar(); save();
     });
   });
   // タッチスワイプ
@@ -1020,13 +1158,13 @@ function buildTaskCard(t){
             const mi=card.querySelector('.mi-sub');
             if(mi) mi.textContent=`☑️ ${sd}/${t.subs.length}`;
           }
-          updateBdg();
+          updateBdg(); save();
         };
         schk.addEventListener('click',e=>{e.stopPropagation();toggle();});
         stx.addEventListener('click', e=>{e.stopPropagation();toggle();});
         sdel.addEventListener('click', e=>{
           e.stopPropagation();
-          t.subs=t.subs.filter(x=>x.id!==s.id); renderAll();
+          t.subs=t.subs.filter(x=>x.id!==s.id); renderAll(); save();
         });
         item.appendChild(schk); item.appendChild(stx); item.appendChild(sdel);
         sl.appendChild(item);
@@ -1093,7 +1231,7 @@ function renderRecur(){
     rcDel.addEventListener('click',()=>{
       cfmDlg(`「${r.title}」を削除しますか？`,()=>{
         ST.recurs=ST.recurs.filter(x=>x.id!==r.id);
-        rcWrap.remove(); updateBdg();
+        rcWrap.remove(); updateBdg(); save();
       });
     });
     rcWrap.appendChild(rcDel);
@@ -1123,7 +1261,7 @@ function genNow(rid){
   ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due:today,done:false,
     memo:r.memo||'',url:'',imgs:[],subs:[],fromRec:true,recurId:rid});
   r.lastGen=today;
-  renderAll(); renderRecur();
+  renderAll(); renderRecur(); save();
   showMsg(`「${r.title}」をタスク一覧に追加しました`);
 }
 
@@ -1173,7 +1311,7 @@ function renderSettings(){
         G('snm').textContent=n; G('sav').textContent=n.charAt(0);
         G('sav').style.cssText=`width:34px;height:34px;border-radius:50%;${uStyle(ST.uid)};display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;flex-shrink:0`;
       }
-      renderAll();
+      renderAll(); save();
     };
     nameIn.addEventListener('keydown',e=>{ if(!e.isComposing&&e.key==='Enter'){ applyName(); nameIn.blur(); } });
     nameIn.addEventListener('blur',()=>applyName());
@@ -1192,7 +1330,7 @@ function renderSettings(){
           ST.users=ST.users.filter(x=>x.id!==u.id);
           ST.tasks.forEach(t=>t.aids=(t.aids||[]).filter(x=>x!==u.id));
           ST.recurs.forEach(r=>r.aids=(r.aids||[]).filter(x=>x!==u.id));
-          renderSettings(); renderAll();
+          renderSettings(); renderAll(); save();
         });
       });
       uWrap.appendChild(uDel);
@@ -1214,7 +1352,7 @@ function renderSettings(){
     const nm=CE('input',{type:'text',className:'cnmin',value:c.name});
     nm.addEventListener('blur',()=>{
       const n=nm.value.trim(); if(!n)return;
-      c.name=n; renderAll(); renderCBar();
+      c.name=n; renderAll(); renderCBar(); save();
     });
     left.appendChild(cp); left.appendChild(nm); row.appendChild(left);
     const btn=CE('button',{className:'bdanger',textContent:'削除'});
@@ -1222,14 +1360,14 @@ function renderSettings(){
       cfmDlg(`「${c.name}」を削除しますか？`,()=>{
         ST.cats=ST.cats.filter(x=>x.id!==c.id);
         ST.tasks.forEach(t=>{if(t.cid===c.id)t.cid=null;});
-        renderSettings(); renderAll();
+        renderSettings(); renderAll(); save();
       });
     });
     // 並び替えボタン
     const idx=ST.cats.indexOf(c);
     const moveWrap=CE('div',{}); moveWrap.style.cssText='display:flex;gap:4px;align-items:center';
-    [['↑',()=>{ if(idx>0){ST.cats.splice(idx-1,0,ST.cats.splice(idx,1)[0]); renderSettings();renderAll();} }],
-     ['↓',()=>{ if(idx<ST.cats.length-1){ST.cats.splice(idx+1,0,ST.cats.splice(idx,1)[0]); renderSettings();renderAll();} }]
+    [['↑',()=>{ if(idx>0){ST.cats.splice(idx-1,0,ST.cats.splice(idx,1)[0]); renderSettings();renderAll();save();} }],
+     ['↓',()=>{ if(idx<ST.cats.length-1){ST.cats.splice(idx+1,0,ST.cats.splice(idx,1)[0]); renderSettings();renderAll();save();} }]
     ].forEach(([lbl,fn],i)=>{
       const mb=CE('button',{textContent:lbl});
       mb.style.cssText='padding:5px 9px;border:1.5px solid var(--bd);border-radius:7px;background:var(--sf2);font-size:.8rem;cursor:pointer;color:var(--sub)';
@@ -1273,7 +1411,7 @@ function openUserColorPicker(userObj, dotEl){
         G('sav').style.cssText=`width:34px;height:34px;border-radius:50%;background:${col};color:${textOnBg(col)};display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;flex-shrink:0`;
       }
       G('user-color-modal').classList.remove('open');
-      renderAll();
+      renderAll(); save();
     });
     grid.appendChild(btn);
   });
@@ -1290,7 +1428,7 @@ function openCatColorPicker(catObj, dotEl){
       catObj.color=col;
       if(dotEl) dotEl.style.background=col;
       G('cat-color-modal').classList.remove('open');
-      renderAll(); renderCBar();
+      renderAll(); renderCBar(); save();
     });
     grid.appendChild(btn);
   });
@@ -1391,14 +1529,14 @@ function saveTask(){
     memo:G('fmemo').value.trim(),url:G('furl').value.trim(),subs:mSubs,imgs:mImgs,tags:[...mTags],star};
   if(editTid){ const t=ST.tasks.find(x=>x.id===editTid); if(t) Object.assign(t,d); }
   else ST.tasks.unshift({id:genId(),done:false,...d});
-  closeTModal(); renderAll();
+  closeTModal(); renderAll(); save();
 }
 
 function delTask(){
   if(!editTid)return;
   cfmDlg('このタスクを削除しますか？',()=>{
     ST.tasks=ST.tasks.filter(x=>x.id!==editTid);
-    closeTModal(); renderAll();
+    closeTModal(); renderAll(); save();
   });
 }
 
@@ -1497,14 +1635,14 @@ function saveRecur(){
   const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mday,memo:G('rfmemo').value.trim(),tags:[...rTags]};
   if(editRid){ const r=ST.recurs.find(x=>x.id===editRid); if(r) Object.assign(r,d); }
   else ST.recurs.push({id:genId(),lastGen:'',...d});
-  closeRModal(); renderRecur(); updateBdg();
+  closeRModal(); renderRecur(); updateBdg(); save();
 }
 
 function delRecur(){
   if(!editRid)return;
   cfmDlg('この定期タスクを削除しますか？',()=>{
     ST.recurs=ST.recurs.filter(x=>x.id!==editRid);
-    closeRModal(); renderRecur(); updateBdg();
+    closeRModal(); renderRecur(); updateBdg(); save();
   });
 }
 
@@ -1540,13 +1678,14 @@ G('bn-settings').addEventListener('click', ()=>showPage('settings'));
 G('btnAddUser').addEventListener('click',()=>{
   const name=G('newname').value.trim();
   if(!name){G('loginerr').textContent='❌ 名前を入力してください';return;}
-  const uid='u'+Date.now(); ST.users.push({id:uid,name});
-  G('loginerr').textContent=''; G('newname').value=''; loginAs(uid);
+  const uid='u'+Date.now(); ST.users.push({id:uid,name,color:'#b5c4f0'});
+  G('loginerr').textContent=''; G('newname').value=''; loginAs(uid); save();
 });
 G('newname').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddUser').click();});
 G('btnLogout').addEventListener('click',()=>{
   cfmDlg('ログアウトしますか？',()=>{
-    ST.uid=null; G('app').style.display='none'; G('login').style.display='flex'; renderLogin();
+    ST.uid=null; localStorage.removeItem('couple-tasks-uid-v1');
+    G('app').style.display='none'; G('login').style.display='flex'; renderLogin();
   },'ログアウト');
 });
 
@@ -1585,9 +1724,9 @@ G('rffreq').addEventListener('change',updFreq);
 // 設定
 G('btnSettingsLogout').addEventListener('click',()=>{
   cfmDlg('ログアウトしますか？',()=>{
-    ST.uid=null;
+    ST.uid=null; localStorage.removeItem('couple-tasks-uid-v1');
     G('app').style.display='none';
-    G('login-screen').style.display='flex';
+    G('login').style.display='flex';
     renderLogin();
   },'ログアウト');
 });
@@ -1595,7 +1734,7 @@ G('btnAddCat').addEventListener('click',()=>{
   const name=G('newcatname').value.trim(), color=newcatSelectedColor;
   if(!name){showMsg('カテゴリ名を入力してください');return;}
   ST.cats.push({id:genId(),name,color});
-  G('newcatname').value=''; renderSettings(); renderAll();
+  G('newcatname').value=''; renderSettings(); renderAll(); save();
 });
 
 // フィルター
@@ -1887,7 +2026,7 @@ function deleteDoneTasks(days){
     return t.doneAt && new Date(t.doneAt).getTime() > cutoff;
   });
   const removed = before - ST.tasks.length;
-  renderAll(); renderMaintenance();
+  renderAll(); renderMaintenance(); save();
   showMsg(`${removed}件の完了済みタスクを削除しました`);
 }
 
@@ -1901,7 +2040,7 @@ function exportAndDeleteDone(){
     a.download=`done-tasks-${new Date().toISOString().slice(0,10)}.json`;
     a.click();
     ST.tasks = ST.tasks.filter(t=>!t.done);
-    renderAll(); renderMaintenance();
+    renderAll(); renderMaintenance(); save();
   });
 }
 
@@ -1924,7 +2063,7 @@ function importJSON(file){
       const d=JSON.parse(e.target.result);
       if(!d.tasks||!d.users){showMsg('形式が正しくありません');return;}
       ST.users=d.users; ST.cats=d.cats||[]; ST.tasks=d.tasks; ST.recurs=d.recurs||[];
-      renderAll(); renderSettings();
+      renderAll(); renderSettings(); save();
       showMsg('読み込みました');
     }catch(ex){showMsg('JSONの読み込みに失敗しました');}
   };
@@ -1966,7 +2105,40 @@ initTagInput();
 // ══════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════
-renderLogin();
+async function init(){
+  // Firestoreからデータを読み込む
+  if(window._loadFromFirestore){
+    const data = await window._loadFromFirestore();
+    if(data){
+      ST.users  = data.users  || [];
+      ST.cats   = data.cats   || [];
+      ST.tasks  = data.tasks  || [];
+      ST.recurs = data.recurs || [];
+    }
+  }
+
+  // Settings画面のFirebase接続状態を表示
+  const statusEl = G('firebase-status');
+  if(statusEl){
+    if(window._firebaseReady){
+      statusEl.textContent = '✅ Firebase接続済み';
+      statusEl.style.color = 'var(--gn)';
+    } else {
+      statusEl.textContent = '⚠️ 未接続 — 下のconfigを入力してください';
+      statusEl.style.color = 'var(--red)';
+    }
+  }
+
+  // localStorageにUIDが残っていれば自動ログイン
+  const savedUid = localStorage.getItem('couple-tasks-uid-v1');
+  if(savedUid && ST.users.find(u=>u.id===savedUid)){
+    loginAs(savedUid);
+  } else {
+    renderLogin();
+  }
+}
+
+init();
 </script>
 </body>
 </html>
