@@ -1780,11 +1780,13 @@ G('fsubin').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddSub').cli
 
 // 画像
 G('fimgin').addEventListener('change',e=>{
-  Array.from(e.target.files).forEach(f=>{
+  const files = Array.from(e.target.files);
+  e.target.value='';
+  files.forEach(f=>{
     const r=new FileReader();
     r.onload=ev=>compress(ev.target.result,c=>{mImgs.push(c);renderMImgs();});
     r.readAsDataURL(f);
-  }); e.target.value='';
+  });
 });
 
 // 定期モーダル
