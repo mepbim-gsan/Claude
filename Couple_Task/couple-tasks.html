@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v07_2026-03-22.5
-  @chat      Couple_Task_04_機能改善
+  @version   v04_2026-03-22.6
+  @chat      Couple_Task_04_機能改善・続
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
@@ -12,11 +12,11 @@
     v06_2026-03-22.2 - 曜日ずれ修正・lastGen複数更新バグ修正・全生成済み時ボタン非表示
     v06_2026-03-22.3 - 期限なし重複防止（未完了タスク存在チェック）
     v06_2026-03-22.4 - 月末指定（0=月末）対応
-    v07_2026-03-22 - Mine ボタンをドロップダウン化（担当者フィルタ追加）
-    v07_2026-03-22.2 - Mine/▼分割・DDからログインユーザー除外・担当者なし追加
-    v07_2026-03-22.3 - DDをbody直下fixed配置（fbarのoverflowクリップ問題解消）
-    v07_2026-03-22.4 - ラッパーdiv除去（ボタンずれ解消）
-    v07_2026-03-22.5 - 定型タスクの★を黄色に統一
+    v04_2026-03-22 - Mine ボタンをドロップダウン化（担当者フィルタ追加）
+    v04_2026-03-22.2 - Mine/▼分割・DDからログインユーザー除外・担当者なし追加
+    v04_2026-03-22.3 - DDをbody直下fixed配置（fbarのoverflowクリップ問題解消）
+    v04_2026-03-22.4 - ラッパーdiv除去（ボタンずれ解消）
+    v04_2026-03-22.5 - 定型タスクの★を黄色に統一
 -->
 <html lang="ja">
 <head>
@@ -512,7 +512,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v06_2026-03-22.4</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v04_2026-03-22.6</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -595,7 +595,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v06_2026-03-22.4</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v04_2026-03-22.6</div>
         </div>
       </div>
       <div class="ssec">
@@ -767,6 +767,14 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
           <div class="tag-suggest" id="rftag-suggest"></div>
         </div>
       </div>
+      <div class="fg">
+        <label class="fl">サブタスク</label>
+        <div class="slist" id="rfsubs"></div>
+        <div class="sinrow">
+          <input class="sin" id="rfsubin" type="text" placeholder="サブタスクを追加...">
+          <button class="bsm" style="padding:7px 12px" id="btnAddRSub">追加</button>
+        </div>
+      </div>
       <div class="fg"><label class="fl">メモ</label><textarea class="fi" id="rfmemo" style="min-height:60px"></textarea></div>
     </div>
     <div class="mfoot">
@@ -878,6 +886,7 @@ let mAids    = [];    // タスクモーダル担当者
 let rAids    = [];    // 定期モーダル担当者
 let rTags    = [];    // 定期モーダルタグ
 let mSubs    = [];    // タスクモーダルサブタスク
+let rSubs    = [];    // 定型タスクモーダルサブタスク
 let curFil   = 'active';
 let curMem   = null;  // CHANGED: 担当者フィルタ
 let showTags = false;
@@ -1477,13 +1486,13 @@ function openGenDlg(rid){
     if(r.freq==='none'||r.freq==='daily'){
       const due=candidates[0]?.due??'';
       ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due,done:false,
-        memo:r.memo||'',url:'',imgs:[],subs:[],tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:rid,at:new Date().toISOString()});
+        memo:r.memo||'',url:'',imgs:[],subs:(r.subs||[]).map(s=>({id:genId(),tx:s.tx,done:false})),tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:rid,at:new Date().toISOString()});
       if(due) newDates.push(due);
       created=1;
     } else {
       candidates.filter(c=>!c.done&&c.cb&&c.cb.checked).forEach(c=>{
         ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due:c.due,done:false,
-          memo:r.memo||'',url:'',imgs:[],subs:[],tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:rid,at:new Date().toISOString()});
+          memo:r.memo||'',url:'',imgs:[],subs:(r.subs||[]).map(s=>({id:genId(),tx:s.tx,done:false})),tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:rid,at:new Date().toISOString()});
         newDates.push(c.due); // CHANGED
         created++;
       });
@@ -1765,13 +1774,13 @@ function openRModal(id){
   G('rmodalttl').textContent=isEdit?'定型タスクを編集':'定型タスクを追加';
   G('btnDelRec').style.display=isEdit?'':'none';
   G('rfcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  rAids=[];
+  rAids=[]; rSubs=[];
   if(isEdit){
     const r=ST.recurs.find(x=>x.id===id);
     G('rftitle').value=r.title; G('rfcat').value=r.catId||'';
     G('rffreq').value=r.freq||'none'; G('rfmemo').value=r.memo||'';
     G('rfmd').value=(r.mdays||[]).join(', ');
-    rAids=[...(r.aids||[])]; rTags=[...(r.tags||[])];
+    rAids=[...(r.aids||[])]; rTags=[...(r.tags||[])]; rSubs=(r.subs||[]).map(s=>({...s,done:false}));
     G('rfstar').textContent=r.star?'★':'☆'; G('rfstar').classList.toggle('on',!!r.star);
     document.querySelectorAll('#rfwds input[type=checkbox]').forEach(cb=>cb.checked=(r.wdays||[]).includes(+cb.value));
   } else {
@@ -1779,9 +1788,9 @@ function openRModal(id){
     G('rfmemo').value=''; G('rfmd').value='';
     G('rfstar').textContent='☆'; G('rfstar').classList.remove('on');
     document.querySelectorAll('#rfwds input[type=checkbox]').forEach(cb=>cb.checked=false);
-    rAids=ST.uid?[ST.uid]:[]; rTags=[];
+    rAids=ST.uid?[ST.uid]:[]; rTags=[]; rSubs=[];
   }
-  updFreq(); renderRAsgn(); renderRTags();
+  updFreq(); renderRAsgn(); renderRTags(); renderRSubs();
   G('rmodal').classList.add('open');
 }
 function closeRModal(){ G('rmodal').classList.remove('open'); editRid=null; }
@@ -1821,6 +1830,20 @@ function addRTag(raw){
   rTags.push(tag); renderRTags();
 }
 
+function renderRSubs(){
+  const el=G('rfsubs'); el.innerHTML='';
+  rSubs.forEach((s,i)=>{
+    const row=CE('div',{className:'sitem'});
+    const chk=CE('div',{className:'schk',textContent:s.done?'✓':''});
+    if(s.done){row.classList.add('done');chk.style.background='var(--gn)';chk.style.borderColor='var(--gn)';}
+    const tx=CE('span',{className:'stx',textContent:s.tx});
+    const del=CE('button',{className:'sdel',textContent:'✕'});
+    chk.addEventListener('click',()=>{ rSubs[i].done=!rSubs[i].done; renderRSubs(); });
+    del.addEventListener('click',()=>{ rSubs.splice(i,1); renderRSubs(); });
+    row.append(chk,tx,del); el.appendChild(row);
+  });
+}
+
 function updFreq(){
   const v=G('rffreq').value;
   G('rfwdgrp').style.display=v==='weekly' ?'block':'none';
@@ -1854,7 +1877,7 @@ function saveRecur(){
     ? G('rfmd').value.split(',').map(s=>parseInt(s.trim())).filter(n=>n===0||(n>=1&&n<=31))
     : [];
   const star=G('rfstar').classList.contains('on');
-  const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mdays,memo:G('rfmemo').value.trim(),tags:[...rTags],star};
+  const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mdays,memo:G('rfmemo').value.trim(),tags:[...rTags],star,subs:rSubs.map(s=>({id:s.id,tx:s.tx}))};
   if(editRid){
     const r=ST.recurs.find(x=>x.id===editRid);
     if(r){ Object.assign(r,d); /* lastGenはリセットしない */ }
@@ -1930,6 +1953,11 @@ G('btnAddSub').addEventListener('click',()=>{
   mSubs.push({id:genId(),tx,done:false}); G('fsubin').value=''; renderMSubs();
 });
 G('fsubin').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddSub').click();});
+G('btnAddRSub').addEventListener('click',()=>{
+  const tx=G('rfsubin').value.trim(); if(!tx)return;
+  rSubs.push({id:genId(),tx,done:false}); G('rfsubin').value=''; renderRSubs();
+});
+G('rfsubin').addEventListener('keydown',e=>{if(!e.isComposing&&e.key==='Enter')G('btnAddRSub').click();});
 
 // 定型タスクモーダル
 G('btnAddRecur').addEventListener('click',()=>openRModal());
