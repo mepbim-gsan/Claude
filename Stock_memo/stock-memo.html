@@ -115,17 +115,15 @@ function setupAuth() {
 function updateAuthUI(user) {
   const btn  = document.getElementById('auth-btn');
   const info = document.getElementById('auth-info');
+  const row  = document.getElementById('auth-row');
   if (!btn) return;
   if (user) {
-    btn.textContent  = 'ログアウト';
     btn.onclick      = window._fbLogout;
     info.textContent = user.displayName || user.email || '';
     info.title       = user.email || '';
+    if (row) row.style.display = 'flex';
   } else {
-    btn.textContent  = 'Googleログイン';
-    btn.onclick      = window._fbLogin;
-    info.textContent = '未ログイン';
-    info.title       = '';
+    if (row) row.style.display = 'none';
   }
   if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
 }
@@ -180,10 +178,12 @@ if (savedConfig) {
   initFirebase(savedConfig);
 } else {
   window.addEventListener('DOMContentLoaded', () => {
-    const btn  = document.getElementById('auth-btn');
+    const row = document.getElementById('auth-row');
+    const btn = document.getElementById('auth-btn');
     const info = document.getElementById('auth-info');
-    if (btn)  { btn.textContent = 'Firebase未設定'; btn.onclick = () => openSettings(); }
-    if (info) info.textContent = '設定からconfigを入力';
+    if (row)  row.style.display = 'flex';
+    if (info) info.textContent = 'Firebase未設定';
+    if (btn)  { btn.textContent = '設定'; btn.onclick = () => openSettings(); }
   });
 }
 </script>
@@ -218,24 +218,50 @@ if (savedConfig) {
   .header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 12px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    padding: 8px 16px;
     position: sticky;
     top: 0;
     z-index: 100;
   }
   .header-inner {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 4px;
     width: 100%;
     max-width: 1080px;
     margin: 0 auto;
   }
+  .header-row1 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-row2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
   .header-title { font-size: 17px; font-weight: 700; color: var(--accent); }
   .header-btns { display: flex; gap: 8px; }
+  .auth-name {
+    font-size: 12px;
+    color: var(--text-sub);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
+  }
+  .btn-logout {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text-sub);
+    white-space: nowrap;
+  }
+  .btn-logout:active { background: var(--bg); }
   .btn-icon {
     background: none;
     border: 1px solid var(--border);
@@ -256,7 +282,7 @@ if (savedConfig) {
     overflow-x: auto;
     scrollbar-width: none;
     position: sticky;
-    top: 49px;
+    top: 66px;
     z-index: 99;
     padding: 0 max(16px, calc(50% - 528px));
   }
@@ -746,12 +772,16 @@ if (savedConfig) {
 <!-- ヘッダー -->
 <div class="header">
   <div class="header-inner">
-    <div class="header-title">📦 ストック管理</div>
-    <div class="header-btns">
-      <span id="auth-info" style="font-size:12px;color:var(--text-sub);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-      <button class="btn-icon" id="auth-btn">Googleログイン</button>
-      <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
-      <button class="btn-icon" onclick="openSettings()">⚙️</button>
+    <div class="header-row1">
+      <div class="header-title">📦 ストック管理</div>
+      <div class="header-btns">
+        <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
+        <button class="btn-icon" onclick="openSettings()">⚙️</button>
+      </div>
+    </div>
+    <div class="header-row2" id="auth-row" style="display:none">
+      <span class="auth-name" id="auth-info"></span>
+      <button class="btn-logout" id="auth-btn">ログアウト</button>
     </div>
   </div>
 </div>
