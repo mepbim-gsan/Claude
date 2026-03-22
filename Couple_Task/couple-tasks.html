@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v07_2026-03-22
+  @version   v07_2026-03-22.5
   @chat      Couple_Task_04_機能改善
   @changelog
     v01_2026-03-20 - 初版（モックモード）
@@ -13,6 +13,10 @@
     v06_2026-03-22.3 - 期限なし重複防止（未完了タスク存在チェック）
     v06_2026-03-22.4 - 月末指定（0=月末）対応
     v07_2026-03-22 - Mine ボタンをドロップダウン化（担当者フィルタ追加）
+    v07_2026-03-22.2 - Mine/▼分割・DDからログインユーザー除外・担当者なし追加
+    v07_2026-03-22.3 - DDをbody直下fixed配置（fbarのoverflowクリップ問題解消）
+    v07_2026-03-22.4 - ラッパーdiv除去（ボタンずれ解消）
+    v07_2026-03-22.5 - 定型タスクの★を黄色に統一
 -->
 <html lang="ja">
 <head>
@@ -282,6 +286,9 @@ input,textarea,select{font-family:inherit}
 .achip{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:var(--gnl);color:var(--gn);font-size:.78rem;font-weight:700}
 .achipav{width:18px;height:18px;border-radius:50%;background:var(--gn);color:#fff;font-size:.65rem;display:flex;align-items:center;justify-content:center;font-weight:700}
 /* Mine ドロップダウン */
+.fc-mine-btn{border-radius:99px 0 0 99px!important;border-right:none!important;padding-right:8px!important}
+.fc-mine-arr{border-radius:0 99px 99px 0!important;border-left:none!important;padding-left:6px!important;padding-right:10px!important}
+.fc-mine-btn.active,.fc-mine-arr.active{border-color:var(--ac)!important;background:var(--acl)!important;color:var(--ac)!important;font-weight:700!important}
 .fc-mine-item{display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:.82rem;color:var(--tx);cursor:pointer;transition:background .12s;white-space:nowrap}
 .fc-mine-item:hover{background:var(--bg2)}
 .fc-mine-item.active{color:var(--ac);font-weight:700;background:var(--acl)}
@@ -528,7 +535,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
             <button class="fc active" id="f-active">Active</button>
             <button class="fc" id="f-undone">Pending</button>
             <button class="fc" id="f-overdue">Overdue</button>
-            <button class="fc" id="f-mine">Mine<span id="mine-label"></span> &#9660;</button>
+            <button class="fc fc-mine-btn" id="f-mine">Mine<span id="mine-label"></span></button><button class="fc fc-mine-arr" id="f-mine-arr">&#9660;</button>
             <button class="fc" id="f-done">Done</button>
             <button class="fc" id="f-all">All</button>
           </div>
@@ -1106,7 +1113,7 @@ function renderTasks(){
     if(curFil==='undone') return !t.done;
     if(curFil==='overdue') return !t.done && isOv(t.due);
     if(curFil==='done') return t.done;
-    if(curFil==='mine') return curMem ? (t.aids||[]).includes(curMem) : (t.aids||[]).includes(ST.uid); // CHANGED: curMem対応
+    if(curFil==='mine'){ if(curMem==='_none') return !(t.aids&&t.aids.length); if(curMem) return (t.aids||[]).includes(curMem); return (t.aids||[]).includes(ST.uid); }
     return true;
   }).filter(t=> !curCat || (curCat==='_none' ? !t.cid : t.cid===curCat)) // CHANGED: _none対応
     .filter(t=> !curTag||(t.tags||[]).includes(curTag))
@@ -1316,7 +1323,7 @@ function renderRecur(){
     if(r.freq==='monthly') fd=`（${(r.mdays||[]).map(d=>d===0?'月末':d+'日').join('・')}）`;
 
     const card=CE('div',{className:'rccard'});
-    card.innerHTML=`<div class="rcic">${r.star?'★':'📋'}</div>
+    card.innerHTML=`<div class="rcic">${r.star?'<span style="color:#f5a623;font-size:1.1rem">★</span>':'📋'}</div>
       <div class="rcinfo">
         <div class="rcttl">${esc(r.title)}</div>
         <div class="rcmeta">
@@ -1965,18 +1972,20 @@ G('btnAddCat').addEventListener('click',()=>{
 // Mine ドロップダウン // CHANGED: 追加
 function buildMineDD(){
   const dd=G('mine-dd'); dd.innerHTML='';
-  const selfItem=CE('div',{className:'fc-mine-item'+(curFil==='mine'&&!curMem?' active':'')});
-  const selfAv=CE('span',{className:'fc-mine-av',textContent:'👤'});
-  selfAv.style.background='var(--ac)';
-  selfItem.append(selfAv, document.createTextNode('自分 (Mine)'));
-  selfItem.addEventListener('touchstart',e=>{ e.stopPropagation(); },{passive:true});
-  selfItem.addEventListener('click',e=>{
+  // 担当者なし
+  const noneItem=CE('div',{className:'fc-mine-item'+(curMem==='_none'?' active':'')});
+  const noneAv=CE('span',{className:'fc-mine-av',textContent:'－'});
+  noneAv.style.background='var(--mt)';
+  noneItem.append(noneAv, document.createTextNode('担当者なし'));
+  noneItem.addEventListener('touchstart',e=>{ e.stopPropagation(); },{passive:true});
+  noneItem.addEventListener('click',e=>{
     e.stopPropagation();
-    curFil='mine'; curMem=null;
+    curFil='mine'; curMem='_none';
     closeMineDD(); updateFbar(); renderTasks();
   });
-  dd.appendChild(selfItem);
-  (ST.users||[]).forEach(u=>{
+  dd.appendChild(noneItem);
+  // メンバー一覧（ログインユーザー除外）
+  (ST.users||[]).filter(u=>u.id!==ST.uid).forEach(u=>{
     const item=CE('div',{className:'fc-mine-item'+(curMem===u.id?' active':'')});
     const av=CE('span',{className:'fc-mine-av',textContent:(u.name||'?')[0].toUpperCase()});
     item.append(av, document.createTextNode(u.name));
@@ -1991,7 +2000,7 @@ function buildMineDD(){
 }
 function openMineDD(){
   buildMineDD();
-  const btn=G('f-mine');
+  const btn=G('f-mine-arr');
   const r=btn.getBoundingClientRect();
   const dd=G('mine-dd');
   dd.style.top=(r.bottom+6)+'px';
@@ -2005,6 +2014,13 @@ function closeMineDD(){
 G('f-mine').addEventListener('touchstart',e=>{ e.stopPropagation(); },{passive:true});
 G('f-mine').addEventListener('click',e=>{
   e.stopPropagation();
+  closeMineDD();
+  curFil='mine'; curMem=null;
+  updateFbar(); renderTasks();
+});
+G('f-mine-arr').addEventListener('touchstart',e=>{ e.stopPropagation(); },{passive:true});
+G('f-mine-arr').addEventListener('click',e=>{
+  e.stopPropagation();
   if(G('mine-dd').style.display==='block'){ closeMineDD(); return; }
   openMineDD();
 });
@@ -2013,17 +2029,20 @@ function updateFbar(){
   ['active','undone','overdue','done','all'].forEach(x=>G('f-'+x).classList.toggle('active',x===curFil));
   const mineActive=(curFil==='mine');
   G('f-mine').classList.toggle('active', mineActive);
+  G('f-mine-arr').classList.toggle('active', mineActive);
   const lbl=G('mine-label');
-  if(mineActive && curMem){
+  if(mineActive && curMem && curMem!=='_none'){
     const u=(ST.users||[]).find(x=>x.id===curMem);
     lbl.textContent=u?' '+u.name:'';
+  } else if(mineActive && curMem==='_none'){
+    lbl.textContent=' なし';
   } else {
     lbl.textContent='';
   }
 }
 
 G('srch').addEventListener('input',renderTasks);
-document.addEventListener('touchstart',e=>{ if(swipedCard&&!swipedCard.contains(e.target)) closeSwipe(swipedCard); if(!G('mine-dd').contains(e.target)&&e.target!==G('f-mine')) closeMineDD(); },{passive:true});
+document.addEventListener('touchstart',e=>{ if(swipedCard&&!swipedCard.contains(e.target)) closeSwipe(swipedCard); if(!G('mine-dd').contains(e.target)&&e.target!==G('f-mine')&&e.target!==G('f-mine-arr')) closeMineDD(); },{passive:true});
 document.addEventListener('click',e=>{
   if(swipedCard&&!swipedCard.contains(e.target)) closeSwipe(swipedCard);
   if(swipedSetting&&!swipedSetting.contains(e.target)) closeSwipeSetting(swipedSetting);
