@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v06_2026-03-22.2
+  @version   v06_2026-03-22.4
   @chat      Couple_Task_03_改善
   @changelog
     v01_2026-03-20 - 初版（モックモード）
@@ -10,6 +10,8 @@
     v05_2026-03-22 - カテゴリ引き継ぎ新規作成・「なし」選択肢・未登録メンバー追加
     v06_2026-03-22 - 定型タスク化（自動生成廃止・手動生成ダイアログ・lastGen配列化）
     v06_2026-03-22.2 - 曜日ずれ修正・lastGen複数更新バグ修正・全生成済み時ボタン非表示
+    v06_2026-03-22.3 - 期限なし重複防止（未完了タスク存在チェック）
+    v06_2026-03-22.4 - 月末指定（0=月末）対応
 -->
 <html lang="ja">
 <head>
@@ -497,7 +499,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v06_2026-03-22.2</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v06_2026-03-22.4</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -580,7 +582,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v06_2026-03-22.2</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v06_2026-03-22.4</div>
         </div>
       </div>
       <div class="ssec">
@@ -1297,7 +1299,8 @@ function renderRecur(){
   el.innerHTML='';
   if(!ST.recurs.length){ emp.style.display='block'; return; }
   emp.style.display='none';
-  ST.recurs.forEach(r=>{
+  const sorted=[...ST.recurs].sort((a,b)=>a.title.localeCompare(b.title,'ja')); // CHANGED
+  sorted.forEach(r=>{
     const cat=getC(r.catId);
     const asgn=(r.aids||[]).map(getU);
     let fd='';
