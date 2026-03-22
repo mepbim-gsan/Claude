@@ -1,13 +1,15 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v05_2026-03-22
+  @version   v06_2026-03-22.2
   @chat      Couple_Task_03_改善
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
     v04_2026-03-22.4 - Google認証対応・ユーザー紐づけ
     v05_2026-03-22 - カテゴリ引き継ぎ新規作成・「なし」選択肢・未登録メンバー追加
+    v06_2026-03-22 - 定型タスク化（自動生成廃止・手動生成ダイアログ・lastGen配列化）
+    v06_2026-03-22.2 - 曜日ずれ修正・lastGen複数更新バグ修正・全生成済み時ボタン非表示
 -->
 <html lang="ja">
 <head>
@@ -491,11 +493,11 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
     <nav class="sbnav">
       <button class="ni" id="nav-dash"><span class="nic">📊</span>ダッシュボード</button>
       <button class="ni active" id="nav-tasks"><span class="nic">📋</span>タスク<span class="nbd" id="bdg-tasks">0</span></button>
-      <button class="ni" id="nav-recur"><span class="nic">🔁</span>定期タスク<span class="nbd" id="bdg-recur" style="background:var(--gn)">0</span></button>
+      <button class="ni" id="nav-recur"><span class="nic">📋</span>定型タスク<span class="nbd" id="bdg-recur" style="background:var(--gn)">0</span></button>
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v05_2026-03-22</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v06_2026-03-22.2</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -552,14 +554,14 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
     <div id="page-recur" style="display:none">
       <div class="page-fixed">
         <div class="ph">
-          <div class="pt">定期タスク</div>
-          <button class="bpri" id="btnAddRecur">＋ 定期タスクを追加</button>
+          <div class="pt">定型タスク</div>
+          <button class="bpri" id="btnAddRecur">＋ 定型タスクを追加</button>
         </div>
-        <p style="font-size:.82rem;color:var(--mt);margin-bottom:18px">ログイン時に自動生成。▶ ボタンで今すぐ生成できます。</p>
+        <p style="font-size:.82rem;color:var(--mt);margin-bottom:18px">よく使うタスクのテンプレート。▶ で生成日を選んでタスクを作成します。</p>
       </div>
       <div class="page-list">
         <div class="rclist" id="rclist"></div>
-        <div class="empty" id="rcempty" style="display:none"><div class="empic">🔁</div><div>定期タスクはありません</div></div>
+        <div class="empty" id="rcempty" style="display:none"><div class="empic">📋</div><div>定型タスクはありません</div></div>
       </div>
     </div>
 
@@ -578,7 +580,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v05_2026-03-22</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v06_2026-03-22.2</div>
         </div>
       </div>
       <div class="ssec">
@@ -656,7 +658,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
     <div class="bnavinner">
       <button class="bnbtn" id="bn-dash"><span class="bnic">📊</span>統計</button>
       <button class="bnbtn active" id="bn-tasks"><span class="bnic">📋</span>タスク<span class="bnbd" id="bnbdg-tasks">0</span></button>
-      <button class="bnbtn" id="bn-recur"><span class="bnic">🔁</span>定期<span class="bnbd" id="bnbdg-recur" style="background:var(--gn)">0</span></button>
+      <button class="bnbtn" id="bn-recur"><span class="bnic">📋</span>定型<span class="bnbd" id="bnbdg-recur" style="background:var(--gn)">0</span></button>
       <button class="bnbtn" id="bn-settings"><span class="bnic">⚙️</span>設定</button>
     </div>
   </nav>
@@ -707,16 +709,17 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 <!-- RECUR MODAL -->
 <div class="ovl" id="rmodal">
   <div class="modal">
-    <div class="mhdr"><div class="mttl" id="rmodalttl">定期タスクを追加</div><button class="mclose" id="btnCloseRM">✕</button></div>
+    <div class="mhdr"><div class="mttl" id="rmodalttl">定型タスクを追加</div><button class="mclose" id="btnCloseRM">✕</button></div>
     <div class="mbody">
       <div class="fg"><label class="fl">タスク名 *</label><div style="display:flex;gap:8px;align-items:center"><input class="fi" id="rftitle" type="text" placeholder="例：お風呂掃除" style="flex:1"><button type="button" id="rfstar" class="star-btn" title="重要フラグ">☆</button></div></div>
       <div class="frow">
         <div class="fg"><label class="fl">カテゴリ</label><select class="fi" id="rfcat"></select></div>
-        <div class="fg"><label class="fl">繰り返し</label>
+        <div class="fg"><label class="fl">生成日の設定</label>
           <select class="fi" id="rffreq">
-            <option value="daily">毎日</option>
-            <option value="weekly">毎週</option>
-            <option value="monthly">毎月</option>
+            <option value="none">指定なし（期限なしで生成）</option>
+            <option value="daily">実行日（今日）で生成</option>
+            <option value="weekly">週の曜日を指定</option>
+            <option value="monthly">月の日付を指定</option>
           </select>
         </div>
       </div>
@@ -733,8 +736,8 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
       </div>
       <div class="fg" id="rfmdgrp" style="display:none">
-        <label class="fl">毎月何日</label>
-        <input class="fi" id="rfmd" type="number" min="1" max="31" value="1" style="max-width:100px">
+        <label class="fl">日付（複数可・カンマ区切り、0=月末）</label>
+        <input class="fi" id="rfmd" type="text" placeholder="例: 1, 15, 0（月末）" style="max-width:200px">
       </div>
       <div class="fg"><label class="fl">担当者（複数可）</label><div class="apick" id="rfasgn"></div></div>
       <div class="fg">
@@ -788,6 +791,18 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button id="cfm-no"  style="padding:9px 18px;background:#eceae4;border:none;border-radius:10px;font-size:.88rem;font-weight:700;cursor:pointer">キャンセル</button>
       <button id="cfm-yes" style="padding:9px 18px;background:#c0392b;border:none;border-radius:10px;color:#fff;font-size:.88rem;font-weight:700;cursor:pointer">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- GEN DIALOG -->
+<div class="lb" id="gen-dlg" style="align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:24px 24px 20px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div id="gen-dlg-title" style="font-size:.95rem;font-weight:700;margin-bottom:16px;color:#2c2b28"></div>
+    <div id="gen-dlg-body" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button id="gen-dlg-cancel" style="padding:9px 18px;background:#eceae4;border:none;border-radius:10px;font-size:.88rem;font-weight:700;cursor:pointer">キャンセル</button>
+      <button id="gen-dlg-ok" style="padding:9px 18px;background:var(--ac);border:none;border-radius:10px;color:#fff;font-size:.88rem;font-weight:700;cursor:pointer">タスクを作成</button>
     </div>
   </div>
 </div>
@@ -921,7 +936,6 @@ function showMsg(msg){
 function isOv(d){ return d && new Date(d)<new Date(new Date().toDateString()) }
 function fmtD(d){ if(!d)return''; const dt=new Date(d); return `${dt.getMonth()+1}/${dt.getDate()}` }
 function fmtDT(d){ if(!d)return''; const dt=new Date(d); return `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` }
-const FL={daily:'毎日',weekly:'毎週',monthly:'毎月'};
 const WL=['日','月','火','水','木','金','土'];
 
 // ══════════════════════════════════════════
@@ -957,7 +971,6 @@ function loginAs(uid){
   G('sav').textContent = u.name.charAt(0);
   G('sav').style.cssText=`width:34px;height:34px;border-radius:50%;${uStyle(uid)};display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;flex-shrink:0`;
   G('snm').textContent = u.name;
-  autoGen();
   renderAll();
   if(window._startSync) window._startSync(applyRemoteData);
 }
@@ -1006,10 +1019,11 @@ function loginDemo(){
     {id:'t12',title:'家計簿の集計',cid:'c4',aids:['u2'],due:d(14),done:false,memo:'先月分まとめる',url:'',imgs:[],subs:[],tags:['月次'],star:false,doneAt:null,at:new Date().toISOString()},
   ];
   ST.recurs = [
-    {id:'r1',title:'ゴミ出し（燃えるゴミ）',catId:'c1',aids:['u1'],freq:'weekly',wdays:[2,5],mday:1,memo:'',tags:['家事'],lastGen:''},
-    {id:'r2',title:'お風呂掃除',catId:'c1',aids:['u2'],freq:'daily',wdays:[],mday:1,memo:'',tags:['家事'],lastGen:''},
-    {id:'r3',title:'週次食材まとめ買い',catId:'c2',aids:['u1','u2'],freq:'weekly',wdays:[6],mday:1,memo:'週末にまとめて',tags:['週次'],lastGen:''},
-    {id:'r4',title:'子どもの連絡帳チェック',catId:'c3',aids:['u2'],freq:'daily',wdays:[],mday:1,memo:'',tags:[],lastGen:''},
+    {id:'r1',title:'ゴミ出し（燃えるゴミ）',catId:'c1',aids:['u1'],freq:'weekly',wdays:[2,5],mdays:[],memo:'',tags:['家事'],star:false,lastGen:[]},
+    {id:'r2',title:'お風呂掃除',catId:'c1',aids:['u2'],freq:'daily',wdays:[],mdays:[],memo:'',tags:['家事'],star:false,lastGen:[]},
+    {id:'r3',title:'週次食材まとめ買い',catId:'c2',aids:['u1','u2'],freq:'weekly',wdays:[6],mdays:[],memo:'週末にまとめて',tags:['週次'],star:false,lastGen:[]},
+    {id:'r4',title:'子どもの連絡帳チェック',catId:'c3',aids:['u2'],freq:'none',wdays:[],mdays:[],memo:'',tags:[],star:false,lastGen:[]},
+    {id:'r5',title:'家計簿の集計',catId:'c4',aids:['u2'],freq:'monthly',wdays:[],mdays:[1,15],memo:'先月分まとめる',tags:['月次'],star:true,lastGen:[]},
   ];
   // saveを呼ばない（デモは保存しない）
   loginAs('u1');
@@ -1274,8 +1288,10 @@ function buildTaskCard(t){
 }
 
 // ══════════════════════════════════════════
-//  RECUR PAGE  — DOM生成でバインド
+//  定型タスク PAGE
 // ══════════════════════════════════════════
+const FREQ_LABEL = {none:'期限なし', daily:'実行日', weekly:'曜日指定', monthly:'日付指定'};
+
 function renderRecur(){
   const el=G('rclist'), emp=G('rcempty');
   el.innerHTML='';
@@ -1286,29 +1302,29 @@ function renderRecur(){
     const asgn=(r.aids||[]).map(getU);
     let fd='';
     if(r.freq==='weekly') fd='（'+(r.wdays||[]).map(d=>WL[d]).join('・')+'）';
-    if(r.freq==='monthly') fd=`（毎月${r.mday}日）`;
+    if(r.freq==='monthly') fd=`（${(r.mdays||[]).map(d=>d===0?'月末':d+'日').join('・')}）`;
 
     const card=CE('div',{className:'rccard'});
-    card.innerHTML=`<div class="rcic">🔁</div>
+    card.innerHTML=`<div class="rcic">${r.star?'★':'📋'}</div>
       <div class="rcinfo">
         <div class="rcttl">${esc(r.title)}</div>
         <div class="rcmeta">
-          <span class="rcbd">⏱ ${FL[r.freq]}${esc(fd)}</span>
+          <span class="rcbd">📅 ${FREQ_LABEL[r.freq]||''}${esc(fd)}</span>
           ${cat?`<span class="rcbd"><span class="ctag" style="background:${cat.color}22;color:${cat.color}">${esc(cat.name)}</span></span>`:''}
           ${asgn.length?`<span class="rcbd">👤 ${asgn.map(u=>esc(u.name)).join('・')}</span>`:''}
         </div>
         ${r.memo?`<div class="rcnote">${esc(r.memo)}</div>`:''}
-        ${r.lastGen?`<div class="rcnote">最終生成: ${r.lastGen}</div>`:''}
       </div>
       <div class="rcacts" id="rcacts-${r.id}"></div>`;
 
     const actsEl=card.querySelector('#rcacts-'+r.id);
     const editBtn=CE('button',{className:'ib',textContent:'✏️'});
     editBtn.addEventListener('click',()=>openRModal(r.id));
-    const genBtn=CE('button',{className:'ib',textContent:'▶️',title:'今すぐ生成'});
-    genBtn.addEventListener('click',()=>genNow(r.id));
+    const genBtn=CE('button',{className:'ib',title:'タスクを生成'});
+    genBtn.textContent='▶️';
+    genBtn.addEventListener('click',()=>openGenDlg(r.id));
     actsEl.appendChild(editBtn); actsEl.appendChild(genBtn);
-      // スワイプ/右クリック削除
+
     const rcWrap=CE('div',{className:'rccard-wrap'});
     rcWrap.appendChild(card);
     const rcDel=CE('button',{className:'rccard-del',textContent:'削除'});
@@ -1319,7 +1335,6 @@ function renderRecur(){
       });
     });
     rcWrap.appendChild(rcDel);
-    // タッチ
     let rtx=0,rty=0,rsw=false;
     rcWrap.addEventListener('touchstart',e=>{ rtx=e.touches[0].clientX; rty=e.touches[0].clientY; rsw=false; },{passive:true});
     rcWrap.addEventListener('touchmove',e=>{
@@ -1329,7 +1344,6 @@ function renderRecur(){
       if(dx<-18){ if(swipedCard&&swipedCard!==rcWrap) closeSwipe(swipedCard); rcWrap.classList.add('swiped'); swipedCard=rcWrap; }
       else if(dx>18){ closeSwipe(rcWrap); }
     },{passive:true});
-    // 右クリック
     rcWrap.addEventListener('contextmenu',e=>{
       e.preventDefault();
       if(swipedCard&&swipedCard!==rcWrap) closeSwipe(swipedCard);
@@ -1339,29 +1353,130 @@ function renderRecur(){
   });
 }
 
-function genNow(rid){
-  const r=ST.recurs.find(x=>x.id===rid); if(!r)return;
-  const today=new Date().toISOString().slice(0,10);
-  ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due:today,done:false,
-    memo:r.memo||'',url:'',imgs:[],subs:[],tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:rid}); // CHANGED: star/tags引き継ぎ
-  r.lastGen=today;
-  renderAll(); renderRecur(); save();
-  showMsg(`「${r.title}」をタスク一覧に追加しました`);
+// 次の曜日の日付を返す（今日が対象曜日なら今日）
+function nextWeekday(dow){
+  const today=new Date();
+  const todayDow=today.getDay();
+  const diff=(dow - todayDow + 7) % 7;
+  const dt=new Date(today.getFullYear(), today.getMonth(), today.getDate()+diff);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+// 次の月日付を返す（0=月末）
+function nextMonthDay(day){
+  const today=new Date();
+  const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  let dt;
+  if(day===0){
+    // 今月末
+    dt=new Date(today.getFullYear(), today.getMonth()+1, 0);
+    const dtStr=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+    // 今月末が過去なら来月末
+    if(dtStr < todayStr) dt=new Date(today.getFullYear(), today.getMonth()+2, 0);
+  } else {
+    dt=new Date(today.getFullYear(), today.getMonth(), day);
+    const dtStr=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+    if(dtStr < todayStr) dt=new Date(today.getFullYear(), today.getMonth()+1, day);
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+function fmtDateJP(iso){
+  const dt=new Date(iso+'T00:00:00');
+  return `${dt.getMonth()+1}/${dt.getDate()}（${WL[dt.getDay()]}）`;
 }
 
-function autoGen(){
-  const today=new Date(), ts=today.toISOString().slice(0,10), dow=today.getDay();
-  ST.recurs.forEach(r=>{
-    if(r.lastGen===ts)return;
-    let ok=false;
-    if(r.freq==='daily') ok=true;
-    if(r.freq==='weekly') ok=(r.wdays||[]).includes(dow);
-    if(r.freq==='monthly') ok=today.getDate()===r.mday;
-    if(!ok)return;
-    ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due:ts,done:false,
-      memo:r.memo||'',url:'',imgs:[],subs:[],tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:r.id}); // CHANGED: star/tags引き継ぎ
-    r.lastGen=ts;
-  });
+// 生成ダイアログ
+function openGenDlg(rid){
+  const r=ST.recurs.find(x=>x.id===rid); if(!r)return;
+  const lastGen=Array.isArray(r.lastGen)?r.lastGen:[];
+  const today=new Date().toISOString().slice(0,10);
+
+  G('gen-dlg-title').textContent=`「${r.title}」のタスクを作成`;
+  const body=G('gen-dlg-body'); body.innerHTML='';
+
+  let candidates=[];
+
+  if(r.freq==='none'||r.freq==='daily'){
+    // 期限なし or 今日：チェック不要で即生成
+    const due=r.freq==='daily'?today:'';
+    const alreadyDone = r.freq==='daily'
+      ? lastGen.includes(today)
+      : ST.tasks.some(t=>t.recurId===rid&&!t.done); // CHANGED: 期限なしは未完了タスクの存在で判定
+    if(alreadyDone){
+      const msg = r.freq==='daily'
+        ? `今日は既に生成済みです（${fmtDateJP(today)}）`
+        : '未完了のタスクが既に存在します';
+      body.innerHTML=`<div style="font-size:.85rem;color:var(--mt)">${msg}</div>`;
+      G('gen-dlg-ok').style.display='none';
+    } else {
+      const label = r.freq==='daily'?`今日 ${fmtDateJP(today)} のタスクを作成します`:'期限なしのタスクを作成します';
+      body.innerHTML=`<div style="font-size:.85rem;color:var(--sub)">${label}</div>`;
+      G('gen-dlg-ok').style.display='';
+      candidates=[{due, label}];
+    }
+  } else if(r.freq==='weekly'){
+    (r.wdays||[]).forEach(dow=>{
+      const iso=nextWeekday(dow);
+      const done=lastGen.includes(iso);
+      const row=CE('div',{style:'display:flex;align-items:center;gap:10px'});
+      const cb=CE('input',{type:'checkbox', checked:!done});
+      cb.disabled=done;
+      cb.dataset.due=iso;
+      const lbl=CE('label',{});
+      lbl.style.cssText='font-size:.88rem;display:flex;align-items:center;gap:8px;cursor:'+(done?'default':'pointer');
+      lbl.appendChild(cb);
+      const txt=CE('span',{textContent: fmtDateJP(iso)});
+      if(done){ txt.style.cssText='color:var(--mt);text-decoration:line-through'; const note=CE('span',{textContent:'生成済み'}); note.style.cssText='font-size:.72rem;color:var(--mt);margin-left:4px'; lbl.appendChild(txt); lbl.appendChild(note); }
+      else lbl.appendChild(txt);
+      row.appendChild(lbl); body.appendChild(row);
+      candidates.push({due:iso, cb, done});
+    });
+    G('gen-dlg-ok').style.display=candidates.every(c=>c.done)?'none':''; // CHANGED
+  } else if(r.freq==='monthly'){
+    (r.mdays||[]).forEach(day=>{
+      const iso=nextMonthDay(day);
+      const done=lastGen.includes(iso);
+      const row=CE('div',{style:'display:flex;align-items:center;gap:10px'});
+      const cb=CE('input',{type:'checkbox', checked:!done});
+      cb.disabled=done;
+      cb.dataset.due=iso;
+      const lbl=CE('label',{});
+      lbl.style.cssText='font-size:.88rem;display:flex;align-items:center;gap:8px;cursor:'+(done?'default':'pointer');
+      lbl.appendChild(cb);
+      const txt=CE('span',{textContent: fmtDateJP(iso)});
+      if(done){ txt.style.cssText='color:var(--mt);text-decoration:line-through'; const note=CE('span',{textContent:'生成済み'}); note.style.cssText='font-size:.72rem;color:var(--mt);margin-left:4px'; lbl.appendChild(txt); lbl.appendChild(note); }
+      else lbl.appendChild(txt);
+      row.appendChild(lbl); body.appendChild(row);
+      candidates.push({due:iso, cb, done});
+    });
+    G('gen-dlg-ok').style.display=candidates.every(c=>c.done)?'none':''; // CHANGED
+  }
+
+  G('gen-dlg').classList.add('open');
+
+  G('gen-dlg-ok').onclick=()=>{
+    let created=0;
+    const newDates=[]; // CHANGED: 追加日をまとめてからlastGenに反映
+    if(r.freq==='none'||r.freq==='daily'){
+      const due=candidates[0]?.due??'';
+      ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due,done:false,
+        memo:r.memo||'',url:'',imgs:[],subs:[],tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:rid,at:new Date().toISOString()});
+      if(due) newDates.push(due);
+      created=1;
+    } else {
+      candidates.filter(c=>!c.done&&c.cb&&c.cb.checked).forEach(c=>{
+        ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due:c.due,done:false,
+          memo:r.memo||'',url:'',imgs:[],subs:[],tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:rid,at:new Date().toISOString()});
+        newDates.push(c.due); // CHANGED
+        created++;
+      });
+    }
+    r.lastGen=[...lastGen, ...newDates]; // CHANGED: まとめて更新
+    G('gen-dlg').classList.remove('open');
+    if(created){
+      renderAll(); renderRecur(); save();
+      showMsg(`${created}件のタスクを作成しました`);
+    }
+  };
 }
 
 // ══════════════════════════════════════════
@@ -1629,21 +1744,22 @@ function delTask(){
 function openRModal(id){
   editRid=id||null;
   const isEdit=!!id;
-  G('rmodalttl').textContent=isEdit?'定期タスクを編集':'定期タスクを追加';
+  G('rmodalttl').textContent=isEdit?'定型タスクを編集':'定型タスクを追加';
   G('btnDelRec').style.display=isEdit?'':'none';
   G('rfcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   rAids=[];
   if(isEdit){
     const r=ST.recurs.find(x=>x.id===id);
     G('rftitle').value=r.title; G('rfcat').value=r.catId||'';
-    G('rffreq').value=r.freq;   G('rfmemo').value=r.memo||'';
-    G('rfmd').value=r.mday||1;  rAids=[...(r.aids||[])]; rTags=[...(r.tags||[])];
-    G('rfstar').textContent=r.star?'★':'☆'; G('rfstar').classList.toggle('on',!!r.star); // CHANGED
+    G('rffreq').value=r.freq||'none'; G('rfmemo').value=r.memo||'';
+    G('rfmd').value=(r.mdays||[]).join(', ');
+    rAids=[...(r.aids||[])]; rTags=[...(r.tags||[])];
+    G('rfstar').textContent=r.star?'★':'☆'; G('rfstar').classList.toggle('on',!!r.star);
     document.querySelectorAll('#rfwds input[type=checkbox]').forEach(cb=>cb.checked=(r.wdays||[]).includes(+cb.value));
   } else {
-    G('rftitle').value=''; G('rfcat').value=''; G('rffreq').value='daily';
-    G('rfmemo').value=''; G('rfmd').value=1;
-    G('rfstar').textContent='☆'; G('rfstar').classList.remove('on'); // CHANGED
+    G('rftitle').value=''; G('rfcat').value=''; G('rffreq').value='none';
+    G('rfmemo').value=''; G('rfmd').value='';
+    G('rfstar').textContent='☆'; G('rfstar').classList.remove('on');
     document.querySelectorAll('#rfwds input[type=checkbox]').forEach(cb=>cb.checked=false);
     rAids=ST.uid?[ST.uid]:[]; rTags=[];
   }
@@ -1716,11 +1832,17 @@ function saveRecur(){
   if(!title){showMsg('タスク名を入力してください');return;}
   const freq=G('rffreq').value;
   const wdays=freq==='weekly'?[...document.querySelectorAll('#rfwds input:checked')].map(c=>+c.value):[];
-  const mday=freq==='monthly'?+G('rfmd').value:1;
-  const star=G('rfstar').classList.contains('on'); // CHANGED
-  const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mday,memo:G('rfmemo').value.trim(),tags:[...rTags],star};
-  if(editRid){ const r=ST.recurs.find(x=>x.id===editRid); if(r) Object.assign(r,d); }
-  else ST.recurs.push({id:genId(),lastGen:'',...d});
+  const mdays=freq==='monthly'
+    ? G('rfmd').value.split(',').map(s=>parseInt(s.trim())).filter(n=>n===0||(n>=1&&n<=31))
+    : [];
+  const star=G('rfstar').classList.contains('on');
+  const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mdays,memo:G('rfmemo').value.trim(),tags:[...rTags],star};
+  if(editRid){
+    const r=ST.recurs.find(x=>x.id===editRid);
+    if(r){ Object.assign(r,d); /* lastGenはリセットしない */ }
+  } else {
+    ST.recurs.push({id:genId(),lastGen:[],...d});
+  }
   closeRModal(); renderRecur(); updateBdg(); save();
 }
 
@@ -1791,14 +1913,16 @@ G('btnAddSub').addEventListener('click',()=>{
 });
 G('fsubin').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddSub').click();});
 
-// 定期モーダル
+// 定型タスクモーダル
 G('btnAddRecur').addEventListener('click',()=>openRModal());
 G('btnCloseRM').addEventListener('click',closeRModal);
 G('btnCancelRM').addEventListener('click',closeRModal);
 G('btnDelRec').addEventListener('click',delRecur);
 G('btnSaveRec').addEventListener('click',saveRecur);
-G('rfstar').addEventListener('click',()=>{ const on=G('rfstar').classList.toggle('on'); G('rfstar').textContent=on?'★':'☆'; }); // CHANGED
+G('rfstar').addEventListener('click',()=>{ const on=G('rfstar').classList.toggle('on'); G('rfstar').textContent=on?'★':'☆'; });
 G('rffreq').addEventListener('change',updFreq);
+// 生成ダイアログ
+G('gen-dlg-cancel').addEventListener('click',()=>G('gen-dlg').classList.remove('open'));
 
 // 設定
 G('btnSettingsLogout').addEventListener('click',()=>{
