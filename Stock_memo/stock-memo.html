@@ -1,7 +1,7 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v01_2026-03-22.10
-  @chat      Stock_01_家庭用ストック管理ツールの要件検討
+  @version   v02_2026-03-22
+  @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
     v01_2026-03-22.2  - 要補充バッジを右端固定、カテゴリ位置を揃える
@@ -13,6 +13,7 @@
     v01_2026-03-22.8  - モーダルをPC中央・モバイル下からのレスポンシブに、ストック数・目標在庫数を横並び
     v01_2026-03-22.9  - カード更新日時の相対表示追加
     v01_2026-03-22.10 - サンプルデータを実運用に近い品目・在庫数・更新日時に更新
+    v02_2026-03-22    - Firebase Firestore同期・Googleログイン・最終更新者表示追加
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -20,6 +21,172 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ストック管理</title>
+<script type="module">
+import { initializeApp }   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, doc, setDoc, onSnapshot }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const CONFIG_KEY = 'firebase-config-v1';
+const FIRESTORE_DOC = 'stock-main';
+
+function loadConfig() {
+  try { const s = localStorage.getItem(CONFIG_KEY); return s ? JSON.parse(s) : null; }
+  catch { return null; }
+}
+
+window._parseFirebaseConfig = function(text) {
+  if (!text || !text.trim()) return null;
+  try { return JSON.parse(text.trim()); } catch {}
+  try {
+    let s = text.replace(/\/\/.*$/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
+    const match = s.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const jsonStr = match[0].replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":').replace(/'/g,'"');
+    return JSON.parse(jsonStr);
+  } catch {}
+  return null;
+};
+window._saveFirebaseConfig = cfg => localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+window._clearFirebaseConfig = () => localStorage.removeItem(CONFIG_KEY);
+
+let auth, db, _unsubscribe = null;
+
+function initFirebase(cfg) {
+  if (!cfg || !cfg.apiKey) return false;
+  try {
+    const app = initializeApp(cfg);
+    auth = getAuth(app);
+    db   = getFirestore(app);
+    setupAuth();
+    return true;
+  } catch(e) { console.error('Firebase init error:', e); return false; }
+}
+
+function setupAuth() {
+  window._fbLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
+    } catch(e) {
+      console.error('login error:', e);
+      const info = document.getElementById('auth-info');
+      if (info) info.textContent = 'エラー: ' + (e.code || e.message);
+    }
+  };
+
+  window._fbLogout = async () => {
+    if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
+    await signOut(auth);
+    updateAuthUI(null);
+  };
+
+  window._saveToFirestore = async (stateObj) => {
+    if (!auth || !auth.currentUser) return;
+    try {
+      const ref = doc(db, 'shared', FIRESTORE_DOC);
+      await setDoc(ref, stateObj);
+    } catch(e) { console.error('Firestore write error:', e); }
+  };
+
+  window._getCurrentUserName = () => {
+    return auth && auth.currentUser ? (auth.currentUser.displayName || auth.currentUser.email || null) : null;
+  };
+
+  onAuthStateChanged(auth, user => {
+    updateAuthUI(user);
+    if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
+    if (user) {
+      const ref = doc(db, 'shared', FIRESTORE_DOC);
+      _unsubscribe = onSnapshot(ref, snap => {
+        if (snap.exists()) {
+          window._applyRemoteState(snap.data());
+        } else {
+          // CHANGED: Firestoreに未登録 → カテゴリ初期値・品目空で始める
+          window._applyRemoteState({ categories: ['食品', 'キッチン', '洗濯・バス', 'トイレ・ティッシュ', 'その他'], items: [] });
+        }
+      });
+    }
+  });
+}
+
+function updateAuthUI(user) {
+  const btn  = document.getElementById('auth-btn');
+  const info = document.getElementById('auth-info');
+  if (!btn) return;
+  if (user) {
+    btn.textContent  = 'ログアウト';
+    btn.onclick      = window._fbLogout;
+    info.textContent = user.displayName || user.email || '';
+    info.title       = user.email || '';
+  } else {
+    btn.textContent  = 'Googleログイン';
+    btn.onclick      = window._fbLogin;
+    info.textContent = '未ログイン';
+    info.title       = '';
+  }
+  if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
+}
+
+window._renderFirebaseConfigUI = function() {
+  const section = document.getElementById('firebase-config-section');
+  if (!section) return;
+  const cfg = loadConfig();
+  if (cfg) {
+    section.innerHTML =
+      '<div style="font-size:13px;color:var(--accent);margin-bottom:8px;">✅ Firebase config 設定済み</div>' +
+      '<div style="font-size:11px;color:var(--text-sub);margin-bottom:12px;">projectId: ' + (cfg.projectId || '—') + '</div>' +
+      '<button class="btn-icon" onclick="window._clearConfigFromUI()">🗑️ configを削除して再設定</button>' +
+      '<div id="firebase-config-msg" style="font-size:12px;margin-top:8px;"></div>';
+  } else {
+    section.innerHTML =
+      '<div style="font-size:13px;color:var(--text-sub);margin-bottom:10px;">Firebase configを設定してください</div>' +
+      '<textarea id="firebase-config-input" style="width:100%;height:120px;font-size:12px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg);color:var(--text);resize:vertical" placeholder="Firebase configをここに貼り付け"></textarea>' +
+      '<button class="btn-save" style="width:100%;margin-top:8px" onclick="window._applyConfigFromUI()">保存して接続</button>' +
+      '<div id="firebase-config-msg" style="font-size:12px;margin-top:8px;"></div>';
+  }
+};
+
+window._applyConfigFromUI = function() {
+  const ta  = document.getElementById('firebase-config-input');
+  const msg = document.getElementById('firebase-config-msg');
+  if (!ta) return;
+  const cfg = window._parseFirebaseConfig(ta.value);
+  if (!cfg || !cfg.apiKey) {
+    msg.textContent = '❌ 解析できませんでした。形式を確認してください。';
+    return;
+  }
+  window._saveFirebaseConfig(cfg);
+  const ok = initFirebase(cfg);
+  if (ok) {
+    msg.textContent = '✅ 保存しました。ページをリロードします…';
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    msg.textContent = '❌ Firebase初期化に失敗しました。';
+  }
+};
+
+window._clearConfigFromUI = function() {
+  window._clearFirebaseConfig();
+  const msg = document.getElementById('firebase-config-msg');
+  if (msg) { msg.textContent = '🗑️ configを削除しました。ページをリロードします…'; }
+  setTimeout(() => location.reload(), 1200);
+};
+
+const savedConfig = loadConfig();
+if (savedConfig) {
+  initFirebase(savedConfig);
+} else {
+  window.addEventListener('DOMContentLoaded', () => {
+    const btn  = document.getElementById('auth-btn');
+    const info = document.getElementById('auth-info');
+    if (btn)  { btn.textContent = 'Firebase未設定'; btn.onclick = () => openSettings(); }
+    if (info) info.textContent = '設定からconfigを入力';
+  });
+}
+</script>
 <style>
   :root {
     --bg: #f5f5f0;
@@ -581,6 +748,8 @@
   <div class="header-inner">
     <div class="header-title">📦 ストック管理</div>
     <div class="header-btns">
+      <span id="auth-info" style="font-size:12px;color:var(--text-sub);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <button class="btn-icon" id="auth-btn">Googleログイン</button>
       <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
       <button class="btn-icon" onclick="openSettings()">⚙️</button>
     </div>
@@ -665,6 +834,10 @@
         <button class="btn-save" style="flex:none;padding:10px 14px;font-size:13px" onclick="addCategory()">追加</button>
       </div>
     </div>
+    <div class="form-row" style="margin-top:8px">
+      <label style="margin-bottom:8px">Firebase</label>
+      <div id="firebase-config-section">読み込み中…</div>
+    </div>
     <div class="modal-btns">
       <button class="btn-cancel" style="width:100%;flex:none" onclick="closeSettings()">閉じる</button>
     </div>
@@ -700,7 +873,16 @@ function loadData() {
 
 function saveData() {
   localStorage.setItem(STORE_KEY, JSON.stringify(ST));
+  if (window._saveToFirestore) window._saveToFirestore(ST); // CHANGED: Firebase同期
 }
+
+// CHANGED: Firestoreからのリモートデータ適用
+window._applyRemoteState = function(data) {
+  if (!data || !data.items) return;
+  ST = data;
+  renderTabs();
+  renderCards();
+};
 
 const now = Date.now();
 const DAY = 86400000;
@@ -820,7 +1002,7 @@ function renderCards() {
             <button class="btn-ctrl" onclick="changeStock('${item.id}', +1)">＋</button>
           </div>
         </div>
-        <div class="card-updated" id="updated-${item.id}">${relativeTime(item.updatedAt)}</div>
+        <div class="card-updated" id="updated-${item.id}">${item.updatedBy ? item.updatedBy + ' · ' : ''}${relativeTime(item.updatedAt)}</div>
       </div>
     `;
   }).join('');
@@ -831,6 +1013,7 @@ function changeStock(id, delta) {
   if (!item) return;
   item.stock = Math.max(0, item.stock + delta);
   item.updatedAt = Date.now();
+  item.updatedBy = (window._getCurrentUserName && window._getCurrentUserName()) || null; // CHANGED
   saveData();
   updateCard(item);
 }
@@ -852,7 +1035,7 @@ function updateCard(item) {
     badge.outerHTML = '<span class="badge-alert-placeholder"></span>';
   }
   const updEl = document.getElementById('updated-' + item.id);
-  if (updEl) updEl.textContent = relativeTime(item.updatedAt);
+  if (updEl) updEl.textContent = (item.updatedBy ? item.updatedBy + ' · ' : '') + relativeTime(item.updatedAt); // CHANGED
 }
 
 // ============================================================
@@ -879,6 +1062,8 @@ function saveNote(id) {
   if (!item) return;
   const val = document.getElementById('note-input-' + id).value.trim();
   item.note = val;
+  item.updatedAt = Date.now();
+  item.updatedBy = (window._getCurrentUserName && window._getCurrentUserName()) || null; // CHANGED
   saveData();
   const noteDiv = document.getElementById('note-' + id);
   const editArea = document.getElementById('note-edit-' + id);
@@ -936,9 +1121,9 @@ function saveItem() {
 
   if (editingId) {
     const item = ST.items.find(i => i.id === editingId);
-    Object.assign(item, { name, cat, stock, target, note });
+    Object.assign(item, { name, cat, stock, target, note, updatedAt: Date.now(), updatedBy: (window._getCurrentUserName && window._getCurrentUserName()) || null }); // CHANGED
   } else {
-    ST.items.push({ id: Date.now().toString(), name, cat, stock, target, note });
+    ST.items.push({ id: Date.now().toString(), name, cat, stock, target, note, updatedAt: Date.now(), updatedBy: (window._getCurrentUserName && window._getCurrentUserName()) || null }); // CHANGED
   }
   saveData();
   closeItemModal();
@@ -1055,6 +1240,7 @@ function fallbackCopy(text) {
 // ============================================================
 function openSettings() {
   renderCatList();
+  if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI(); // CHANGED
   document.getElementById('settingsOverlay').classList.add('open');
 }
 
