@@ -1,23 +1,25 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v04_2026-03-22.6.6
-  @chat      Couple_Task_04_機能改善・続
+  @version   v05_2026-03-22.10
+  @chat      Couple_Task_05_メモ機能の追加
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
     v04_2026-03-22.4 - Google認証対応・ユーザー紐づけ
-    v05_2026-03-22 - カテゴリ引き継ぎ新規作成・「なし」選択肢・未登録メンバー追加
-    v06_2026-03-22 - 定型タスク化（自動生成廃止・手動生成ダイアログ・lastGen配列化）
-    v06_2026-03-22.2 - 曜日ずれ修正・lastGen複数更新バグ修正・全生成済み時ボタン非表示
-    v06_2026-03-22.3 - 期限なし重複防止（未完了タスク存在チェック）
-    v06_2026-03-22.4 - 月末指定（0=月末）対応
     v04_2026-03-22 - Mine ボタンをドロップダウン化（担当者フィルタ追加）
-    v04_2026-03-22.2 - Mine/▼分割・DDからログインユーザー除外・担当者なし追加
-    v04_2026-03-22.3 - DDをbody直下fixed配置（fbarのoverflowクリップ問題解消）
-    v04_2026-03-22.4 - ラッパーdiv除去（ボタンずれ解消）
     v04_2026-03-22.5 - 定型タスクの★を黄色に統一
     v04_2026-03-22.6 - 定型タスク生成済み判定をlastGenから実タスク存在チェックに変更
+    v05_2026-03-22 - メモ機能追加（タブ・カテゴリ・タグ・アーカイブ・削除・最終編集者自動）
+    v05_2026-03-22.2 - メモカード：カテゴリをタイトル右に・日時を右下に・URL自動リンク化
+    v05_2026-03-22.3 - 定型カードのカテゴリ・担当者表示をタスク/メモと統一・メモ右下を名前→日時順に
+    v05_2026-03-22.4 - 定型カードの担当者をタスクと同じ👤+名前のみに戻す
+    v05_2026-03-22.5 - アーカイブ切替時にupdatedAt/updatedByを更新しないよう修正
+    v05_2026-03-22.6 - メモに★機能追加
+    v05_2026-03-22.7 - ★ボタンON時を黄色に統一（タスク・定型・メモ共通）
+    v05_2026-03-22.8 - メモカードをクリックで全文展開・折りたたみ、編集は✏️ボタンのみに
+    v05_2026-03-22.9 - メモ本文の電話番号自動リンク化（tel:対応）
+    v05_2026-03-22.10 - 設定のユーザー一覧をGoogleログイン済み／ログイン不要メンバーに分けて表示
 -->
 <html lang="ja">
 <head>
@@ -213,7 +215,7 @@ input,textarea,select{font-family:inherit}
 .blogout:hover{background:var(--bg2);color:var(--red)}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;height:100vh}
 .page-scroll{flex:1;overflow-y:auto;padding:28px 32px}
-#page-tasks,#page-recur,#page-dash,#page-settings{display:flex;flex-direction:column;height:100%;overflow:hidden}
+#page-tasks,#page-recur,#page-dash,#page-settings,#page-memo{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .page-fixed{padding:28px 32px 0;flex-shrink:0}
 .page-list{flex:1;overflow-y:auto;padding:0 32px 28px}
 
@@ -269,7 +271,7 @@ input,textarea,select{font-family:inherit}
 .rtag{font-size:.68rem;padding:2px 8px;border-radius:99px;background:#e8f4fd;color:#2980b9;font-weight:700;flex-shrink:0}
 .star-btn{background:none;border:none;font-size:1.1rem;cursor:pointer;padding:2px 4px;line-height:1;flex-shrink:0;opacity:.35;transition:opacity .15s,transform .1s}
 .star-btn:hover{opacity:.7}
-.star-btn.on{opacity:1;transform:scale(1.15)}
+.star-btn.on{opacity:1;transform:scale(1.15);color:#f5a623}
 .tcmeta{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .mi{display:flex;align-items:center;gap:4px;font-size:.75rem;color:var(--mt)}
 .mi.ov{color:var(--red);font-weight:700}
@@ -440,6 +442,24 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 .tag-sug-item:hover{background:var(--bg2)}
 
 
+/* ── MEMO CARD ── */
+.mclist{display:flex;flex-direction:column;gap:10px}
+.mc{background:var(--sf);border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);transition:box-shadow .15s;cursor:pointer}
+.mc:hover{box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.mc.archived{opacity:.5}
+.mcmain{display:flex;align-items:flex-start;gap:12px;padding:14px 16px}
+.mcarchbtn{width:24px;height:24px;border-radius:6px;flex-shrink:0;margin-top:1px;border:2px solid var(--bd);background:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem;transition:all .15s;cursor:pointer}
+.mc.archived .mcarchbtn{background:var(--mt);border-color:var(--mt)}
+.mcinfo{flex:1;min-width:0}
+.mctitle{font-weight:700;font-size:.95rem;line-height:1.4}
+.mc.archived .mctitle{text-decoration:line-through;color:var(--mt)}
+.mc .tctrow{margin-bottom:5px}
+.mcbody{font-size:.84rem;color:var(--sub);line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;word-break:break-all}
+.mc.open .mcbody{display:block;-webkit-line-clamp:unset;overflow:visible}
+.mc.archived .mcbody{color:var(--mt)}
+.mcmeta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.mcacts{display:flex;align-items:center;gap:4px;margin-left:auto;flex-shrink:0}
+
 /* SWIPE DELETE */
 .tc-wrap{position:relative;border-radius:var(--r)}
 .tc-del-btn{position:absolute;right:0;top:0;bottom:0;width:88px;background:rgba(192,57,43,.88);backdrop-filter:blur(2px);color:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;border-radius:0 var(--r) var(--r) 0;opacity:0;pointer-events:none;transition:opacity .18s ease}
@@ -510,10 +530,11 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-dash"><span class="nic">📊</span>ダッシュボード</button>
       <button class="ni active" id="nav-tasks"><span class="nic">📋</span>タスク<span class="nbd" id="bdg-tasks">0</span></button>
       <button class="ni" id="nav-recur"><span class="nic">📋</span>定型タスク<span class="nbd" id="bdg-recur" style="background:var(--gn)">0</span></button>
+      <button class="ni" id="nav-memo"><span class="nic">📝</span>メモ<span class="nbd" id="bdg-memo" style="background:#7b8ff7">0</span></button>
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v04_2026-03-22.6</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v05_2026-03-22.10</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -581,6 +602,33 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       </div>
     </div>
 
+    <!-- MEMO -->
+    <div id="page-memo" style="display:none">
+      <div class="page-fixed">
+        <div class="ph">
+          <div class="pt">メモ</div>
+          <button class="bpri" id="btnAddMemo">＋ メモを追加</button>
+        </div>
+        <div class="filter-area">
+          <div class="srch-row">
+            <input class="srch" id="msrch" type="text" placeholder="🔍 メモを検索...">
+            <button id="btn-toggle-mtags" style="padding:7px 10px;border-radius:99px;border:1.5px solid var(--bd);background:var(--sf);color:var(--sub);font-size:.78rem;white-space:nowrap;flex-shrink:0;transition:all .15s"># タグ</button>
+          </div>
+          <div class="fbar">
+            <button class="fc active" id="mf-active">メモ</button>
+            <button class="fc" id="mf-archived">アーカイブ済み</button>
+            <button class="fc" id="mf-all">すべて</button>
+          </div>
+          <div class="cbar" id="mcbar"></div>
+          <div class="tag-bar" id="mtbar"></div>
+        </div>
+      </div>
+      <div class="page-list">
+        <div class="mclist" id="mclist"></div>
+        <div class="empty" id="mempty" style="display:none"><div class="empic">📝</div><div>メモはありません</div></div>
+      </div>
+    </div>
+
     <!-- SETTINGS -->
     <div id="page-settings" style="display:none">
       <div class="page-scroll">
@@ -596,7 +644,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v04_2026-03-22.6</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v05_2026-03-22.10</div>
         </div>
       </div>
       <div class="ssec">
@@ -675,6 +723,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="bnbtn" id="bn-dash"><span class="bnic">📊</span>統計</button>
       <button class="bnbtn active" id="bn-tasks"><span class="bnic">📋</span>タスク<span class="bnbd" id="bnbdg-tasks">0</span></button>
       <button class="bnbtn" id="bn-recur"><span class="bnic">📋</span>定型<span class="bnbd" id="bnbdg-recur" style="background:var(--gn)">0</span></button>
+      <button class="bnbtn" id="bn-memo"><span class="bnic">📝</span>メモ<span class="bnbd" id="bnbdg-memo" style="background:#7b8ff7">0</span></button>
       <button class="bnbtn" id="bn-settings"><span class="bnic">⚙️</span>設定</button>
     </div>
   </nav>
@@ -831,6 +880,35 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
   </div>
 </div>
 
+<!-- MEMO MODAL -->
+<div class="ovl" id="mmodal">
+  <div class="modal">
+    <div class="mhdr"><div class="mttl" id="mmodalttl">メモを追加</div><button class="mclose" id="btnCloseMM">✕</button></div>
+    <div class="mbody">
+      <div class="fg"><label class="fl">タイトル *</label><div style="display:flex;gap:8px;align-items:center"><input class="fi" id="mftitle" type="text" placeholder="例：リビングの寸法メモ" style="flex:1"><button type="button" id="mfstar" class="star-btn" title="重要フラグ">☆</button></div></div>
+      <div class="fg"><label class="fl">メモ内容</label><textarea class="fi" id="mfbody" placeholder="寸法・覚え書きなど自由に記入..." style="min-height:180px;resize:vertical"></textarea></div>
+      <div class="fg"><label class="fl">カテゴリ</label><select class="fi" id="mfcat"></select></div>
+      <div class="fg">
+        <label class="fl">タグ（複数可）</label>
+        <div class="tag-chips" id="mftag-chips"></div>
+        <div class="tag-candidates" id="mftag-cands"></div>
+        <div class="tag-in-wrap" style="margin-top:8px">
+          <div style="display:flex;gap:6px">
+            <input class="fi" id="mftag-in" type="text" placeholder="新しいタグを入力" autocomplete="off" style="flex:1">
+            <button class="bsm" id="mftag-add" type="button" style="padding:9px 14px">追加</button>
+          </div>
+          <div class="tag-suggest" id="mftag-suggest"></div>
+        </div>
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="bcan" id="btnCancelMM">キャンセル</button>
+      <button class="bdel" id="btnDelMemo" style="display:none">削除</button>
+      <button class="bpri" id="btnSaveMemo">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX -->
 <div class="lb" id="lb">
   <button class="lbclose" id="btnLbClose">✕</button>
@@ -846,7 +924,8 @@ const ST = {
   users:  [],
   cats:   [],
   tasks:  [],
-  recurs: []
+  recurs: [],
+  memos:  []
 };
 
 // ══════════════════════════════════════════
@@ -856,7 +935,7 @@ let _saveTimer = null;
 let _isSaving  = false;
 function save(){
   const tasks = ST.tasks.map(t=>({...t, imgs:[]}));
-  const data  = { users:ST.users, cats:ST.cats, tasks, recurs:ST.recurs };
+  const data  = { users:ST.users, cats:ST.cats, tasks, recurs:ST.recurs, memos:ST.memos };
   if(window._saveToFirestore){
     clearTimeout(_saveTimer);
     _isSaving = true;
@@ -876,6 +955,7 @@ function applyRemoteData(data){
   ST.cats   = data.cats   || [];
   ST.tasks  = (data.tasks || []).map(t=>({...t, imgs: t.imgs||[]}));
   ST.recurs = data.recurs || [];
+  ST.memos  = data.memos  || [];
   ST.uid    = uid;
   renderAll();
   if(document.getElementById('page-settings').style.display!=='none') renderSettings();
@@ -1052,19 +1132,25 @@ function loginDemo(){
     {id:'r5',title:'家計簿の集計',catId:'c4',aids:['u2'],freq:'monthly',wdays:[],mdays:[1,15],memo:'先月分まとめる',tags:['月次'],star:true,lastGen:[]},
   ];
   // saveを呼ばない（デモは保存しない）
+  ST.memos = [
+    {id:'m1',title:'リビングの寸法メモ',body:'リビング全体: 幅4.5m × 奥行6m\nソファスペース: 幅2.4m × 奥行1.8m\nテレビボード: 幅180cm\n窓枠高さ: 床から2.1m\n\n※カーテン購入時は窓+20cmで注文する',cid:'c1',tags:['寸法','インテリア'],star:true,updatedAt:new Date().toISOString(),updatedBy:'u1',archived:false,createdAt:new Date().toISOString()},
+    {id:'m2',title:'子どものアレルギー情報',body:'卵アレルギー（軽度）\n→ 加熱済みなら少量OK\n→ 生卵・半熟は不可\n\n花粉症：スギ・ヒノキ（春季）\n→ 抗ヒスタミン薬：クラリチン',cid:'c3',tags:['健康'],star:false,updatedAt:new Date(Date.now()-86400000).toISOString(),updatedBy:'u2',archived:false,createdAt:new Date().toISOString()},
+    {id:'m3',title:'Wi-Fiパスワード',body:'ネットワーク名: HomeNet_5G\nパスワード: xxxxxxxx\n\nルーター管理画面: 192.168.1.1',cid:null,tags:[],star:false,updatedAt:new Date(Date.now()-172800000).toISOString(),updatedBy:'u1',archived:false,createdAt:new Date().toISOString()},
+  ];
   loginAs('u1');
 }
 function showPage(p){
-  ['dash','tasks','recur','settings'].forEach(x=>{
-    G('page-'+x).style.display = x===p ? 'flex' : 'none'; // CHANGED: 全ページflex
+  ['dash','tasks','recur','memo','settings'].forEach(x=>{
+    G('page-'+x).style.display = x===p ? 'flex' : 'none';
   });
-  ['nav-dash','nav-tasks','nav-recur','nav-settings'].forEach(id=>G(id).classList.remove('active'));
+  ['nav-dash','nav-tasks','nav-recur','nav-memo','nav-settings'].forEach(id=>G(id).classList.remove('active'));
   G('nav-'+p).classList.add('active');
-  ['bn-dash','bn-tasks','bn-recur','bn-settings'].forEach(id=>G(id).classList.remove('active'));
+  ['bn-dash','bn-tasks','bn-recur','bn-memo','bn-settings'].forEach(id=>G(id).classList.remove('active'));
   G('bn-'+p).classList.add('active');
   if(p==='settings') renderSettings();
   if(p==='recur')    renderRecur();
   if(p==='dash')     renderDash();
+  if(p==='memo')     renderMemos();
 }
 
 // ══════════════════════════════════════════
@@ -1082,9 +1168,10 @@ function updateBdg(){
   const u=ST.tasks.filter(t=>!t.done).length, r=ST.recurs.length;
   ['bdg-tasks','bnbdg-tasks'].forEach(id=>G(id).textContent=u);
   ['bdg-recur','bnbdg-recur'].forEach(id=>G(id).textContent=r);
+  const m=(ST.memos||[]).filter(n=>!n.archived).length;
+  ['bdg-memo','bnbdg-memo'].forEach(id=>{ const el=G(id); if(el) el.textContent=m; });
   const tot=ST.tasks.length, done=ST.tasks.filter(t=>t.done).length;
   const pct=tot?Math.round(done/tot*100):0;
-
 }
 
 // ══════════════════════════════════════════
@@ -1335,10 +1422,12 @@ function renderRecur(){
     const card=CE('div',{className:'rccard'});
     card.innerHTML=`<div class="rcic">${r.star?'<span style="color:#f5a623;font-size:1.1rem">★</span>':'📋'}</div>
       <div class="rcinfo">
-        <div class="rcttl">${esc(r.title)}</div>
+        <div class="tctrow" style="margin-bottom:6px">
+          <span class="rcttl">${esc(r.title)}</span>
+          ${cat?`<span class="ctag" style="background:${cat.color}22;color:${cat.color}">${esc(cat.name)}</span>`:''}
+        </div>
         <div class="rcmeta">
           <span class="rcbd">📅 ${FREQ_LABEL[r.freq]||''}${esc(fd)}</span>
-          ${cat?`<span class="rcbd"><span class="ctag" style="background:${cat.color}22;color:${cat.color}">${esc(cat.name)}</span></span>`:''}
           ${asgn.length?`<span class="rcbd">👤 ${asgn.map(u=>esc(u.name)).join('・')}</span>`:''}
         </div>
         ${r.memo?`<div class="rcnote">${esc(r.memo)}</div>`:''}
@@ -1518,7 +1607,9 @@ function renderSettings(){
 
   // ユーザー一覧
   const uel=G('setusers'); uel.innerHTML='';
-  ST.users.forEach(u=>{
+  const googleUsers = ST.users.filter(u=>u.googleUid);
+  const memberUsers = ST.users.filter(u=>!u.googleUid);
+  const buildUserRow = u => {
     const row=CE('div',{className:'srow'});
     const left=CE('div',{}); left.style.cssText='display:flex;align-items:center;gap:10px';
     const av=CE('div',{textContent:u.name.charAt(0)});
@@ -1526,7 +1617,6 @@ function renderSettings(){
     av.title='色を変更';
     av.addEventListener('click',()=>openUserColorPicker(u,av));
     av.style.cssText='width:30px;height:30px;font-size:.82rem';
-    // 名前インライン編集（全ユーザー対応）
     const nameIn=CE('input',{type:'text',value:u.name});
     nameIn.style.cssText='padding:5px 8px;border:1.5px solid var(--bd);border-radius:8px;font-size:.88rem;font-weight:700;color:var(--tx);background:var(--sf2);outline:none;width:120px';
     nameIn.addEventListener('focus',()=>nameIn.style.borderColor='var(--ac)');
@@ -1542,12 +1632,12 @@ function renderSettings(){
     };
     nameIn.addEventListener('keydown',e=>{ if(!e.isComposing&&e.key==='Enter'){ applyName(); nameIn.blur(); } });
     nameIn.addEventListener('blur',()=>applyName());
-    const desc=CE('div',{textContent:u.id===ST.uid?'ログイン中':'メンバー'});
+    const descText = u.id===ST.uid ? 'ログイン中' : u.googleUid ? 'Googleログイン' : 'メンバー';
+    const desc=CE('div',{textContent:descText});
     desc.style.cssText='font-size:.72rem;color:var(--mt);margin-top:2px';
     const nameWrap=CE('div',{});
     nameWrap.appendChild(nameIn); nameWrap.appendChild(desc);
     left.appendChild(av); left.appendChild(nameWrap);
-    // Googleアカウント名を右側に表示
     if(u.googleDisplayName){
       const gname=CE('div',{textContent:'🔗 '+u.googleDisplayName});
       gname.style.cssText='font-size:.72rem;color:var(--mt);margin-left:auto;text-align:right;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0';
@@ -1555,7 +1645,6 @@ function renderSettings(){
     } else {
       row.appendChild(left);
     }
-    // スワイプ/右クリックで削除（自分以外）
     const uWrap=CE('div',{className:'srow-wrap'});
     uWrap.appendChild(row);
     if(u.id!==ST.uid){
@@ -1572,7 +1661,21 @@ function renderSettings(){
       addSettingSwipe(uWrap);
     }
     uel.appendChild(uWrap);
-  });
+  };
+  // Googleログイン済みユーザーを先に表示
+  if(googleUsers.length){
+    const hdr=CE('div',{textContent:'Googleログイン'});
+    hdr.style.cssText='font-size:.68rem;font-weight:700;color:var(--mt);padding:8px 20px 4px;letter-spacing:.04em;text-transform:uppercase';
+    uel.appendChild(hdr);
+    googleUsers.forEach(buildUserRow);
+  }
+  // ログイン不要メンバーを後に表示
+  if(memberUsers.length){
+    const hdr=CE('div',{textContent:'ログイン不要メンバー'});
+    hdr.style.cssText='font-size:.68rem;font-weight:700;color:var(--mt);padding:8px 20px 4px;letter-spacing:.04em;text-transform:uppercase;border-top:1px solid var(--bd);margin-top:4px';
+    uel.appendChild(hdr);
+    memberUsers.forEach(buildUserRow);
+  }
 
   // カテゴリ一覧
   const cel=G('setcats'); cel.innerHTML='';
@@ -1904,10 +2007,12 @@ function delRecur(){
 G('nav-dash').addEventListener('click',    ()=>showPage('dash'));
 G('nav-tasks').addEventListener('click',   ()=>showPage('tasks'));
 G('nav-recur').addEventListener('click',   ()=>showPage('recur'));
+G('nav-memo').addEventListener('click',    ()=>showPage('memo'));
 G('nav-settings').addEventListener('click',()=>showPage('settings'));
 G('bn-dash').addEventListener('click',     ()=>showPage('dash'));
 G('bn-tasks').addEventListener('click',    ()=>showPage('tasks'));
 G('bn-recur').addEventListener('click',    ()=>showPage('recur'));
+G('bn-memo').addEventListener('click',     ()=>showPage('memo'));
 G('bn-settings').addEventListener('click', ()=>showPage('settings'));
 
 // Googleログインボタン
@@ -2087,6 +2192,53 @@ G('btn-toggle-tags').addEventListener('click',()=>{
   renderAll();
 });
 
+// メモ
+G('btnAddMemo').addEventListener('click',()=>openMModal());
+G('btnCloseMM').addEventListener('click',closeMModal);
+G('btnCancelMM').addEventListener('click',closeMModal);
+G('btnDelMemo').addEventListener('click',delMemo);
+G('btnSaveMemo').addEventListener('click',saveMemo);
+G('mfstar').addEventListener('click',()=>{ const on=G('mfstar').classList.toggle('on'); G('mfstar').textContent=on?'★':'☆'; });
+G('msrch').addEventListener('input',renderMemos);
+['active','archived','all'].forEach(f=>{
+  G('mf-'+f).addEventListener('click',()=>{
+    curMFil=f;
+    ['active','archived','all'].forEach(x=>G('mf-'+x).classList.toggle('active',x===f));
+    renderMemos();
+  });
+});
+G('btn-toggle-mtags').addEventListener('click',()=>{
+  showMTags=!showMTags;
+  if(!showMTags) curMTag=null;
+  const btn=G('btn-toggle-mtags');
+  btn.style.borderColor=showMTags?'#7b8ff7':'var(--bd)';
+  btn.style.background =showMTags?'#7b8ff718':'var(--sf)';
+  btn.style.color      =showMTags?'#5560c8':'var(--sub)';
+  btn.style.fontWeight =showMTags?'700':'';
+  renderMemos();
+});
+// メモタグ入力
+(()=>{
+  const inp=G('mftag-in'), sug=G('mftag-suggest'), btn=G('mftag-add');
+  if(!inp||!sug)return;
+  const commit=()=>{ if(!inp.value.trim())return; addMTag(inp.value); inp.value=''; sug.classList.remove('open'); };
+  inp.addEventListener('keydown',e=>{ if(e.isComposing)return; if(e.key==='Enter'||e.key===','){ e.preventDefault(); commit(); } });
+  if(btn) btn.addEventListener('click',commit);
+  inp.addEventListener('input',()=>{
+    const q=inp.value.trim().toLowerCase();
+    const cands=allTags().filter(t=>t.toLowerCase().includes(q)&&!mMTags.includes(t));
+    if(!q||!cands.length){ sug.classList.remove('open'); return; }
+    sug.innerHTML='';
+    cands.slice(0,8).forEach(tag=>{
+      const item=CE('div',{className:'tag-sug-item',textContent:'# '+tag});
+      item.addEventListener('mousedown',e=>{ e.preventDefault(); addMTag(tag); inp.value=''; sug.classList.remove('open'); });
+      sug.appendChild(item);
+    });
+    sug.classList.add('open');
+  });
+  inp.addEventListener('blur',()=>setTimeout(()=>sug.classList.remove('open'),150));
+})();
+
 // ライトボックス
 G('cfm-col-no').addEventListener('click',()=>G('cat-color-modal').classList.remove('open'));
 G('btnLbClose').addEventListener('click',()=>G('lb').classList.remove('open'));
@@ -2097,6 +2249,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     G('tmodal').classList.remove('open');
     G('rmodal').classList.remove('open');
+    G('mmodal').classList.remove('open');
     G('lb').classList.remove('open');
   }
 });
@@ -2105,28 +2258,25 @@ document.addEventListener('keydown',e=>{
 //  TAG
 // ══════════════════════════════════════════
 function allTags(){
-  // 全タスクのタグを集計、直近30日以内 or 使用数3以上を候補に
   const now=Date.now(), cutoff=30*24*3600*1000;
   const freq={}, recent={};
   ST.tasks.forEach(t=>{
     const age = t.at ? now-new Date(t.at).getTime() : Infinity;
-    (t.tags||[]).forEach(tag=>{
-      freq[tag]=(freq[tag]||0)+1;
-      if(age<cutoff) recent[tag]=(recent[tag]||0)+1;
-    });
+    (t.tags||[]).forEach(tag=>{ freq[tag]=(freq[tag]||0)+1; if(age<cutoff) recent[tag]=(recent[tag]||0)+1; });
   });
-  // 候補：直近あり or 頻度3以上
+  (ST.memos||[]).forEach(m=>{
+    const age = m.updatedAt ? now-new Date(m.updatedAt).getTime() : Infinity;
+    (m.tags||[]).forEach(tag=>{ freq[tag]=(freq[tag]||0)+1; if(age<cutoff) recent[tag]=(recent[tag]||0)+1; });
+  });
   const cands = Object.keys(freq).filter(tag=>recent[tag]||freq[tag]>=3);
-  // 頻度降順ソート
   return cands.sort((a,b)=>(freq[b]||0)-(freq[a]||0));
 }
 
 function allTagsForBar(){
-  // フィルターバー用：未完了タスクの数が多い順
   const freq={};
   ST.tasks.filter(t=>!t.done).forEach(t=>(t.tags||[]).forEach(tag=>{ freq[tag]=(freq[tag]||0)+1; }));
-  // 未完了がないタグも0件として含める（完了済みのみのタグ）
   ST.tasks.forEach(t=>(t.tags||[]).forEach(tag=>{ if(!(tag in freq)) freq[tag]=0; }));
+  (ST.memos||[]).forEach(m=>(m.tags||[]).forEach(tag=>{ if(!(tag in freq)) freq[tag]=0; }));
   return Object.keys(freq).sort((a,b)=>freq[b]-freq[a]);
 }
 
@@ -2288,10 +2438,227 @@ function renderDash(){
 
 
 // ══════════════════════════════════════════
+//  MEMO
+// ══════════════════════════════════════════
+let editMid   = null;
+let mMTags    = [];
+let curMFil   = 'active';
+let curMCat   = null;
+let showMTags = false;
+let curMTag   = null;
+
+function renderMCBar(){
+  const bar=G('mcbar'); if(!bar)return;
+  bar.innerHTML='';
+  const noneActive=(curMCat==='_none');
+  const noneBtn=CE('button',{className:'cc'+(noneActive?' active':'')});
+  if(noneActive) noneBtn.style.cssText='border-color:var(--mt);background:#8882;color:var(--sub);font-weight:700';
+  noneBtn.innerHTML=`<span class="cdot" style="background:var(--bd)"></span>なし`;
+  noneBtn.addEventListener('click',()=>{ curMCat=curMCat==='_none'?null:'_none'; renderMCBar(); renderMemos(); });
+  bar.appendChild(noneBtn);
+  ST.cats.forEach(c=>{
+    const a=(curMCat===c.id);
+    const btn=CE('button',{className:'cc'+(a?' active':'')});
+    if(a) btn.style.cssText=`border-color:${c.color};background:${c.color}18;color:${c.color}`;
+    btn.innerHTML=`<span class="cdot" style="background:${c.color}"></span>${esc(c.name)}`;
+    btn.addEventListener('click',()=>{ curMCat=curMCat===c.id?null:c.id; renderMCBar(); renderMemos(); });
+    bar.appendChild(btn);
+  });
+}
+
+function renderMTagBar(){
+  const bar=G('mtbar'); if(!bar)return;
+  bar.innerHTML='';
+  if(!showMTags){ bar.style.display='none'; return; }
+  bar.style.display='';
+  const freq={};
+  (ST.memos||[]).filter(m=>!m.archived).forEach(m=>(m.tags||[]).forEach(tag=>{ freq[tag]=(freq[tag]||0)+1; }));
+  (ST.memos||[]).forEach(m=>(m.tags||[]).forEach(tag=>{ if(!(tag in freq)) freq[tag]=0; }));
+  const tags=Object.keys(freq).sort((a,b)=>freq[b]-freq[a]);
+  if(!tags.length)return;
+  tags.forEach(tag=>{
+    const btn=CE('button',{className:'tg'+(curMTag===tag?' active':''),textContent:'# '+tag});
+    btn.addEventListener('click',()=>{ curMTag=curMTag===tag?null:tag; renderMTagBar(); renderMemos(); });
+    bar.appendChild(btn);
+  });
+}
+
+function renderMemos(){
+  renderMCBar();
+  renderMTagBar();
+  const q=(G('msrch').value||'').toLowerCase();
+  let list=(ST.memos||[]).filter(m=>{
+    if(curMFil==='active')   return !m.archived;
+    if(curMFil==='archived') return !!m.archived;
+    return true;
+  }).filter(m=> !curMCat || (curMCat==='_none' ? !m.cid : m.cid===curMCat))
+    .filter(m=> !curMTag  || (m.tags||[]).includes(curMTag))
+    .filter(m=> !q || m.title.toLowerCase().includes(q)||(m.body||'').toLowerCase().includes(q));
+  list.sort((a,b)=>new Date(b.updatedAt||0)-new Date(a.updatedAt||0));
+  const el=G('mclist'), emp=G('mempty');
+  el.innerHTML='';
+  if(!list.length){ emp.style.display='block'; return; }
+  emp.style.display='none';
+  list.forEach(m=>el.appendChild(buildMemoCard(m)));
+}
+
+function buildMemoCard(m){
+  const cat=getC(m.cid);
+  const cc=cat?cat.color:'var(--bd)';
+  const editor=m.updatedBy?getU(m.updatedBy):null;
+  const card=CE('div',{className:'mc'+(m.archived?' archived':'')});
+  card.style.borderLeftColor=cc;
+  const main=CE('div',{className:'mcmain'});
+  // アーカイブボタン
+  const archBtn=CE('div',{className:'mcarchbtn',title:m.archived?'アーカイブ解除':'アーカイブ'});
+  archBtn.textContent=m.archived?'📦':'';
+  archBtn.addEventListener('click',e=>{
+    e.stopPropagation();
+    m.archived=!m.archived;
+    renderMemos(); updateBdg(); save();
+  });
+  const info=CE('div',{className:'mcinfo'});
+  // タイトル行（タスクと同様にカテゴリをタイトル右に）
+  const trow=CE('div',{className:'tctrow'});
+  if(m.star){ const starEl=CE('span',{textContent:'★'}); starEl.style.cssText='color:#f5a623;font-size:.95rem;flex-shrink:0;margin-right:2px'; trow.appendChild(starEl); }
+  trow.appendChild(CE('span',{className:'mctitle',textContent:m.title}));
+  if(cat){
+    const ctag=CE('span',{className:'ctag',textContent:cat.name});
+    ctag.style.cssText=`background:${cat.color}22;color:${cat.color}`;
+    trow.appendChild(ctag);
+  }
+  info.appendChild(trow);
+  // 本文（URL・電話番号自動リンク）
+  if(m.body){
+    const body=CE('div',{className:'mcbody'});
+    const linkStyle='display:inline;padding:0;background:none;font-size:inherit';
+    body.innerHTML=esc(m.body)
+      .replace(/(https?:\/\/[^\s\u3000\u3001\u3002\uff0c\uff0e\u300c\u300d\u300e\u300f\u3010\u3011\u3014\u3015\u3016\u3017\u3018\u3019\u301a\u301b\uff08\uff09<>"]+)/g,
+        `<a href="$1" target="_blank" rel="noopener" class="eurl" style="${linkStyle}" onclick="event.stopPropagation()">$1</a>`)
+      .replace(/(\b0[\d\-－ー]{9,12}\b)/g,
+        (m,p)=>{ const n=p.replace(/[^\d]/g,''); return `<a href="tel:${n}" class="eurl" style="${linkStyle};color:var(--gn)" onclick="event.stopPropagation()">📞 ${p}</a>`; });
+    info.appendChild(body);
+  }
+  // タグ（showMTags時のみ）
+  if(showMTags&&(m.tags||[]).length){
+    const tagWrap=CE('div',{style:'display:flex;gap:4px;flex-wrap:wrap;margin-top:6px'});
+    m.tags.forEach(tag=>{
+      const chip=CE('span',{className:'tc-tag',textContent:'# '+tag});
+      chip.style.cursor='pointer';
+      chip.addEventListener('click',e=>{ e.stopPropagation(); curMTag=curMTag===tag?null:tag; renderMTagBar(); renderMemos(); });
+      tagWrap.appendChild(chip);
+    });
+    info.appendChild(tagWrap);
+  }
+  // 編集ボタン
+  const acts=CE('div',{className:'mcacts'});
+  const editBtn=CE('button',{className:'ib',textContent:'✏️'});
+  editBtn.addEventListener('click',e=>{ e.stopPropagation(); openMModal(m.id); });
+  acts.appendChild(editBtn);
+  main.appendChild(archBtn); main.appendChild(info); main.appendChild(acts);
+  main.addEventListener('click',()=>card.classList.toggle('open'));
+  card.appendChild(main);
+  // 更新日時・最終編集者（右下、タスク完了時刻と同じスタイル）
+  if(m.updatedAt){
+    const dl=CE('div');
+    dl.style.cssText='text-align:right;font-size:.68rem;color:var(--mt);padding:0 14px 6px;margin-top:-4px;display:flex;align-items:center;justify-content:flex-end;gap:4px';
+    if(editor&&editor.name!=='?'){
+      const col=uColor(m.updatedBy);
+      const av=CE('span');
+      av.style.cssText=`width:14px;height:14px;border-radius:50%;background:${col};color:${textOnBg(col)};display:inline-flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:700;flex-shrink:0`;
+      av.textContent=editor.name.charAt(0);
+      const nm=CE('span',{textContent:editor.name});
+      const sep=CE('span',{textContent:'·'});
+      dl.appendChild(av); dl.appendChild(nm); dl.appendChild(sep);
+    }
+    dl.appendChild(CE('span',{textContent:fmtDT(m.updatedAt)}));
+    card.appendChild(dl);
+  }
+  return card;
+}
+
+function openMModal(id){
+  editMid=id||null;
+  const isEdit=!!id;
+  G('mmodalttl').textContent=isEdit?'メモを編集':'メモを追加';
+  G('btnDelMemo').style.display=isEdit?'':'none';
+  G('mfcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  if(isEdit){
+    const m=(ST.memos||[]).find(x=>x.id===id); if(!m)return;
+    G('mftitle').value=m.title; G('mfbody').value=m.body||''; G('mfcat').value=m.cid||'';
+    mMTags=[...(m.tags||[])];
+    G('mfstar').textContent=m.star?'★':'☆'; G('mfstar').classList.toggle('on',!!m.star);
+  } else {
+    G('mftitle').value=''; G('mfbody').value='';
+    G('mfcat').value=(curMCat&&curMCat!=='_none')?curMCat:'';
+    mMTags=[];
+    G('mfstar').textContent='☆'; G('mfstar').classList.remove('on');
+  }
+  renderMMTags();
+  G('mmodal').classList.add('open');
+  if(!isEdit) setTimeout(()=>G('mftitle').focus(),100);
+}
+function closeMModal(){ G('mmodal').classList.remove('open'); editMid=null; }
+
+function renderMMTags(){
+  const el=G('mftag-chips'); if(!el)return;
+  el.innerHTML='';
+  mMTags.forEach((tag,i)=>{
+    const chip=CE('div',{className:'tc-tag'});
+    chip.innerHTML=`# ${esc(tag)}<button class="tc-tag-del">✕</button>`;
+    chip.querySelector('button').addEventListener('click',()=>{ mMTags.splice(i,1); renderMMTags(); });
+    el.appendChild(chip);
+  });
+  const cands=G('mftag-cands'); if(!cands)return;
+  cands.innerHTML='';
+  const allT=allTagsForBar();
+  if(!allT.length)return;
+  allT.forEach(tag=>{
+    const used=mMTags.includes(tag);
+    const btn=CE('button',{className:'tag-cand-btn'+(used?' used':''),textContent:'# '+tag});
+    if(!used) btn.addEventListener('click',()=>{ addMTag(tag); });
+    cands.appendChild(btn);
+  });
+  cands.classList.add('collapsed');
+  requestAnimationFrame(()=>{
+    if(cands.scrollHeight<=cands.clientHeight+4){ cands.classList.remove('collapsed'); }
+    else{ const more=CE('button',{className:'tag-show-more',textContent:'…すべて表示'}); more.addEventListener('click',()=>{ cands.classList.remove('collapsed'); more.remove(); }); cands.after(more); }
+  });
+}
+function addMTag(raw){
+  const tag=raw.trim().replace(/^#+/,'');
+  if(!tag||mMTags.includes(tag))return;
+  mMTags.push(tag); renderMMTags();
+}
+
+function saveMemo(){
+  const title=G('mftitle').value.trim();
+  if(!title){showMsg('タイトルを入力してください');return;}
+  const now=new Date().toISOString();
+  const star=G('mfstar').classList.contains('on');
+  const d={title,body:G('mfbody').value,cid:G('mfcat').value||null,tags:[...mMTags],star,updatedAt:now,updatedBy:ST.uid||null};
+  if(editMid){
+    const m=(ST.memos||[]).find(x=>x.id===editMid); if(m) Object.assign(m,d);
+  } else {
+    if(!ST.memos) ST.memos=[];
+    ST.memos.unshift({id:genId(),archived:false,createdAt:now,...d});
+  }
+  closeMModal(); renderMemos(); updateBdg(); save();
+}
+
+function delMemo(){
+  if(!editMid)return;
+  cfmDlg('このメモを削除しますか？',()=>{
+    ST.memos=(ST.memos||[]).filter(x=>x.id!==editMid);
+    closeMModal(); renderMemos(); updateBdg(); save();
+  });
+}
+
+// ══════════════════════════════════════════
 //  MAINTENANCE
 // ══════════════════════════════════════════
 function renderMaintenance(){
-  const json = JSON.stringify({tasks:ST.tasks, cats:ST.cats, users:ST.users, recurs:ST.recurs});
+  const json = JSON.stringify({tasks:ST.tasks, cats:ST.cats, users:ST.users, recurs:ST.recurs, memos:ST.memos});
   const totalKB = (new TextEncoder().encode(json).length / 1024).toFixed(1);
   const total = ST.tasks.length;
   const done  = ST.tasks.filter(t=>t.done).length;
@@ -2342,7 +2709,7 @@ function exportAndDeleteDone(){
 //  JSON BACKUP
 // ══════════════════════════════════════════
 function exportJSON(){
-  const data={users:ST.users,cats:ST.cats,tasks:ST.tasks,recurs:ST.recurs};
+  const data={users:ST.users,cats:ST.cats,tasks:ST.tasks,recurs:ST.recurs,memos:ST.memos};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
@@ -2356,7 +2723,7 @@ function importJSON(file){
     try{
       const d=JSON.parse(e.target.result);
       if(!d.tasks||!d.users){showMsg('形式が正しくありません');return;}
-      ST.users=d.users; ST.cats=d.cats||[]; ST.tasks=d.tasks; ST.recurs=d.recurs||[];
+      ST.users=d.users; ST.cats=d.cats||[]; ST.tasks=d.tasks; ST.recurs=d.recurs||[]; ST.memos=d.memos||[];
       renderAll(); renderSettings(); save();
       showMsg('読み込みました');
     }catch(ex){showMsg('JSONの読み込みに失敗しました');}
@@ -2414,6 +2781,7 @@ async function init(){
         ST.cats   = data.cats   || [];
         ST.tasks  = data.tasks  || [];
         ST.recurs = data.recurs || [];
+        ST.memos  = data.memos  || [];
       }
       onGoogleUser(user);
     } else {
