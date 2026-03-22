@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v02_2026-03-22
+  @version   v02_2026-03-23.4
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -14,6 +14,10 @@
     v01_2026-03-22.9  - カード更新日時の相対表示追加
     v01_2026-03-22.10 - サンプルデータを実運用に近い品目・在庫数・更新日時に更新
     v02_2026-03-22    - Firebase Firestore同期・Googleログイン・最終更新者表示追加
+    v02_2026-03-23    - ヘッダー2段構成（補充リスト・⚙️／名前・ログアウト）、バージョン表示追加
+    v02_2026-03-23.2  - ヘッダーボタン下揃えに変更
+    v02_2026-03-23.3  - 補充リストのセクションラベル削除・「ストックに反映」にリネーム
+    v02_2026-03-23.4  - 並び順を要補充・カテゴリ順・名前昇順に変更、ボタン操作では並び替えしない
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -116,14 +120,17 @@ function updateAuthUI(user) {
   const btn  = document.getElementById('auth-btn');
   const info = document.getElementById('auth-info');
   const row  = document.getElementById('auth-row');
+  const verInline = document.getElementById('version-inline'); // CHANGED
   if (!btn) return;
   if (user) {
     btn.onclick      = window._fbLogout;
     info.textContent = user.displayName || user.email || '';
     info.title       = user.email || '';
     if (row) row.style.display = 'flex';
+    if (verInline) verInline.style.display = 'none'; // CHANGED: ログイン時は2段目に表示
   } else {
     if (row) row.style.display = 'none';
+    if (verInline) verInline.style.display = ''; // CHANGED: 未ログイン時はrow1に表示
   }
   if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
 }
@@ -239,10 +246,15 @@ if (savedConfig) {
   .header-row2 {
     display: flex;
     align-items: center;
+    justify-content: space-between; /* CHANGED: 左にバージョン、右に名前・ログアウト */
     gap: 6px;
   }
+  .header-version {
+    font-size: 11px;
+    color: var(--text-sub);
+  }
   .header-title { font-size: 17px; font-weight: 700; color: var(--accent); }
-  .header-btns { display: flex; gap: 8px; }
+  .header-btns { display: flex; gap: 8px; align-items: flex-end; }
   .auth-name {
     font-size: 12px;
     color: var(--text-sub);
@@ -775,13 +787,17 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
+        <span class="header-version" id="version-inline">v02_2026-03-23.4</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="auth-name" id="auth-info"></span>
-      <button class="btn-logout" id="auth-btn">ログアウト</button>
+      <span class="header-version">v02_2026-03-23.4</span>
+      <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+        <span class="auth-name" id="auth-info"></span>
+        <button class="btn-logout" id="auth-btn">ログアウト</button>
+      </div>
     </div>
   </div>
 </div>
@@ -844,10 +860,8 @@ if (savedConfig) {
   <div class="modal">
     <div class="modal-title">🛒 補充リスト</div>
     <ul class="buy-list" id="buyList"></ul>
-    <div class="buy-section-label">── 出発前 ──</div>
     <button class="btn-copy" onclick="copyBuyList()">📋 テキストをコピー</button>
-    <div class="buy-section-label">── 帰宅後 ──</div>
-    <button class="btn-reflect" onclick="reflectBuyList()">✅ 在庫に反映して閉じる</button>
+    <button class="btn-reflect" onclick="reflectBuyList()">✅ ストックに反映して閉じる</button>
     <button class="btn-cancel" style="width:100%;margin-top:8px" onclick="closeBuyList()">キャンセル</button>
   </div>
 </div>
@@ -976,7 +990,9 @@ function sortedItems(items) {
     const alertA = a.stock < a.target ? 0 : 1;
     const alertB = b.stock < b.target ? 0 : 1;
     if (alertA !== alertB) return alertA - alertB;
-    return catOrder.indexOf(a.cat) - catOrder.indexOf(b.cat);
+    const catDiff = catOrder.indexOf(a.cat) - catOrder.indexOf(b.cat);
+    if (catDiff !== 0) return catDiff;
+    return a.name.localeCompare(b.name, 'ja'); // CHANGED: 名前昇順
   });
 }
 
