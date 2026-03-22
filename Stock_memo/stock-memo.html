@@ -1,0 +1,1054 @@
+<!--
+  @tool      家庭用ストック管理ツール
+  @version   v01_2026-03-22.5
+  @chat      Stock_01_家庭用ストック管理ツールの要件検討
+  @changelog
+    v01_2026-03-22   - 初版
+    v01_2026-03-22.2 - 要補充バッジを右端固定、カテゴリ位置を揃える
+    v01_2026-03-22.3 - カテゴリリネーム追加、コピーfallback対応、並び順（要補充優先＋カテゴリ順）
+    v01_2026-03-22.4 - 買い出しリストヘッダー文言変更
+    v01_2026-03-22.5 - 補充リストに在庫反映機能追加、1画面構成に刷新
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ストック管理</title>
+<style>
+  :root {
+    --bg: #f5f5f0;
+    --surface: #ffffff;
+    --border: #e0ddd8;
+    --text: #2c2c2c;
+    --text-sub: #888;
+    --accent: #5b8a6f;
+    --accent-light: #e8f2ec;
+    --danger: #c0392b;
+    --danger-bg: #fdf0ee;
+    --danger-border: #f5c6c2;
+    --warn-bg: #fff8e8;
+    --warn-border: #f0d58c;
+    --tab-active: #5b8a6f;
+    --tab-text: #fff;
+    --radius: 12px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ヘッダー */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-title { font-size: 17px; font-weight: 700; color: var(--accent); }
+  .header-btns { display: flex; gap: 8px; }
+  .btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .btn-icon:active { background: var(--bg); }
+
+  /* カテゴリタブ */
+  .tab-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+    position: sticky;
+    top: 49px;
+    z-index: 99;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab {
+    flex-shrink: 0;
+    padding: 10px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    color: var(--text-sub);
+    white-space: nowrap;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  .tab.active {
+    color: var(--tab-active);
+    border-bottom-color: var(--tab-active);
+    font-weight: 600;
+  }
+
+  /* カード一覧 */
+  .card-list {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 100px;
+  }
+
+  /* 品目カード */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-shadow: var(--shadow);
+    transition: border-color 0.2s;
+  }
+  .card.alert {
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+  }
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    gap: 6px;
+  }
+  .card-name {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+    min-width: 0;
+  }
+  .card-cat {
+    font-size: 11px;
+    color: var(--text-sub);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2px 8px;
+    flex-shrink: 0;
+  }
+  .badge-alert {
+    font-size: 11px;
+    background: var(--danger);
+    color: #fff;
+    padding: 2px 7px;
+    border-radius: 20px;
+    flex-shrink: 0;
+    width: 52px;
+    text-align: center;
+  }
+  .badge-alert-placeholder {
+    width: 52px;
+    flex-shrink: 0;
+  }
+  .card-note {
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-bottom: 8px;
+    min-height: 0;
+  }
+  .card-note:empty { display: none; }
+  .card-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .stock-info {
+    font-size: 14px;
+    color: var(--text);
+  }
+  .stock-num {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .card.alert .stock-num { color: var(--danger); }
+  .stock-target {
+    font-size: 12px;
+    color: var(--text-sub);
+  }
+  .ctrl-btns {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-ctrl {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--surface);
+    color: var(--accent);
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: background 0.15s;
+  }
+  .btn-ctrl:active { background: var(--accent-light); }
+  .btn-ctrl.minus {
+    border-color: var(--border);
+    color: var(--text-sub);
+  }
+  .btn-ctrl.minus:active { background: var(--bg); }
+  .btn-edit-note {
+    background: none;
+    border: none;
+    color: var(--text-sub);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 4px;
+    text-decoration: underline;
+  }
+
+  /* FAB */
+  .fab-area {
+    position: fixed;
+    bottom: 20px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    z-index: 200;
+  }
+  .fab {
+    border: none;
+    border-radius: 28px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    white-space: nowrap;
+  }
+  .fab-primary { background: var(--accent); color: #fff; }
+  .fab-secondary { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
+
+  /* モーダル共通 */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 300;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 540px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 20px 16px 32px;
+  }
+  .modal-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .form-row {
+    margin-bottom: 14px;
+  }
+  .form-row label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-bottom: 4px;
+  }
+  .form-row input,
+  .form-row select,
+  .form-row textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 15px;
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .form-row textarea { resize: vertical; min-height: 60px; }
+  .modal-btns {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .btn-save {
+    flex: 1;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-cancel {
+    flex: 1;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .btn-delete {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: underline;
+    margin-top: 12px;
+    display: block;
+    text-align: center;
+    width: 100%;
+  }
+
+  /* 購入リストモーダル */
+  .buy-list { list-style: none; margin-bottom: 16px; }
+  .buy-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .buy-item:last-child { border-bottom: none; }
+  .buy-check {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .buy-name { flex: 1; font-size: 15px; }
+  .buy-qty-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .buy-qty-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .buy-qty { font-size: 15px; font-weight: 600; min-width: 24px; text-align: center; }
+  .btn-copy {
+    width: 100%;
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 10px;
+  }
+  .no-items { text-align: center; color: var(--text-sub); padding: 24px 0; font-size: 14px; }
+
+  /* 備考インライン編集 */
+  .note-edit-area {
+    margin-top: 6px;
+  }
+  .note-edit-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .note-edit-btns {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .note-save-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .note-cancel-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  /* カスタムモーダルダイアログ */
+  .dialog-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+  }
+  .dialog-overlay.open { display: flex; }
+  .dialog-box {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 24px 20px 16px;
+    max-width: 300px;
+    width: 90%;
+    text-align: center;
+  }
+  .dialog-msg { font-size: 15px; margin-bottom: 20px; line-height: 1.5; }
+  .dialog-btns { display: flex; gap: 10px; }
+  .dialog-ok {
+    flex: 1;
+    background: var(--danger);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 11px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .dialog-cancel {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .btn-reflect {
+    width: 100%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 0;
+  }
+  .buy-section-label {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-sub);
+    margin: 12px 0 8px;
+  }
+
+  /* コピー完了トースト */
+  .toast {
+    position: fixed;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 400;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header">
+  <div class="header-title">📦 ストック管理</div>
+  <div class="header-btns">
+    <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
+    <button class="btn-icon" onclick="openSettings()">⚙️</button>
+  </div>
+</div>
+
+<!-- カテゴリタブ -->
+<div class="tab-bar" id="tabBar"></div>
+
+<!-- カード一覧 -->
+<div class="card-list" id="cardList"></div>
+
+<!-- FAB -->
+<div class="fab-area">
+  <button class="fab fab-primary" onclick="openItemModal()">＋ 品目追加</button>
+</div>
+
+<!-- 品目追加・編集モーダル -->
+<div class="overlay" id="itemOverlay">
+  <div class="modal">
+    <div class="modal-title" id="itemModalTitle">品目を追加</div>
+    <div class="form-row">
+      <label>品目名</label>
+      <input type="text" id="fName" placeholder="例：食器洗剤">
+    </div>
+    <div class="form-row">
+      <label>カテゴリ</label>
+      <select id="fCat"></select>
+    </div>
+    <div class="form-row">
+      <label>現在のストック数</label>
+      <input type="number" id="fStock" min="0" value="0">
+    </div>
+    <div class="form-row">
+      <label>目標在庫数（補充アラートの基準）</label>
+      <input type="number" id="fTarget" min="0" value="2">
+    </div>
+    <div class="form-row">
+      <label>備考</label>
+      <textarea id="fNote" placeholder="例：とんこつ・キムチ"></textarea>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeItemModal()">キャンセル</button>
+      <button class="btn-save" onclick="saveItem()">保存</button>
+    </div>
+    <button class="btn-delete" id="btnDelete" style="display:none" onclick="deleteItem()">この品目を削除</button>
+  </div>
+</div>
+
+<!-- 補充リストモーダル -->
+<div class="overlay" id="buyOverlay">
+  <div class="modal">
+    <div class="modal-title">🛒 補充リスト</div>
+    <ul class="buy-list" id="buyList"></ul>
+    <div class="buy-section-label">── 出発前 ──</div>
+    <button class="btn-copy" onclick="copyBuyList()">📋 テキストをコピー</button>
+    <div class="buy-section-label">── 帰宅後 ──</div>
+    <button class="btn-reflect" onclick="reflectBuyList()">✅ 在庫に反映して閉じる</button>
+    <button class="btn-cancel" style="width:100%;margin-top:8px" onclick="closeBuyList()">キャンセル</button>
+  </div>
+</div>
+
+<!-- 設定モーダル -->
+<div class="overlay" id="settingsOverlay">
+  <div class="modal">
+    <div class="modal-title">⚙️ 設定</div>
+    <div class="form-row">
+      <label>カテゴリ管理</label>
+      <div id="catList" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="newCatName" placeholder="新しいカテゴリ名" style="flex:1">
+        <button class="btn-save" style="flex:none;padding:10px 14px;font-size:13px" onclick="addCategory()">追加</button>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" style="width:100%;flex:none" onclick="closeSettings()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 確認ダイアログ -->
+<div class="dialog-overlay" id="dialogOverlay">
+  <div class="dialog-box">
+    <div class="dialog-msg" id="dialogMsg"></div>
+    <div class="dialog-btns">
+      <button class="dialog-cancel" id="dialogCancel">キャンセル</button>
+      <button class="dialog-ok" id="dialogOk">削除</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// データ
+// ============================================================
+const STORE_KEY = 'stock-memo-v1';
+
+function loadData() {
+  try {
+    const s = localStorage.getItem(STORE_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch { return null; }
+}
+
+function saveData() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(ST));
+}
+
+// サンプルデータ
+const DEFAULT = {
+  categories: ['食品', 'キッチン', '洗濯・バス', 'トイレ・ティッシュ', 'その他'],
+  items: [
+    { id: '1', name: 'マヨネーズ',         cat: '食品',         stock: 1, target: 2, note: '' },
+    { id: '2', name: 'ケチャップ',          cat: '食品',         stock: 2, target: 2, note: '' },
+    { id: '3', name: '鍋の素',              cat: '食品',         stock: 1, target: 3, note: 'とんこつ・キムチ' },
+    { id: '4', name: '食器洗剤',            cat: 'キッチン',     stock: 0, target: 2, note: '' },
+    { id: '5', name: 'ラップ',              cat: 'キッチン',     stock: 3, target: 2, note: '' },
+    { id: '6', name: 'スポンジ',            cat: 'キッチン',     stock: 1, target: 3, note: '' },
+    { id: '7', name: '洗濯洗剤',            cat: '洗濯・バス',   stock: 1, target: 2, note: '詰め替え用' },
+    { id: '8', name: '柔軟剤',              cat: '洗濯・バス',   stock: 0, target: 2, note: '詰め替え用' },
+    { id: '9', name: 'ハンドソープ',        cat: '洗濯・バス',   stock: 2, target: 3, note: '詰め替え用' },
+    { id:'10', name: 'トイレットペーパー',   cat: 'トイレ・ティッシュ', stock: 6, target: 4, note: '12ロール入り換算' },
+    { id:'11', name: 'ティッシュ',           cat: 'トイレ・ティッシュ', stock: 2, target: 3, note: '' },
+    { id:'12', name: 'ゴミ袋（45L）',        cat: 'その他',       stock: 1, target: 2, note: '' },
+  ]
+};
+
+let ST = loadData() || JSON.parse(JSON.stringify(DEFAULT));
+
+// ============================================================
+// 状態
+// ============================================================
+let curCat = 'all';
+let editingId = null;
+let buyItems = []; // { id, name, qty, checked }
+
+// ============================================================
+// タブ
+// ============================================================
+function renderTabs() {
+  const bar = document.getElementById('tabBar');
+  const cats = ['all', ...ST.categories];
+  bar.innerHTML = cats.map(c => `
+    <button class="tab ${curCat === c ? 'active' : ''}" onclick="selectTab('${c}')">
+      ${c === 'all' ? 'すべて' : c}
+    </button>
+  `).join('');
+}
+
+function selectTab(cat) {
+  curCat = cat;
+  renderTabs();
+  renderCards();
+}
+
+// ============================================================
+// カード
+// ============================================================
+function sortedItems(items) {
+  const catOrder = ST.categories;
+  return [...items].sort((a, b) => {
+    const alertA = a.stock < a.target ? 0 : 1;
+    const alertB = b.stock < b.target ? 0 : 1;
+    if (alertA !== alertB) return alertA - alertB;
+    return catOrder.indexOf(a.cat) - catOrder.indexOf(b.cat);
+  });
+}
+
+function renderCards() {
+  const list = document.getElementById('cardList');
+  const base = curCat === 'all'
+    ? ST.items
+    : ST.items.filter(i => i.cat === curCat);
+  const items = sortedItems(base);
+
+  if (items.length === 0) {
+    list.innerHTML = '<div class="no-items">品目がありません</div>';
+    return;
+  }
+
+  list.innerHTML = items.map(item => {
+    const alert = item.stock < item.target;
+    return `
+      <div class="card ${alert ? 'alert' : ''}" id="card-${item.id}">
+        <div class="card-top">
+          <span class="card-name" onclick="openItemModal('${item.id}')">${item.name}</span>
+          <span class="card-cat">${item.cat}</span>
+          ${alert ? '<span class="badge-alert">要補充</span>' : '<span class="badge-alert-placeholder"></span>'}
+        </div>
+        ${item.note ? `<div class="card-note" id="note-${item.id}">${item.note}
+          <button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">編集</button>
+        </div>` : `<div class="card-note" id="note-${item.id}">
+          <button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">＋ 備考</button>
+        </div>`}
+        <div id="note-edit-${item.id}"></div>
+        <div class="card-bottom">
+          <div class="stock-info">
+            <div class="stock-num">${item.stock}</div>
+            <div class="stock-target">目標: ${item.target}</div>
+          </div>
+          <div class="ctrl-btns">
+            <button class="btn-ctrl minus" onclick="changeStock('${item.id}', -1)">－</button>
+            <button class="btn-ctrl" onclick="changeStock('${item.id}', +1)">＋</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function changeStock(id, delta) {
+  const item = ST.items.find(i => i.id === id);
+  if (!item) return;
+  item.stock = Math.max(0, item.stock + delta);
+  saveData();
+  // カードのみ差分更新
+  updateCard(item);
+}
+
+function updateCard(item) {
+  const card = document.getElementById('card-' + item.id);
+  if (!card) return;
+  const alert = item.stock < item.target;
+  card.className = 'card' + (alert ? ' alert' : '');
+  card.querySelector('.stock-num').textContent = item.stock;
+  // バッジ
+  const badge = card.querySelector('.badge-alert');
+  const placeholder = card.querySelector('.badge-alert-placeholder');
+  if (alert && !badge) {
+    if (placeholder) {
+      placeholder.outerHTML = '<span class="badge-alert">要補充</span>';
+    }
+  } else if (!alert && badge) {
+    badge.outerHTML = '<span class="badge-alert-placeholder"></span>';
+  }
+}
+
+// ============================================================
+// 備考インライン編集
+// ============================================================
+function showNoteEdit(id) {
+  const item = ST.items.find(i => i.id === id);
+  if (!item) return;
+  const area = document.getElementById('note-edit-' + id);
+  area.innerHTML = `
+    <div class="note-edit-area">
+      <input class="note-edit-input" id="note-input-${id}" value="${item.note}" placeholder="備考を入力">
+      <div class="note-edit-btns">
+        <button class="note-save-btn" onclick="saveNote('${id}')">保存</button>
+        <button class="note-cancel-btn" onclick="cancelNote('${id}')">キャンセル</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('note-input-' + id).focus();
+}
+
+function saveNote(id) {
+  const item = ST.items.find(i => i.id === id);
+  if (!item) return;
+  const val = document.getElementById('note-input-' + id).value.trim();
+  item.note = val;
+  saveData();
+  const noteDiv = document.getElementById('note-' + id);
+  const editArea = document.getElementById('note-edit-' + id);
+  noteDiv.innerHTML = val
+    ? `${val} <button class="btn-edit-note" onclick="showNoteEdit('${id}')">編集</button>`
+    : `<button class="btn-edit-note" onclick="showNoteEdit('${id}')">＋ 備考</button>`;
+  editArea.innerHTML = '';
+}
+
+function cancelNote(id) {
+  document.getElementById('note-edit-' + id).innerHTML = '';
+}
+
+// ============================================================
+// 品目モーダル
+// ============================================================
+function openItemModal(id) {
+  editingId = id || null;
+  const item = id ? ST.items.find(i => i.id === id) : null;
+
+  document.getElementById('itemModalTitle').textContent = item ? '品目を編集' : '品目を追加';
+  document.getElementById('fName').value  = item ? item.name  : '';
+  document.getElementById('fStock').value = item ? item.stock : 0;
+  document.getElementById('fTarget').value= item ? item.target: 2;
+  document.getElementById('fNote').value  = item ? item.note  : '';
+  document.getElementById('btnDelete').style.display = item ? 'block' : 'none';
+
+  // カテゴリselect
+  const sel = document.getElementById('fCat');
+  sel.innerHTML = ST.categories.map(c =>
+    `<option value="${c}" ${item && item.cat === c ? 'selected' : ''}>${c}</option>`
+  ).join('');
+
+  document.getElementById('itemOverlay').classList.add('open');
+  document.getElementById('fName').focus();
+}
+
+function closeItemModal() {
+  document.getElementById('itemOverlay').classList.remove('open');
+  editingId = null;
+}
+
+function saveItem() {
+  const name = document.getElementById('fName').value.trim();
+  if (!name) { showToast('品目名を入力してください'); return; }
+  const cat   = document.getElementById('fCat').value;
+  const stock = parseInt(document.getElementById('fStock').value) || 0;
+  const target= parseInt(document.getElementById('fTarget').value) || 0;
+  const note  = document.getElementById('fNote').value.trim();
+
+  if (editingId) {
+    const item = ST.items.find(i => i.id === editingId);
+    Object.assign(item, { name, cat, stock, target, note });
+  } else {
+    ST.items.push({ id: Date.now().toString(), name, cat, stock, target, note });
+  }
+  saveData();
+  closeItemModal();
+  renderTabs();
+  renderCards();
+}
+
+function deleteItem() {
+  showDialog(`「${ST.items.find(i => i.id === editingId)?.name}」を削除しますか？`, () => {
+    ST.items = ST.items.filter(i => i.id !== editingId);
+    saveData();
+    closeItemModal();
+    renderCards();
+  });
+}
+
+// ============================================================
+// 買い出しリスト
+// ============================================================
+function openBuyList() {
+  // 不足品を自動リストアップ
+  buyItems = ST.items
+    .filter(i => i.stock < i.target)
+    .map(i => ({
+      id: i.id,
+      name: i.name,
+      qty: i.target - i.stock,
+      checked: true
+    }));
+  renderBuyList();
+  document.getElementById('buyOverlay').classList.add('open');
+}
+
+function closeBuyList() {
+  document.getElementById('buyOverlay').classList.remove('open');
+}
+
+function renderBuyList() {
+  const ul = document.getElementById('buyList');
+  if (buyItems.length === 0) {
+    ul.innerHTML = '<li class="no-items">補充が必要な品目はありません 🎉</li>';
+    return;
+  }
+  ul.innerHTML = buyItems.map((b, idx) => `
+    <li class="buy-item">
+      <input type="checkbox" class="buy-check" ${b.checked ? 'checked' : ''}
+        onchange="toggleBuyItem(${idx}, this.checked)">
+      <span class="buy-name" style="${!b.checked ? 'opacity:0.4;text-decoration:line-through' : ''}">${b.name}</span>
+      <div class="buy-qty-ctrl">
+        <button class="buy-qty-btn" onclick="changeBuyQty(${idx}, -1)">－</button>
+        <span class="buy-qty">${b.qty}</span>
+        <button class="buy-qty-btn" onclick="changeBuyQty(${idx}, +1)">＋</button>
+      </div>
+    </li>
+  `).join('');
+}
+
+function toggleBuyItem(idx, checked) {
+  buyItems[idx].checked = checked;
+  renderBuyList();
+}
+
+function changeBuyQty(idx, delta) {
+  buyItems[idx].qty = Math.max(1, buyItems[idx].qty + delta);
+  renderBuyList();
+}
+
+function copyBuyList() {
+  const lines = buyItems
+    .filter(b => b.checked)
+    .map(b => `・${b.name}　${b.qty}個`);
+  if (lines.length === 0) { showToast('選択された品目がありません'); return; }
+  const text = '■補充リスト\n' + lines.join('\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => showToast('コピーしました'))
+      .catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function reflectBuyList() {
+  const targets = buyItems.filter(b => b.checked);
+  if (targets.length === 0) { showToast('チェックされた品目がありません'); return; }
+  targets.forEach(b => {
+    const item = ST.items.find(i => i.id === b.id);
+    if (item) item.stock += b.qty;
+  });
+  saveData();
+  document.getElementById('buyOverlay').classList.remove('open');
+  renderCards();
+  showToast(`${targets.length}件の在庫を更新しました`);
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('コピーしました');
+  } catch {
+    showToast('コピーできませんでした');
+  }
+  document.body.removeChild(ta);
+}
+
+// ============================================================
+// 設定
+// ============================================================
+function openSettings() {
+  renderCatList();
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+function renderCatList() {
+  const div = document.getElementById('catList');
+  div.innerHTML = ST.categories.map((c, idx) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px" id="cat-row-${idx}">
+      <span style="flex:1;font-size:14px" id="cat-label-${idx}">${c}</span>
+      <button style="font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer"
+        onclick="startRenameCategory(${idx})">編集</button>
+      <button style="font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer"
+        onclick="deleteCategory(${idx})">削除</button>
+    </div>
+  `).join('');
+}
+
+function startRenameCategory(idx) {
+  const label = document.getElementById('cat-label-' + idx);
+  const current = ST.categories[idx];
+  label.outerHTML = `
+    <input id="cat-rename-${idx}" value="${current}"
+      style="flex:1;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:14px;font-family:inherit;background:var(--bg)">
+  `;
+  const input = document.getElementById('cat-rename-' + idx);
+  input.focus();
+  input.select();
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') commitRenameCategory(idx);
+    if (e.key === 'Escape') renderCatList();
+  });
+  // 編集ボタンを保存ボタンに差し替え
+  const row = document.getElementById('cat-row-' + idx);
+  const btns = row.querySelectorAll('button');
+  btns[0].textContent = '保存';
+  btns[0].onclick = () => commitRenameCategory(idx);
+}
+
+function commitRenameCategory(idx) {
+  const input = document.getElementById('cat-rename-' + idx);
+  if (!input) return;
+  const newName = input.value.trim();
+  if (!newName) { showToast('カテゴリ名を入力してください'); return; }
+  if (newName !== ST.categories[idx] && ST.categories.includes(newName)) {
+    showToast('同じ名前のカテゴリがあります'); return;
+  }
+  const oldName = ST.categories[idx];
+  ST.categories[idx] = newName;
+  ST.items.forEach(i => { if (i.cat === oldName) i.cat = newName; });
+  saveData();
+  renderCatList();
+  renderTabs();
+  renderCards();
+}
+
+function addCategory() {
+  const name = document.getElementById('newCatName').value.trim();
+  if (!name) return;
+  if (ST.categories.includes(name)) { showToast('同じ名前のカテゴリがあります'); return; }
+  ST.categories.push(name);
+  saveData();
+  document.getElementById('newCatName').value = '';
+  renderCatList();
+  renderTabs();
+}
+
+function deleteCategory(idx) {
+  const name = ST.categories[idx];
+  const inUse = ST.items.some(i => i.cat === name);
+  if (inUse) { showToast('使用中のカテゴリは削除できません'); return; }
+  ST.categories.splice(idx, 1);
+  saveData();
+  renderCatList();
+  renderTabs();
+}
+
+// ============================================================
+// 確認ダイアログ
+// ============================================================
+function showDialog(msg, onOk) {
+  document.getElementById('dialogMsg').textContent = msg;
+  const overlay = document.getElementById('dialogOverlay');
+  overlay.classList.add('open');
+  document.getElementById('dialogOk').onclick = () => {
+    overlay.classList.remove('open');
+    onOk();
+  };
+  document.getElementById('dialogCancel').onclick = () => {
+    overlay.classList.remove('open');
+  };
+}
+
+// ============================================================
+// トースト
+// ============================================================
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ============================================================
+// 初期化
+// ============================================================
+renderTabs();
+renderCards();
+</script>
+</body>
+</html>
