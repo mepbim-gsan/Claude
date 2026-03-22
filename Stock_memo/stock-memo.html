@@ -1,13 +1,18 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v01_2026-03-22.5
+  @version   v01_2026-03-22.10
   @chat      Stock_01_家庭用ストック管理ツールの要件検討
   @changelog
-    v01_2026-03-22   - 初版
-    v01_2026-03-22.2 - 要補充バッジを右端固定、カテゴリ位置を揃える
-    v01_2026-03-22.3 - カテゴリリネーム追加、コピーfallback対応、並び順（要補充優先＋カテゴリ順）
-    v01_2026-03-22.4 - 買い出しリストヘッダー文言変更
-    v01_2026-03-22.5 - 補充リストに在庫反映機能追加、1画面構成に刷新
+    v01_2026-03-22    - 初版
+    v01_2026-03-22.2  - 要補充バッジを右端固定、カテゴリ位置を揃える
+    v01_2026-03-22.3  - カテゴリリネーム追加、コピーfallback対応、並び順（要補充優先＋カテゴリ順）
+    v01_2026-03-22.4  - 買い出しリストヘッダー文言変更
+    v01_2026-03-22.5  - 補充リストに在庫反映機能追加、1画面構成に刷新
+    v01_2026-03-22.6  - 品目編集のストック数・目標在庫数をステッパーUIに変更
+    v01_2026-03-22.7  - PC2カラム対応、品目名クリック示唆、備考placeholder削除
+    v01_2026-03-22.8  - モーダルをPC中央・モバイル下からのレスポンシブに、ストック数・目標在庫数を横並び
+    v01_2026-03-22.9  - カード更新日時の相対表示追加
+    v01_2026-03-22.10 - サンプルデータを実運用に近い品目・在庫数・更新日時に更新
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -54,6 +59,14 @@
     top: 0;
     z-index: 100;
   }
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+  }
   .header-title { font-size: 17px; font-weight: 700; color: var(--accent); }
   .header-btns { display: flex; gap: 8px; }
   .btn-icon {
@@ -78,6 +91,7 @@
     position: sticky;
     top: 49px;
     z-index: 99;
+    padding: 0 max(16px, calc(50% - 528px));
   }
   .tab-bar::-webkit-scrollbar { display: none; }
   .tab {
@@ -102,10 +116,15 @@
   /* カード一覧 */
   .card-list {
     padding: 12px;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 10px;
     padding-bottom: 100px;
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+  @media (min-width: 768px) {
+    .card-list { grid-template-columns: 1fr 1fr; padding: 16px; gap: 12px; }
   }
 
   /* 品目カード */
@@ -133,7 +152,13 @@
     font-weight: 600;
     flex: 1;
     min-width: 0;
+    cursor: pointer;
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--border);
   }
+  .card-name:hover { text-decoration-color: var(--accent); }
   .card-cat {
     font-size: 11px;
     color: var(--text-sub);
@@ -168,13 +193,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    margin-top: 6px;
   }
   .stock-info {
-    font-size: 14px;
-    color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
   }
   .stock-num {
-    font-size: 22px;
+    font-size: 28px;
     font-weight: 700;
     color: var(--accent);
     line-height: 1;
@@ -221,6 +248,13 @@
     text-decoration: underline;
   }
 
+  .card-updated {
+    font-size: 11px;
+    color: var(--text-sub);
+    text-align: right;
+    margin-top: 6px;
+  }
+
   /* FAB */
   .fab-area {
     position: fixed;
@@ -265,13 +299,25 @@
     overflow-y: auto;
     padding: 20px 16px 32px;
   }
+  @media (min-width: 768px) {
+    .overlay { align-items: center; }
+    .modal {
+      border-radius: 16px;
+      max-height: 85vh;
+      width: 480px;
+    }
+  }
   .modal-title {
     font-size: 16px;
     font-weight: 700;
     margin-bottom: 16px;
     text-align: center;
   }
-  .form-row {
+  .form-row { margin-bottom: 14px; }
+  .form-row-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
     margin-bottom: 14px;
   }
   .form-row label {
@@ -480,6 +526,35 @@
     margin: 12px 0 8px;
   }
 
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg);
+    width: 160px;
+  }
+  .stepper-btn {
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .stepper-btn:active { background: var(--accent-light); }
+  .stepper-val {
+    flex: 1;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
   /* コピー完了トースト */
   .toast {
     position: fixed;
@@ -503,10 +578,12 @@
 
 <!-- ヘッダー -->
 <div class="header">
-  <div class="header-title">📦 ストック管理</div>
-  <div class="header-btns">
-    <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
-    <button class="btn-icon" onclick="openSettings()">⚙️</button>
+  <div class="header-inner">
+    <div class="header-title">📦 ストック管理</div>
+    <div class="header-btns">
+      <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
+      <button class="btn-icon" onclick="openSettings()">⚙️</button>
+    </div>
   </div>
 </div>
 
@@ -533,17 +610,27 @@
       <label>カテゴリ</label>
       <select id="fCat"></select>
     </div>
-    <div class="form-row">
-      <label>現在のストック数</label>
-      <input type="number" id="fStock" min="0" value="0">
-    </div>
-    <div class="form-row">
-      <label>目標在庫数（補充アラートの基準）</label>
-      <input type="number" id="fTarget" min="0" value="2">
+    <div class="form-row form-row-2col">
+      <div>
+        <label>現在のストック数</label>
+        <div class="stepper">
+          <button type="button" class="stepper-btn" onclick="stepVal('fStock',-1)">－</button>
+          <span class="stepper-val" id="fStock">0</span>
+          <button type="button" class="stepper-btn" onclick="stepVal('fStock',+1)">＋</button>
+        </div>
+      </div>
+      <div>
+        <label>目標在庫数</label>
+        <div class="stepper">
+          <button type="button" class="stepper-btn" onclick="stepVal('fTarget',-1)">－</button>
+          <span class="stepper-val" id="fTarget">2</span>
+          <button type="button" class="stepper-btn" onclick="stepVal('fTarget',+1)">＋</button>
+        </div>
+      </div>
     </div>
     <div class="form-row">
       <label>備考</label>
-      <textarea id="fNote" placeholder="例：とんこつ・キムチ"></textarea>
+      <textarea id="fNote"></textarea>
     </div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeItemModal()">キャンセル</button>
@@ -615,22 +702,28 @@ function saveData() {
   localStorage.setItem(STORE_KEY, JSON.stringify(ST));
 }
 
-// サンプルデータ
+const now = Date.now();
+const DAY = 86400000;
 const DEFAULT = {
   categories: ['食品', 'キッチン', '洗濯・バス', 'トイレ・ティッシュ', 'その他'],
   items: [
-    { id: '1', name: 'マヨネーズ',         cat: '食品',         stock: 1, target: 2, note: '' },
-    { id: '2', name: 'ケチャップ',          cat: '食品',         stock: 2, target: 2, note: '' },
-    { id: '3', name: '鍋の素',              cat: '食品',         stock: 1, target: 3, note: 'とんこつ・キムチ' },
-    { id: '4', name: '食器洗剤',            cat: 'キッチン',     stock: 0, target: 2, note: '' },
-    { id: '5', name: 'ラップ',              cat: 'キッチン',     stock: 3, target: 2, note: '' },
-    { id: '6', name: 'スポンジ',            cat: 'キッチン',     stock: 1, target: 3, note: '' },
-    { id: '7', name: '洗濯洗剤',            cat: '洗濯・バス',   stock: 1, target: 2, note: '詰め替え用' },
-    { id: '8', name: '柔軟剤',              cat: '洗濯・バス',   stock: 0, target: 2, note: '詰め替え用' },
-    { id: '9', name: 'ハンドソープ',        cat: '洗濯・バス',   stock: 2, target: 3, note: '詰め替え用' },
-    { id:'10', name: 'トイレットペーパー',   cat: 'トイレ・ティッシュ', stock: 6, target: 4, note: '12ロール入り換算' },
-    { id:'11', name: 'ティッシュ',           cat: 'トイレ・ティッシュ', stock: 2, target: 3, note: '' },
-    { id:'12', name: 'ゴミ袋（45L）',        cat: 'その他',       stock: 1, target: 2, note: '' },
+    { id: '1',  name: 'マヨネーズ',         cat: '食品',              stock: 1, target: 2, note: '',               updatedAt: now - 3*DAY },
+    { id: '2',  name: 'ケチャップ',          cat: '食品',              stock: 0, target: 1, note: '',               updatedAt: now - 18*DAY },
+    { id: '3',  name: '鍋の素',              cat: '食品',              stock: 2, target: 3, note: 'とんこつ・キムチ・寄せ鍋', updatedAt: now - 45*DAY },
+    { id: '4',  name: 'めんつゆ',            cat: '食品',              stock: 1, target: 2, note: '',               updatedAt: now - 12*DAY },
+    { id: '5',  name: '食器洗剤',            cat: 'キッチン',          stock: 1, target: 2, note: '詰め替え用',     updatedAt: now - 6*DAY },
+    { id: '6',  name: 'ラップ',              cat: 'キッチン',          stock: 2, target: 2, note: '',               updatedAt: now - 22*DAY },
+    { id: '7',  name: 'アルミホイル',        cat: 'キッチン',          stock: 1, target: 1, note: '',               updatedAt: now - 60*DAY },
+    { id: '8',  name: 'キッチンペーパー',    cat: 'キッチン',          stock: 0, target: 2, note: '',               updatedAt: now - 9*DAY },
+    { id: '9',  name: '洗濯洗剤',            cat: '洗濯・バス',        stock: 1, target: 2, note: '詰め替え用',     updatedAt: now - 4*DAY },
+    { id: '10', name: '柔軟剤',              cat: '洗濯・バス',        stock: 0, target: 2, note: '詰め替え用',     updatedAt: now - 2*DAY },
+    { id: '11', name: 'ハンドソープ',        cat: '洗濯・バス',        stock: 2, target: 2, note: '詰め替え用',     updatedAt: now - 16*DAY },
+    { id: '12', name: 'ボディソープ',        cat: '洗濯・バス',        stock: 1, target: 2, note: '詰め替え用',     updatedAt: now - 30*DAY },
+    { id: '13', name: 'トイレットペーパー',  cat: 'トイレ・ティッシュ', stock: 2, target: 2, note: '8ロール×2パック', updatedAt: now - 1*DAY },
+    { id: '14', name: 'ティッシュ',          cat: 'トイレ・ティッシュ', stock: 3, target: 3, note: '5箱パック換算',  updatedAt: now - 25*DAY },
+    { id: '15', name: 'トイレ洗剤',          cat: 'トイレ・ティッシュ', stock: 1, target: 2, note: '',               updatedAt: now - 40*DAY },
+    { id: '16', name: 'ゴミ袋（45L）',       cat: 'その他',            stock: 1, target: 2, note: '',               updatedAt: now - 8*DAY },
+    { id: '17', name: '電池（単3）',         cat: 'その他',            stock: 2, target: 4, note: '',               updatedAt: now - 90*DAY },
   ]
 };
 
@@ -675,6 +768,21 @@ function sortedItems(items) {
   });
 }
 
+function relativeTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const min  = Math.floor(diff / 60000);
+  const hour = Math.floor(diff / 3600000);
+  const day  = Math.floor(diff / 86400000);
+  if (min < 1)   return 'たった今';
+  if (min < 60)  return `${min}分前`;
+  if (hour < 24) return `${hour}時間前`;
+  if (day < 30)  return `${day}日前`;
+  const month = Math.floor(day / 30);
+  if (month < 12) return `${month}ヶ月前`;
+  return `${Math.floor(month / 12)}年前`;
+}
+
 function renderCards() {
   const list = document.getElementById('cardList');
   const base = curCat === 'all'
@@ -712,6 +820,7 @@ function renderCards() {
             <button class="btn-ctrl" onclick="changeStock('${item.id}', +1)">＋</button>
           </div>
         </div>
+        <div class="card-updated" id="updated-${item.id}">${relativeTime(item.updatedAt)}</div>
       </div>
     `;
   }).join('');
@@ -721,8 +830,8 @@ function changeStock(id, delta) {
   const item = ST.items.find(i => i.id === id);
   if (!item) return;
   item.stock = Math.max(0, item.stock + delta);
+  item.updatedAt = Date.now();
   saveData();
-  // カードのみ差分更新
   updateCard(item);
 }
 
@@ -742,6 +851,8 @@ function updateCard(item) {
   } else if (!alert && badge) {
     badge.outerHTML = '<span class="badge-alert-placeholder"></span>';
   }
+  const updEl = document.getElementById('updated-' + item.id);
+  if (updEl) updEl.textContent = relativeTime(item.updatedAt);
 }
 
 // ============================================================
@@ -784,18 +895,23 @@ function cancelNote(id) {
 // ============================================================
 // 品目モーダル
 // ============================================================
+function stepVal(id, delta) {
+  const el = document.getElementById(id);
+  const cur = parseInt(el.textContent) || 0;
+  el.textContent = Math.max(0, cur + delta);
+}
+
 function openItemModal(id) {
   editingId = id || null;
   const item = id ? ST.items.find(i => i.id === id) : null;
 
   document.getElementById('itemModalTitle').textContent = item ? '品目を編集' : '品目を追加';
-  document.getElementById('fName').value  = item ? item.name  : '';
-  document.getElementById('fStock').value = item ? item.stock : 0;
-  document.getElementById('fTarget').value= item ? item.target: 2;
-  document.getElementById('fNote').value  = item ? item.note  : '';
+  document.getElementById('fName').value = item ? item.name : '';
+  document.getElementById('fStock').textContent  = item ? item.stock  : 0;
+  document.getElementById('fTarget').textContent = item ? item.target : 2;
+  document.getElementById('fNote').value = item ? item.note : '';
   document.getElementById('btnDelete').style.display = item ? 'block' : 'none';
 
-  // カテゴリselect
   const sel = document.getElementById('fCat');
   sel.innerHTML = ST.categories.map(c =>
     `<option value="${c}" ${item && item.cat === c ? 'selected' : ''}>${c}</option>`
@@ -813,10 +929,10 @@ function closeItemModal() {
 function saveItem() {
   const name = document.getElementById('fName').value.trim();
   if (!name) { showToast('品目名を入力してください'); return; }
-  const cat   = document.getElementById('fCat').value;
-  const stock = parseInt(document.getElementById('fStock').value) || 0;
-  const target= parseInt(document.getElementById('fTarget').value) || 0;
-  const note  = document.getElementById('fNote').value.trim();
+  const cat    = document.getElementById('fCat').value;
+  const stock  = parseInt(document.getElementById('fStock').textContent)  || 0;
+  const target = parseInt(document.getElementById('fTarget').textContent) || 0;
+  const note   = document.getElementById('fNote').value.trim();
 
   if (editingId) {
     const item = ST.items.find(i => i.id === editingId);
