@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v04_2026-03-22.6
+  @version   v04_2026-03-22.6.6
   @chat      Couple_Task_04_機能改善・続
   @changelog
     v01_2026-03-20 - 初版（モックモード）
@@ -17,6 +17,7 @@
     v04_2026-03-22.3 - DDをbody直下fixed配置（fbarのoverflowクリップ問題解消）
     v04_2026-03-22.4 - ラッパーdiv除去（ボタンずれ解消）
     v04_2026-03-22.5 - 定型タスクの★を黄色に統一
+    v04_2026-03-22.6 - 定型タスク生成済み判定をlastGenから実タスク存在チェックに変更
 -->
 <html lang="ja">
 <head>
@@ -1426,8 +1427,8 @@ function openGenDlg(rid){
     // 期限なし or 今日：チェック不要で即生成
     const due=r.freq==='daily'?today:'';
     const alreadyDone = r.freq==='daily'
-      ? lastGen.includes(today)
-      : ST.tasks.some(t=>t.recurId===rid&&!t.done); // CHANGED: 期限なしは未完了タスクの存在で判定
+      ? ST.tasks.some(t=>t.recurId===rid&&!t.done&&t.due===today) // CHANGED: 期限が今日の未完了タスクで判定
+      : ST.tasks.some(t=>t.recurId===rid&&!t.done);
     if(alreadyDone){
       const msg = r.freq==='daily'
         ? `今日は既に生成済みです（${fmtDateJP(today)}）`
@@ -1443,7 +1444,7 @@ function openGenDlg(rid){
   } else if(r.freq==='weekly'){
     (r.wdays||[]).forEach(dow=>{
       const iso=nextWeekday(dow);
-      const done=lastGen.includes(iso);
+      const done=ST.tasks.some(t=>t.recurId===rid&&!t.done&&t.due===iso); // CHANGED: lastGenではなく実タスクで判定
       const row=CE('div',{style:'display:flex;align-items:center;gap:10px'});
       const cb=CE('input',{type:'checkbox', checked:!done});
       cb.disabled=done;
@@ -1461,7 +1462,7 @@ function openGenDlg(rid){
   } else if(r.freq==='monthly'){
     (r.mdays||[]).forEach(day=>{
       const iso=nextMonthDay(day);
-      const done=lastGen.includes(iso);
+      const done=ST.tasks.some(t=>t.recurId===rid&&!t.done&&t.due===iso); // CHANGED: lastGenではなく実タスクで判定
       const row=CE('div',{style:'display:flex;align-items:center;gap:10px'});
       const cb=CE('input',{type:'checkbox', checked:!done});
       cb.disabled=done;
