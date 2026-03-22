@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v04_2026-03-22.4
-  @chat      Air-02_Firebase同期対応
+  @version   v05_2026-03-22
+  @chat      Couple_Task_03_改善
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
     v04_2026-03-22.4 - Google認証対応・ユーザー紐づけ
+    v05_2026-03-22 - カテゴリ引き継ぎ新規作成・「なし」選択肢・未登録メンバー追加
 -->
 <html lang="ja">
 <head>
@@ -200,7 +201,11 @@ input,textarea,select{font-family:inherit}
 .sbbot{padding:12px 10px;border-top:1px solid var(--bd);margin-top:auto}
 .blogout{display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;border-radius:10px;background:none;border:none;color:var(--mt);font-size:.85rem;transition:all .15s}
 .blogout:hover{background:var(--bg2);color:var(--red)}
-.main{flex:1;padding:28px 32px;overflow-y:auto;max-height:100vh}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;height:100vh}
+.page-scroll{flex:1;overflow-y:auto;padding:28px 32px}
+#page-tasks,#page-recur,#page-dash,#page-settings{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.page-fixed{padding:28px 32px 0;flex-shrink:0}
+.page-list{flex:1;overflow-y:auto;padding:0 32px 28px}
 
 /* ── PAGE HEADER ── */
 .ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
@@ -427,7 +432,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 .srow-del{position:absolute;right:0;top:0;bottom:0;width:72px;background:rgba(192,57,43,.88);backdrop-filter:blur(2px);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;cursor:pointer;border:none;opacity:0;pointer-events:none;transition:opacity .18s ease}
 .srow-wrap.swiped .srow-del{opacity:1;pointer-events:auto}
 
-@media(max-width:640px){.sb{display:none}.main{padding:16px 14px 80px}.bnav{display:block}}
+@media(max-width:640px){.sb{display:none}.main{height:calc(100vh - 0px)}.page-fixed{padding:16px 14px 0}.page-list{padding:0 14px 80px}.page-scroll{padding:16px 14px 80px}.bnav{display:block}}
 </style>
 </head>
 <body>
@@ -490,7 +495,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v04_2026-03-22.4</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v05_2026-03-22</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -498,59 +503,69 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
   <!-- MAIN -->
   <div class="main">
     <!-- TASKS -->
-    <div id="page-tasks">
-      <div class="ph">
-        <div class="pt">タスク一覧</div>
-        <button class="bpri" id="btnAddTask">＋ タスクを追加</button>
-      </div>
-
-      <div class="filter-area">
-        <div class="srch-row">
-          <input class="srch" id="srch" type="text" placeholder="🔍 検索...">
-          <button id="btn-toggle-tags" style="padding:7px 10px;border-radius:99px;border:1.5px solid var(--bd);background:var(--sf);color:var(--sub);font-size:.78rem;white-space:nowrap;flex-shrink:0;transition:all .15s"># タグ</button>
+    <div id="page-tasks" style="display:flex">
+      <div class="page-fixed">
+        <div class="ph">
+          <div class="pt">タスク一覧</div>
+          <button class="bpri" id="btnAddTask">＋ タスクを追加</button>
         </div>
-        <div class="fbar">
-          <button class="fc active" id="f-active">Active</button>
-          <button class="fc" id="f-undone">Pending</button>
-          <button class="fc" id="f-overdue">Overdue</button>
-          <button class="fc" id="f-mine">Mine</button>
-          <button class="fc" id="f-done">Done</button>
-          <button class="fc" id="f-all">All</button>
+        <div class="filter-area">
+          <div class="srch-row">
+            <input class="srch" id="srch" type="text" placeholder="🔍 検索...">
+            <button id="btn-toggle-tags" style="padding:7px 10px;border-radius:99px;border:1.5px solid var(--bd);background:var(--sf);color:var(--sub);font-size:.78rem;white-space:nowrap;flex-shrink:0;transition:all .15s"># タグ</button>
+          </div>
+          <div class="fbar">
+            <button class="fc active" id="f-active">Active</button>
+            <button class="fc" id="f-undone">Pending</button>
+            <button class="fc" id="f-overdue">Overdue</button>
+            <button class="fc" id="f-mine">Mine</button>
+            <button class="fc" id="f-done">Done</button>
+            <button class="fc" id="f-all">All</button>
+          </div>
+          <div class="cbar" id="cbar"></div>
+          <div class="tag-bar" id="tbar"></div>
         </div>
-        <div class="cbar" id="cbar"></div>
-        <div class="tag-bar" id="tbar"></div>
       </div>
-      <div class="tlist" id="tlist"></div>
-      <div class="empty" id="tempty" style="display:none"><div class="empic">🌸</div><div>タスクはありません</div></div>
+      <div class="page-list">
+        <div class="tlist" id="tlist"></div>
+        <div class="empty" id="tempty" style="display:none"><div class="empic">🌸</div><div>タスクはありません</div></div>
+      </div>
     </div>
 
     <!-- DASHBOARD -->
     <div id="page-dash" style="display:none">
-      <div class="ph"><div class="pt">ダッシュボード</div></div>
-      <div class="dash-grid">
-        <div class="dash-card"><div class="dash-ttl">今日の完了</div><div class="dash-kpi" id="kpi-today">0</div><div class="dash-kpi-sub">件</div></div>
-        <div class="dash-card"><div class="dash-ttl">今週の完了</div><div class="dash-kpi" id="kpi-week">0</div><div class="dash-kpi-sub">件</div></div>
-        <div class="dash-card"><div class="dash-ttl">未完了タスク</div><div class="dash-kpi" id="kpi-undone" style="color:var(--gn)">0</div><div class="dash-kpi-sub">件</div></div>
-        <div class="dash-card"><div class="dash-ttl">完了率（全期間）</div><div class="dash-kpi" id="kpi-pct" style="color:var(--mt)">0%</div><div class="dash-kpi-sub">完了/全タスク</div></div>
-        <div class="dash-card wide"><div class="dash-ttl">今週の完了（日別）</div><div class="weekly-grid" id="dash-weekly"></div></div>
-        <div class="dash-card wide"><div class="dash-ttl">カテゴリ別 未完了タスク数</div><div id="dash-cats"></div></div>
-        <div class="dash-card wide"><div class="dash-ttl">担当別 完了数（今月）</div><div id="dash-users"></div></div>
+      <div class="page-scroll">
+        <div class="ph"><div class="pt">ダッシュボード</div></div>
+        <div class="dash-grid">
+          <div class="dash-card"><div class="dash-ttl">今日の完了</div><div class="dash-kpi" id="kpi-today">0</div><div class="dash-kpi-sub">件</div></div>
+          <div class="dash-card"><div class="dash-ttl">今週の完了</div><div class="dash-kpi" id="kpi-week">0</div><div class="dash-kpi-sub">件</div></div>
+          <div class="dash-card"><div class="dash-ttl">未完了タスク</div><div class="dash-kpi" id="kpi-undone" style="color:var(--gn)">0</div><div class="dash-kpi-sub">件</div></div>
+          <div class="dash-card"><div class="dash-ttl">完了率（全期間）</div><div class="dash-kpi" id="kpi-pct" style="color:var(--mt)">0%</div><div class="dash-kpi-sub">完了/全タスク</div></div>
+          <div class="dash-card wide"><div class="dash-ttl">今週の完了（日別）</div><div class="weekly-grid" id="dash-weekly"></div></div>
+          <div class="dash-card wide"><div class="dash-ttl">カテゴリ別 未完了タスク数</div><div id="dash-cats"></div></div>
+          <div class="dash-card wide"><div class="dash-ttl">担当別 完了数（今月）</div><div id="dash-users"></div></div>
+        </div>
       </div>
     </div>
 
     <!-- RECUR -->
     <div id="page-recur" style="display:none">
-      <div class="ph">
-        <div class="pt">定期タスク</div>
-        <button class="bpri" id="btnAddRecur">＋ 定期タスクを追加</button>
+      <div class="page-fixed">
+        <div class="ph">
+          <div class="pt">定期タスク</div>
+          <button class="bpri" id="btnAddRecur">＋ 定期タスクを追加</button>
+        </div>
+        <p style="font-size:.82rem;color:var(--mt);margin-bottom:18px">ログイン時に自動生成。▶ ボタンで今すぐ生成できます。</p>
       </div>
-      <p style="font-size:.82rem;color:var(--mt);margin-bottom:18px">ログイン時に自動生成。▶ ボタンで今すぐ生成できます。</p>
-      <div class="rclist" id="rclist"></div>
-      <div class="empty" id="rcempty" style="display:none"><div class="empic">🔁</div><div>定期タスクはありません</div></div>
+      <div class="page-list">
+        <div class="rclist" id="rclist"></div>
+        <div class="empty" id="rcempty" style="display:none"><div class="empic">🔁</div><div>定期タスクはありません</div></div>
+      </div>
     </div>
 
     <!-- SETTINGS -->
     <div id="page-settings" style="display:none">
+      <div class="page-scroll">
       <div class="ph"><div class="pt">設定</div></div>
       <div class="ssec">
         <div class="sttl">アカウント</div>
@@ -563,12 +578,20 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v04_2026-03-22.4</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v05_2026-03-22</div>
         </div>
       </div>
       <div class="ssec">
         <div class="sttl">ユーザー一覧</div>
         <div id="setusers"></div>
+        <div style="padding:12px 20px 14px;border-top:1px solid var(--bd)">
+          <div style="font-size:.72rem;font-weight:700;color:var(--mt);margin-bottom:8px;letter-spacing:.04em">メンバーを追加</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="fi" id="newmembername" type="text" placeholder="名前（子供など）" style="flex:1;max-width:180px">
+            <button class="bsm" id="btnAddMember">追加</button>
+          </div>
+          <div style="font-size:.72rem;color:var(--mt);margin-top:6px">Googleログイン不要のメンバーを追加できます</div>
+        </div>
       </div>
       <div class="ssec">
         <div class="sttl">カテゴリ</div>
@@ -626,10 +649,9 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
 
       </div>
+      </div><!-- /page-scroll -->
     </div>
   </div>
-
-  <!-- BOTTOM NAV -->
   <nav class="bnav">
     <div class="bnavinner">
       <button class="bnbtn" id="bn-dash"><span class="bnic">📊</span>統計</button>
@@ -687,7 +709,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
   <div class="modal">
     <div class="mhdr"><div class="mttl" id="rmodalttl">定期タスクを追加</div><button class="mclose" id="btnCloseRM">✕</button></div>
     <div class="mbody">
-      <div class="fg"><label class="fl">タスク名 *</label><input class="fi" id="rftitle" type="text" placeholder="例：お風呂掃除"></div>
+      <div class="fg"><label class="fl">タスク名 *</label><div style="display:flex;gap:8px;align-items:center"><input class="fi" id="rftitle" type="text" placeholder="例：お風呂掃除" style="flex:1"><button type="button" id="rfstar" class="star-btn" title="重要フラグ">☆</button></div></div>
       <div class="frow">
         <div class="fg"><label class="fl">カテゴリ</label><select class="fi" id="rfcat"></select></div>
         <div class="fg"><label class="fl">繰り返し</label>
@@ -958,24 +980,43 @@ function onGoogleUser(user){
 
 // デモモード（サンプルデータ・保存なし）
 function loginDemo(){
-  ST.users  = [{id:'u1',name:'おとうさん',color:'#b5c4f0'},{id:'u2',name:'おかあさん',color:'#f4a7b9'}];
+  ST.users  = [
+    {id:'u1',name:'おとうさん',color:'#b5c4f0'},
+    {id:'u2',name:'おかあさん',color:'#f4a7b9'},
+    {id:'u3',name:'こども',color:'#a8d8c8'},
+  ];
   ST.cats   = [
     {id:'c1',name:'家事',color:'#f7c59f'},{id:'c2',name:'買い物',color:'#f4a7b9'},
     {id:'c3',name:'子ども',color:'#a8d8c8'},{id:'c4',name:'手続き',color:'#b5c4f0'},
+    {id:'c5',name:'外出',color:'#c4b5e8'},
   ];
+  const d=(plus)=>{ const dt=new Date(); dt.setDate(dt.getDate()+plus); return dt.toISOString().slice(0,10); };
   ST.tasks  = [
-    {id:'t1',title:'牛乳・卵の買い出し',cid:'c2',aids:['u1'],due:'2026-03-25',done:false,memo:'セール中に買う',url:'',imgs:[],subs:[{id:'s1',tx:'牛乳2本',done:false},{id:'s2',tx:'卵Mサイズ',done:true}],tags:['週次'],doneAt:null,at:new Date().toISOString()},
-    {id:'t2',title:'洗濯物を畳む',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'',url:'',imgs:[],subs:[],tags:['週次'],doneAt:new Date().toISOString(),at:new Date().toISOString()},
-    {id:'t3',title:'子どもの持ち物チェック',cid:'c3',aids:['u2'],due:'2026-03-28',done:false,memo:'入学式までに全て準備',url:'',imgs:[],subs:[{id:'s3a',tx:'上履き',done:true},{id:'s3b',tx:'体育着',done:false}],tags:['入学準備'],doneAt:null,at:new Date().toISOString()},
-    {id:'t4',title:'台所の掃除',cid:'c1',aids:['u2'],due:'2026-03-24',done:false,memo:'',url:'',imgs:[],subs:[],tags:[],doneAt:null,at:new Date().toISOString()},
+    {id:'t01',title:'牛乳・卵の買い出し',cid:'c2',aids:['u1'],due:d(2),done:false,memo:'セール中に買う',url:'',imgs:[],subs:[{id:'s1a',tx:'牛乳2本',done:false},{id:'s1b',tx:'卵Mサイズ',done:true}],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString()},
+    {id:'t02',title:'洗濯物を畳む',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'',url:'',imgs:[],subs:[],tags:['週次'],star:false,doneAt:new Date().toISOString(),at:new Date().toISOString()},
+    {id:'t03',title:'子どもの持ち物チェック',cid:'c3',aids:['u2'],due:d(5),done:false,memo:'入学式までに全て準備',url:'',imgs:[],subs:[{id:'s3a',tx:'上履き',done:true},{id:'s3b',tx:'体育着',done:false},{id:'s3c',tx:'名前テープ貼り',done:false}],tags:['入学準備'],star:true,doneAt:null,at:new Date().toISOString()},
+    {id:'t04',title:'台所の掃除',cid:'c1',aids:['u2'],due:d(-1),done:false,memo:'',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:null,at:new Date().toISOString()},
+    {id:'t05',title:'市役所で転入届を提出',cid:'c4',aids:['u1'],due:d(7),done:false,memo:'マイナンバーカード持参',url:'',imgs:[],subs:[{id:'s5a',tx:'マイナンバーカード',done:false},{id:'s5b',tx:'旧住所の除票',done:false}],tags:['手続き'],star:true,doneAt:null,at:new Date().toISOString()},
+    {id:'t06',title:'洗面所の掃除',cid:'c1',aids:['u2'],due:d(3),done:false,memo:'',url:'',imgs:[],subs:[],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString()},
+    {id:'t07',title:'近くの公園でお花見',cid:'c5',aids:['u1','u2','u3'],due:d(4),done:false,memo:'レジャーシートを忘れずに',url:'',imgs:[],subs:[{id:'s7a',tx:'お弁当を用意',done:false},{id:'s7b',tx:'レジャーシート',done:true}],tags:['お出かけ'],star:false,doneAt:null,at:new Date().toISOString()},
+    {id:'t08',title:'車の点検予約',cid:'c4',aids:['u1'],due:d(10),done:false,memo:'',url:'',imgs:[],subs:[],tags:['月次'],star:false,doneAt:null,at:new Date().toISOString()},
+    {id:'t09',title:'冷蔵庫の整理',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'賞味期限切れを処分',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:new Date().toISOString(),at:new Date().toISOString()},
+    {id:'t10',title:'子どもの歯医者予約',cid:'c3',aids:['u2'],due:d(6),done:false,memo:'定期健診',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:null,at:new Date().toISOString()},
+    {id:'t11',title:'シャンプー・洗剤の補充',cid:'c2',aids:['u1'],due:d(1),done:false,memo:'',url:'',imgs:[],subs:[{id:'s11a',tx:'シャンプー',done:false},{id:'s11b',tx:'柔軟剤',done:false},{id:'s11c',tx:'食器用洗剤',done:true}],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString()},
+    {id:'t12',title:'家計簿の集計',cid:'c4',aids:['u2'],due:d(14),done:false,memo:'先月分まとめる',url:'',imgs:[],subs:[],tags:['月次'],star:false,doneAt:null,at:new Date().toISOString()},
   ];
-  ST.recurs = [];
+  ST.recurs = [
+    {id:'r1',title:'ゴミ出し（燃えるゴミ）',catId:'c1',aids:['u1'],freq:'weekly',wdays:[2,5],mday:1,memo:'',tags:['家事'],lastGen:''},
+    {id:'r2',title:'お風呂掃除',catId:'c1',aids:['u2'],freq:'daily',wdays:[],mday:1,memo:'',tags:['家事'],lastGen:''},
+    {id:'r3',title:'週次食材まとめ買い',catId:'c2',aids:['u1','u2'],freq:'weekly',wdays:[6],mday:1,memo:'週末にまとめて',tags:['週次'],lastGen:''},
+    {id:'r4',title:'子どもの連絡帳チェック',catId:'c3',aids:['u2'],freq:'daily',wdays:[],mday:1,memo:'',tags:[],lastGen:''},
+  ];
   // saveを呼ばない（デモは保存しない）
   loginAs('u1');
 }
 function showPage(p){
   ['dash','tasks','recur','settings'].forEach(x=>{
-    G('page-'+x).style.display = x===p?'block':'none';
+    G('page-'+x).style.display = x===p ? 'flex' : 'none'; // CHANGED: 全ページflex
   });
   ['nav-dash','nav-tasks','nav-recur','nav-settings'].forEach(id=>G(id).classList.remove('active'));
   G('nav-'+p).classList.add('active');
@@ -1010,6 +1051,13 @@ function updateBdg(){
 // ══════════════════════════════════════════
 function renderCBar(){
   const bar=G('cbar'); bar.innerHTML='';
+  // 「なし」ボタン
+  const noneActive=(curCat==='_none');
+  const noneBtn=CE('button',{className:'cc'+(noneActive?' active':'')});
+  if(noneActive) noneBtn.style.cssText='border-color:var(--mt);background:#8882;color:var(--sub);font-weight:700';
+  noneBtn.innerHTML=`<span class="cdot" style="background:var(--bd)"></span>なし`;
+  noneBtn.addEventListener('click',()=>{ curCat=curCat==='_none'?null:'_none'; renderCBar();renderTasks(); });
+  bar.appendChild(noneBtn);
   ST.cats.forEach(c=>{
     const a=(curCat===c.id);
     const btn=CE('button',{className:'cc'+(a?' active':'')});
@@ -1036,7 +1084,7 @@ function renderTasks(){
     if(curFil==='done') return t.done;
     if(curFil==='mine') return (t.aids||[]).includes(ST.uid);
     return true;
-  }).filter(t=> !curCat||t.cid===curCat)
+  }).filter(t=> !curCat || (curCat==='_none' ? !t.cid : t.cid===curCat)) // CHANGED: _none対応
     .filter(t=> !curTag||(t.tags||[]).includes(curTag))
     .filter(t=> !q||t.title.toLowerCase().includes(q)||(t.memo||'').toLowerCase().includes(q));
   list.sort((a,b)=>{
@@ -1295,7 +1343,7 @@ function genNow(rid){
   const r=ST.recurs.find(x=>x.id===rid); if(!r)return;
   const today=new Date().toISOString().slice(0,10);
   ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due:today,done:false,
-    memo:r.memo||'',url:'',imgs:[],subs:[],fromRec:true,recurId:rid});
+    memo:r.memo||'',url:'',imgs:[],subs:[],tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:rid}); // CHANGED: star/tags引き継ぎ
   r.lastGen=today;
   renderAll(); renderRecur(); save();
   showMsg(`「${r.title}」をタスク一覧に追加しました`);
@@ -1311,7 +1359,7 @@ function autoGen(){
     if(r.freq==='monthly') ok=today.getDate()===r.mday;
     if(!ok)return;
     ST.tasks.unshift({id:genId(),title:r.title,cid:r.catId,aids:[...(r.aids||[])],due:ts,done:false,
-      memo:r.memo||'',url:'',imgs:[],subs:[],fromRec:true,recurId:r.id});
+      memo:r.memo||'',url:'',imgs:[],subs:[],tags:[...(r.tags||[])],star:!!r.star,fromRec:true,recurId:r.id}); // CHANGED: star/tags引き継ぎ
     r.lastGen=ts;
   });
 }
@@ -1505,7 +1553,7 @@ function openTModal(id){
   const isEdit=!!id;
   G('tmodalttl').textContent=isEdit?'タスクを編集':'タスクを追加';
   G('btnDelTask').style.display=isEdit?'':'none';
-  G('fcat').innerHTML='<option value="">カテゴリなし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  G('fcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   mSubs=[];
   if(isEdit){
     const t=ST.tasks.find(x=>x.id===id);
@@ -1514,7 +1562,7 @@ function openTModal(id){
     mAids=[...(t.aids||[])]; mSubs=(t.subs||[]).map(s=>({...s})); mTags=[...(t.tags||[])];
     G('fstar').textContent=t.star?'★':'☆'; G('fstar').classList.toggle('on',!!t.star);
   } else {
-    G('ftitle').value=''; G('fcat').value=''; G('fdue').value='';
+    G('ftitle').value=''; G('fcat').value=(curCat&&curCat!=='_none')?curCat:''; G('fdue').value=''; // CHANGED: _none時は空
     G('fmemo').value=''; G('furl').value='';
     mAids=ST.uid?[ST.uid]:[]; mTags=[];
     G('fstar').textContent='☆'; G('fstar').classList.remove('on');
@@ -1583,17 +1631,19 @@ function openRModal(id){
   const isEdit=!!id;
   G('rmodalttl').textContent=isEdit?'定期タスクを編集':'定期タスクを追加';
   G('btnDelRec').style.display=isEdit?'':'none';
-  G('rfcat').innerHTML='<option value="">カテゴリなし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  G('rfcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   rAids=[];
   if(isEdit){
     const r=ST.recurs.find(x=>x.id===id);
     G('rftitle').value=r.title; G('rfcat').value=r.catId||'';
     G('rffreq').value=r.freq;   G('rfmemo').value=r.memo||'';
     G('rfmd').value=r.mday||1;  rAids=[...(r.aids||[])]; rTags=[...(r.tags||[])];
+    G('rfstar').textContent=r.star?'★':'☆'; G('rfstar').classList.toggle('on',!!r.star); // CHANGED
     document.querySelectorAll('#rfwds input[type=checkbox]').forEach(cb=>cb.checked=(r.wdays||[]).includes(+cb.value));
   } else {
     G('rftitle').value=''; G('rfcat').value=''; G('rffreq').value='daily';
     G('rfmemo').value=''; G('rfmd').value=1;
+    G('rfstar').textContent='☆'; G('rfstar').classList.remove('on'); // CHANGED
     document.querySelectorAll('#rfwds input[type=checkbox]').forEach(cb=>cb.checked=false);
     rAids=ST.uid?[ST.uid]:[]; rTags=[];
   }
@@ -1667,7 +1717,8 @@ function saveRecur(){
   const freq=G('rffreq').value;
   const wdays=freq==='weekly'?[...document.querySelectorAll('#rfwds input:checked')].map(c=>+c.value):[];
   const mday=freq==='monthly'?+G('rfmd').value:1;
-  const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mday,memo:G('rfmemo').value.trim(),tags:[...rTags]};
+  const star=G('rfstar').classList.contains('on'); // CHANGED
+  const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mday,memo:G('rfmemo').value.trim(),tags:[...rTags],star};
   if(editRid){ const r=ST.recurs.find(x=>x.id===editRid); if(r) Object.assign(r,d); }
   else ST.recurs.push({id:genId(),lastGen:'',...d});
   closeRModal(); renderRecur(); updateBdg(); save();
@@ -1707,6 +1758,16 @@ if(G('btnGoogleLogin')){
   const btn = G(id); if(btn) btn.addEventListener('click', loginDemo);
 });
 G('newname') && G('newname').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddUser')&&G('btnAddUser').click();});
+// CHANGED: 未登録メンバー追加
+G('btnAddMember').addEventListener('click',()=>{
+  const name=G('newmembername').value.trim();
+  if(!name){showMsg('名前を入力してください');return;}
+  if(ST.users.some(u=>u.name===name)){showMsg('同じ名前のメンバーが既に存在します');return;}
+  ST.users.push({id:genId(),name,color:PASTEL_COLORS[ST.users.length%PASTEL_COLORS.length]});
+  G('newmembername').value='';
+  renderSettings(); renderAll(); save();
+});
+G('newmembername').addEventListener('keydown',e=>{if(!e.isComposing&&e.key==='Enter')G('btnAddMember').click();});
 G('btnLogout').addEventListener('click',()=>{
   cfmDlg('ログアウトしますか？',()=>{
     ST.uid=null;
@@ -1736,6 +1797,7 @@ G('btnCloseRM').addEventListener('click',closeRModal);
 G('btnCancelRM').addEventListener('click',closeRModal);
 G('btnDelRec').addEventListener('click',delRecur);
 G('btnSaveRec').addEventListener('click',saveRecur);
+G('rfstar').addEventListener('click',()=>{ const on=G('rfstar').classList.toggle('on'); G('rfstar').textContent=on?'★':'☆'; }); // CHANGED
 G('rffreq').addEventListener('change',updFreq);
 
 // 設定
@@ -1751,6 +1813,7 @@ G('btnSettingsLogout').addEventListener('click',()=>{
 G('btnAddCat').addEventListener('click',()=>{
   const name=G('newcatname').value.trim(), color=newcatSelectedColor;
   if(!name){showMsg('カテゴリ名を入力してください');return;}
+  if(name==='なし'){showMsg('「なし」はカテゴリ名に使用できません');return;} // CHANGED: 追加
   ST.cats.push({id:genId(),name,color});
   G('newcatname').value=''; renderSettings(); renderAll(); save();
 });
