@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v02_2026-03-23.4
+  @version   v02_2026-03-23.5
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -18,6 +18,7 @@
     v02_2026-03-23.2  - ヘッダーボタン下揃えに変更
     v02_2026-03-23.3  - 補充リストのセクションラベル削除・「ストックに反映」にリネーム
     v02_2026-03-23.4  - 並び順を要補充・カテゴリ順・名前昇順に変更、ボタン操作では並び替えしない
+    v02_2026-03-23.5  - 自己書き込み後のonSnapshot発火による意図しない並び替えを抑制
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -91,6 +92,7 @@ function setupAuth() {
     if (!auth || !auth.currentUser) return;
     try {
       const ref = doc(db, 'shared', FIRESTORE_DOC);
+      window._lastWriteAt = Date.now(); // CHANGED: 書き込みタイムスタンプを記録
       await setDoc(ref, stateObj);
     } catch(e) { console.error('Firestore write error:', e); }
   };
@@ -787,13 +789,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v02_2026-03-23.4</span>
+        <span class="header-version" id="version-inline">v02_2026-03-23.5</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v02_2026-03-23.4</span>
+      <span class="header-version">v02_2026-03-23.5</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -925,7 +927,9 @@ window._applyRemoteState = function(data) {
   if (!data || !data.items) return;
   ST = data;
   renderTabs();
-  renderCards();
+  // CHANGED: 自己書き込み後1.5秒以内のsnapshotは並び替えをスキップ
+  const isSelfWrite = window._lastWriteAt && (Date.now() - window._lastWriteAt < 1500);
+  if (!isSelfWrite) renderCards();
 };
 
 const now = Date.now();
