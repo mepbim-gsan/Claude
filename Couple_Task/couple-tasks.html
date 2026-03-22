@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v05_2026-03-22.10
+  @version   v05_2026-03-22.13
   @chat      Couple_Task_05_メモ機能の追加
   @changelog
     v01_2026-03-20 - 初版（モックモード）
@@ -20,6 +20,9 @@
     v05_2026-03-22.8 - メモカードをクリックで全文展開・折りたたみ、編集は✏️ボタンのみに
     v05_2026-03-22.9 - メモ本文の電話番号自動リンク化（tel:対応）
     v05_2026-03-22.10 - 設定のユーザー一覧をGoogleログイン済み／ログイン不要メンバーに分けて表示
+    v05_2026-03-22.11 - 定型タスクカードをタップで展開（サブタスク・タグを読み取り専用表示）
+    v05_2026-03-22.12 - メンテナンスのデータ表示に定型タスク・メモ・アーカイブ済みメモの件数を追加
+    v05_2026-03-22.13 - メモカードにスワイプ・右クリック削除を追加
 -->
 <html lang="ja">
 <head>
@@ -323,7 +326,9 @@ input,textarea,select{font-family:inherit}
 
 /* ── RECUR PAGE ── */
 .rclist{display:flex;flex-direction:column;gap:10px}
-.rccard{background:var(--sf);border:1px solid var(--bd);border-left:3px solid #2980b9;border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh);display:flex;align-items:flex-start;gap:14px}
+.rccard{background:var(--sf);border:1px solid var(--bd);border-left:3px solid #2980b9;border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh);display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.rccard .tcexp{width:100%;margin:8px -18px -18px;padding:12px 18px;border-top:1px solid var(--bd);background:var(--sf2);display:none}
+.rccard.open .tcexp{display:block}
 .rccard-wrap{position:relative;overflow:hidden;border-radius:var(--r);margin-bottom:10px}
 .rccard-wrap .rccard{margin-bottom:0}
 .rccard-del{position:absolute;right:0;top:0;bottom:0;width:80px;background:rgba(192,57,43,.88);backdrop-filter:blur(2px);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;cursor:pointer;border:none;opacity:0;pointer-events:none;transition:opacity .18s ease}
@@ -534,7 +539,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v05_2026-03-22.10</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v05_2026-03-22.13</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -644,7 +649,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v05_2026-03-22.10</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v05_2026-03-22.13</div>
         </div>
       </div>
       <div class="ssec">
@@ -1420,6 +1425,7 @@ function renderRecur(){
     if(r.freq==='monthly') fd=`（${(r.mdays||[]).map(d=>d===0?'月末':d+'日').join('・')}）`;
 
     const card=CE('div',{className:'rccard'});
+    card.style.cursor='pointer';
     card.innerHTML=`<div class="rcic">${r.star?'<span style="color:#f5a623;font-size:1.1rem">★</span>':'📋'}</div>
       <div class="rcinfo">
         <div class="tctrow" style="margin-bottom:6px">
@@ -1436,10 +1442,45 @@ function renderRecur(){
 
     const actsEl=card.querySelector('#rcacts-'+r.id);
     const editBtn=CE('button',{className:'ib',textContent:'✏️'});
-    editBtn.addEventListener('click',()=>openRModal(r.id));
+    editBtn.addEventListener('click',e=>{ e.stopPropagation(); openRModal(r.id); });
     const genBtn=CE('button',{className:'ib',title:'タスクを生成'});
     genBtn.textContent='▶️';
-    genBtn.addEventListener('click',()=>openGenDlg(r.id));
+    genBtn.addEventListener('click',e=>{ e.stopPropagation(); openGenDlg(r.id); });
+    actsEl.appendChild(editBtn); actsEl.appendChild(genBtn);
+
+    // 展開エリア（サブタスク・メモ・タグ）
+    const hasSubs=(r.subs||[]).length, hasMemo=r.memo, hasTags=(r.tags||[]).length;
+    if(hasSubs||hasTags){
+      const exp=CE('div',{className:'tcexp'});
+      if(hasSubs){
+        const sec=CE('div',{className:'esec'});
+        const lbl=CE('div',{className:'elbl',textContent:'サブタスク'});
+        sec.appendChild(lbl);
+        const sl=CE('div',{className:'slist'});
+        r.subs.forEach(s=>{
+          const item=CE('div',{className:'sitem'});
+          item.style.cssText='pointer-events:none';
+          const chk=CE('div',{className:'schk',textContent:''});
+          chk.style.cssText='opacity:.4';
+          const tx=CE('span',{className:'stx',textContent:s.tx});
+          item.appendChild(chk); item.appendChild(tx);
+          sl.appendChild(item);
+        });
+        sec.appendChild(sl);
+        exp.appendChild(sec);
+      }
+      if(hasTags){
+        const sec=CE('div',{className:'esec'});
+        const lbl=CE('div',{className:'elbl',textContent:'タグ'});
+        sec.appendChild(lbl);
+        const tw=CE('div',{style:'display:flex;gap:4px;flex-wrap:wrap'});
+        r.tags.forEach(tag=>tw.appendChild(CE('span',{className:'tc-tag',textContent:'# '+tag})));
+        sec.appendChild(tw);
+        exp.appendChild(sec);
+      }
+      card.appendChild(exp);
+      card.addEventListener('click',()=>card.classList.toggle('open'));
+    }
     actsEl.appendChild(editBtn); actsEl.appendChild(genBtn);
 
     const rcWrap=CE('div',{className:'rccard-wrap'});
@@ -2574,7 +2615,34 @@ function buildMemoCard(m){
     dl.appendChild(CE('span',{textContent:fmtDT(m.updatedAt)}));
     card.appendChild(dl);
   }
-  return card;
+  // スワイプ・右クリック削除（タスクと同パターン）
+  const wrap=CE('div',{className:'tc-wrap'});
+  const delBtn=CE('button',{className:'tc-del-btn'});
+  delBtn.innerHTML='<span>🗑</span>削除';
+  delBtn.addEventListener('click',e=>{
+    e.stopPropagation();
+    cfmDlg(`「${m.title}」を削除しますか？`,()=>{
+      ST.memos=(ST.memos||[]).filter(x=>x.id!==m.id);
+      wrap.remove(); updateBdg(); save();
+    });
+  });
+  card.addEventListener('contextmenu',e=>{
+    e.preventDefault();
+    if(swipedCard&&swipedCard!==wrap) closeSwipe(swipedCard);
+    wrap.classList.toggle('swiped'); swipedCard=wrap.classList.contains('swiped')?wrap:null;
+  });
+  let mx0=0, my0=0, mswiping=false;
+  card.addEventListener('touchstart',e=>{ mx0=e.touches[0].clientX; my0=e.touches[0].clientY; mswiping=false; },{passive:true});
+  card.addEventListener('touchmove',e=>{
+    const dx=e.touches[0].clientX-mx0, dy=e.touches[0].clientY-my0;
+    if(!mswiping&&Math.abs(dy)>Math.abs(dx)) return;
+    mswiping=true;
+    if(dx<-18){ if(swipedCard&&swipedCard!==wrap) closeSwipe(swipedCard); wrap.classList.add('swiped'); swipedCard=wrap; }
+    else if(dx>18){ closeSwipe(wrap); }
+  },{passive:true});
+  wrap.appendChild(card);
+  wrap.appendChild(delBtn);
+  return wrap;
 }
 
 function openMModal(id){
@@ -2663,6 +2731,9 @@ function renderMaintenance(){
   const total = ST.tasks.length;
   const done  = ST.tasks.filter(t=>t.done).length;
   const undone = total - done;
+  const recurs = ST.recurs.length;
+  const memos  = (ST.memos||[]).filter(m=>!m.archived).length;
+  const memoArc= (ST.memos||[]).filter(m=>m.archived).length;
   const el = G('maint-size');
   const card = (lbl,val,sub)=>`<div style="background:var(--bg2);border-radius:10px;padding:8px 14px;text-align:center;min-width:64px">
     <div style="font-size:1rem;font-weight:700;color:var(--ac);font-family:'Josefin Sans',sans-serif">${val}</div>
@@ -2671,9 +2742,12 @@ function renderMaintenance(){
   </div>`;
   if(el) el.innerHTML =
     '<div style="display:flex;gap:10px;flex-wrap:wrap">'
-    + card('未完了', undone, '件')
-    + card('完了済み', done, '件')
-    + card('合計', total, '件')
+    + card('タスク未完了', undone, '件')
+    + card('タスク完了済み', done, '件')
+    + card('タスク合計', total, '件')
+    + card('定型タスク', recurs, '件')
+    + card('メモ', memos, '件')
+    + card('アーカイブ済みメモ', memoArc, '件')
     + card('データ', totalKB, 'KB')
     + '</div>';
 }
