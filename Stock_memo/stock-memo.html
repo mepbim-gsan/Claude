@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v02_2026-03-24.2
+  @version   v02_2026-03-24.6
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -22,7 +22,11 @@
     v02_2026-03-23.6  - 品目追加時にアクティブなカテゴリタブをデフォルト選択
     v02_2026-03-23.7  - 備考の改行を保持・表示、インライン編集をtextareaに変更
     v02_2026-03-24    - 備考なし時のカード高さ不均一を修正
-    v02_2026-03-24.2  - 検索バー追加（品目名・備考対象、✕クリアボタン付き）、ヘッダー高さ変化によるタブずれ修正（card-noteクラスの付け外し）
+    v02_2026-03-24.2  - 検索バー追加（品目名・備考対象、✕クリアボタン付き）、ヘッダー高さ変化によるタブずれ修正
+    v02_2026-03-24.3  - card-bottomに更新者・日時を統合、余白を詰める
+    v02_2026-03-24.4  - カードレイアウトを元に戻す
+    v02_2026-03-24.5  - 未確認フィルター（⌛）追加、設定で日数選択（7/14/30/60日）
+    v02_2026-03-24.6  - 検索バーをタブバーの上に移動、サンプルデータに商品名・保管場所・updatedBy追加（card-noteクラスの付け外し）
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -408,6 +412,12 @@ if (savedConfig) {
     justify-content: space-between;
     margin-top: 6px;
   }
+  .card-updated {
+    font-size: 11px;
+    color: var(--text-sub);
+    text-align: right;
+    margin-top: 6px;
+  }
   .stock-info {
     display: flex;
     align-items: baseline;
@@ -461,12 +471,6 @@ if (savedConfig) {
     text-decoration: underline;
   }
 
-  .card-updated {
-    font-size: 11px;
-    color: var(--text-sub);
-    text-align: right;
-    margin-top: 6px;
-  }
 
   /* FAB */
   .fab-area {
@@ -810,6 +814,12 @@ if (savedConfig) {
     line-height: 1;
   }
 
+  .btn-stale.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
   /* コピー完了トースト */
   .toast {
     position: fixed;
@@ -837,13 +847,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v02_2026-03-24.2</span>
+        <span class="header-version" id="version-inline">v02_2026-03-24.6</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v02_2026-03-24.2</span>
+      <span class="header-version">v02_2026-03-24.6</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -852,16 +862,19 @@ if (savedConfig) {
   </div>
 </div>
 
-<!-- カテゴリタブ -->
-<div class="tab-bar" id="tabBar"></div>
-
 <!-- 検索バー -->
 <div class="search-bar" id="searchBar">
-  <div class="search-wrap">
-    <input class="search-input" id="searchInput" type="text" placeholder="🔍 品目を検索...">
-    <button class="search-clear" id="searchClear">✕</button>
+  <div style="display:flex;gap:8px;align-items:center">
+    <div class="search-wrap" style="flex:1">
+      <input class="search-input" id="searchInput" type="text" placeholder="🔍 品目を検索...">
+      <button class="search-clear" id="searchClear">✕</button>
+    </div>
+    <button class="btn-icon btn-stale" id="btnStale" onclick="toggleStale()" title="未確認フィルター">⌛</button>
   </div>
 </div>
+
+<!-- カテゴリタブ -->
+<div class="tab-bar" id="tabBar"></div>
 
 <!-- カード一覧 -->
 <div class="card-list" id="cardList"></div>
@@ -937,6 +950,15 @@ if (savedConfig) {
       </div>
     </div>
     <div class="form-row" style="margin-top:8px">
+      <label>未確認フィルター（⌛）の日数</label>
+      <select id="staleDaysSel" style="margin-top:6px;width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:15px;font-family:inherit;background:var(--bg);color:var(--text)" onchange="saveStaleDays()">
+        <option value="7">7日以上</option>
+        <option value="14">14日以上</option>
+        <option value="30">30日以上</option>
+        <option value="60">60日以上</option>
+      </select>
+    </div>
+    <div class="form-row" style="margin-top:8px">
       <label style="margin-bottom:8px">Firebase</label>
       <div id="firebase-config-section">読み込み中…</div>
     </div>
@@ -992,24 +1014,25 @@ const now = Date.now();
 const DAY = 86400000;
 const DEFAULT = {
   categories: ['食品', 'キッチン', '洗濯・バス', 'トイレ・ティッシュ', 'その他'],
+  staleDays: 30,
   items: [
-    { id: '1',  name: 'マヨネーズ',         cat: '食品',              stock: 1, target: 2, note: '',               updatedAt: now - 3*DAY },
-    { id: '2',  name: 'ケチャップ',          cat: '食品',              stock: 0, target: 1, note: '',               updatedAt: now - 18*DAY },
-    { id: '3',  name: '鍋の素',              cat: '食品',              stock: 2, target: 3, note: 'とんこつ・キムチ・寄せ鍋', updatedAt: now - 45*DAY },
-    { id: '4',  name: 'めんつゆ',            cat: '食品',              stock: 1, target: 2, note: '',               updatedAt: now - 12*DAY },
-    { id: '5',  name: '食器洗剤',            cat: 'キッチン',          stock: 1, target: 2, note: '詰め替え用',     updatedAt: now - 6*DAY },
-    { id: '6',  name: 'ラップ',              cat: 'キッチン',          stock: 2, target: 2, note: '',               updatedAt: now - 22*DAY },
-    { id: '7',  name: 'アルミホイル',        cat: 'キッチン',          stock: 1, target: 1, note: '',               updatedAt: now - 60*DAY },
-    { id: '8',  name: 'キッチンペーパー',    cat: 'キッチン',          stock: 0, target: 2, note: '',               updatedAt: now - 9*DAY },
-    { id: '9',  name: '洗濯洗剤',            cat: '洗濯・バス',        stock: 1, target: 2, note: '詰め替え用',     updatedAt: now - 4*DAY },
-    { id: '10', name: '柔軟剤',              cat: '洗濯・バス',        stock: 0, target: 2, note: '詰め替え用',     updatedAt: now - 2*DAY },
-    { id: '11', name: 'ハンドソープ',        cat: '洗濯・バス',        stock: 2, target: 2, note: '詰め替え用',     updatedAt: now - 16*DAY },
-    { id: '12', name: 'ボディソープ',        cat: '洗濯・バス',        stock: 1, target: 2, note: '詰め替え用',     updatedAt: now - 30*DAY },
-    { id: '13', name: 'トイレットペーパー',  cat: 'トイレ・ティッシュ', stock: 2, target: 2, note: '8ロール×2パック', updatedAt: now - 1*DAY },
-    { id: '14', name: 'ティッシュ',          cat: 'トイレ・ティッシュ', stock: 3, target: 3, note: '5箱パック換算',  updatedAt: now - 25*DAY },
-    { id: '15', name: 'トイレ洗剤',          cat: 'トイレ・ティッシュ', stock: 1, target: 2, note: '',               updatedAt: now - 40*DAY },
-    { id: '16', name: 'ゴミ袋（45L）',       cat: 'その他',            stock: 1, target: 2, note: '',               updatedAt: now - 8*DAY },
-    { id: '17', name: '電池（単3）',         cat: 'その他',            stock: 2, target: 4, note: '',               updatedAt: now - 90*DAY },
+    { id: '1',  name: 'マヨネーズ',         cat: '食品',               stock: 1, target: 2, note: 'キューピー / 冷蔵庫横',         updatedAt: now - 3*DAY,   updatedBy: 'Genta' },
+    { id: '2',  name: 'ケチャップ',          cat: '食品',               stock: 0, target: 1, note: 'カゴメ / 冷蔵庫横',             updatedAt: now - 18*DAY,  updatedBy: 'Yuki' },
+    { id: '3',  name: '鍋の素',              cat: '食品',               stock: 2, target: 3, note: 'とんこつ・キムチ・寄せ鍋 / 棚上段', updatedAt: now - 45*DAY, updatedBy: 'Genta' },
+    { id: '4',  name: 'めんつゆ',            cat: '食品',               stock: 1, target: 2, note: 'ヤマキ / 棚上段',               updatedAt: now - 12*DAY,  updatedBy: 'Yuki' },
+    { id: '5',  name: '食器用洗剤',          cat: 'キッチン',           stock: 1, target: 2, note: 'ジョイ詰め替え / シンク下',      updatedAt: now - 6*DAY,   updatedBy: 'Genta' },
+    { id: '6',  name: 'ラップ',              cat: 'キッチン',           stock: 2, target: 2, note: 'サランラップ30cm / 引き出し',    updatedAt: now - 22*DAY,  updatedBy: 'Yuki' },
+    { id: '7',  name: 'アルミホイル',        cat: 'キッチン',           stock: 0, target: 1, note: '25m / 引き出し',                updatedAt: now - 60*DAY,  updatedBy: 'Genta' },
+    { id: '8',  name: 'キッチンペーパー',    cat: 'キッチン',           stock: 0, target: 2, note: 'スコッティ / シンク下',          updatedAt: now - 9*DAY,   updatedBy: 'Yuki' },
+    { id: '9',  name: '洗濯洗剤',            cat: '洗濯・バス',         stock: 1, target: 2, note: 'アリエール詰め替え / 洗面台下', updatedAt: now - 4*DAY,   updatedBy: 'Genta' },
+    { id: '10', name: '柔軟剤',              cat: '洗濯・バス',         stock: 0, target: 2, note: 'レノア詰め替え / 洗面台下',     updatedAt: now - 2*DAY,   updatedBy: 'Yuki' },
+    { id: '11', name: 'ハンドソープ',        cat: '洗濯・バス',         stock: 2, target: 2, note: 'ビオレ詰め替え / 洗面台下',     updatedAt: now - 16*DAY,  updatedBy: 'Genta' },
+    { id: '12', name: 'ボディソープ',        cat: '洗濯・バス',         stock: 1, target: 2, note: 'LUX詰め替え / 風呂収納',        updatedAt: now - 35*DAY,  updatedBy: 'Yuki' },
+    { id: '13', name: 'トイレットペーパー',  cat: 'トイレ・ティッシュ', stock: 2, target: 2, note: '8ロール×2パック / トイレ収納',  updatedAt: now - 1*DAY,   updatedBy: 'Genta' },
+    { id: '14', name: 'ティッシュ',          cat: 'トイレ・ティッシュ', stock: 3, target: 3, note: '5箱パック換算 / リビング棚',    updatedAt: now - 25*DAY,  updatedBy: 'Yuki' },
+    { id: '15', name: 'トイレ洗剤',          cat: 'トイレ・ティッシュ', stock: 1, target: 2, note: 'ドメスト / トイレ収納',         updatedAt: now - 40*DAY,  updatedBy: 'Genta' },
+    { id: '16', name: 'ゴミ袋（45L）',       cat: 'その他',             stock: 1, target: 2, note: '半透明 / 洗面台下',             updatedAt: now - 8*DAY,   updatedBy: 'Yuki' },
+    { id: '17', name: '電池（単3）',         cat: 'その他',             stock: 2, target: 4, note: 'パナソニック / 引き出し',       updatedAt: now - 90*DAY,  updatedBy: 'Genta' },
   ]
 };
 
@@ -1020,7 +1043,8 @@ let ST = loadData() || JSON.parse(JSON.stringify(DEFAULT));
 // ============================================================
 let curCat = 'all';
 let editingId = null;
-let buyItems = []; // { id, name, qty, checked }
+let buyItems = [];
+let staleFilter = false; // CHANGED: 未確認フィルターフラグ
 
 // ============================================================
 // タブ
@@ -1073,11 +1097,16 @@ function relativeTime(ts) {
 
 function renderCards() {
   const list = document.getElementById('cardList');
-  const q = (document.getElementById('searchInput')?.value || '').trim().toLowerCase(); // CHANGED
+  const q = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
   let base = curCat === 'all' ? ST.items : ST.items.filter(i => i.cat === curCat);
-  if (q) base = base.filter(i => // CHANGED: 検索フィルタ
+  if (q) base = base.filter(i =>
     i.name.toLowerCase().includes(q) || (i.note && i.note.toLowerCase().includes(q))
   );
+  if (staleFilter) { // CHANGED: 未確認フィルター
+    const days = ST.staleDays || 30;
+    const threshold = Date.now() - days * 86400000;
+    base = base.filter(i => !i.updatedAt || i.updatedAt < threshold);
+  }
   const items = sortedItems(base);
 
   if (items.length === 0) {
@@ -1352,8 +1381,26 @@ function fallbackCopy(text) {
 // ============================================================
 function openSettings() {
   renderCatList();
-  if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI(); // CHANGED
+  // CHANGED: 未確認日数セレクトを現在値に設定
+  const sel = document.getElementById('staleDaysSel');
+  if (sel) sel.value = ST.staleDays || 30;
+  if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
   document.getElementById('settingsOverlay').classList.add('open');
+}
+
+// CHANGED: 未確認フィルター
+function toggleStale() {
+  staleFilter = !staleFilter;
+  const btn = document.getElementById('btnStale');
+  if (btn) btn.classList.toggle('active', staleFilter);
+  renderCards();
+}
+
+function saveStaleDays() {
+  const val = parseInt(document.getElementById('staleDaysSel').value);
+  ST.staleDays = val;
+  saveData();
+  if (staleFilter) renderCards();
 }
 
 function closeSettings() {
@@ -1461,12 +1508,12 @@ function showToast(msg) {
 // ============================================================
 // 初期化
 // ============================================================
-function updateStickyTops() { // CHANGED: ヘッダー高さに応じてtopを動的設定
+function updateStickyTops() {
   const headerH = document.querySelector('.header')?.offsetHeight || 0;
-  const tabBar = document.getElementById('tabBar');
   const searchBar = document.getElementById('searchBar');
-  if (tabBar) tabBar.style.top = headerH + 'px';
-  if (searchBar) searchBar.style.top = (headerH + (tabBar?.offsetHeight || 0)) + 'px';
+  const tabBar = document.getElementById('tabBar');
+  if (searchBar) searchBar.style.top = headerH + 'px';
+  if (tabBar) tabBar.style.top = (headerH + (searchBar?.offsetHeight || 0)) + 'px';
 }
 
 // 検索イベント
