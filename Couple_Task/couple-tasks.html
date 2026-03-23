@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v06_2026-03-23.12
+  @version   v06_2026-03-23.16
   @chat      Couple_Task_06_相手の更新をしる
   @changelog
     v01_2026-03-20 - 初版（モックモード）
@@ -34,7 +34,11 @@
     v06_2026-03-23.9 - メモ検索にも✕ボタン追加
     v06_2026-03-23.10 - 定型タスク：頻度名称統一・検索欄追加・頻度別セクション表示
     v06_2026-03-23.11 - 定型タスク：カテゴリフィルタ追加・カード内頻度表示削除・レイアウト調整
-    v06_2026-03-23.12 - 定型タスク：セクションヘッダー上余白を縮小
+    v06_2026-03-23.12 - 定型タスク：セクションヘッダー上余白を縮小・設定画面のバージョン表示修正
+    v06_2026-03-23.13 - Soonフィルタ追加（7日以内）・選択中フィルタ再タップでActiveに戻る
+    v06_2026-03-23.14 - Activeボタン削除・再タップでハイライト解除（Active状態）に戻る動作を修正
+    v06_2026-03-23.15 - フィルタハイライト解除不具合修正（classList.remove/addに変更）
+    v06_2026-03-23.16 - モバイルでのhover残留によるハイライト解除不具合を修正
 -->
 <html lang="ja">
 <head>
@@ -263,7 +267,8 @@ input,textarea,select{font-family:inherit}
 .fbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .fbar::-webkit-scrollbar{display:none}
 .fc{padding:6px 13px;border-radius:99px;border:1.5px solid var(--bd);background:var(--sf);color:var(--sub);font-size:.78rem;white-space:nowrap;flex-shrink:0;transition:all .15s}
-.fc:hover,.fc.active{border-color:var(--ac);background:var(--acl);color:var(--ac);font-weight:700}
+.fc.active{border-color:var(--ac);background:var(--acl);color:var(--ac);font-weight:700}
+@media(hover:hover){.fc:hover{border-color:var(--ac);background:var(--acl);color:var(--ac);font-weight:700}} /* CHANGED: モバイルhover残留防止 */
 /* 3行目：カテゴリ */
 .cbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .cbar::-webkit-scrollbar{display:none}
@@ -555,7 +560,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
-      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v06_2026-03-23.12</div>
+      <div style="font-size:.68rem;color:var(--mt);padding:4px 12px 8px;letter-spacing:.03em">v06_2026-03-23.16</div>
       <button class="blogout" id="btnLogout">🔓 ログアウト</button>
     </div>
   </div>
@@ -578,9 +583,9 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
             <button id="btn-toggle-tags" style="padding:7px 10px;border-radius:99px;border:1.5px solid var(--bd);background:var(--sf);color:var(--sub);font-size:.78rem;white-space:nowrap;flex-shrink:0;transition:all .15s"># タグ</button>
           </div>
           <div class="fbar">
-            <button class="fc active" id="f-active">Active</button>
             <button class="fc" id="f-undone">Pending</button>
             <button class="fc" id="f-overdue">Overdue</button>
+            <button class="fc" id="f-soon">Soon</button>
             <button class="fc fc-mine-btn" id="f-mine">Mine<span id="mine-label"></span></button><button class="fc fc-mine-arr" id="f-mine-arr">&#9660;</button>
             <button class="fc" id="f-done">Done</button>
             <button class="fc" id="f-all">All</button>
@@ -680,7 +685,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v06_2026-03-23.12</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v06_2026-03-23.16</div>
         </div>
       </div>
       <div class="ssec">
@@ -1246,6 +1251,7 @@ function renderTasks(){
     if(curFil==='active') return !t.done || (t.doneAt && new Date(t.doneAt).getTime()>=h24ago);
     if(curFil==='undone') return !t.done;
     if(curFil==='overdue') return !t.done && isOv(t.due);
+    if(curFil==='soon'){ const d7=new Date(); d7.setDate(d7.getDate()+7); return !t.done && t.due && !isOv(t.due) && new Date(t.due)<=d7; } // CHANGED: Soon
     if(curFil==='done') return t.done;
     if(curFil==='mine'){ if(curMem==='_none') return !(t.aids&&t.aids.length); if(curMem) return (t.aids||[]).includes(curMem); return (t.aids||[]).includes(ST.uid); }
     if(curFil==='others') return !!(t.updatedBy && t.updatedBy !== ST.uid); // CHANGED: Othersフィルタ
@@ -2210,9 +2216,10 @@ G('btnAddCat').addEventListener('click',()=>{
 });
 
 // フィルター
-['active','undone','overdue','done','all','others'].forEach(f=>{ // CHANGED: others追加
+['undone','overdue','soon','done','all','others'].forEach(f=>{ // CHANGED: active削除
   G('f-'+f).addEventListener('click',()=>{
-    curFil=f; curMem=null; // CHANGED: Mine以外はcurMemリセット
+    curFil = (curFil===f) ? 'active' : f; // CHANGED: 再タップでactive（ハイライトなし）に戻る
+    curMem=null;
     updateFbar();
     renderTasks();
   });
@@ -2263,6 +2270,7 @@ function closeMineDD(){
 G('f-mine').addEventListener('touchstart',e=>{ e.stopPropagation(); },{passive:true});
 G('f-mine').addEventListener('click',e=>{
   e.stopPropagation();
+  if(curFil==='mine'){ closeMineDD(); curFil='active'; curMem=null; updateFbar(); renderTasks(); return; } // CHANGED: 再タップでactive
   closeMineDD();
   curFil='mine'; curMem=null;
   updateFbar(); renderTasks();
@@ -2275,7 +2283,11 @@ G('f-mine-arr').addEventListener('click',e=>{
 });
 
 function updateFbar(){
-  ['active','undone','overdue','done','all','others'].forEach(x=>G('f-'+x).classList.toggle('active',x===curFil)); // CHANGED: others追加
+  ['undone','overdue','soon','done','all','others'].forEach(x=>{
+    const btn=G('f-'+x);
+    btn.classList.remove('active'); // CHANGED: 先に全部外す
+    if(x===curFil) btn.classList.add('active');
+  });
   const mineActive=(curFil==='mine');
   G('f-mine').classList.toggle('active', mineActive);
   G('f-mine-arr').classList.toggle('active', mineActive);
