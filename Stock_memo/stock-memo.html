@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v02_2026-03-23.5
+  @version   v02_2026-03-24.2
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -19,6 +19,10 @@
     v02_2026-03-23.3  - 補充リストのセクションラベル削除・「ストックに反映」にリネーム
     v02_2026-03-23.4  - 並び順を要補充・カテゴリ順・名前昇順に変更、ボタン操作では並び替えしない
     v02_2026-03-23.5  - 自己書き込み後のonSnapshot発火による意図しない並び替えを抑制
+    v02_2026-03-23.6  - 品目追加時にアクティブなカテゴリタブをデフォルト選択
+    v02_2026-03-23.7  - 備考の改行を保持・表示、インライン編集をtextareaに変更
+    v02_2026-03-24    - 備考なし時のカード高さ不均一を修正
+    v02_2026-03-24.2  - 検索バー追加（品目名・備考対象、✕クリアボタン付き）、ヘッダー高さ変化によるタブずれ修正（card-noteクラスの付け外し）
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -135,6 +139,7 @@ function updateAuthUI(user) {
     if (verInline) verInline.style.display = ''; // CHANGED: 未ログイン時はrow1に表示
   }
   if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
+  setTimeout(updateStickyTops, 50); // CHANGED: ログイン状態変化後にtop再計算
 }
 
 window._renderFirebaseConfigUI = function() {
@@ -296,7 +301,7 @@ if (savedConfig) {
     overflow-x: auto;
     scrollbar-width: none;
     position: sticky;
-    top: 66px;
+    top: 0; /* CHANGED: JSで動的に設定 */
     z-index: 99;
     padding: 0 max(16px, calc(50% - 528px));
   }
@@ -394,6 +399,7 @@ if (savedConfig) {
     color: var(--text-sub);
     margin-bottom: 8px;
     min-height: 0;
+    white-space: pre-wrap; /* CHANGED: 改行を保持 */
   }
   .card-note:empty { display: none; }
   .card-bottom {
@@ -648,6 +654,8 @@ if (savedConfig) {
     font-family: inherit;
     background: var(--bg);
     color: var(--text);
+    resize: vertical; /* CHANGED */
+    min-height: 60px; /* CHANGED */
   }
   .note-edit-btns {
     display: flex;
@@ -762,6 +770,46 @@ if (savedConfig) {
     color: var(--text);
   }
 
+  /* 検索バー */
+  .search-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px max(16px, calc(50% - 528px));
+    position: sticky;
+    top: 0; /* JSで動的に設定 */
+    z-index: 98;
+  }
+  .search-wrap {
+    position: relative;
+  }
+  .search-input {
+    width: 100%;
+    padding: 8px 32px 8px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 99px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-clear {
+    display: none;
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-sub);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+
   /* コピー完了トースト */
   .toast {
     position: fixed;
@@ -789,13 +837,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v02_2026-03-23.5</span>
+        <span class="header-version" id="version-inline">v02_2026-03-24.2</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v02_2026-03-23.5</span>
+      <span class="header-version">v02_2026-03-24.2</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -806,6 +854,14 @@ if (savedConfig) {
 
 <!-- カテゴリタブ -->
 <div class="tab-bar" id="tabBar"></div>
+
+<!-- 検索バー -->
+<div class="search-bar" id="searchBar">
+  <div class="search-wrap">
+    <input class="search-input" id="searchInput" type="text" placeholder="🔍 品目を検索...">
+    <button class="search-clear" id="searchClear">✕</button>
+  </div>
+</div>
 
 <!-- カード一覧 -->
 <div class="card-list" id="cardList"></div>
@@ -1017,9 +1073,11 @@ function relativeTime(ts) {
 
 function renderCards() {
   const list = document.getElementById('cardList');
-  const base = curCat === 'all'
-    ? ST.items
-    : ST.items.filter(i => i.cat === curCat);
+  const q = (document.getElementById('searchInput')?.value || '').trim().toLowerCase(); // CHANGED
+  let base = curCat === 'all' ? ST.items : ST.items.filter(i => i.cat === curCat);
+  if (q) base = base.filter(i => // CHANGED: 検索フィルタ
+    i.name.toLowerCase().includes(q) || (i.note && i.note.toLowerCase().includes(q))
+  );
   const items = sortedItems(base);
 
   if (items.length === 0) {
@@ -1036,11 +1094,10 @@ function renderCards() {
           <span class="card-cat">${item.cat}</span>
           ${alert ? '<span class="badge-alert">要補充</span>' : '<span class="badge-alert-placeholder"></span>'}
         </div>
-        ${item.note ? `<div class="card-note" id="note-${item.id}">${item.note}
-          <button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">編集</button>
-        </div>` : `<div class="card-note" id="note-${item.id}">
-          <button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">＋ 備考</button>
-        </div>`}
+        ${item.note
+          ? `<div class="card-note" id="note-${item.id}">${item.note} <button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">編集</button></div>`
+          : `<div id="note-${item.id}"><button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">＋ 備考</button></div>`
+        }
         <div id="note-edit-${item.id}"></div>
         <div class="card-bottom">
           <div class="stock-info">
@@ -1097,7 +1154,7 @@ function showNoteEdit(id) {
   const area = document.getElementById('note-edit-' + id);
   area.innerHTML = `
     <div class="note-edit-area">
-      <input class="note-edit-input" id="note-input-${id}" value="${item.note}" placeholder="備考を入力">
+      <textarea class="note-edit-input" id="note-input-${id}" placeholder="備考を入力">${item.note}</textarea>
       <div class="note-edit-btns">
         <button class="note-save-btn" onclick="saveNote('${id}')">保存</button>
         <button class="note-cancel-btn" onclick="cancelNote('${id}')">キャンセル</button>
@@ -1117,9 +1174,13 @@ function saveNote(id) {
   saveData();
   const noteDiv = document.getElementById('note-' + id);
   const editArea = document.getElementById('note-edit-' + id);
-  noteDiv.innerHTML = val
-    ? `${val} <button class="btn-edit-note" onclick="showNoteEdit('${id}')">編集</button>`
-    : `<button class="btn-edit-note" onclick="showNoteEdit('${id}')">＋ 備考</button>`;
+  if (val) {
+    noteDiv.className = 'card-note'; // CHANGED: 備考ありはcard-noteクラスを付ける
+    noteDiv.innerHTML = `${val} <button class="btn-edit-note" onclick="showNoteEdit('${id}')">編集</button>`;
+  } else {
+    noteDiv.className = ''; // CHANGED: 備考なしはcard-noteクラスを外す
+    noteDiv.innerHTML = `<button class="btn-edit-note" onclick="showNoteEdit('${id}')">＋ 備考</button>`;
+  }
   editArea.innerHTML = '';
 }
 
@@ -1148,8 +1209,9 @@ function openItemModal(id) {
   document.getElementById('btnDelete').style.display = item ? 'block' : 'none';
 
   const sel = document.getElementById('fCat');
+  const defaultCat = (!item && curCat !== 'all') ? curCat : (item ? item.cat : ST.categories[0]); // CHANGED
   sel.innerHTML = ST.categories.map(c =>
-    `<option value="${c}" ${item && item.cat === c ? 'selected' : ''}>${c}</option>`
+    `<option value="${c}" ${c === defaultCat ? 'selected' : ''}>${c}</option>`
   ).join('');
 
   document.getElementById('itemOverlay').classList.add('open');
@@ -1399,8 +1461,30 @@ function showToast(msg) {
 // ============================================================
 // 初期化
 // ============================================================
+function updateStickyTops() { // CHANGED: ヘッダー高さに応じてtopを動的設定
+  const headerH = document.querySelector('.header')?.offsetHeight || 0;
+  const tabBar = document.getElementById('tabBar');
+  const searchBar = document.getElementById('searchBar');
+  if (tabBar) tabBar.style.top = headerH + 'px';
+  if (searchBar) searchBar.style.top = (headerH + (tabBar?.offsetHeight || 0)) + 'px';
+}
+
+// 検索イベント
+document.getElementById('searchInput').addEventListener('input', () => {
+  const val = document.getElementById('searchInput').value;
+  document.getElementById('searchClear').style.display = val ? 'block' : 'none';
+  renderCards();
+});
+document.getElementById('searchClear').addEventListener('click', () => {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').style.display = 'none';
+  renderCards();
+});
+
 renderTabs();
 renderCards();
+updateStickyTops();
+window.addEventListener('resize', updateStickyTops);
 </script>
 </body>
 </html>
