@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v05_2026-03-22.13
-  @chat      Couple_Task_05_メモ機能の追加
+  @version   v06_2026-03-23.12
+  @chat      Couple_Task_06_相手の更新をしる
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
@@ -23,11 +23,23 @@
     v05_2026-03-22.11 - 定型タスクカードをタップで展開（サブタスク・タグを読み取り専用表示）
     v05_2026-03-22.12 - メンテナンスのデータ表示に定型タスク・メモ・アーカイブ済みメモの件数を追加
     v05_2026-03-22.13 - メモカードにスワイプ・右クリック削除を追加
+    v06_2026-03-23 - Othersフィルタ追加・タスクupdatedBy記録・Others時にカード右下へ最終更新者表示
+    v06_2026-03-23.2 - タスク検索にサブタスクテキストを追加
+    v06_2026-03-23.3 - 検索欄にクリアボタン追加（入力時のみ表示）
+    v06_2026-03-23.4 - ✕ボタン位置修正・検索欄フォーカス時のチカチカ修正（page-fixed sticky化）
+    v06_2026-03-23.5 - キーボード表示時のチカチカ修正（100dvh対応）
+    v06_2026-03-23.6 - 検索✕ボタン・チカチカ修正をリバート
+    v06_2026-03-23.7 - キーボード表示時のチカチカ修正（viewport interactive-widget追加）
+    v06_2026-03-23.8 - 検索✕ボタン再実装（CSSクラス化で位置修正）
+    v06_2026-03-23.9 - メモ検索にも✕ボタン追加
+    v06_2026-03-23.10 - 定型タスク：頻度名称統一・検索欄追加・頻度別セクション表示
+    v06_2026-03-23.11 - 定型タスク：カテゴリフィルタ追加・カード内頻度表示削除・レイアウト調整
+    v06_2026-03-23.12 - 定型タスク：セクションヘッダー上余白を縮小
 -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"> <!-- CHANGED: キーボード表示時チカチカ抑制 -->
 <title>ふたりのタスク</title>
 <script type="module">
 import { initializeApp }    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -243,8 +255,10 @@ input,textarea,select{font-family:inherit}
 .filter-area{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
 /* 1行目：検索 */
 .srch-row{display:flex;gap:8px;align-items:center}
-.srch{flex:1;padding:9px 14px;border:1.5px solid var(--bd);border-radius:99px;background:var(--sf);color:var(--tx);font-size:.85rem;outline:none;transition:border-color .15s}
+.srch-wrap{position:relative;flex:1;min-width:0} /* CHANGED: ✕ボタン用ラッパー */
+.srch{width:100%;box-sizing:border-box;padding:9px 32px 9px 14px;border:1.5px solid var(--bd);border-radius:99px;background:var(--sf);color:var(--tx);font-size:.85rem;outline:none;transition:border-color .15s} /* CHANGED: padding-right追加 */
 .srch:focus{border-color:var(--ac)}
+.srch-clear{display:none;position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--mt);font-size:.75rem;cursor:pointer;padding:0;line-height:1} /* CHANGED: ✕ボタン */
 /* 2行目：ステータスチップ */
 .fbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .fbar::-webkit-scrollbar{display:none}
@@ -325,11 +339,13 @@ input,textarea,select{font-family:inherit}
 .empic{font-size:2.5rem;margin-bottom:12px}
 
 /* ── RECUR PAGE ── */
-.rclist{display:flex;flex-direction:column;gap:10px}
-.rccard{background:var(--sf);border:1px solid var(--bd);border-left:3px solid #2980b9;border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh);display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
-.rccard .tcexp{width:100%;margin:8px -18px -18px;padding:12px 18px;border-top:1px solid var(--bd);background:var(--sf2);display:none}
+.rclist{display:flex;flex-direction:column;gap:0}
+.rc-section{display:flex;flex-direction:column;gap:0;margin-bottom:4px} /* CHANGED: 余白縮小 */
+.rc-section-hdr{font-size:.75rem;font-weight:700;color:var(--mt);letter-spacing:.06em;padding:4px 2px 5px;border-bottom:1px solid var(--bd);margin-bottom:6px} /* CHANGED: 上padding縮小 */
+.rccard{background:var(--sf);border:1px solid var(--bd);border-left:3px solid #2980b9;border-radius:var(--r);padding:14px 18px;box-shadow:var(--sh);display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap} /* CHANGED: padding縮小 */
+.rccard .tcexp{width:100%;margin:8px -18px -14px;padding:12px 18px;border-top:1px solid var(--bd);background:var(--sf2);display:none}
 .rccard.open .tcexp{display:block}
-.rccard-wrap{position:relative;overflow:hidden;border-radius:var(--r);margin-bottom:10px}
+.rccard-wrap{position:relative;overflow:hidden;border-radius:var(--r);margin-bottom:8px} /* CHANGED: margin縮小 */
 .rccard-wrap .rccard{margin-bottom:0}
 .rccard-del{position:absolute;right:0;top:0;bottom:0;width:80px;background:rgba(192,57,43,.88);backdrop-filter:blur(2px);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;cursor:pointer;border:none;opacity:0;pointer-events:none;transition:opacity .18s ease}
 .rccard-wrap.swiped .rccard-del{opacity:1;pointer-events:auto}
@@ -555,7 +571,10 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="filter-area">
           <div class="srch-row">
-            <input class="srch" id="srch" type="text" placeholder="🔍 検索...">
+            <div class="srch-wrap">
+              <input class="srch" id="srch" type="text" placeholder="🔍 検索...">
+              <button class="srch-clear" id="srch-clear">✕</button>
+            </div>
             <button id="btn-toggle-tags" style="padding:7px 10px;border-radius:99px;border:1.5px solid var(--bd);background:var(--sf);color:var(--sub);font-size:.78rem;white-space:nowrap;flex-shrink:0;transition:all .15s"># タグ</button>
           </div>
           <div class="fbar">
@@ -565,6 +584,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
             <button class="fc fc-mine-btn" id="f-mine">Mine<span id="mine-label"></span></button><button class="fc fc-mine-arr" id="f-mine-arr">&#9660;</button>
             <button class="fc" id="f-done">Done</button>
             <button class="fc" id="f-all">All</button>
+            <button class="fc" id="f-others">Others</button>
           </div>
           <div class="cbar" id="cbar"></div>
           <div class="tag-bar" id="tbar"></div>
@@ -599,7 +619,15 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
           <div class="pt">定型タスク</div>
           <button class="bpri" id="btnAddRecur">＋ 定型タスクを追加</button>
         </div>
-        <p style="font-size:.82rem;color:var(--mt);margin-bottom:18px">よく使うタスクのテンプレート。▶ で生成日を選んでタスクを作成します。</p>
+        <div class="filter-area">
+          <div class="srch-row">
+            <div class="srch-wrap">
+              <input class="srch" id="rsrch" type="text" placeholder="🔍 検索...">
+              <button class="srch-clear" id="rsrch-clear">✕</button>
+            </div>
+          </div>
+          <div class="cbar" id="rcbar"></div>
+        </div>
       </div>
       <div class="page-list">
         <div class="rclist" id="rclist"></div>
@@ -616,7 +644,10 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="filter-area">
           <div class="srch-row">
-            <input class="srch" id="msrch" type="text" placeholder="🔍 メモを検索...">
+            <div class="srch-wrap">
+              <input class="srch" id="msrch" type="text" placeholder="🔍 メモを検索...">
+              <button class="srch-clear" id="msrch-clear">✕</button>
+            </div>
             <button id="btn-toggle-mtags" style="padding:7px 10px;border-radius:99px;border:1.5px solid var(--bd);background:var(--sf);color:var(--sub);font-size:.78rem;white-space:nowrap;flex-shrink:0;transition:all .15s"># タグ</button>
           </div>
           <div class="fbar">
@@ -786,10 +817,10 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         <div class="fg"><label class="fl">カテゴリ</label><select class="fi" id="rfcat"></select></div>
         <div class="fg"><label class="fl">生成日の設定</label>
           <select class="fi" id="rffreq">
-            <option value="none">指定なし（期限なしで生成）</option>
-            <option value="daily">実行日（今日）で生成</option>
-            <option value="weekly">週の曜日を指定</option>
-            <option value="monthly">月の日付を指定</option>
+            <option value="none">随時（期限なしで生成）</option>
+            <option value="daily">即日（今日の日付で生成）</option>
+            <option value="weekly">週次（曜日を指定）</option>
+            <option value="monthly">月次（日付を指定）</option>
           </select>
         </div>
       </div>
@@ -978,6 +1009,7 @@ let curMem   = null;  // CHANGED: 担当者フィルタ
 let showTags = false;
 let curCat   = null;
 let curTag   = null;
+let curRCat  = null; // CHANGED: 定型カテゴリフィルタ
 let mTags    = [];
 const openCards = new Set();
 let swipedCard = null;
@@ -1116,18 +1148,18 @@ function loginDemo(){
   ];
   const d=(plus)=>{ const dt=new Date(); dt.setDate(dt.getDate()+plus); return dt.toISOString().slice(0,10); };
   ST.tasks  = [
-    {id:'t01',title:'牛乳・卵の買い出し',cid:'c2',aids:['u1'],due:d(2),done:false,memo:'セール中に買う',url:'',imgs:[],subs:[{id:'s1a',tx:'牛乳2本',done:false},{id:'s1b',tx:'卵Mサイズ',done:true}],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString()},
-    {id:'t02',title:'洗濯物を畳む',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'',url:'',imgs:[],subs:[],tags:['週次'],star:false,doneAt:new Date().toISOString(),at:new Date().toISOString()},
-    {id:'t03',title:'子どもの持ち物チェック',cid:'c3',aids:['u2'],due:d(5),done:false,memo:'入学式までに全て準備',url:'',imgs:[],subs:[{id:'s3a',tx:'上履き',done:true},{id:'s3b',tx:'体育着',done:false},{id:'s3c',tx:'名前テープ貼り',done:false}],tags:['入学準備'],star:true,doneAt:null,at:new Date().toISOString()},
-    {id:'t04',title:'台所の掃除',cid:'c1',aids:['u2'],due:d(-1),done:false,memo:'',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:null,at:new Date().toISOString()},
-    {id:'t05',title:'市役所で転入届を提出',cid:'c4',aids:['u1'],due:d(7),done:false,memo:'マイナンバーカード持参',url:'',imgs:[],subs:[{id:'s5a',tx:'マイナンバーカード',done:false},{id:'s5b',tx:'旧住所の除票',done:false}],tags:['手続き'],star:true,doneAt:null,at:new Date().toISOString()},
-    {id:'t06',title:'洗面所の掃除',cid:'c1',aids:['u2'],due:d(3),done:false,memo:'',url:'',imgs:[],subs:[],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString()},
-    {id:'t07',title:'近くの公園でお花見',cid:'c5',aids:['u1','u2','u3'],due:d(4),done:false,memo:'レジャーシートを忘れずに',url:'',imgs:[],subs:[{id:'s7a',tx:'お弁当を用意',done:false},{id:'s7b',tx:'レジャーシート',done:true}],tags:['お出かけ'],star:false,doneAt:null,at:new Date().toISOString()},
-    {id:'t08',title:'車の点検予約',cid:'c4',aids:['u1'],due:d(10),done:false,memo:'',url:'',imgs:[],subs:[],tags:['月次'],star:false,doneAt:null,at:new Date().toISOString()},
-    {id:'t09',title:'冷蔵庫の整理',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'賞味期限切れを処分',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:new Date().toISOString(),at:new Date().toISOString()},
-    {id:'t10',title:'子どもの歯医者予約',cid:'c3',aids:['u2'],due:d(6),done:false,memo:'定期健診',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:null,at:new Date().toISOString()},
-    {id:'t11',title:'シャンプー・洗剤の補充',cid:'c2',aids:['u1'],due:d(1),done:false,memo:'',url:'',imgs:[],subs:[{id:'s11a',tx:'シャンプー',done:false},{id:'s11b',tx:'柔軟剤',done:false},{id:'s11c',tx:'食器用洗剤',done:true}],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString()},
-    {id:'t12',title:'家計簿の集計',cid:'c4',aids:['u2'],due:d(14),done:false,memo:'先月分まとめる',url:'',imgs:[],subs:[],tags:['月次'],star:false,doneAt:null,at:new Date().toISOString()},
+    {id:'t01',title:'牛乳・卵の買い出し',cid:'c2',aids:['u1'],due:d(2),done:false,memo:'セール中に買う',url:'',imgs:[],subs:[{id:'s1a',tx:'牛乳2本',done:false},{id:'s1b',tx:'卵Mサイズ',done:true}],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u1',updatedAt:new Date().toISOString()},
+    {id:'t02',title:'洗濯物を畳む',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'',url:'',imgs:[],subs:[],tags:['週次'],star:false,doneAt:new Date().toISOString(),at:new Date().toISOString(),updatedBy:'u2',updatedAt:new Date(Date.now()-1800000).toISOString()},
+    {id:'t03',title:'子どもの持ち物チェック',cid:'c3',aids:['u2'],due:d(5),done:false,memo:'入学式までに全て準備',url:'',imgs:[],subs:[{id:'s3a',tx:'上履き',done:true},{id:'s3b',tx:'体育着',done:false},{id:'s3c',tx:'名前テープ貼り',done:false}],tags:['入学準備'],star:true,doneAt:null,at:new Date().toISOString(),updatedBy:'u2',updatedAt:new Date(Date.now()-3600000).toISOString()},
+    {id:'t04',title:'台所の掃除',cid:'c1',aids:['u2'],due:d(-1),done:false,memo:'',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u2',updatedAt:new Date(Date.now()-7200000).toISOString()},
+    {id:'t05',title:'市役所で転入届を提出',cid:'c4',aids:['u1'],due:d(7),done:false,memo:'マイナンバーカード持参',url:'',imgs:[],subs:[{id:'s5a',tx:'マイナンバーカード',done:false},{id:'s5b',tx:'旧住所の除票',done:false}],tags:['手続き'],star:true,doneAt:null,at:new Date().toISOString(),updatedBy:'u1',updatedAt:new Date().toISOString()},
+    {id:'t06',title:'洗面所の掃除',cid:'c1',aids:['u2'],due:d(3),done:false,memo:'',url:'',imgs:[],subs:[],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u2',updatedAt:new Date(Date.now()-10800000).toISOString()},
+    {id:'t07',title:'近くの公園でお花見',cid:'c5',aids:['u1','u2','u3'],due:d(4),done:false,memo:'レジャーシートを忘れずに',url:'',imgs:[],subs:[{id:'s7a',tx:'お弁当を用意',done:false},{id:'s7b',tx:'レジャーシート',done:true}],tags:['お出かけ'],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u2',updatedAt:new Date(Date.now()-900000).toISOString()},
+    {id:'t08',title:'車の点検予約',cid:'c4',aids:['u1'],due:d(10),done:false,memo:'',url:'',imgs:[],subs:[],tags:['月次'],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u1',updatedAt:new Date().toISOString()},
+    {id:'t09',title:'冷蔵庫の整理',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'賞味期限切れを処分',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:new Date().toISOString(),at:new Date().toISOString(),updatedBy:'u2',updatedAt:new Date(Date.now()-5400000).toISOString()},
+    {id:'t10',title:'子どもの歯医者予約',cid:'c3',aids:['u2'],due:d(6),done:false,memo:'定期健診',url:'',imgs:[],subs:[],tags:[],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u1',updatedAt:new Date().toISOString()},
+    {id:'t11',title:'シャンプー・洗剤の補充',cid:'c2',aids:['u1'],due:d(1),done:false,memo:'',url:'',imgs:[],subs:[{id:'s11a',tx:'シャンプー',done:false},{id:'s11b',tx:'柔軟剤',done:false},{id:'s11c',tx:'食器用洗剤',done:true}],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u2',updatedAt:new Date(Date.now()-2700000).toISOString()},
+    {id:'t12',title:'家計簿の集計',cid:'c4',aids:['u2'],due:d(14),done:false,memo:'先月分まとめる',url:'',imgs:[],subs:[],tags:['月次'],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u1',updatedAt:new Date().toISOString()},
   ];
   ST.recurs = [
     {id:'r1',title:'ゴミ出し（燃えるゴミ）',catId:'c1',aids:['u1'],freq:'weekly',wdays:[2,5],mdays:[],memo:'',tags:['家事'],star:false,lastGen:[]},
@@ -1153,7 +1185,7 @@ function showPage(p){
   ['bn-dash','bn-tasks','bn-recur','bn-memo','bn-settings'].forEach(id=>G(id).classList.remove('active'));
   G('bn-'+p).classList.add('active');
   if(p==='settings') renderSettings();
-  if(p==='recur')    renderRecur();
+  if(p==='recur')    { renderRCBar(); renderRecur(); } // CHANGED: rcbar
   if(p==='dash')     renderDash();
   if(p==='memo')     renderMemos();
 }
@@ -1216,10 +1248,11 @@ function renderTasks(){
     if(curFil==='overdue') return !t.done && isOv(t.due);
     if(curFil==='done') return t.done;
     if(curFil==='mine'){ if(curMem==='_none') return !(t.aids&&t.aids.length); if(curMem) return (t.aids||[]).includes(curMem); return (t.aids||[]).includes(ST.uid); }
+    if(curFil==='others') return !!(t.updatedBy && t.updatedBy !== ST.uid); // CHANGED: Othersフィルタ
     return true;
   }).filter(t=> !curCat || (curCat==='_none' ? !t.cid : t.cid===curCat)) // CHANGED: _none対応
     .filter(t=> !curTag||(t.tags||[]).includes(curTag))
-    .filter(t=> !q||t.title.toLowerCase().includes(q)||(t.memo||'').toLowerCase().includes(q));
+    .filter(t=> !q||t.title.toLowerCase().includes(q)||(t.memo||'').toLowerCase().includes(q)||(t.subs||[]).some(s=>s.tx.toLowerCase().includes(q))); // CHANGED: サブタスク検索対応
   list.sort((a,b)=>{
     if(a.done!==b.done) return a.done?1:-1;
     // 未完了内：⭐あり優先
@@ -1260,7 +1293,7 @@ function buildTaskCard(t){
   chk.textContent=t.done?'✓':'';
   chk.addEventListener('click',e=>{
     e.stopPropagation();
-    t.done=!t.done; t.doneAt=t.done?new Date().toISOString():null; renderAll(); save();
+    t.done=!t.done; t.doneAt=t.done?new Date().toISOString():null; t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString(); renderAll(); save(); // CHANGED: updatedBy
   });
 
   // タイトルエリア
@@ -1348,7 +1381,23 @@ function buildTaskCard(t){
     dl.style.cssText='text-align:right;font-size:.68rem;color:var(--mt);padding:0 14px 6px;margin-top:-4px';
     card.appendChild(dl);
   }
-
+  // CHANGED: Others表示時のみ最終更新者をcard右下に表示（メモと同じ構造）
+  if(curFil==='others' && t.updatedBy && t.updatedBy !== ST.uid){
+    const editor=getU(t.updatedBy);
+    if(editor){
+      const dl=CE('div');
+      dl.style.cssText='text-align:right;font-size:.68rem;color:var(--mt);padding:0 14px 6px;margin-top:-4px;display:flex;align-items:center;justify-content:flex-end;gap:4px';
+      const col=uColor(t.updatedBy);
+      const av=CE('span');
+      av.style.cssText=`width:14px;height:14px;border-radius:50%;background:${col};color:${textOnBg(col)};display:inline-flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:700;flex-shrink:0`;
+      av.textContent=editor.name.charAt(0);
+      dl.appendChild(av);
+      dl.appendChild(CE('span',{textContent:editor.name}));
+      dl.appendChild(CE('span',{textContent:'·'}));
+      dl.appendChild(CE('span',{textContent:fmtDT(t.updatedAt)}));
+      card.appendChild(dl);
+    }
+  }
   // EXPAND
   if(hasx){
     const exp=CE('div',{className:'tcexp'});
@@ -1388,13 +1437,13 @@ function buildTaskCard(t){
             const mi=card.querySelector('.mi-sub');
             if(mi) mi.textContent=`☑️ ${sd}/${t.subs.length}`;
           }
-          updateBdg(); save();
+          t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString(); updateBdg(); save(); // CHANGED: updatedBy
         };
         schk.addEventListener('click',e=>{e.stopPropagation();toggle();});
         stx.addEventListener('click', e=>{e.stopPropagation();toggle();});
         sdel.addEventListener('click', e=>{
           e.stopPropagation();
-          t.subs=t.subs.filter(x=>x.id!==s.id); renderAll(); save();
+          t.subs=t.subs.filter(x=>x.id!==s.id); t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString(); renderAll(); save(); // CHANGED: updatedBy
         });
         item.appendChild(schk); item.appendChild(stx); item.appendChild(sdel);
         sl.appendChild(item);
@@ -1409,105 +1458,129 @@ function buildTaskCard(t){
 // ══════════════════════════════════════════
 //  定型タスク PAGE
 // ══════════════════════════════════════════
-const FREQ_LABEL = {none:'期限なし', daily:'実行日', weekly:'曜日指定', monthly:'日付指定'};
+const FREQ_LABEL = {none:'随時', daily:'即日', weekly:'週次', monthly:'月次'}; // CHANGED: 名称統一
+const FREQ_ORDER = ['none','daily','weekly','monthly']; // CHANGED: セクション順
+
+// CHANGED: 定型カテゴリバー
+function renderRCBar(){
+  const bar=G('rcbar'); bar.innerHTML='';
+  ST.cats.forEach(c=>{
+    const a=(curRCat===c.id);
+    const btn=CE('button',{className:'cc'+(a?' active':'')});
+    if(a) btn.style.cssText=`border-color:${c.color};background:${c.color}18;color:${c.color}`;
+    btn.innerHTML=`<span class="cdot" style="background:${c.color}"></span>${esc(c.name)}`;
+    btn.addEventListener('click',()=>{ curRCat=curRCat===c.id?null:c.id; renderRCBar(); renderRecur(); });
+    bar.appendChild(btn);
+  });
+}
 
 function renderRecur(){
   const el=G('rclist'), emp=G('rcempty');
   el.innerHTML='';
-  if(!ST.recurs.length){ emp.style.display='block'; return; }
+  const q=(G('rsrch').value||'').toLowerCase();
+  const filtered=ST.recurs.filter(r=>
+    (!curRCat || r.catId===curRCat) && // CHANGED: カテゴリフィルタ
+    (!q || r.title.toLowerCase().includes(q) || (r.subs||[]).some(s=>s.tx.toLowerCase().includes(q)))
+  );
+  if(!filtered.length){ emp.style.display='block'; return; }
   emp.style.display='none';
-  const sorted=[...ST.recurs].sort((a,b)=>a.title.localeCompare(b.title,'ja')); // CHANGED
-  sorted.forEach(r=>{
-    const cat=getC(r.catId);
-    const asgn=(r.aids||[]).map(getU);
-    let fd='';
-    if(r.freq==='weekly') fd='（'+(r.wdays||[]).map(d=>WL[d]).join('・')+'）';
-    if(r.freq==='monthly') fd=`（${(r.mdays||[]).map(d=>d===0?'月末':d+'日').join('・')}）`;
 
-    const card=CE('div',{className:'rccard'});
-    card.style.cursor='pointer';
-    card.innerHTML=`<div class="rcic">${r.star?'<span style="color:#f5a623;font-size:1.1rem">★</span>':'📋'}</div>
-      <div class="rcinfo">
-        <div class="tctrow" style="margin-bottom:6px">
-          <span class="rcttl">${esc(r.title)}</span>
-          ${cat?`<span class="ctag" style="background:${cat.color}22;color:${cat.color}">${esc(cat.name)}</span>`:''}
+  FREQ_ORDER.forEach(freq=>{
+    const group=filtered.filter(r=>(r.freq||'none')===freq)
+      .sort((a,b)=>a.title.localeCompare(b.title,'ja'));
+    if(!group.length) return;
+
+    const sec=CE('div',{className:'rc-section'});
+    const hdr=CE('div',{className:'rc-section-hdr',textContent:FREQ_LABEL[freq]});
+    sec.appendChild(hdr);
+
+    group.forEach(r=>{
+      const cat=getC(r.catId);
+      const asgn=(r.aids||[]).map(getU);
+      let fd='';
+      if(r.freq==='weekly') fd='（'+(r.wdays||[]).map(d=>WL[d]).join('・')+'）';
+      if(r.freq==='monthly') fd=`（${(r.mdays||[]).map(d=>d===0?'月末':d+'日').join('・')}）`;
+
+      const card=CE('div',{className:'rccard'});
+      card.style.cursor='pointer';
+      // CHANGED: カード内から頻度表示を削除（セクション名で代替）。週次・月次の詳細（曜日・日付）は残す
+      card.innerHTML=`<div class="rcic">${r.star?'<span style="color:#f5a623;font-size:1.1rem">★</span>':'📋'}</div>
+        <div class="rcinfo">
+          <div class="tctrow" style="margin-bottom:6px">
+            <span class="rcttl">${esc(r.title)}</span>
+            ${cat?`<span class="ctag" style="background:${cat.color}22;color:${cat.color}">${esc(cat.name)}</span>`:''}
+          </div>
+          <div class="rcmeta">
+            ${fd?`<span class="rcbd">📅 ${esc(fd)}</span>`:''}
+            ${asgn.length?`<span class="rcbd">👤 ${asgn.map(u=>esc(u.name)).join('・')}</span>`:''}
+          </div>
+          ${r.memo?`<div class="rcnote">${esc(r.memo)}</div>`:''}
         </div>
-        <div class="rcmeta">
-          <span class="rcbd">📅 ${FREQ_LABEL[r.freq]||''}${esc(fd)}</span>
-          ${asgn.length?`<span class="rcbd">👤 ${asgn.map(u=>esc(u.name)).join('・')}</span>`:''}
-        </div>
-        ${r.memo?`<div class="rcnote">${esc(r.memo)}</div>`:''}
-      </div>
-      <div class="rcacts" id="rcacts-${r.id}"></div>`;
+        <div class="rcacts" id="rcacts-${r.id}"></div>`;
 
-    const actsEl=card.querySelector('#rcacts-'+r.id);
-    const editBtn=CE('button',{className:'ib',textContent:'✏️'});
-    editBtn.addEventListener('click',e=>{ e.stopPropagation(); openRModal(r.id); });
-    const genBtn=CE('button',{className:'ib',title:'タスクを生成'});
-    genBtn.textContent='▶️';
-    genBtn.addEventListener('click',e=>{ e.stopPropagation(); openGenDlg(r.id); });
-    actsEl.appendChild(editBtn); actsEl.appendChild(genBtn);
+      const actsEl=card.querySelector('#rcacts-'+r.id);
+      const editBtn=CE('button',{className:'ib',textContent:'✏️'});
+      editBtn.addEventListener('click',e=>{ e.stopPropagation(); openRModal(r.id); });
+      const genBtn=CE('button',{className:'ib',title:'タスクを生成'});
+      genBtn.textContent='▶️';
+      genBtn.addEventListener('click',e=>{ e.stopPropagation(); openGenDlg(r.id); });
 
-    // 展開エリア（サブタスク・メモ・タグ）
-    const hasSubs=(r.subs||[]).length, hasMemo=r.memo, hasTags=(r.tags||[]).length;
-    if(hasSubs||hasTags){
-      const exp=CE('div',{className:'tcexp'});
-      if(hasSubs){
-        const sec=CE('div',{className:'esec'});
-        const lbl=CE('div',{className:'elbl',textContent:'サブタスク'});
-        sec.appendChild(lbl);
-        const sl=CE('div',{className:'slist'});
-        r.subs.forEach(s=>{
-          const item=CE('div',{className:'sitem'});
-          item.style.cssText='pointer-events:none';
-          const chk=CE('div',{className:'schk',textContent:''});
-          chk.style.cssText='opacity:.4';
-          const tx=CE('span',{className:'stx',textContent:s.tx});
-          item.appendChild(chk); item.appendChild(tx);
-          sl.appendChild(item);
+      const hasSubs=(r.subs||[]).length, hasTags=(r.tags||[]).length;
+      if(hasSubs||hasTags){
+        const exp=CE('div',{className:'tcexp'});
+        if(hasSubs){
+          const esec=CE('div',{className:'esec'});
+          esec.appendChild(CE('div',{className:'elbl',textContent:'サブタスク'}));
+          const sl=CE('div',{className:'slist'});
+          r.subs.forEach(s=>{
+            const item=CE('div',{className:'sitem'});
+            item.style.cssText='pointer-events:none';
+            const chk=CE('div',{className:'schk',textContent:''});
+            chk.style.cssText='opacity:.4';
+            item.appendChild(chk); item.appendChild(CE('span',{className:'stx',textContent:s.tx}));
+            sl.appendChild(item);
+          });
+          esec.appendChild(sl); exp.appendChild(esec);
+        }
+        if(hasTags){
+          const esec=CE('div',{className:'esec'});
+          esec.appendChild(CE('div',{className:'elbl',textContent:'タグ'}));
+          const tw=CE('div',{style:'display:flex;gap:4px;flex-wrap:wrap'});
+          r.tags.forEach(tag=>tw.appendChild(CE('span',{className:'tc-tag',textContent:'# '+tag})));
+          esec.appendChild(tw); exp.appendChild(esec);
+        }
+        card.appendChild(exp);
+        card.addEventListener('click',()=>card.classList.toggle('open'));
+      }
+      actsEl.appendChild(editBtn); actsEl.appendChild(genBtn);
+
+      const rcWrap=CE('div',{className:'rccard-wrap'});
+      rcWrap.appendChild(card);
+      const rcDel=CE('button',{className:'rccard-del',textContent:'削除'});
+      rcDel.addEventListener('click',()=>{
+        cfmDlg(`「${r.title}」を削除しますか？`,()=>{
+          ST.recurs=ST.recurs.filter(x=>x.id!==r.id);
+          rcWrap.remove(); updateBdg(); save();
         });
-        sec.appendChild(sl);
-        exp.appendChild(sec);
-      }
-      if(hasTags){
-        const sec=CE('div',{className:'esec'});
-        const lbl=CE('div',{className:'elbl',textContent:'タグ'});
-        sec.appendChild(lbl);
-        const tw=CE('div',{style:'display:flex;gap:4px;flex-wrap:wrap'});
-        r.tags.forEach(tag=>tw.appendChild(CE('span',{className:'tc-tag',textContent:'# '+tag})));
-        sec.appendChild(tw);
-        exp.appendChild(sec);
-      }
-      card.appendChild(exp);
-      card.addEventListener('click',()=>card.classList.toggle('open'));
-    }
-    actsEl.appendChild(editBtn); actsEl.appendChild(genBtn);
-
-    const rcWrap=CE('div',{className:'rccard-wrap'});
-    rcWrap.appendChild(card);
-    const rcDel=CE('button',{className:'rccard-del',textContent:'削除'});
-    rcDel.addEventListener('click',()=>{
-      cfmDlg(`「${r.title}」を削除しますか？`,()=>{
-        ST.recurs=ST.recurs.filter(x=>x.id!==r.id);
-        rcWrap.remove(); updateBdg(); save();
       });
+      rcWrap.appendChild(rcDel);
+      let rtx=0,rty=0,rsw=false;
+      rcWrap.addEventListener('touchstart',e=>{ rtx=e.touches[0].clientX; rty=e.touches[0].clientY; rsw=false; },{passive:true});
+      rcWrap.addEventListener('touchmove',e=>{
+        const dx=e.touches[0].clientX-rtx, dy=e.touches[0].clientY-rty;
+        if(!rsw&&Math.abs(dy)>Math.abs(dx)) return;
+        rsw=true;
+        if(dx<-18){ if(swipedCard&&swipedCard!==rcWrap) closeSwipe(swipedCard); rcWrap.classList.add('swiped'); swipedCard=rcWrap; }
+        else if(dx>18){ closeSwipe(rcWrap); }
+      },{passive:true});
+      rcWrap.addEventListener('contextmenu',e=>{
+        e.preventDefault();
+        if(swipedCard&&swipedCard!==rcWrap) closeSwipe(swipedCard);
+        rcWrap.classList.toggle('swiped'); swipedCard=rcWrap.classList.contains('swiped')?rcWrap:null;
+      });
+      sec.appendChild(rcWrap);
     });
-    rcWrap.appendChild(rcDel);
-    let rtx=0,rty=0,rsw=false;
-    rcWrap.addEventListener('touchstart',e=>{ rtx=e.touches[0].clientX; rty=e.touches[0].clientY; rsw=false; },{passive:true});
-    rcWrap.addEventListener('touchmove',e=>{
-      const dx=e.touches[0].clientX-rtx, dy=e.touches[0].clientY-rty;
-      if(!rsw&&Math.abs(dy)>Math.abs(dx)) return;
-      rsw=true;
-      if(dx<-18){ if(swipedCard&&swipedCard!==rcWrap) closeSwipe(swipedCard); rcWrap.classList.add('swiped'); swipedCard=rcWrap; }
-      else if(dx>18){ closeSwipe(rcWrap); }
-    },{passive:true});
-    rcWrap.addEventListener('contextmenu',e=>{
-      e.preventDefault();
-      if(swipedCard&&swipedCard!==rcWrap) closeSwipe(swipedCard);
-      rcWrap.classList.toggle('swiped'); swipedCard=rcWrap.classList.contains('swiped')?rcWrap:null;
-    });
-    el.appendChild(rcWrap);
+    el.appendChild(sec);
   });
 }
 
@@ -1731,7 +1804,7 @@ function renderSettings(){
     const nm=CE('input',{type:'text',className:'cnmin',value:c.name});
     nm.addEventListener('blur',()=>{
       const n=nm.value.trim(); if(!n)return;
-      c.name=n; renderAll(); renderCBar(); save();
+      c.name=n; renderAll(); renderCBar(); renderRCBar(); save();
     });
     left.appendChild(cp); left.appendChild(nm); row.appendChild(left);
     const btn=CE('button',{className:'bdanger',textContent:'削除'});
@@ -1897,6 +1970,7 @@ function saveTask(){
   const star=G('fstar').classList.contains('on');
   const d={title,cid:G('fcat').value||null,aids:[...mAids],due:G('fdue').value||'',
     memo:G('fmemo').value.trim(),url:G('furl').value.trim(),subs:mSubs,imgs:[],tags:[...mTags],star};
+  d.updatedBy=ST.uid||null; d.updatedAt=new Date().toISOString(); // CHANGED: updatedBy
   if(editTid){ const t=ST.tasks.find(x=>x.id===editTid); if(t) Object.assign(t,d); }
   else ST.tasks.unshift({id:genId(),done:false,...d});
   closeTModal(); renderAll(); save();
@@ -2136,7 +2210,7 @@ G('btnAddCat').addEventListener('click',()=>{
 });
 
 // フィルター
-['active','undone','overdue','done','all'].forEach(f=>{
+['active','undone','overdue','done','all','others'].forEach(f=>{ // CHANGED: others追加
   G('f-'+f).addEventListener('click',()=>{
     curFil=f; curMem=null; // CHANGED: Mine以外はcurMemリセット
     updateFbar();
@@ -2201,7 +2275,7 @@ G('f-mine-arr').addEventListener('click',e=>{
 });
 
 function updateFbar(){
-  ['active','undone','overdue','done','all'].forEach(x=>G('f-'+x).classList.toggle('active',x===curFil));
+  ['active','undone','overdue','done','all','others'].forEach(x=>G('f-'+x).classList.toggle('active',x===curFil)); // CHANGED: others追加
   const mineActive=(curFil==='mine');
   G('f-mine').classList.toggle('active', mineActive);
   G('f-mine-arr').classList.toggle('active', mineActive);
@@ -2216,7 +2290,8 @@ function updateFbar(){
   }
 }
 
-G('srch').addEventListener('input',renderTasks);
+G('srch').addEventListener('input',()=>{ G('srch-clear').style.display=G('srch').value?'block':'none'; renderTasks(); }); // CHANGED: ✕表示制御
+G('srch-clear').addEventListener('click',()=>{ G('srch').value=''; G('srch-clear').style.display='none'; renderTasks(); }); // CHANGED: ✕クリア
 document.addEventListener('touchstart',e=>{ if(swipedCard&&!swipedCard.contains(e.target)) closeSwipe(swipedCard); if(!G('mine-dd').contains(e.target)&&e.target!==G('f-mine')&&e.target!==G('f-mine-arr')) closeMineDD(); },{passive:true});
 document.addEventListener('click',e=>{
   if(swipedCard&&!swipedCard.contains(e.target)) closeSwipe(swipedCard);
@@ -2240,7 +2315,10 @@ G('btnCancelMM').addEventListener('click',closeMModal);
 G('btnDelMemo').addEventListener('click',delMemo);
 G('btnSaveMemo').addEventListener('click',saveMemo);
 G('mfstar').addEventListener('click',()=>{ const on=G('mfstar').classList.toggle('on'); G('mfstar').textContent=on?'★':'☆'; });
-G('msrch').addEventListener('input',renderMemos);
+G('msrch').addEventListener('input',()=>{ G('msrch-clear').style.display=G('msrch').value?'block':'none'; renderMemos(); }); // CHANGED: ✕表示制御
+G('msrch-clear').addEventListener('click',()=>{ G('msrch').value=''; G('msrch-clear').style.display='none'; renderMemos(); }); // CHANGED: ✕クリア
+G('rsrch').addEventListener('input',()=>{ G('rsrch-clear').style.display=G('rsrch').value?'block':'none'; renderRecur(); }); // CHANGED: 定型検索
+G('rsrch-clear').addEventListener('click',()=>{ G('rsrch').value=''; G('rsrch-clear').style.display='none'; renderRecur(); }); // CHANGED: 定型✕クリア
 ['active','archived','all'].forEach(f=>{
   G('mf-'+f).addEventListener('click',()=>{
     curMFil=f;
