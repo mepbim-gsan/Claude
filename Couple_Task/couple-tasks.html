@@ -1,9 +1,20 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v07_2026-03-30.2
-  @chat      Couple_Task_07_サブタスクの編集
+  @version   v08_2026-03-30.11
+  @chat      Couple_Task_08_通知の仕組み
   @changelog
+    v08_2026-03-30 - Others未読ドット追加・lastCheckedAt既読管理・Othersバッジ表示
+    v08_2026-03-30.2 - 既読化タイミング修正（Othersを離れたときに変更）
+    v08_2026-03-30.3 - Others・DoneフィルタのソートをupdatedAt降順に変更
+    v08_2026-03-30.4 - メモ未読ドット・バッジ追加（タスクとは独立したlastCheckedAt管理）
+    v08_2026-03-30.5 - 既読化タイミング修正（render後に既読化してバッジ更新）
+    v08_2026-03-30.6 - 未読メモのサンプルデータ追加（m4）
+    v08_2026-03-30.7 - メモ既読管理をIDセット方式に変更・カード展開/編集で個別既読化
+    v08_2026-03-30.8 - メモバッジ0件時の線表示バグ修正（display:none対応）
+    v08_2026-03-30.9 - 未読メモサンプル追加（m5）
+    v08_2026-03-30.10 - タスク既読管理をIDセット方式に変更・カード展開/編集で個別既読化・全件既読化廃止
+    v08_2026-03-30.11 - ダッシュボードに要確認サマリーカード追加（未読タスク・期限切れ・今日期限・未読メモ）
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
     v04_2026-03-22.4 - Google認証対応・ユーザー紐づけ
@@ -290,7 +301,9 @@ input,textarea,select{font-family:inherit}
 
 /* ── TASK CARD ── */
 .tlist{display:flex;flex-direction:column;gap:10px}
-.tc{background:var(--sf);border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);transition:box-shadow .15s}
+.tc{background:var(--sf);border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);transition:box-shadow .15s;position:relative}
+.tc-unread-dot{position:absolute;top:9px;right:9px;width:6px;height:6px;border-radius:50%;background:#aaa;pointer-events:none;z-index:1} /* CHANGED: Others未読ドット */
+.fc-unread-bdg{display:inline-flex;align-items:center;justify-content:center;background:#aaa;color:#fff;border-radius:99px;font-size:.6rem;font-weight:700;padding:0 5px;min-width:15px;height:15px;margin-left:4px;line-height:1} /* CHANGED: Othersバッジ */
 .tc:hover{box-shadow:0 4px 16px rgba(0,0,0,.1)}
 .tc.done{opacity:.55}
 .tcmain{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;cursor:pointer}
@@ -442,6 +455,13 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 .dash-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:20px}
 .dash-card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh)}
 .dash-card.wide{grid-column:1/-1}
+.dash-summary-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bd);cursor:pointer;transition:opacity .15s}
+.dash-summary-row:last-child{border-bottom:none}
+.dash-summary-row:active{opacity:.6}
+.dash-summary-lbl{font-size:.85rem;color:var(--tx);display:flex;align-items:center;gap:6px}
+.dash-summary-num{font-size:1rem;font-weight:700;color:var(--ac);min-width:28px;text-align:right}
+.dash-summary-num.warn{color:var(--accent,#e07050)}
+.dash-summary-num.ok{color:var(--mt)}
 .dash-kpi{font-size:2rem;font-weight:700;font-family:'Josefin Sans',sans-serif;color:var(--ac);line-height:1}
 .dash-kpi-sub{font-size:.75rem;color:var(--mt);margin-top:4px}
 .dash-ttl{font-size:.72rem;font-weight:700;color:var(--mt);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
@@ -488,7 +508,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 
 /* ── MEMO CARD ── */
 .mclist{display:flex;flex-direction:column;gap:10px}
-.mc{background:var(--sf);border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);transition:box-shadow .15s;cursor:pointer}
+.mc{background:var(--sf);border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);transition:box-shadow .15s;cursor:pointer;position:relative}
 .mc:hover{box-shadow:0 4px 16px rgba(0,0,0,.1)}
 .mc.archived{opacity:.5}
 .mcmain{display:flex;align-items:flex-start;gap:12px;padding:14px 16px}
@@ -574,7 +594,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni" id="nav-dash"><span class="nic">📊</span>ダッシュボード</button>
       <button class="ni active" id="nav-tasks"><span class="nic">📋</span>タスク<span class="nbd" id="bdg-tasks">0</span></button>
       <button class="ni" id="nav-recur"><span class="nic">📋</span>定型タスク<span class="nbd" id="bdg-recur" style="background:var(--gn)">0</span></button>
-      <button class="ni" id="nav-memo"><span class="nic">📝</span>メモ<span class="nbd" id="bdg-memo" style="background:#7b8ff7">0</span></button>
+      <button class="ni" id="nav-memo"><span class="nic">📝</span>メモ<span class="nbd" id="bdg-memo" style="background:#7b8ff7;display:none"></span></button>
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
@@ -624,6 +644,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <div class="page-scroll">
         <div class="ph"><div class="pt">ダッシュボード</div></div>
         <div class="dash-grid">
+          <div class="dash-card wide" id="dash-summary"><div class="dash-ttl">要確認</div><div id="dash-summary-inner"></div></div>
           <div class="dash-card"><div class="dash-ttl">今日の完了</div><div class="dash-kpi" id="kpi-today">0</div><div class="dash-kpi-sub">件</div></div>
           <div class="dash-card"><div class="dash-ttl">今週の完了</div><div class="dash-kpi" id="kpi-week">0</div><div class="dash-kpi-sub">件</div></div>
           <div class="dash-card"><div class="dash-ttl">未完了タスク</div><div class="dash-kpi" id="kpi-undone" style="color:var(--gn)">0</div><div class="dash-kpi-sub">件</div></div>
@@ -782,7 +803,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="bnbtn" id="bn-dash"><span class="bnic">📊</span>統計</button>
       <button class="bnbtn active" id="bn-tasks"><span class="bnic">📋</span>タスク<span class="bnbd" id="bnbdg-tasks">0</span></button>
       <button class="bnbtn" id="bn-recur"><span class="bnic">📋</span>定型<span class="bnbd" id="bnbdg-recur" style="background:var(--gn)">0</span></button>
-      <button class="bnbtn" id="bn-memo"><span class="bnic">📝</span>メモ<span class="bnbd" id="bnbdg-memo" style="background:#7b8ff7">0</span></button>
+      <button class="bnbtn" id="bn-memo"><span class="bnic">📝</span>メモ<span class="bnbd" id="bnbdg-memo" style="background:#7b8ff7;display:none"></span></button>
       <button class="bnbtn" id="bn-settings"><span class="bnic">⚙️</span>設定</button>
     </div>
   </nav>
@@ -1020,6 +1041,13 @@ let curMem   = null;  // CHANGED: 担当者フィルタ
 let showTags = false;
 let curCat   = null;
 let curTag   = null;
+const UNREAD_KEY = 'couple-tasks-read-ids'; // CHANGED: タスク既読ID管理
+function getReadTaskIds(){ try{ return new Set(JSON.parse(localStorage.getItem(UNREAD_KEY)||'[]')); }catch{ return new Set(); } }
+function markTaskRead(id){ try{ const s=getReadTaskIds(); s.add(id); localStorage.setItem(UNREAD_KEY,JSON.stringify([...s])); }catch{} } // CHANGED
+const MEMO_UNREAD_KEY = 'couple-tasks-memo-read-ids'; // CHANGED: メモ既読ID管理
+function getReadMemoIds(){ try{ return new Set(JSON.parse(localStorage.getItem(MEMO_UNREAD_KEY)||'[]')); }catch{ return new Set(); } }
+function markMemoRead(id){ try{ const s=getReadMemoIds(); s.add(id); localStorage.setItem(MEMO_UNREAD_KEY,JSON.stringify([...s])); }catch{} } // CHANGED
+function markMemoAllRead(){ try{ const ids=(ST.memos||[]).map(m=>m.id); localStorage.setItem(MEMO_UNREAD_KEY,JSON.stringify(ids)); }catch{} } // CHANGED
 let curRCat  = null; // CHANGED: 定型カテゴリフィルタ
 let mTags    = [];
 const openCards = new Set();
@@ -1184,6 +1212,8 @@ function loginDemo(){
     {id:'m1',title:'リビングの寸法メモ',body:'リビング全体: 幅4.5m × 奥行6m\nソファスペース: 幅2.4m × 奥行1.8m\nテレビボード: 幅180cm\n窓枠高さ: 床から2.1m\n\n※カーテン購入時は窓+20cmで注文する',cid:'c1',tags:['寸法','インテリア'],star:true,updatedAt:new Date().toISOString(),updatedBy:'u1',archived:false,createdAt:new Date().toISOString()},
     {id:'m2',title:'子どものアレルギー情報',body:'卵アレルギー（軽度）\n→ 加熱済みなら少量OK\n→ 生卵・半熟は不可\n\n花粉症：スギ・ヒノキ（春季）\n→ 抗ヒスタミン薬：クラリチン',cid:'c3',tags:['健康'],star:false,updatedAt:new Date(Date.now()-86400000).toISOString(),updatedBy:'u2',archived:false,createdAt:new Date().toISOString()},
     {id:'m3',title:'Wi-Fiパスワード',body:'ネットワーク名: HomeNet_5G\nパスワード: xxxxxxxx\n\nルーター管理画面: 192.168.1.1',cid:null,tags:[],star:false,updatedAt:new Date(Date.now()-172800000).toISOString(),updatedBy:'u1',archived:false,createdAt:new Date().toISOString()},
+    {id:'m4',title:'次の家族旅行の候補',body:'・沖縄（3泊4日）\n・京都（2泊3日）\n・箱根（1泊2日）\n\nGWか夏休みに合わせて予約したい',cid:'c5',tags:['お出かけ'],star:false,updatedAt:new Date(Date.now()-600000).toISOString(),updatedBy:'u2',archived:false,createdAt:new Date().toISOString()},
+    {id:'m5',title:'保育園の持ち物リスト更新',body:'4月から変更あり\n・お昼寝布団 → レンタルに変更\n・コップ袋のサイズ：15cm×20cm以上\n・名前シール必須（全ての持ち物）',cid:'c3',tags:['子ども'],star:false,updatedAt:new Date(Date.now()-300000).toISOString(),updatedBy:'u2',archived:false,createdAt:new Date().toISOString()},
   ];
   loginAs('u1');
 }
@@ -1198,7 +1228,7 @@ function showPage(p){
   if(p==='settings') renderSettings();
   if(p==='recur')    { renderRCBar(); renderRecur(); } // CHANGED: rcbar
   if(p==='dash')     renderDash();
-  if(p==='memo')     renderMemos();
+  if(p==='memo')     { renderMemos(); updateBdg(); }
 }
 
 // ══════════════════════════════════════════
@@ -1216,8 +1246,9 @@ function updateBdg(){
   const u=ST.tasks.filter(t=>!t.done).length, r=ST.recurs.length;
   ['bdg-tasks','bnbdg-tasks'].forEach(id=>G(id).textContent=u);
   ['bdg-recur','bnbdg-recur'].forEach(id=>G(id).textContent=r);
-  const m=(ST.memos||[]).filter(n=>!n.archived).length;
-  ['bdg-memo','bnbdg-memo'].forEach(id=>{ const el=G(id); if(el) el.textContent=m; });
+  const readIds = getReadMemoIds();
+  const mUnread = (ST.memos||[]).filter(n=>!n.archived && n.updatedBy && n.updatedBy !== ST.uid && !readIds.has(n.id)).length;
+  ['bdg-memo','bnbdg-memo'].forEach(id=>{ const el=G(id); if(!el) return; el.textContent=mUnread||''; el.style.display=mUnread?'':'none'; }); // CHANGED: 0件時は非表示
   const tot=ST.tasks.length, done=ST.tasks.filter(t=>t.done).length;
   const pct=tot?Math.round(done/tot*100):0;
 }
@@ -1266,6 +1297,7 @@ function renderTasks(){
     .filter(t=> !curTag||(t.tags||[]).includes(curTag))
     .filter(t=> !q||t.title.toLowerCase().includes(q)||(t.memo||'').toLowerCase().includes(q)||(t.subs||[]).some(s=>s.tx.toLowerCase().includes(q))); // CHANGED: サブタスク検索対応
   list.sort((a,b)=>{
+    if(curFil==='others' || curFil==='done') return new Date(b.updatedAt||0)-new Date(a.updatedAt||0); // CHANGED: Others/DoneはupdatedAt降順
     if(a.done!==b.done) return a.done?1:-1;
     // 未完了内：⭐あり優先
     if(!a.done&&!b.done){
@@ -1297,6 +1329,9 @@ function buildTaskCard(t){
   const card=CE('div',{className:'tc'+(t.done?' done':'')});
   card.id='tc-'+t.id;
   card.style.borderLeftColor=cc;
+  // CHANGED: Others未読ドット
+  const isUnread = t.updatedBy && t.updatedBy !== ST.uid && !getReadTaskIds().has(t.id);
+  if(isUnread){ const dot=CE('div',{className:'tc-unread-dot'}); card.appendChild(dot); }
 
   // MAIN ROW
   const main=CE('div',{className:'tcmain'});
@@ -1348,13 +1383,13 @@ function buildTaskCard(t){
   // 編集ボタン
   const acts=CE('div',{className:'tcacts'});
   const editBtn=CE('button',{className:'ib',textContent:'✏️'});
-  editBtn.addEventListener('click',e=>{ e.stopPropagation(); openTModal(t.id); });
+  editBtn.addEventListener('click',e=>{ e.stopPropagation(); markTaskRead(t.id); openTModal(t.id); }); // CHANGED: 編集で既読
   acts.appendChild(editBtn);
 
   main.appendChild(chk);
   main.appendChild(info);
   main.appendChild(acts);
-  main.addEventListener('click',()=>{ card.classList.toggle('open'); card.classList.contains('open') ? openCards.add(t.id) : openCards.delete(t.id); });
+  main.addEventListener('click',()=>{ card.classList.toggle('open'); card.classList.contains('open') ? openCards.add(t.id) : openCards.delete(t.id); if(card.classList.contains('open')){ markTaskRead(t.id); const dot=card.querySelector('.tc-unread-dot'); if(dot) dot.remove(); updateFbar(); } }); // CHANGED: 展開で既読
   card.appendChild(main);
 
   // スワイプ削除
@@ -2360,9 +2395,9 @@ G('btnAddCat').addEventListener('click',()=>{
 });
 
 // フィルター
-['undone','overdue','soon','done','all','others'].forEach(f=>{ // CHANGED: active削除
+['undone','overdue','soon','done','all','others'].forEach(f=>{
   G('f-'+f).addEventListener('click',()=>{
-    curFil = (curFil===f) ? 'active' : f; // CHANGED: 再タップでactive（ハイライトなし）に戻る
+    curFil = (curFil===f) ? 'active' : f;
     curMem=null;
     updateFbar();
     renderTasks();
@@ -2432,6 +2467,19 @@ function updateFbar(){
     btn.classList.remove('active'); // CHANGED: 先に全部外す
     if(x===curFil) btn.classList.add('active');
   });
+  // CHANGED: Othersバッジ（未読件数）
+  const readTaskIds = getReadTaskIds();
+  const unreadCount = (ST.tasks||[]).filter(t=>
+    t.updatedBy && t.updatedBy !== ST.uid && !readTaskIds.has(t.id)
+  ).length;
+  const othersBtn = G('f-others');
+  let bdg = othersBtn.querySelector('.fc-unread-bdg');
+  if(unreadCount > 0){
+    if(!bdg){ bdg=CE('span',{className:'fc-unread-bdg'}); othersBtn.appendChild(bdg); }
+    bdg.textContent = unreadCount;
+  } else {
+    if(bdg) bdg.remove();
+  }
   const mineActive=(curFil==='mine');
   G('f-mine').classList.toggle('active', mineActive);
   G('f-mine-arr').classList.toggle('active', mineActive);
@@ -2639,9 +2687,36 @@ function initTagInput(){
 // ══════════════════════════════════════════
 function renderDash(){
   const now=new Date();
-  // ローカル日付で今日を取得（ISOはUTCなのでずれる）
   const localToday=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const localDateStr=d=>{ const dt=new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
+
+  // 要確認サマリー
+  const readTaskIds = getReadTaskIds();
+  const readMemoIds = getReadMemoIds();
+  const unreadTasks = (ST.tasks||[]).filter(t=>!t.done && t.updatedBy && t.updatedBy !== ST.uid && !readTaskIds.has(t.id)).length;
+  const overdueTasks= (ST.tasks||[]).filter(t=>!t.done && isOv(t.due)).length;
+  const todayTasks  = (ST.tasks||[]).filter(t=>!t.done && t.due===localToday).length;
+  const unreadMemos = (ST.memos||[]).filter(m=>!m.archived && m.updatedBy && m.updatedBy !== ST.uid && !readMemoIds.has(m.id)).length;
+  const summaryEl = G('dash-summary-inner'); summaryEl.innerHTML='';
+  const summaryRows = [
+    { label:'📋 未読タスク', count: unreadTasks,  warn: unreadTasks>0,  action:()=>{ showPage('tasks'); curFil='others'; updateFbar(); renderTasks(); } },
+    { label:'⚠️ 期限切れ',   count: overdueTasks, warn: overdueTasks>0, action:()=>{ showPage('tasks'); curFil='overdue'; updateFbar(); renderTasks(); } },
+    { label:'📅 今日期限',   count: todayTasks,   warn: false,           action:()=>{ showPage('tasks'); curFil='soon'; updateFbar(); renderTasks(); } },
+    { label:'📝 未読メモ',   count: unreadMemos,  warn: unreadMemos>0,  action:()=>{ showPage('memo'); } },
+  ];
+  const allZero = summaryRows.every(r=>r.count===0);
+  if(allZero){
+    summaryEl.innerHTML='<div style="font-size:.85rem;color:var(--mt);padding:8px 0">確認が必要な項目はありません 🎉</div>';
+  } else {
+    summaryRows.forEach(r=>{
+      const row=CE('div',{className:'dash-summary-row'});
+      const lbl=CE('div',{className:'dash-summary-lbl',textContent:r.label});
+      const num=CE('div',{className:'dash-summary-num'+(r.warn?' warn':r.count===0?' ok':''),textContent:r.count+'件'});
+      row.appendChild(lbl); row.appendChild(num);
+      row.addEventListener('click', r.action);
+      summaryEl.appendChild(row);
+    });
+  }
   // 今週月曜0:00を起点にする
   const dow=now.getDay(); // 0=日
   const daysSinceMon = dow===0 ? 6 : dow-1; // 月曜から何日経過したか
@@ -2781,6 +2856,9 @@ function buildMemoCard(m){
   const editor=m.updatedBy?getU(m.updatedBy):null;
   const card=CE('div',{className:'mc'+(m.archived?' archived':'')});
   card.style.borderLeftColor=cc;
+  // CHANGED: メモ未読ドット
+  const isMemoUnread = m.updatedBy && m.updatedBy !== ST.uid && !getReadMemoIds().has(m.id);
+  if(isMemoUnread){ const dot=CE('div',{className:'tc-unread-dot'}); card.appendChild(dot); }
   const main=CE('div',{className:'mcmain'});
   // アーカイブボタン
   const archBtn=CE('div',{className:'mcarchbtn',title:m.archived?'アーカイブ解除':'アーカイブ'});
@@ -2826,10 +2904,10 @@ function buildMemoCard(m){
   // 編集ボタン
   const acts=CE('div',{className:'mcacts'});
   const editBtn=CE('button',{className:'ib',textContent:'✏️'});
-  editBtn.addEventListener('click',e=>{ e.stopPropagation(); openMModal(m.id); });
+  editBtn.addEventListener('click',e=>{ e.stopPropagation(); markMemoRead(m.id); openMModal(m.id); }); // CHANGED: 編集で既読
   acts.appendChild(editBtn);
   main.appendChild(archBtn); main.appendChild(info); main.appendChild(acts);
-  main.addEventListener('click',()=>card.classList.toggle('open'));
+  main.addEventListener('click',()=>{ card.classList.toggle('open'); if(card.classList.contains('open')){ markMemoRead(m.id); const dot=card.querySelector('.tc-unread-dot'); if(dot) dot.remove(); updateBdg(); } }); // CHANGED: 展開で既読
   card.appendChild(main);
   // 更新日時・最終編集者（右下、タスク完了時刻と同じスタイル）
   if(m.updatedAt){
