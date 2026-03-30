@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v08_2026-03-30.11
+  @version   v08_2026-03-31.3
   @chat      Couple_Task_08_通知の仕組み
   @changelog
     v08_2026-03-30 - Others未読ドット追加・lastCheckedAt既読管理・Othersバッジ表示
@@ -15,6 +15,9 @@
     v08_2026-03-30.9 - 未読メモサンプル追加（m5）
     v08_2026-03-30.10 - タスク既読管理をIDセット方式に変更・カード展開/編集で個別既読化・全件既読化廃止
     v08_2026-03-30.11 - ダッシュボードに要確認サマリーカード追加（未読タスク・期限切れ・今日期限・未読メモ）
+    v08_2026-03-31 - 定型タスクに年次頻度追加（月・日指定、nextYearDay関数、生成ダイアログ対応）
+    v08_2026-03-31.2 - renderYdList重複定義バグ修正・セレクト変更時rYdays更新・年次サンプル追加（r6・r7）
+    v08_2026-03-31.3 - 年次：月変更時に日セレクトを月の最大日数で更新・超過時は月末にリセット
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
     v04_2026-03-22.4 - Google認証対応・ユーザー紐づけ
@@ -861,6 +864,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
             <option value="daily">即日（今日の日付で生成）</option>
             <option value="weekly">週次（曜日を指定）</option>
             <option value="monthly">月次（日付を指定）</option>
+            <option value="yearly">年次（月・日を指定）</option>
           </select>
         </div>
       </div>
@@ -879,6 +883,11 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <div class="fg" id="rfmdgrp" style="display:none">
         <label class="fl">日付（複数可・カンマ区切り、0=月末）</label>
         <input class="fi" id="rfmd" type="text" placeholder="例: 1, 15, 0（月末）" style="max-width:200px">
+      </div>
+      <div class="fg" id="rfydgrp" style="display:none">
+        <label class="fl">月・日（複数可）</label>
+        <div id="rfyd-list"></div>
+        <button type="button" class="bsm" id="rfyd-add" style="margin-top:8px;padding:7px 14px">＋ 追加</button>
       </div>
       <div class="fg"><label class="fl">担当者（複数可）</label><div class="apick" id="rfasgn"></div></div>
       <div class="fg">
@@ -1206,6 +1215,8 @@ function loginDemo(){
     {id:'r3',title:'週次食材まとめ買い',catId:'c2',aids:['u1','u2'],freq:'weekly',wdays:[6],mdays:[],memo:'週末にまとめて',tags:['週次'],star:false,lastGen:[]},
     {id:'r4',title:'子どもの連絡帳チェック',catId:'c3',aids:['u2'],freq:'none',wdays:[],mdays:[],memo:'',tags:[],star:false,lastGen:[]},
     {id:'r5',title:'家計簿の集計',catId:'c4',aids:['u2'],freq:'monthly',wdays:[],mdays:[1,15],memo:'先月分まとめる',tags:['月次'],star:true,lastGen:[]},
+    {id:'r6',title:'車の保険更新',catId:'c4',aids:['u1'],freq:'yearly',wdays:[],mdays:[],ydays:[{month:8,day:1}],memo:'保険会社に連絡',tags:[],star:false,lastGen:[]},
+    {id:'r7',title:'年賀状の準備',catId:null,aids:['u1','u2'],freq:'yearly',wdays:[],mdays:[],ydays:[{month:12,day:1}],memo:'',tags:[],star:false,lastGen:[]},
   ];
   // saveを呼ばない（デモは保存しない）
   ST.memos = [
@@ -1501,8 +1512,8 @@ function buildTaskCard(t){
 // ══════════════════════════════════════════
 //  定型タスク PAGE
 // ══════════════════════════════════════════
-const FREQ_LABEL = {none:'随時', daily:'即日', weekly:'週次', monthly:'月次'}; // CHANGED: 名称統一
-const FREQ_ORDER = ['none','daily','weekly','monthly']; // CHANGED: セクション順
+const FREQ_LABEL = {none:'随時', daily:'即日', weekly:'週次', monthly:'月次', yearly:'年次'}; // CHANGED: 年次追加
+const FREQ_ORDER = ['none','daily','weekly','monthly','yearly']; // CHANGED: 年次追加
 
 // CHANGED: 定型カテゴリバー
 function renderRCBar(){
@@ -1543,6 +1554,7 @@ function renderRecur(){
       let fd='';
       if(r.freq==='weekly') fd='（'+(r.wdays||[]).map(d=>WL[d]).join('・')+'）';
       if(r.freq==='monthly') fd=`（${(r.mdays||[]).map(d=>d===0?'月末':d+'日').join('・')}）`;
+      if(r.freq==='yearly') fd=`（${(r.ydays||[]).map(y=>y.month+'月'+(y.day===0?'末':y.day+'日')).join('・')}）`; // CHANGED: 年次
 
       const card=CE('div',{className:'rccard'});
       card.style.cursor='pointer';
@@ -1636,6 +1648,21 @@ function nextWeekday(dow){
   return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
 }
 // 次の月日付を返す（0=月末）
+function nextYearDay(month, day){ // CHANGED: 年次 翌1年以内の次回該当月日
+  const today=new Date();
+  const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  let dt;
+  if(day===0){
+    dt=new Date(today.getFullYear(), month, 0); // month月末（Dateはmonth-1+1=monthの0日目）
+    const dtStr=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+    if(dtStr < todayStr) dt=new Date(today.getFullYear()+1, month, 0);
+  } else {
+    dt=new Date(today.getFullYear(), month-1, day);
+    const dtStr=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+    if(dtStr < todayStr) dt=new Date(today.getFullYear()+1, month-1, day);
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
 function nextMonthDay(day){
   const today=new Date();
   const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
@@ -1723,6 +1750,23 @@ function openGenDlg(rid){
       candidates.push({due:iso, cb, done});
     });
     G('gen-dlg-ok').style.display=candidates.every(c=>c.done)?'none':''; // CHANGED
+  } else if(r.freq==='yearly'){ // CHANGED: 年次
+    (r.ydays||[]).forEach(yd=>{
+      const iso=nextYearDay(yd.month, yd.day);
+      const done=ST.tasks.some(t=>t.recurId===rid&&!t.done&&t.due===iso);
+      const row=CE('div',{style:'display:flex;align-items:center;gap:10px'});
+      const cb=CE('input',{type:'checkbox', checked:!done});
+      cb.disabled=done; cb.dataset.due=iso;
+      const lbl=CE('label',{});
+      lbl.style.cssText='font-size:.88rem;display:flex;align-items:center;gap:8px;cursor:'+(done?'default':'pointer');
+      lbl.appendChild(cb);
+      const txt=CE('span',{textContent:fmtDateJP(iso)});
+      if(done){ txt.style.cssText='color:var(--mt);text-decoration:line-through'; const note=CE('span',{textContent:'生成済み'}); note.style.cssText='font-size:.72rem;color:var(--mt);margin-left:4px'; lbl.appendChild(txt); lbl.appendChild(note); }
+      else lbl.appendChild(txt);
+      row.appendChild(lbl); body.appendChild(row);
+      candidates.push({due:iso, cb, done});
+    });
+    G('gen-dlg-ok').style.display=candidates.every(c=>c.done)?'none':'';
   }
 
   G('gen-dlg').classList.add('open');
@@ -2128,11 +2172,13 @@ function openRModal(id){
     rAids=[...(r.aids||[])]; rTags=[...(r.tags||[])]; rSubs=(r.subs||[]).map(s=>({...s,done:false}));
     G('rfstar').textContent=r.star?'★':'☆'; G('rfstar').classList.toggle('on',!!r.star);
     document.querySelectorAll('#rfwds input[type=checkbox]').forEach(cb=>cb.checked=(r.wdays||[]).includes(+cb.value));
+    renderYdList(r.ydays||[]); // CHANGED: 年次
   } else {
     G('rftitle').value=''; G('rfcat').value=''; G('rffreq').value='none';
     G('rfmemo').value=''; G('rfmd').value='';
     G('rfstar').textContent='☆'; G('rfstar').classList.remove('on');
     document.querySelectorAll('#rfwds input[type=checkbox]').forEach(cb=>cb.checked=false);
+    renderYdList([]); // CHANGED: 年次
     rAids=ST.uid?[ST.uid]:[]; rTags=[]; rSubs=[];
   }
   updFreq(); renderRAsgn(); renderRTags(); renderRSubs();
@@ -2140,6 +2186,45 @@ function openRModal(id){
   setTimeout(()=>{ _rSnap=rSnap(); },0);
 }
 function closeRModal(){ G('rmodal').classList.remove('open'); editRid=null; }
+
+// CHANGED: 年次UI
+let rYdays = [];
+// 月の最大日数（うるう年考慮不要・31日以下の月のみ制限）
+function maxDayOfMonth(m){ return [31,29,31,30,31,30,31,31,30,31,30,31][m-1]; }
+function buildDaySel(month, selectedDay){
+  const dSel = CE('select',{className:'fi yd-day'}); dSel.style.cssText='width:80px;padding:6px 8px';
+  const max = maxDayOfMonth(month);
+  const o0=CE('option',{value:0,textContent:'月末'}); if(selectedDay===0) o0.selected=true; dSel.appendChild(o0);
+  for(let d=1;d<=max;d++){ const o=CE('option',{value:d,textContent:d+'日'}); if(selectedDay===d) o.selected=true; dSel.appendChild(o); }
+  return dSel;
+}
+function renderYdList(ydays){
+  rYdays = ydays ? [...ydays] : rYdays;
+  const el = G('rfyd-list'); el.innerHTML='';
+  const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  rYdays.forEach((yd,i)=>{
+    const row = CE('div',{className:'yd-row'});
+    row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:6px';
+    const mSel = CE('select',{className:'fi yd-month'}); mSel.style.cssText='width:80px;padding:6px 8px';
+    MONTHS.forEach((m,mi)=>{ const o=CE('option',{value:mi+1,textContent:m}); if(yd.month===mi+1) o.selected=true; mSel.appendChild(o); });
+    let dSel = buildDaySel(yd.month, yd.day);
+    mSel.addEventListener('change',()=>{
+      rYdays[i].month=+mSel.value;
+      // 日が新しい月の最大日を超えていたら月末(0)にリセット
+      const max=maxDayOfMonth(+mSel.value);
+      if(rYdays[i].day > max) rYdays[i].day=0;
+      const newDSel=buildDaySel(+mSel.value, rYdays[i].day);
+      newDSel.addEventListener('change',()=>{ rYdays[i].day=+newDSel.value; });
+      dSel.replaceWith(newDSel); dSel=newDSel;
+    });
+    dSel.addEventListener('change',()=>{ rYdays[i].day=+dSel.value; });
+    const del = CE('button',{type:'button',textContent:'✕'}); del.style.cssText='border:none;background:none;color:var(--mt);font-size:.9rem;cursor:pointer;padding:4px';
+    del.addEventListener('click',()=>{ rYdays.splice(i,1); renderYdList(); });
+    row.append(mSel,dSel,del); el.appendChild(row);
+  });
+}
+G('rfyd-add').addEventListener('click',()=>{ rYdays.push({month:1,day:1}); renderYdList(); });
+
 
 function renderRTags(){
   const el=G('rftag-chips'); if(!el)return;
@@ -2256,6 +2341,7 @@ function updFreq(){
   const v=G('rffreq').value;
   G('rfwdgrp').style.display=v==='weekly' ?'block':'none';
   G('rfmdgrp').style.display=v==='monthly'?'block':'none';
+  G('rfydgrp').style.display=v==='yearly' ?'block':'none'; // CHANGED: 年次
 }
 
 function renderRAsgn(){
@@ -2284,8 +2370,9 @@ function saveRecur(){
   const mdays=freq==='monthly'
     ? G('rfmd').value.split(',').map(s=>parseInt(s.trim())).filter(n=>n===0||(n>=1&&n<=31))
     : [];
+  const ydays=freq==='yearly' ? rYdays.filter(y=>y.month>=1&&y.month<=12&&(y.day===0||(y.day>=1&&y.day<=31))) : []; // CHANGED: 年次
   const star=G('rfstar').classList.contains('on');
-  const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mdays,memo:G('rfmemo').value.trim(),tags:[...rTags],star,subs:rSubs.map(s=>({id:s.id,tx:s.tx}))};
+  const d={title,catId:G('rfcat').value||null,aids:[...rAids],freq,wdays,mdays,ydays,memo:G('rfmemo').value.trim(),tags:[...rTags],star,subs:rSubs.map(s=>({id:s.id,tx:s.tx}))};
   if(editRid){
     const r=ST.recurs.find(x=>x.id===editRid);
     if(r){ Object.assign(r,d); /* lastGenはリセットしない */ }
