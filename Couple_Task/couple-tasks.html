@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v06_2026-03-23.16
-  @chat      Couple_Task_06_相手の更新をしる
+  @version   v07_2026-03-30.2
+  @chat      Couple_Task_07_サブタスクの編集
   @changelog
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
@@ -38,6 +38,17 @@
     v06_2026-03-23.13 - Soonフィルタ追加（7日以内）・選択中フィルタ再タップでActiveに戻る
     v06_2026-03-23.14 - Activeボタン削除・再タップでハイライト解除（Active状態）に戻る動作を修正
     v06_2026-03-23.15 - フィルタハイライト解除不具合修正（classList.remove/addに変更）
+    v07_2026-03-30.2 - カードにid付与でサブタスクON/OFF時のカウント即時更新を修正
+    v07_2026-03-30 - サブタスクリネーム：visualViewport resizeベースのfocusIntoViewでキーボード展開後のズレ修正
+    v07_2026-03-24.9 - 定型/メモの✕誤検知修正・確認ダイアログ閉じる後の「削除する」チラツキ修正
+    v07_2026-03-24.8 - モーダルUI刷新：ヘッダーに保存ボタン・フッター削除・✕に変更検知確認ダイアログ
+    v07_2026-03-24.7 - リネームinputのscrollIntoViewでキーボード展開時の位置飛び対策
+    v07_2026-03-24.6 - リネームのblur+Enter二重発火によるreplaceWithエラーをcommittedフラグで修正
+    v07_2026-03-24.5 - モーダルTouch D&DにtouchcancelハンドラとcleanupFn追加でゴースト残留を修正
+    v07_2026-03-24.4 - モーダルのサブタスク：txのシングルタップチェックを削除しダブルタップリネームのみに
+    v07_2026-03-24.3 - サブタスク編集をモーダルに移動・展開エリアはチェック/削除のみに戻す
+    v07_2026-03-24.2 - D&Dゴースト除去・dragstart伝播停止・並び替え後にrenderTasks維持
+    v07_2026-03-24 - サブタスク：ダブルクリックでインライン編集・⠿ハンドルでD&D並び替え（PC/モバイル対応）
     v06_2026-03-23.16 - モバイルでのhover残留によるハイライト解除不具合を修正
 -->
 <html lang="ja">
@@ -331,6 +342,13 @@ input,textarea,select{font-family:inherit}
 .sinrow{display:flex;gap:6px}
 .sin{flex:1;padding:6px 10px;border:1.5px solid var(--bd);border-radius:8px;background:#fff;color:var(--tx);font-size:.82rem;outline:none}
 .sin:focus{border-color:var(--ac)}
+/* CHANGED: サブタスクD&D・インライン編集 */
+.sitem{position:relative;cursor:default;transition:opacity .15s,background .1s}
+.sitem.dragging{opacity:.4;background:var(--bg2)}
+.sitem.drag-over{border-top:2px solid var(--ac)}
+.sgrip{color:var(--mt);font-size:.85rem;cursor:grab;padding:0 4px 0 0;flex-shrink:0;line-height:1;touch-action:none;user-select:none}
+.sgrip:active{cursor:grabbing}
+.stx-in{flex:1;padding:2px 6px;border:1.5px solid var(--ac);border-radius:5px;background:#fff;color:var(--tx);font-size:.82rem;outline:none}
 
 /* ── IMAGE ── */
 .igal{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
@@ -773,7 +791,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 <!-- TASK MODAL -->
 <div class="ovl" id="tmodal">
   <div class="modal">
-    <div class="mhdr"><div class="mttl" id="tmodalttl">タスクを追加</div><button class="mclose" id="btnCloseTM">✕</button></div>
+    <div class="mhdr"><button class="mclose" id="btnCloseTM">✕</button><div class="mttl" id="tmodalttl">タスクを追加</div><button class="bpri" id="btnSaveTask" style="padding:7px 16px;font-size:.85rem">保存</button></div>
     <div class="mbody">
       <div class="fg"><label class="fl">タスク名 *</label><div style="display:flex;gap:8px;align-items:center"><input class="fi" id="ftitle" type="text" placeholder="例：スーパーで買い出し" style="flex:1"><button type="button" id="fstar" class="star-btn" title="重要フラグ">☆</button></div></div>
       <div class="frow">
@@ -804,18 +822,14 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
       </div>
     </div>
-    <div class="mfoot">
-      <button class="bcan" id="btnCancelTM">キャンセル</button>
-      <button class="bdel" id="btnDelTask" style="display:none">削除</button>
-      <button class="bpri" id="btnSaveTask">保存</button>
-    </div>
+
   </div>
 </div>
 
 <!-- RECUR MODAL -->
 <div class="ovl" id="rmodal">
   <div class="modal">
-    <div class="mhdr"><div class="mttl" id="rmodalttl">定型タスクを追加</div><button class="mclose" id="btnCloseRM">✕</button></div>
+    <div class="mhdr"><button class="mclose" id="btnCloseRM">✕</button><div class="mttl" id="rmodalttl">定型タスクを追加</div><button class="bpri" id="btnSaveRec" style="padding:7px 16px;font-size:.85rem">保存</button></div>
     <div class="mbody">
       <div class="fg"><label class="fl">タスク名 *</label><div style="display:flex;gap:8px;align-items:center"><input class="fi" id="rftitle" type="text" placeholder="例：お風呂掃除" style="flex:1"><button type="button" id="rfstar" class="star-btn" title="重要フラグ">☆</button></div></div>
       <div class="frow">
@@ -868,11 +882,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       </div>
       <div class="fg"><label class="fl">メモ</label><textarea class="fi" id="rfmemo" style="min-height:60px"></textarea></div>
     </div>
-    <div class="mfoot">
-      <button class="bcan" id="btnCancelRM">キャンセル</button>
-      <button class="bdel" id="btnDelRec" style="display:none">削除</button>
-      <button class="bpri" id="btnSaveRec">保存</button>
-    </div>
+
   </div>
 </div>
 
@@ -924,7 +934,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 <!-- MEMO MODAL -->
 <div class="ovl" id="mmodal">
   <div class="modal">
-    <div class="mhdr"><div class="mttl" id="mmodalttl">メモを追加</div><button class="mclose" id="btnCloseMM">✕</button></div>
+    <div class="mhdr"><button class="mclose" id="btnCloseMM">✕</button><div class="mttl" id="mmodalttl">メモを追加</div><button class="bpri" id="btnSaveMemo" style="padding:7px 16px;font-size:.85rem">保存</button></div>
     <div class="mbody">
       <div class="fg"><label class="fl">タイトル *</label><div style="display:flex;gap:8px;align-items:center"><input class="fi" id="mftitle" type="text" placeholder="例：リビングの寸法メモ" style="flex:1"><button type="button" id="mfstar" class="star-btn" title="重要フラグ">☆</button></div></div>
       <div class="fg"><label class="fl">メモ内容</label><textarea class="fi" id="mfbody" placeholder="寸法・覚え書きなど自由に記入..." style="min-height:180px;resize:vertical"></textarea></div>
@@ -942,11 +952,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
       </div>
     </div>
-    <div class="mfoot">
-      <button class="bcan" id="btnCancelMM">キャンセル</button>
-      <button class="bdel" id="btnDelMemo" style="display:none">削除</button>
-      <button class="bpri" id="btnSaveMemo">保存</button>
-    </div>
+
   </div>
 </div>
 
@@ -1068,7 +1074,7 @@ function cfmDlg(msg,onYes,yesLabel){
   yes.textContent=yesLabel||"削除する";
   yes.style.background=yesLabel&&yesLabel!=="削除する"?"var(--ac)":"#c0392b";
   G("cfm").classList.add("open");
-  const cleanup=()=>{G("cfm").classList.remove("open");yes.textContent="削除する";yes.style.background="#c0392b";yes.onclick=null;no.onclick=null;};
+  const cleanup=()=>{ G("cfm").classList.remove("open"); yes.onclick=null; no.onclick=null; setTimeout(()=>{ yes.textContent="削除する"; yes.style.background="#c0392b"; },220); };
   yes.onclick=()=>{cleanup();onYes();};
   no.onclick=()=>cleanup();
 }
@@ -1289,6 +1295,7 @@ function buildTaskCard(t){
   const cc=cat?cat.color:'var(--bd)';
 
   const card=CE('div',{className:'tc'+(t.done?' done':'')});
+  card.id='tc-'+t.id;
   card.style.borderLeftColor=cc;
 
   // MAIN ROW
@@ -1433,23 +1440,18 @@ function buildTaskCard(t){
         const sdel=CE('button',{className:'sdel',textContent:'✕'});
         const toggle=()=>{
           s.done=!s.done;
-          // DOM直接更新（renderAllを呼ばない→カードが閉じない）
-          item.classList.toggle('done', s.done);
-          schk.textContent = s.done ? '✓' : '';
-          // サブタスクカウント更新
+          item.classList.toggle('done',s.done);
+          schk.textContent=s.done?'✓':'';
           const sd=t.subs.filter(x=>x.done).length;
-          const card=document.getElementById('tc-'+t.id);
-          if(card){
-            const mi=card.querySelector('.mi-sub');
-            if(mi) mi.textContent=`☑️ ${sd}/${t.subs.length}`;
-          }
-          t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString(); updateBdg(); save(); // CHANGED: updatedBy
+          const cardEl=document.getElementById('tc-'+t.id);
+          if(cardEl){ const mi=cardEl.querySelector('.mi-sub'); if(mi) mi.textContent=`☑️ ${sd}/${t.subs.length}`; }
+          t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString(); updateBdg(); save();
         };
         schk.addEventListener('click',e=>{e.stopPropagation();toggle();});
-        stx.addEventListener('click', e=>{e.stopPropagation();toggle();});
-        sdel.addEventListener('click', e=>{
+        stx.addEventListener('click',e=>{e.stopPropagation();toggle();});
+        sdel.addEventListener('click',e=>{
           e.stopPropagation();
-          t.subs=t.subs.filter(x=>x.id!==s.id); t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString(); renderAll(); save(); // CHANGED: updatedBy
+          t.subs=t.subs.filter(x=>x.id!==s.id); t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString(); renderAll(); save();
         });
         item.appendChild(schk); item.appendChild(stx); item.appendChild(sdel);
         sl.appendChild(item);
@@ -1918,7 +1920,6 @@ function openTModal(id){
   editTid=id||null;
   const isEdit=!!id;
   G('tmodalttl').textContent=isEdit?'タスクを編集':'タスクを追加';
-  G('btnDelTask').style.display=isEdit?'':'none';
   G('fcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   mSubs=[];
   if(isEdit){
@@ -1935,7 +1936,31 @@ function openTModal(id){
   }
   renderTAsgn(); renderMSubs(); renderModalTags();
   G('tmodal').classList.add('open');
+  setTimeout(()=>{ _tSnap=tSnap(); },0);
 }
+
+// キーボード展開後にinputを画面内に収める
+function focusIntoView(inp){
+  inp.focus(); inp.select();
+  if(!window.visualViewport){ setTimeout(()=>inp.scrollIntoView({block:'nearest',behavior:'smooth'}),300); return; }
+  const onResize=()=>{
+    window.visualViewport.removeEventListener('resize',onResize);
+    setTimeout(()=>inp.scrollIntoView({block:'nearest',behavior:'smooth'}),50);
+  };
+  window.visualViewport.addEventListener('resize',onResize);
+  // キーボードが既に出ている場合はresizeが来ないのでフォールバック
+  setTimeout(()=>{ window.visualViewport.removeEventListener('resize',onResize); inp.scrollIntoView({block:'nearest',behavior:'smooth'}); },600);
+}
+
+// 変更検知用スナップショット
+let _tSnap='', _rSnap='', _mSnap='';
+function tSnap(){ return [G('ftitle').value,G('fcat').value,G('fdue').value,G('fmemo').value,G('furl').value,JSON.stringify(mSubs),JSON.stringify(mAids),JSON.stringify(mTags),G('fstar').textContent].join('|'); }
+function rSnap(){ return [G('rftitle').value,G('rfcat').value,G('rffreq').value,G('rfmemo').value,JSON.stringify(rSubs),JSON.stringify(rAids),JSON.stringify(rTags),G('rfstar').textContent].join('|'); }
+function mSnap(){ return [G('mftitle').value,G('mfbody').value,G('mfcat').value,JSON.stringify(mMTags),G('mfstar').textContent].join('|'); }
+function tryClose(snapFn, snapRef, closeFn){
+  if(snapFn() !== snapRef){ cfmDlg('変更が保存されていません。閉じますか？', closeFn, '閉じる'); } else { closeFn(); }
+}
+
 function closeTModal(){ G('tmodal').classList.remove('open'); editTid=null; }
 
 function renderTAsgn(){
@@ -1959,13 +1984,74 @@ function renderMSubs(){
   const el=G('fsubs'); el.innerHTML='';
   mSubs.forEach((s,i)=>{
     const item=CE('div',{className:'sitem'+(s.done?' done':'')});
+    item.dataset.sid=s.id;
+    const grip=CE('span',{className:'sgrip',textContent:'⠿'});
     const chk=CE('div',{className:'schk',textContent:s.done?'✓':''});
-    const tx =CE('span',{className:'stx', textContent:s.tx});
+    const tx=CE('span',{className:'stx',textContent:s.tx});
     const del=CE('button',{className:'sdel',textContent:'✕'});
     const toggle=()=>{ mSubs[i].done=!mSubs[i].done; renderMSubs(); };
-    chk.addEventListener('click',toggle); tx.addEventListener('click',toggle);
-    del.addEventListener('click',()=>{ mSubs.splice(i,1); renderMSubs(); });
-    item.appendChild(chk); item.appendChild(tx); item.appendChild(del);
+    chk.addEventListener('click',toggle);
+    // ダブルクリック/ダブルタップでリネーム（txのシングルタップはチェックに使わない）
+    tx.addEventListener('dblclick',e=>{
+      e.stopPropagation();
+      const inp=CE('input',{className:'stx-in',type:'text',value:s.tx});
+      let committed=false;
+      const commit=()=>{ if(committed) return; committed=true; const v=inp.value.trim(); if(v) s.tx=v; tx.textContent=s.tx; inp.replaceWith(tx); };
+      inp.addEventListener('keydown',e2=>{ if(e2.isComposing) return; if(e2.key==='Enter'){e2.preventDefault();commit();} if(e2.key==='Escape'){committed=true; inp.replaceWith(tx);} });
+      inp.addEventListener('blur',commit);
+      tx.replaceWith(inp); focusIntoView(inp);
+    });
+    // PC D&D
+    item.draggable=true;
+    item.addEventListener('dragstart',e=>{
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',s.id);
+      const ghost=document.createElement('div');
+      ghost.style.cssText='position:fixed;top:-9999px;width:1px;height:1px';
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost,0,0);
+      setTimeout(()=>{ ghost.remove(); item.classList.add('dragging'); },0);
+    });
+    item.addEventListener('dragend',()=>{ item.classList.remove('dragging'); el.querySelectorAll('.sitem').forEach(x=>x.classList.remove('drag-over')); });
+    item.addEventListener('dragover',e=>{ e.preventDefault(); el.querySelectorAll('.sitem').forEach(x=>x.classList.remove('drag-over')); item.classList.add('drag-over'); });
+    item.addEventListener('dragleave',()=>item.classList.remove('drag-over'));
+    item.addEventListener('drop',e=>{
+      e.preventDefault(); item.classList.remove('drag-over');
+      const fromId=e.dataTransfer.getData('text/plain'), toId=s.id;
+      if(fromId===toId) return;
+      const fi=mSubs.findIndex(x=>x.id===fromId), ti=mSubs.findIndex(x=>x.id===toId);
+      if(fi<0||ti<0) return;
+      const [moved]=mSubs.splice(fi,1); mSubs.splice(ti,0,moved); renderMSubs();
+    });
+    // Mobile Touch D&D
+    let tSid=null, tClone=null;
+    const mCleanup=()=>{ if(tClone){ tClone.remove(); tClone=null; } item.classList.remove('dragging'); el.querySelectorAll('.sitem').forEach(x=>x.classList.remove('drag-over')); tSid=null; };
+    grip.addEventListener('touchstart',e=>{
+      e.stopPropagation(); tSid=s.id; item.classList.add('dragging');
+      tClone=item.cloneNode(true);
+      tClone.style.cssText='position:fixed;pointer-events:none;z-index:9999;opacity:.8;width:'+item.offsetWidth+'px;left:'+item.getBoundingClientRect().left+'px;top:'+e.touches[0].clientY+'px;margin:0';
+      document.body.appendChild(tClone);
+    },{passive:true});
+    grip.addEventListener('touchmove',e=>{
+      if(!tSid||!tClone) return; e.preventDefault();
+      const y=e.touches[0].clientY; tClone.style.top=(y-item.offsetHeight/2)+'px';
+      el.querySelectorAll('.sitem').forEach(x=>x.classList.remove('drag-over'));
+      const over=document.elementFromPoint(e.touches[0].clientX,y)?.closest('.sitem');
+      if(over&&over!==item) over.classList.add('drag-over');
+    },{passive:false});
+    grip.addEventListener('touchend',e=>{
+      if(!tSid) return;
+      const over=document.elementFromPoint(e.changedTouches[0].clientX,e.changedTouches[0].clientY)?.closest('.sitem');
+      const toId=over?.dataset?.sid;
+      const fromId=tSid;
+      mCleanup();
+      if(toId&&toId!==fromId){
+        const fi=mSubs.findIndex(x=>x.id===fromId), ti=mSubs.findIndex(x=>x.id===toId);
+        if(fi>=0&&ti>=0){ const [moved]=mSubs.splice(fi,1); mSubs.splice(ti,0,moved); renderMSubs(); }
+      }
+    },{passive:true});
+    grip.addEventListener('touchcancel',mCleanup,{passive:true});
+    item.append(grip,chk,tx,del);
     el.appendChild(item);
   });
 }
@@ -1997,7 +2083,6 @@ function openRModal(id){
   editRid=id||null;
   const isEdit=!!id;
   G('rmodalttl').textContent=isEdit?'定型タスクを編集':'定型タスクを追加';
-  G('btnDelRec').style.display=isEdit?'':'none';
   G('rfcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   rAids=[]; rSubs=[];
   if(isEdit){
@@ -2017,6 +2102,7 @@ function openRModal(id){
   }
   updFreq(); renderRAsgn(); renderRTags(); renderRSubs();
   G('rmodal').classList.add('open');
+  setTimeout(()=>{ _rSnap=rSnap(); },0);
 }
 function closeRModal(){ G('rmodal').classList.remove('open'); editRid=null; }
 
@@ -2059,13 +2145,75 @@ function renderRSubs(){
   const el=G('rfsubs'); el.innerHTML='';
   rSubs.forEach((s,i)=>{
     const row=CE('div',{className:'sitem'});
+    row.dataset.sid=s.id;
+    const grip=CE('span',{className:'sgrip',textContent:'⠿'});
     const chk=CE('div',{className:'schk',textContent:s.done?'✓':''});
     if(s.done){row.classList.add('done');chk.style.background='var(--gn)';chk.style.borderColor='var(--gn)';}
     const tx=CE('span',{className:'stx',textContent:s.tx});
     const del=CE('button',{className:'sdel',textContent:'✕'});
     chk.addEventListener('click',()=>{ rSubs[i].done=!rSubs[i].done; renderRSubs(); });
+    // ダブルクリック/ダブルタップでリネーム（txのシングルタップはチェックに使わない）
+    tx.addEventListener('dblclick',e=>{
+      e.stopPropagation();
+      const inp=CE('input',{className:'stx-in',type:'text',value:s.tx});
+      let committed=false;
+      const commit=()=>{ if(committed) return; committed=true; const v=inp.value.trim(); if(v) s.tx=v; tx.textContent=s.tx; inp.replaceWith(tx); };
+      inp.addEventListener('keydown',e2=>{ if(e2.isComposing) return; if(e2.key==='Enter'){e2.preventDefault();commit();} if(e2.key==='Escape'){committed=true; inp.replaceWith(tx);} });
+      inp.addEventListener('blur',commit);
+      tx.replaceWith(inp); focusIntoView(inp);
+    });
     del.addEventListener('click',()=>{ rSubs.splice(i,1); renderRSubs(); });
-    row.append(chk,tx,del); el.appendChild(row);
+    // PC D&D
+    row.draggable=true;
+    row.addEventListener('dragstart',e=>{
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',s.id);
+      const ghost=document.createElement('div');
+      ghost.style.cssText='position:fixed;top:-9999px;width:1px;height:1px';
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost,0,0);
+      setTimeout(()=>{ ghost.remove(); row.classList.add('dragging'); },0);
+    });
+    row.addEventListener('dragend',()=>{ row.classList.remove('dragging'); el.querySelectorAll('.sitem').forEach(x=>x.classList.remove('drag-over')); });
+    row.addEventListener('dragover',e=>{ e.preventDefault(); el.querySelectorAll('.sitem').forEach(x=>x.classList.remove('drag-over')); row.classList.add('drag-over'); });
+    row.addEventListener('dragleave',()=>row.classList.remove('drag-over'));
+    row.addEventListener('drop',e=>{
+      e.preventDefault(); row.classList.remove('drag-over');
+      const fromId=e.dataTransfer.getData('text/plain'), toId=s.id;
+      if(fromId===toId) return;
+      const fi=rSubs.findIndex(x=>x.id===fromId), ti=rSubs.findIndex(x=>x.id===toId);
+      if(fi<0||ti<0) return;
+      const [moved]=rSubs.splice(fi,1); rSubs.splice(ti,0,moved); renderRSubs();
+    });
+    // Mobile Touch D&D
+    let tSid=null, tClone=null;
+    const rCleanup=()=>{ if(tClone){ tClone.remove(); tClone=null; } row.classList.remove('dragging'); el.querySelectorAll('.sitem').forEach(x=>x.classList.remove('drag-over')); tSid=null; };
+    grip.addEventListener('touchstart',e=>{
+      e.stopPropagation(); tSid=s.id; row.classList.add('dragging');
+      tClone=row.cloneNode(true);
+      tClone.style.cssText='position:fixed;pointer-events:none;z-index:9999;opacity:.8;width:'+row.offsetWidth+'px;left:'+row.getBoundingClientRect().left+'px;top:'+e.touches[0].clientY+'px;margin:0';
+      document.body.appendChild(tClone);
+    },{passive:true});
+    grip.addEventListener('touchmove',e=>{
+      if(!tSid||!tClone) return; e.preventDefault();
+      const y=e.touches[0].clientY; tClone.style.top=(y-row.offsetHeight/2)+'px';
+      el.querySelectorAll('.sitem').forEach(x=>x.classList.remove('drag-over'));
+      const over=document.elementFromPoint(e.touches[0].clientX,y)?.closest('.sitem');
+      if(over&&over!==row) over.classList.add('drag-over');
+    },{passive:false});
+    grip.addEventListener('touchend',e=>{
+      if(!tSid) return;
+      const over=document.elementFromPoint(e.changedTouches[0].clientX,e.changedTouches[0].clientY)?.closest('.sitem');
+      const toId=over?.dataset?.sid;
+      const fromId=tSid;
+      rCleanup();
+      if(toId&&toId!==fromId){
+        const fi=rSubs.findIndex(x=>x.id===fromId), ti=rSubs.findIndex(x=>x.id===toId);
+        if(fi>=0&&ti>=0){ const [moved]=rSubs.splice(fi,1); rSubs.splice(ti,0,moved); renderRSubs(); }
+      }
+    },{passive:true});
+    grip.addEventListener('touchcancel',rCleanup,{passive:true});
+    row.append(grip,chk,tx,del); el.appendChild(row);
   });
 }
 
@@ -2168,9 +2316,7 @@ G('btnLogout').addEventListener('click',()=>{
 
 // タスク追加
 G('btnAddTask').addEventListener('click',()=>openTModal());
-G('btnCloseTM').addEventListener('click',closeTModal);
-G('btnCancelTM').addEventListener('click',closeTModal);
-G('btnDelTask').addEventListener('click',delTask);
+G('btnCloseTM').addEventListener('click',()=>tryClose(tSnap,_tSnap,closeTModal));
 G('btnSaveTask').addEventListener('click',saveTask);
 G('fstar').addEventListener('click',()=>{ const on=G('fstar').classList.toggle('on'); G('fstar').textContent=on?'★':'☆'; });
 
@@ -2188,9 +2334,7 @@ G('rfsubin').addEventListener('keydown',e=>{if(!e.isComposing&&e.key==='Enter')G
 
 // 定型タスクモーダル
 G('btnAddRecur').addEventListener('click',()=>openRModal());
-G('btnCloseRM').addEventListener('click',closeRModal);
-G('btnCancelRM').addEventListener('click',closeRModal);
-G('btnDelRec').addEventListener('click',delRecur);
+G('btnCloseRM').addEventListener('click',()=>tryClose(rSnap,_rSnap,closeRModal));
 G('btnSaveRec').addEventListener('click',saveRecur);
 G('rfstar').addEventListener('click',()=>{ const on=G('rfstar').classList.toggle('on'); G('rfstar').textContent=on?'★':'☆'; });
 G('rffreq').addEventListener('change',updFreq);
@@ -2322,9 +2466,7 @@ G('btn-toggle-tags').addEventListener('click',()=>{
 
 // メモ
 G('btnAddMemo').addEventListener('click',()=>openMModal());
-G('btnCloseMM').addEventListener('click',closeMModal);
-G('btnCancelMM').addEventListener('click',closeMModal);
-G('btnDelMemo').addEventListener('click',delMemo);
+G('btnCloseMM').addEventListener('click',()=>tryClose(mSnap,_mSnap,closeMModal));
 G('btnSaveMemo').addEventListener('click',saveMemo);
 G('mfstar').addEventListener('click',()=>{ const on=G('mfstar').classList.toggle('on'); G('mfstar').textContent=on?'★':'☆'; });
 G('msrch').addEventListener('input',()=>{ G('msrch-clear').style.display=G('msrch').value?'block':'none'; renderMemos(); }); // CHANGED: ✕表示制御
@@ -2739,7 +2881,6 @@ function openMModal(id){
   editMid=id||null;
   const isEdit=!!id;
   G('mmodalttl').textContent=isEdit?'メモを編集':'メモを追加';
-  G('btnDelMemo').style.display=isEdit?'':'none';
   G('mfcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   if(isEdit){
     const m=(ST.memos||[]).find(x=>x.id===id); if(!m)return;
@@ -2755,8 +2896,10 @@ function openMModal(id){
   renderMMTags();
   G('mmodal').classList.add('open');
   if(!isEdit) setTimeout(()=>G('mftitle').focus(),100);
+  setTimeout(()=>{ _mSnap=mSnap(); },0);
 }
 function closeMModal(){ G('mmodal').classList.remove('open'); editMid=null; }
+
 
 function renderMMTags(){
   const el=G('mftag-chips'); if(!el)return;
