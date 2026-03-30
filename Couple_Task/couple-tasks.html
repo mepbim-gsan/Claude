@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v08_2026-03-31.3
+  @version   v08_2026-03-31.7
   @chat      Couple_Task_08_通知の仕組み
   @changelog
     v08_2026-03-30 - Others未読ドット追加・lastCheckedAt既読管理・Othersバッジ表示
@@ -18,6 +18,10 @@
     v08_2026-03-31 - 定型タスクに年次頻度追加（月・日指定、nextYearDay関数、生成ダイアログ対応）
     v08_2026-03-31.2 - renderYdList重複定義バグ修正・セレクト変更時rYdays更新・年次サンプル追加（r6・r7）
     v08_2026-03-31.3 - 年次：月変更時に日セレクトを月の最大日数で更新・超過時は月末にリセット
+    v08_2026-03-31.4 - 通知タブ追加（未読/タスク/メモフィルタ・タップで該当カードへ遷移）・BottomNav設定→通知に変更
+    v08_2026-03-31.5 - 通知タブをbuildTaskCard/buildMemoCard流用に変更・すべて既読ボタン追加
+    v08_2026-03-31.6 - BottomNavを6タブ化（⚙️設定をアイコンのみで追加）
+    v08_2026-03-31.7 - 設定タブにラベル追加
     v01_2026-03-20 - 初版（モックモード）
     v02_2026-03-22 - Firebase Firestore同期・localStorage config対応
     v04_2026-03-22.4 - Google認証対応・ユーザー紐づけ
@@ -259,7 +263,7 @@ input,textarea,select{font-family:inherit}
 .blogout:hover{background:var(--bg2);color:var(--red)}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;height:100vh}
 .page-scroll{flex:1;overflow-y:auto;padding:28px 32px}
-#page-tasks,#page-recur,#page-dash,#page-settings,#page-memo{display:flex;flex-direction:column;height:100%;overflow:hidden}
+#page-tasks,#page-recur,#page-dash,#page-settings,#page-memo,#page-notif{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .page-fixed{padding:28px 32px 0;flex-shrink:0}
 .page-list{flex:1;overflow-y:auto;padding:0 32px 28px}
 
@@ -598,6 +602,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="ni active" id="nav-tasks"><span class="nic">📋</span>タスク<span class="nbd" id="bdg-tasks">0</span></button>
       <button class="ni" id="nav-recur"><span class="nic">📋</span>定型タスク<span class="nbd" id="bdg-recur" style="background:var(--gn)">0</span></button>
       <button class="ni" id="nav-memo"><span class="nic">📝</span>メモ<span class="nbd" id="bdg-memo" style="background:#7b8ff7;display:none"></span></button>
+      <button class="ni" id="nav-notif"><span class="nic">🔔</span>通知<span class="nbd" id="bdg-notif" style="background:#e07050;display:none"></span></button>
       <button class="ni" id="nav-settings"><span class="nic">⚙️</span>設定</button>
     </nav>
     <div class="sbbot">
@@ -712,6 +717,27 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       </div>
     </div>
 
+    <!-- NOTIF -->
+    <div id="page-notif" style="display:none">
+      <div class="page-fixed">
+        <div class="ph">
+          <div class="pt">通知</div>
+          <button id="btn-notif-readall" style="display:none;background:none;border:none;color:var(--ac);font-size:.82rem;font-weight:700;cursor:pointer;padding:4px 8px">✓ すべて既読</button>
+        </div>
+        <div class="filter-area">
+          <div class="fbar">
+            <button class="fc" id="nf-unread">未読</button>
+            <button class="fc" id="nf-tasks">タスク</button>
+            <button class="fc" id="nf-memos">メモ</button>
+          </div>
+        </div>
+      </div>
+      <div class="page-list">
+        <div id="nlist"></div>
+        <div class="empty" id="nempty" style="display:none"><div class="empic">🔔</div><div>新しい通知はありません</div></div>
+      </div>
+    </div>
+
     <!-- SETTINGS -->
     <div id="page-settings" style="display:none">
       <div class="page-scroll">
@@ -807,6 +833,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
       <button class="bnbtn active" id="bn-tasks"><span class="bnic">📋</span>タスク<span class="bnbd" id="bnbdg-tasks">0</span></button>
       <button class="bnbtn" id="bn-recur"><span class="bnic">📋</span>定型<span class="bnbd" id="bnbdg-recur" style="background:var(--gn)">0</span></button>
       <button class="bnbtn" id="bn-memo"><span class="bnic">📝</span>メモ<span class="bnbd" id="bnbdg-memo" style="background:#7b8ff7;display:none"></span></button>
+      <button class="bnbtn" id="bn-notif"><span class="bnic">🔔</span>通知<span class="bnbd" id="bnbdg-notif" style="background:#e07050;display:none"></span></button>
       <button class="bnbtn" id="bn-settings"><span class="bnic">⚙️</span>設定</button>
     </div>
   </nav>
@@ -1229,17 +1256,18 @@ function loginDemo(){
   loginAs('u1');
 }
 function showPage(p){
-  ['dash','tasks','recur','memo','settings'].forEach(x=>{
+  ['dash','tasks','recur','memo','notif','settings'].forEach(x=>{
     G('page-'+x).style.display = x===p ? 'flex' : 'none';
   });
-  ['nav-dash','nav-tasks','nav-recur','nav-memo','nav-settings'].forEach(id=>G(id).classList.remove('active'));
-  G('nav-'+p).classList.add('active');
-  ['bn-dash','bn-tasks','bn-recur','bn-memo','bn-settings'].forEach(id=>G(id).classList.remove('active'));
-  G('bn-'+p).classList.add('active');
+  ['nav-dash','nav-tasks','nav-recur','nav-memo','nav-notif','nav-settings'].forEach(id=>{ const el=G(id); if(el) el.classList.remove('active'); });
+  if(G('nav-'+p)) G('nav-'+p).classList.add('active');
+  ['bn-dash','bn-tasks','bn-recur','bn-memo','bn-notif','bn-settings'].forEach(id=>{ const el=G(id); if(el) el.classList.remove('active'); });
+  if(G('bn-'+p)) G('bn-'+p).classList.add('active');
   if(p==='settings') renderSettings();
-  if(p==='recur')    { renderRCBar(); renderRecur(); } // CHANGED: rcbar
+  if(p==='recur')    { renderRCBar(); renderRecur(); }
   if(p==='dash')     renderDash();
   if(p==='memo')     { renderMemos(); updateBdg(); }
+  if(p==='notif')    renderNotif(); // CHANGED: 通知タブ
 }
 
 // ══════════════════════════════════════════
@@ -1259,7 +1287,12 @@ function updateBdg(){
   ['bdg-recur','bnbdg-recur'].forEach(id=>G(id).textContent=r);
   const readIds = getReadMemoIds();
   const mUnread = (ST.memos||[]).filter(n=>!n.archived && n.updatedBy && n.updatedBy !== ST.uid && !readIds.has(n.id)).length;
-  ['bdg-memo','bnbdg-memo'].forEach(id=>{ const el=G(id); if(!el) return; el.textContent=mUnread||''; el.style.display=mUnread?'':'none'; }); // CHANGED: 0件時は非表示
+  ['bdg-memo','bnbdg-memo'].forEach(id=>{ const el=G(id); if(!el) return; el.textContent=mUnread||''; el.style.display=mUnread?'':'none'; });
+  // CHANGED: 通知バッジ（未読タスク+未読メモ合計）
+  const readTaskIds = getReadTaskIds();
+  const tUnread = (ST.tasks||[]).filter(t=>t.updatedBy && t.updatedBy !== ST.uid && !readTaskIds.has(t.id)).length;
+  const notifCount = tUnread + mUnread;
+  ['bdg-notif','bnbdg-notif'].forEach(id=>{ const el=G(id); if(!el) return; el.textContent=notifCount||''; el.style.display=notifCount?'':'none'; });
   const tot=ST.tasks.length, done=ST.tasks.filter(t=>t.done).length;
   const pct=tot?Math.round(done/tot*100):0;
 }
@@ -2399,11 +2432,13 @@ G('nav-dash').addEventListener('click',    ()=>showPage('dash'));
 G('nav-tasks').addEventListener('click',   ()=>showPage('tasks'));
 G('nav-recur').addEventListener('click',   ()=>showPage('recur'));
 G('nav-memo').addEventListener('click',    ()=>showPage('memo'));
+G('nav-notif').addEventListener('click',   ()=>showPage('notif')); // CHANGED: 通知タブ
 G('nav-settings').addEventListener('click',()=>showPage('settings'));
 G('bn-dash').addEventListener('click',     ()=>showPage('dash'));
 G('bn-tasks').addEventListener('click',    ()=>showPage('tasks'));
 G('bn-recur').addEventListener('click',    ()=>showPage('recur'));
 G('bn-memo').addEventListener('click',     ()=>showPage('memo'));
+G('bn-notif').addEventListener('click',    ()=>showPage('notif')); // CHANGED: 通知タブ
 G('bn-settings').addEventListener('click', ()=>showPage('settings'));
 
 // Googleログインボタン
@@ -2770,6 +2805,70 @@ function initTagInput(){
 }
 
 // ══════════════════════════════════════════
+//  NOTIF
+// ══════════════════════════════════════════
+let nfUnread = false;
+let nfType   = null; // null=すべて 'tasks' 'memos'
+
+function renderNotif(){
+  G('nf-unread').classList.toggle('active', nfUnread);
+  G('nf-tasks').classList.toggle('active',  nfType==='tasks');
+  G('nf-memos').classList.toggle('active',  nfType==='memos');
+
+  const readTaskIds = getReadTaskIds();
+  const readMemoIds = getReadMemoIds();
+
+  // 未読件数でボタン表示制御
+  const anyUnread =
+    (ST.tasks||[]).some(t=>t.updatedBy&&t.updatedBy!==ST.uid&&!readTaskIds.has(t.id)) ||
+    (ST.memos||[]).some(m=>!m.archived&&m.updatedBy&&m.updatedBy!==ST.uid&&!readMemoIds.has(m.id));
+  G('btn-notif-readall').style.display = anyUnread ? '' : 'none';
+
+  // アイテム収集
+  let items = [];
+  if(nfType !== 'memos'){
+    (ST.tasks||[])
+      .filter(t=>t.updatedBy&&t.updatedBy!==ST.uid)
+      .filter(t=>!nfUnread||!readTaskIds.has(t.id))
+      .forEach(t=>items.push({type:'task', data:t, updatedAt:t.updatedAt}));
+  }
+  if(nfType !== 'tasks'){
+    (ST.memos||[])
+      .filter(m=>!m.archived&&m.updatedBy&&m.updatedBy!==ST.uid)
+      .filter(m=>!nfUnread||!readMemoIds.has(m.id))
+      .forEach(m=>items.push({type:'memo', data:m, updatedAt:m.updatedAt}));
+  }
+  items.sort((a,b)=>new Date(b.updatedAt||0)-new Date(a.updatedAt||0));
+
+  const el=G('nlist'), emp=G('nempty');
+  el.innerHTML='';
+  if(!items.length){ emp.style.display='block'; return; }
+  emp.style.display='none';
+
+  items.forEach(item=>{
+    const wrap = CE('div');
+    wrap.style.cssText='margin-bottom:8px';
+    if(item.type==='task'){
+      wrap.appendChild(buildTaskCard(item.data));
+    } else {
+      wrap.appendChild(buildMemoCard(item.data));
+    }
+    el.appendChild(wrap);
+  });
+}
+
+G('nf-unread').addEventListener('click',()=>{ nfUnread=!nfUnread; renderNotif(); });
+G('nf-tasks').addEventListener('click', ()=>{ nfType=nfType==='tasks'?null:'tasks'; renderNotif(); });
+G('nf-memos').addEventListener('click', ()=>{ nfType=nfType==='memos'?null:'memos'; renderNotif(); });
+G('btn-notif-readall').addEventListener('click',()=>{
+  // 未読タスク・メモを全件既読化
+  (ST.tasks||[]).filter(t=>t.updatedBy&&t.updatedBy!==ST.uid).forEach(t=>markTaskRead(t.id));
+  (ST.memos||[]).filter(m=>!m.archived&&m.updatedBy&&m.updatedBy!==ST.uid).forEach(m=>markMemoRead(m.id));
+  updateBdg();
+  renderNotif();
+}); // CHANGED: すべて既読
+
+// ══════════════════════════════════════════
 //  DASHBOARD
 // ══════════════════════════════════════════
 function renderDash(){
@@ -2942,6 +3041,7 @@ function buildMemoCard(m){
   const cc=cat?cat.color:'var(--bd)';
   const editor=m.updatedBy?getU(m.updatedBy):null;
   const card=CE('div',{className:'mc'+(m.archived?' archived':'')});
+  card.id='mc-'+m.id; // CHANGED: 通知からの遷移用
   card.style.borderLeftColor=cc;
   // CHANGED: メモ未読ドット
   const isMemoUnread = m.updatedBy && m.updatedBy !== ST.uid && !getReadMemoIds().has(m.id);
