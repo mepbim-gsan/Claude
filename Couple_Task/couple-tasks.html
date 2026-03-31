@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v08_2026-03-31.7
-  @chat      Couple_Task_08_通知の仕組み
+  @version   v09_2026-03-31
+  @chat      Couple_Task_09_ダッシュボード改善
   @changelog
+    v09_2026-03-31 - 通知バッジをリアルタイム更新（updateBdg内でrenderNotif連動）・バーグラフ右端白線修正
     v08_2026-03-30 - Others未読ドット追加・lastCheckedAt既読管理・Othersバッジ表示
     v08_2026-03-30.2 - 既読化タイミング修正（Othersを離れたときに変更）
     v08_2026-03-30.3 - Others・DoneフィルタのソートをupdatedAt降順に変更
@@ -476,7 +477,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 .bar-row:last-child{margin-bottom:0}
 .bar-label{font-size:.78rem;color:var(--sub);width:72px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar-track{flex:1;height:10px;background:var(--bg2);border-radius:99px;overflow:hidden}
-.bar-fill{height:100%;border-radius:99px;transition:width .4s ease}
+.bar-fill{height:100%;border-radius:99px 0 0 99px;transition:width .4s ease}
 .bar-num{font-size:.72rem;color:var(--mt);width:36px;text-align:right;flex-shrink:0}
 .user-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .user-bar-row:last-child{margin-bottom:0}
@@ -753,7 +754,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
         <div class="srow" style="padding-top:10px;padding-bottom:10px">
           <div class="sdesc" style="font-size:.72rem;color:var(--mt)">バージョン</div>
-          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v06_2026-03-23.16</div>
+          <div style="font-size:.72rem;color:var(--mt);font-family:'Josefin Sans',sans-serif">v09_2026-03-31</div>
         </div>
       </div>
       <div class="ssec">
@@ -1295,6 +1296,8 @@ function updateBdg(){
   ['bdg-notif','bnbdg-notif'].forEach(id=>{ const el=G(id); if(!el) return; el.textContent=notifCount||''; el.style.display=notifCount?'':'none'; });
   const tot=ST.tasks.length, done=ST.tasks.filter(t=>t.done).length;
   const pct=tot?Math.round(done/tot*100):0;
+  // CHANGED: 通知タブ表示中は既読操作と連動してリスト再描画
+  if(G('page-notif').style.display !== 'none') renderNotif();
 }
 
 // ══════════════════════════════════════════
