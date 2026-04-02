@@ -1,7 +1,7 @@
 const CACHE_NAME = 'timecard-v1';
 const ASSETS = [
-  '/timecard/',
-  '/timecard/index.html',
+  '/Claude/Timecard/',
+  '/Claude/Timecard/index.html',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
 ];

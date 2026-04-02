@@ -1678,7 +1678,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/timecard/sw.js', {scope: '/timecard/'})
+    navigator.serviceWorker.register('/Claude/Timecard/sw.js', {scope: '/Claude/Timecard/'})
       .catch(e => console.warn('SW registration failed:', e));
   });
 }
