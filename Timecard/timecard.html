@@ -1,0 +1,1438 @@
+<!--
+  @tool      タイムカード
+  @version   v02_2026-04-03.3
+  @changelog
+    v02_2026-04-03.3 - 月次日次一覧：休暇色付き行をカード幅いっぱいに広げ文字位置ずれを修正
+    v02_2026-04-03.2 - 月次日次一覧：時刻なし半休・時間休は予定表示にフォールバック
+    v02_2026-04-03 - 起動時にinitPunchTab()が呼ばれず日付未設定・自動保存不可だったバグ修正
+    v01_2026-04-01   - 初版
+    v01_2026-04-01.5 - Firebase除去・localStorage保存・動作確認版・ダーク/ライト切替追加
+    v01_2026-04-01.6 - 集計バグ修正、所定=max(160h,営業日×8h)
+    v01_2026-04-01.7 - グラフdisplay:none問題修正、休暇視覚表示改善
+    v01_2026-04-01.9 - 実績削除ボタン追加
+    v01_2026-04-01.10 - 日次モーダルに実績削除ボタン追加（実績あり時のみ表示）
+-->
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>タイムカード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg:#0f1117;--bg2:#1a1d27;--bg3:#242736;--border:#2e3247;
+  --accent:#4f8ef7;--success:#3ecf8e;--warn:#f5a623;--danger:#e05252;
+  --text:#e8eaf0;--text2:#8b90a7;--text3:#5a5f7a;
+  --nav-h:60px;--radius:12px;
+}
+[data-theme="light"] {
+  --bg:#f4f6fb;--bg2:#ffffff;--bg3:#eef0f7;--border:#d0d5e8;
+  --accent:#2563eb;--success:#16a34a;--warn:#d97706;--danger:#dc2626;
+  --text:#1e2233;--text2:#6b7280;--text3:#9ca3af;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden;transition:background .2s,color .2s;}
+#app{padding-bottom:var(--nav-h);min-height:100dvh;}
+#nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--bg2);border-top:1px solid var(--border);display:flex;z-index:100;}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;transition:color .15s;}
+.nav-btn.active{color:var(--accent);}
+.nav-btn svg{width:22px;height:22px;}
+.page{display:none;padding:16px;}
+.page.active{display:block;}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.page-title{font-size:18px;font-weight:700;}
+.month-nav{display:flex;align-items:center;gap:8px;}
+.month-nav button{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;}
+.month-label{font-size:15px;font-weight:600;min-width:80px;text-align:center;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
+.card-title{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
+input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;transition:border-color .15s;font-family:inherit;}
+input:focus,select:focus{border-color:var(--accent);}
+.time-input-big{font-size:22px!important;font-weight:700!important;text-align:center;}
+label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px;margin-top:10px;}
+label:first-child{margin-top:0;}
+.row{display:flex;gap:8px;}
+.row>*{flex:1;}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:600;font-family:inherit;transition:all .15s;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-success{background:var(--success);color:#fff;}
+.btn-danger{background:transparent;border:1px solid var(--danger);color:var(--danger);}
+.btn-ghost{background:var(--bg3);border:1px solid var(--border);color:var(--text);}
+.btn-sm{padding:6px 12px;font-size:12px;}
+.btn-full{width:100%;}
+.leave-type-row{display:flex;gap:6px;flex-wrap:wrap;}
+.leave-chip{padding:6px 14px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:13px;transition:all .15s;}
+.leave-chip.selected{border-color:var(--accent);background:rgba(79,142,247,.15);color:var(--accent);}
+[data-theme="light"] .leave-chip.selected{background:rgba(37,99,235,.1);}
+.day-summary{display:flex;gap:12px;flex-wrap:wrap;}
+.day-stat{flex:1;min-width:80px;text-align:center;}
+.day-stat-val{font-size:22px;font-weight:700;color:var(--accent);}
+.day-stat-label{font-size:11px;color:var(--text2);margin-top:2px;}
+.month-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;}
+.stat-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 6px;text-align:center;}
+.stat-box-val{font-size:20px;font-weight:700;line-height:1.2;}
+.stat-box-label{font-size:10px;color:var(--text2);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em;font-weight:600;}
+.stat-box-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+#chart-container{position:relative;height:220px;}
+.break-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.break-row input{flex:1;}
+#add-break-btn{width:100%;margin-top:4px;background:transparent;border:1px dashed var(--border);color:var(--text2);border-radius:8px;padding:8px;cursor:pointer;font-size:13px;}
+#add-break-btn:hover{border-color:var(--accent);color:var(--accent);}
+.day-list-item{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px;cursor:pointer;}
+.day-list-item:last-child{border-bottom:none;}
+.day-num{width:28px;text-align:center;font-size:13px;font-weight:700;flex-shrink:0;}
+.day-num.sun{color:var(--danger);}
+.day-num.sat{color:var(--accent);}
+.day-num.hol{color:var(--warn);}
+.day-info{flex:1;min-width:0;}
+.day-time{font-size:14px;font-weight:600;}
+.day-sub{font-size:11px;color:var(--text2);margin-top:1px;}
+.day-hours{font-size:16px;font-weight:700;text-align:right;flex-shrink:0;}
+.annual-table{width:100%;border-collapse:collapse;font-size:13px;}
+.annual-table th{background:var(--bg3);color:var(--text2);padding:8px 4px;text-align:center;border-bottom:2px solid var(--border);font-size:11px;font-weight:600;white-space:nowrap;}
+.annual-table td{padding:8px 4px;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap;}
+.annual-table tr:hover td{background:var(--bg3);}
+.annual-table .current-month td{color:var(--accent);font-weight:700;}
+.preset-item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);}
+.preset-item:last-child{border-bottom:none;}
+.preset-name{flex:1;font-size:14px;}
+.preset-time{font-size:13px;color:var(--text2);}
+.holiday-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);}
+.holiday-item:last-child{border-bottom:none;}
+.holiday-date{font-size:13px;color:var(--text2);width:90px;flex-shrink:0;}
+.holiday-name{flex:1;font-size:14px;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .2s;}
+.modal-overlay.open{opacity:1;pointer-events:all;}
+.modal-sheet{background:var(--bg2);border-radius:20px 20px 0 0;width:100%;padding:20px 16px 32px;transform:translateY(100%);transition:transform .25s ease;max-height:90dvh;overflow-y:auto;}
+.modal-overlay.open .modal-sheet{transform:translateY(0);}
+.modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;}
+.modal-tabs{display:flex;gap:0;margin:12px 0 0;border-radius:8px;overflow:hidden;border:1px solid var(--border);}
+.modal-tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;background:var(--bg3);color:var(--text2);transition:all .15s;}
+.modal-tab.active{background:var(--accent);color:#fff;}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:16px;}
+.mt-8{margin-top:8px;}.mt-12{margin-top:12px;}
+.divider{height:1px;background:var(--border);margin:12px 0;}
+.theme-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
+.stamp-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.stamp-btn{padding:12px 8px;border-radius:10px;border:2px solid var(--border);background:var(--bg2);color:var(--text);cursor:pointer;font-family:inherit;text-align:center;transition:all .15s;}
+.stamp-btn .stamp-label{font-size:11px;color:var(--text2);margin-bottom:2px;}
+.stamp-btn .stamp-time{font-size:18px;font-weight:700;letter-spacing:.05em;min-height:26px;}
+.stamp-btn.active{border-color:var(--accent);background:rgba(79,142,247,.08);}
+.stamp-btn.active .stamp-label{color:var(--accent);}
+.stamp-btn:disabled{opacity:.35;cursor:not-allowed;}
+.live-badge{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:4px;animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- 打刻 -->
+  <div id="page-punch" class="page active">
+    <div class="page-header">
+      <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
+      <button class="theme-btn" id="btn-theme">🌙</button>
+    </div>
+    <div class="card">
+      <div class="card-title">対象日</div>
+      <input type="date" id="punch-date" style="display:none">
+      <div style="font-size:16px;font-weight:700;color:var(--accent)" id="punch-date-display">--</div>
+      <div class="leave-type-row mt-8" id="leave-chips">
+        <div class="leave-chip selected" data-leave="normal">通常</div>
+        <div class="leave-chip" data-leave="paid">有給</div>
+        <div class="leave-chip" data-leave="comp">代休</div>
+        <div class="leave-chip" data-leave="half">半日休</div>
+        <div class="leave-chip" data-leave="hourly">時間休</div>
+      </div>
+      <div id="hourly-leave-input" style="display:none;margin-top:10px;">
+        <label>時間休 取得時間数</label>
+        <input type="number" id="hourly-hours" min="0.5" max="8" step="0.5" value="1">
+      </div>
+    </div>
+    <div class="card" id="work-time-card">
+      <div class="card-title">出退勤</div>
+      <!-- スタンプボタン -->
+      <div class="stamp-btns">
+        <button class="stamp-btn" id="stamp-in">
+          <div class="stamp-label">🟢 勤務開始</div>
+          <div class="stamp-time" id="stamp-in-time">--:--</div>
+        </button>
+        <button class="stamp-btn" id="stamp-out">
+          <div class="stamp-label">🔴 勤務終了</div>
+          <div class="stamp-time" id="stamp-out-time">--:--</div>
+        </button>
+        <button class="stamp-btn" id="stamp-break-start">
+          <div class="stamp-label">☕ 休憩開始</div>
+          <div class="stamp-time" id="stamp-break-start-time">--:--</div>
+        </button>
+        <button class="stamp-btn" id="stamp-break-end">
+          <div class="stamp-label">▶ 休憩終了</div>
+          <div class="stamp-time" id="stamp-break-end-time">--:--</div>
+        </button>
+      </div>
+      <div class="row">
+        <div><label>出勤</label><input type="text" id="punch-in" class="time-input-big" placeholder="0900" maxlength="6"></div>
+        <div><label>退勤</label><input type="text" id="punch-out" class="time-input-big" placeholder="1800" maxlength="6"></div>
+      </div>
+      <div id="preset-buttons" class="leave-type-row mt-8"></div>
+    </div>
+    <div class="card" id="break-card">
+      <div class="card-title">休憩</div>
+      <div id="break-list"></div>
+      <button id="add-break-btn">＋ 休憩を追加</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        本日サマリ
+        <span id="live-indicator" style="display:none;margin-left:6px;font-size:11px;color:var(--success);font-weight:400;">
+          <span class="live-badge"></span>計算中
+        </span>
+      </div>
+      <div class="day-summary">
+        <div class="day-stat"><div class="day-stat-val" id="today-work-hours">--</div><div class="day-stat-label">実労働時間</div></div>
+        <div class="day-stat"><div class="day-stat-val" id="today-break-hours">--</div><div class="day-stat-label">休憩時間</div></div>
+        <div class="day-stat"><div class="day-stat-val" id="today-overtime">--</div><div class="day-stat-label">残業(8h超)</div></div>
+      </div>
+    </div>
+    <button id="btn-save-punch" class="btn btn-primary btn-full">💾 保存</button>
+  </div>
+
+  <!-- 月次 -->
+  <div id="page-month" class="page">
+    <div class="page-header">
+      <div class="page-title">月次</div>
+      <div class="month-nav">
+        <button id="btn-month-prev">‹</button>
+        <div class="month-label" id="month-label"></div>
+        <button id="btn-month-next">›</button>
+      </div>
+    </div>
+    <div class="month-stats" style="grid-template-columns:1fr 1fr 1fr;">
+      <!-- 1段目 -->
+      <div class="stat-box">
+        <div class="stat-box-label">実労働日数</div>
+        <div class="stat-box-val" id="m-work-days-actual" style="color:var(--accent)">--</div>
+        <div class="stat-box-sub" id="m-workdays">-- 営業日</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-label">法定時間外労働</div>
+        <div class="stat-box-val" id="m-legal-ot" style="color:var(--warn)">--</div>
+        <div class="stat-box-sub">残業時間(h)</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-label">法定休日労働</div>
+        <div class="stat-box-val" id="m-holiday-work" style="color:var(--danger)">--</div>
+        <div class="stat-box-sub">日曜勤務(h)</div>
+      </div>
+      <!-- 2段目 -->
+      <div class="stat-box" style="grid-column:span 3;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0;background:transparent;border:none;">
+        <div class="stat-box" style="text-align:left;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div class="stat-box-label">法定時間外まで</div>
+            <div style="font-size:10px;color:var(--text3)" id="m-legal-limit-label">限度--h</div>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:6px;margin-top:2px;">
+            <span style="font-size:28px;font-weight:700;" id="m-legal-remain">--</span>
+            <span style="font-size:13px;color:var(--text2)">h 残り</span>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-label">実労働 / 予定</div>
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:4px;margin-top:4px;">
+            <span class="stat-box-val" id="m-actual" style="color:var(--accent)">--</span>
+            <span style="font-size:11px;color:var(--text3)">/</span>
+            <span style="font-size:16px;font-weight:700;color:var(--text2)" id="m-sched-total">--</span>
+          </div>
+          <div class="stat-box-sub">h</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">累積推移</div>
+      <div id="chart-container"><canvas id="monthChart"></canvas></div>
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;font-size:11px;align-items:center;">
+        <span style="color:#3ecf8e">─ 実績</span>
+        <span style="color:#4f8ef7">╌ 予測</span>
+        <span style="color:#e05252">─ 法定限度</span>
+        <span style="color:var(--text3)">╌ 予定</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">予定入力（範囲一括）</div>
+      <div class="row">
+        <div><label>開始日</label><input type="date" id="sched-from"></div>
+        <div><label>終了日</label><input type="date" id="sched-to"></div>
+      </div>
+      <div class="row mt-8" id="sched-time-row">
+        <div><label>出勤</label><input type="text" id="sched-in" placeholder="0900" maxlength="6"></div>
+        <div><label>退勤</label><input type="text" id="sched-out" placeholder="1800" maxlength="6"></div>
+      </div>
+      <div style="margin-top:8px;">
+        <label><input type="checkbox" id="sched-weekday-only" checked style="width:auto;margin-right:4px;">平日のみ</label>
+        <label style="margin-top:4px;"><input type="checkbox" id="sched-exclude-hol" checked style="width:auto;margin-right:4px;">祝日除く</label>
+      </div>
+      <div id="sched-preset-buttons" class="leave-type-row mt-8"></div>
+      <div class="row mt-8">
+        <button id="btn-save-schedule" class="btn btn-ghost btn-full">一括入力</button>
+        <button id="btn-delete-schedule" class="btn btn-danger btn-full">一括削除</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">日次</div>
+      <div id="day-list"></div>
+    </div>
+  </div>
+
+  <!-- 年間 -->
+  <div id="page-annual" class="page">
+    <div class="page-header">
+      <div class="page-title">年間</div>
+      <div class="month-nav">
+        <button id="btn-year-prev">‹</button>
+        <div class="month-label" id="year-label"></div>
+        <button id="btn-year-next">›</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">月別サマリ</div>
+      <div style="overflow-x:auto;">
+        <table class="annual-table">
+          <thead><tr>
+            <th>月</th>
+            <th style="text-align:right">実労働(h)</th>
+            <th style="text-align:right">法定限度(h)</th>
+            <th style="text-align:right">法定時間外(h)</th>
+            <th style="text-align:right">法定休日(h)</th>
+            <th style="text-align:right">有給(日)</th>
+            <th style="text-align:right">代休(日)</th>
+          </tr></thead>
+          <tbody id="annual-tbody"></tbody>
+          <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+            <td>合計</td>
+            <td id="at-actual" style="text-align:right">-</td>
+            <td id="at-pres" style="text-align:right">-</td>
+            <td id="at-cot" style="text-align:right">-</td>
+            <td id="at-lot" style="text-align:right">-</td>
+            <td id="at-paid" style="text-align:right">-</td>
+            <td id="at-comp" style="text-align:right">-</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <button id="btn-export-excel" class="btn btn-success btn-full mt-8">📊 Excelで出力</button>
+  </div>
+
+  <!-- 設定 -->
+  <div id="page-settings" class="page">
+    <div class="page-header"><div class="page-title">設定</div></div>
+    <div class="card">
+      <div class="card-title">表示</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:14px;">テーマ</span>
+        <button id="btn-theme-setting" class="btn btn-ghost btn-sm">☀️ ライトに切替</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">勤務設定</div>
+      <label>標準労働時間（時間/日）</label>
+      <input type="number" id="std-hours" min="1" max="12" step="0.5" value="8">
+      <label style="margin-top:8px;">コアタイム</label>
+      <div class="row">
+        <input type="text" id="core-start" placeholder="1000" maxlength="4">
+        <input type="text" id="core-end" placeholder="1500" maxlength="4">
+      </div>
+      <button id="btn-save-work-settings" class="btn btn-primary btn-sm mt-8">保存</button>
+    </div>
+    <div class="card">
+      <div class="card-title">出退勤プリセット</div>
+      <div id="preset-list"></div>
+      <div class="divider"></div>
+      <div class="row">
+        <div><label>名前</label><input type="text" id="new-preset-name" placeholder="通常" maxlength="10"></div>
+        <div><label>出勤</label><input type="text" id="new-preset-in" placeholder="0900" maxlength="6"></div>
+        <div><label>退勤</label><input type="text" id="new-preset-out" placeholder="1800" maxlength="6"></div>
+      </div>
+      <button id="btn-add-preset" class="btn btn-ghost btn-sm mt-8">＋ 追加</button>
+    </div>
+    <div class="card">
+      <div class="card-title">デフォルト休憩</div>
+      <div id="break-preset-list"></div>
+      <div class="divider"></div>
+      <div class="row">
+        <div><label>開始</label><input type="text" id="new-bp-start" placeholder="1200" maxlength="4"></div>
+        <div><label>終了</label><input type="text" id="new-bp-end" placeholder="1300" maxlength="4"></div>
+      </div>
+      <button id="btn-add-break-preset" class="btn btn-ghost btn-sm mt-8">＋ 追加</button>
+    </div>
+    <div class="card">
+      <div class="card-title">祝日マスタ</div>
+      <div class="row" style="margin-bottom:10px;"><select id="holiday-year-filter"></select></div>
+      <div id="holiday-list" style="max-height:300px;overflow-y:auto;"></div>
+      <div class="divider"></div>
+      <div class="row">
+        <div><label>日付</label><input type="date" id="new-hol-date"></div>
+        <div><label>名称</label><input type="text" id="new-hol-name" placeholder="祝日名" maxlength="20"></div>
+      </div>
+      <button id="btn-add-holiday" class="btn btn-ghost btn-sm mt-8">＋ 追加</button>
+    </div>
+
+    <!-- データ移行 -->
+    <div class="card">
+      <div class="card-title">データ移行</div>
+      <div class="row mt-8">
+        <button id="btn-export-json" class="btn btn-ghost btn-full">📤 エクスポート</button>
+        <button id="btn-import-json" class="btn btn-ghost btn-full">📥 インポート</button>
+      </div>
+      <div id="import-msg" style="font-size:12px;margin-top:8px;color:var(--text2)"></div>
+      <input type="file" id="import-file-input" accept=".json" style="display:none">
+    </div>
+  </div>
+
+</div>
+
+<!-- NAV -->
+<nav id="nav">
+  <button class="nav-btn active" data-page="punch">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>打刻
+  </button>
+  <button class="nav-btn" data-page="month">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>月次
+  </button>
+  <button class="nav-btn" data-page="annual">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>年間
+  </button>
+  <button class="nav-btn" data-page="settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>設定
+  </button>
+</nav>
+
+<!-- DAY MODAL -->
+<div class="modal-overlay" id="day-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="day-modal-title"></div>
+    <div id="day-modal-content"></div>
+    <div class="row mt-8">
+      <button id="btn-modal-delete" class="btn btn-danger btn-full" style="display:none">🗑 削除</button>
+    </div>
+    <div class="row mt-8">
+      <button id="btn-modal-cancel" class="btn btn-ghost btn-full">キャンセル</button>
+      <button id="btn-modal-save" class="btn btn-primary btn-full">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1';
+// 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
+const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
+const DEFAULT_WORK_IN   = '0830';
+const DEFAULT_WORK_OUT  = '1730';
+const DEFAULT_WORK_LABEL = '08:30〜17:30（デフォルト）';
+let monthData={}, settings={stdHours:8,coreStart:'1000',coreEnd:'1500',presets:[{name:'通常',timeIn:'0900',timeOut:'1800'},{name:'早出',timeIn:'0800',timeOut:'1700'}],breakPresets:[{start:'1200',end:'1300'}],holidays:[]};
+let currentMonth=new Date(), currentYear=new Date().getFullYear();
+let selectedLeave='normal', breakRows=[], dayModalDate=null, currentChart=null, modalBreakRows=[];
+
+const DEFAULT_HOLIDAYS=[
+  {date:'2024-01-01',name:'元日'},{date:'2024-01-08',name:'成人の日'},{date:'2024-02-11',name:'建国記念の日'},{date:'2024-02-12',name:'建国記念の日 振替'},{date:'2024-02-23',name:'天皇誕生日'},{date:'2024-03-20',name:'春分の日'},{date:'2024-04-29',name:'昭和の日'},{date:'2024-05-03',name:'憲法記念日'},{date:'2024-05-04',name:'みどりの日'},{date:'2024-05-05',name:'こどもの日'},{date:'2024-05-06',name:'こどもの日 振替'},{date:'2024-07-15',name:'海の日'},{date:'2024-08-11',name:'山の日'},{date:'2024-08-12',name:'山の日 振替'},{date:'2024-09-16',name:'敬老の日'},{date:'2024-09-22',name:'秋分の日'},{date:'2024-09-23',name:'秋分の日 振替'},{date:'2024-10-14',name:'スポーツの日'},{date:'2024-11-03',name:'文化の日'},{date:'2024-11-04',name:'文化の日 振替'},{date:'2024-11-23',name:'勤労感謝の日'},
+  {date:'2025-01-01',name:'元日'},{date:'2025-01-13',name:'成人の日'},{date:'2025-02-11',name:'建国記念の日'},{date:'2025-02-23',name:'天皇誕生日'},{date:'2025-02-24',name:'天皇誕生日 振替'},{date:'2025-03-20',name:'春分の日'},{date:'2025-04-29',name:'昭和の日'},{date:'2025-05-03',name:'憲法記念日'},{date:'2025-05-04',name:'みどりの日'},{date:'2025-05-05',name:'こどもの日'},{date:'2025-05-06',name:'こどもの日 振替'},{date:'2025-07-21',name:'海の日'},{date:'2025-08-11',name:'山の日'},{date:'2025-09-15',name:'敬老の日'},{date:'2025-09-23',name:'秋分の日'},{date:'2025-10-13',name:'スポーツの日'},{date:'2025-11-03',name:'文化の日'},{date:'2025-11-23',name:'勤労感謝の日'},{date:'2025-11-24',name:'勤労感謝の日 振替'},
+  {date:'2026-01-01',name:'元日'},{date:'2026-01-12',name:'成人の日'},{date:'2026-02-11',name:'建国記念の日'},{date:'2026-02-23',name:'天皇誕生日'},{date:'2026-03-20',name:'春分の日'},{date:'2026-04-29',name:'昭和の日'},{date:'2026-05-03',name:'憲法記念日'},{date:'2026-05-04',name:'みどりの日'},{date:'2026-05-05',name:'こどもの日'},{date:'2026-05-06',name:'こどもの日 振替'},{date:'2026-07-20',name:'海の日'},{date:'2026-08-11',name:'山の日'},{date:'2026-09-21',name:'敬老の日'},{date:'2026-09-23',name:'秋分の日'},{date:'2026-10-12',name:'スポーツの日'},{date:'2026-11-03',name:'文化の日'},{date:'2026-11-23',name:'勤労感謝の日'},
+  {date:'2027-01-01',name:'元日'},{date:'2027-01-11',name:'成人の日'},{date:'2027-02-11',name:'建国記念の日'},{date:'2027-02-23',name:'天皇誕生日'},{date:'2027-03-21',name:'春分の日'},{date:'2027-04-29',name:'昭和の日'},{date:'2027-05-03',name:'憲法記念日'},{date:'2027-05-04',name:'みどりの日'},{date:'2027-05-05',name:'こどもの日'},{date:'2027-07-19',name:'海の日'},{date:'2027-08-11',name:'山の日'},{date:'2027-09-20',name:'敬老の日'},{date:'2027-09-23',name:'秋分の日'},{date:'2027-10-11',name:'スポーツの日'},{date:'2027-11-03',name:'文化の日'},{date:'2027-11-23',name:'勤労感謝の日'},
+  {date:'2028-01-01',name:'元日'},{date:'2028-01-10',name:'成人の日'},{date:'2028-02-11',name:'建国記念の日'},{date:'2028-02-23',name:'天皇誕生日'},{date:'2028-03-20',name:'春分の日'},{date:'2028-04-29',name:'昭和の日'},{date:'2028-05-03',name:'憲法記念日'},{date:'2028-05-04',name:'みどりの日'},{date:'2028-05-05',name:'こどもの日'},{date:'2028-07-17',name:'海の日'},{date:'2028-08-11',name:'山の日'},{date:'2028-09-18',name:'敬老の日'},{date:'2028-09-22',name:'秋分の日'},{date:'2028-10-09',name:'スポーツの日'},{date:'2028-11-03',name:'文化の日'},{date:'2028-11-23',name:'勤労感謝の日'},
+];
+
+function loadStorage(){
+  try{const d=localStorage.getItem(STORAGE_KEY);if(d)monthData=JSON.parse(d);}catch{}
+  try{const s=localStorage.getItem(SETTINGS_KEY);if(s)settings={...settings,...JSON.parse(s)};}catch{}
+  // キー正規化: "01"→"1" の不一致を修正
+  for(const key of Object.keys(monthData)){
+    const md=monthData[key];
+    for(const section of['days','schedules']){
+      if(!md[section])continue;
+      const normalized={};
+      for(const [k,v] of Object.entries(md[section])){
+        normalized[String(+k)]=v; // "01"→"1"
+      }
+      md[section]=normalized;
+    }
+  }
+}
+function saveStorage(){localStorage.setItem(STORAGE_KEY,JSON.stringify(monthData));}
+function saveSettingsStorage(){localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}
+
+function parseTime(str){if(!str)return null;str=str.toString().replace(':','').trim();if(str.length<3)return null;let h,m;if(str.length<=3){h=parseInt(str.slice(0,1));m=parseInt(str.slice(1));}else{h=parseInt(str.slice(0,-2));m=parseInt(str.slice(-2));}if(isNaN(h)||isNaN(m)||m<0||m>59)return null;return h*60+m;}
+function formatTime(mins){if(mins===null||mins===undefined)return'--';return`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`;}
+function formatHours(mins){if(mins===null||mins===undefined||mins<0)return'0.0';return(mins/60).toFixed(1);}
+function toDateStr(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function isHoliday(ds){return settings.holidays.some(h=>h.date===ds);}
+function isWeekend(ds){const d=new Date(ds+'T00:00:00');return d.getDay()===0||d.getDay()===6;}
+function isBusinessDay(ds){return!isWeekend(ds)&&!isHoliday(ds);}
+function getMonthKey(y,m){return`${y}-${String(m).padStart(2,'0')}`;}
+function getBusinessDays(y,m){const days=[],dim=new Date(y,m,0).getDate();for(let d=1;d<=dim;d++){const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;if(isBusinessDay(ds))days.push(ds);}return days;}
+
+// 集計用（実労働時間・残業・ダッシュボード）
+function calcWorkMinutes(o){
+  if(!o)return 0;
+  const lv=o.leave||'normal';
+  if(lv==='paid'||lv==='comp')return 0;
+  if(lv==='half'&&!o.timeIn)return 0; // 時刻なし半休は0
+  if(!o.timeIn||!o.timeOut)return 0;
+  const inM=parseTime(o.timeIn),outM=parseTime(o.timeOut);
+  if(inM===null||outM===null)return 0;
+  let t=outM-inM;
+  if(t<0)t+=24*60;
+  for(const b of(o.breaks||[])){
+    const bs=parseTime(b.start),be=parseTime(b.end);
+    if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=24*60;t-=bd;}
+  }
+  if(lv==='hourly'&&o.hourlyHours)t-=o.hourlyHours*60; // 時間休は差し引く
+  return Math.max(0,t);
+}
+
+// 予測用（残業傾向把握・平均計算）
+function calcWorkMinutesForForecast(o){
+  if(!o)return 0;
+  const lv=o.leave||'normal';
+  if(lv==='paid'||lv==='comp')return 0;
+  if(lv==='half'&&!o.timeIn)return 4*60; // 時刻なし半休は4h
+  if(!o.timeIn||!o.timeOut)return 0;
+  const inM=parseTime(o.timeIn),outM=parseTime(o.timeOut);
+  if(inM===null||outM===null)return 0;
+  let t=outM-inM;
+  if(t<0)t+=24*60;
+  for(const b of(o.breaks||[])){
+    const bs=parseTime(b.start),be=parseTime(b.end);
+    if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=24*60;t-=bd;}
+  }
+  // 時間休は差し引かない（実際の勤務時間で予測）
+  if(lv==='half')t+=4*60; // 半休分4h加算
+  return Math.max(0,t);
+}
+
+function getDay(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.days||{})[String(+d)]||null;}
+function getSched(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.schedules||{})[String(+d)]||null;}
+function setDay(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(!monthData[key])monthData[key]={days:{},schedules:{}};monthData[key].days[String(+d)]=data;}
+function setSched(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(!monthData[key])monthData[key]={days:{},schedules:{}};monthData[key].schedules[String(+d)]=data;}
+
+// THEME
+function applyTheme(t){document.documentElement.setAttribute('data-theme',t);localStorage.setItem(THEME_KEY,t);const dk=t==='dark';document.getElementById('btn-theme').textContent=dk?'☀️':'🌙';const bs=document.getElementById('btn-theme-setting');if(bs)bs.textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';if(currentChart)renderMonthTab();}
+function toggleTheme(){applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
+
+// PUNCH
+let liveTimer = null;
+
+function nowHHMM(){
+  const n=new Date();
+  return `${String(n.getHours()).padStart(2,'0')}${String(n.getMinutes()).padStart(2,'0')}`;
+}
+
+function updateStampButtons(){
+  const inVal  = document.getElementById('punch-in').value.trim();
+  const outVal = document.getElementById('punch-out').value.trim();
+  const today  = toDateStr(new Date());
+  const isToday = document.getElementById('punch-date').value === today;
+
+  // 勤務開始: 今日かつ未入力で押せる
+  document.getElementById('stamp-in').disabled  = !isToday || !!inVal;
+  document.getElementById('stamp-out').disabled = !isToday || !inVal;
+  document.getElementById('stamp-break-start').disabled = !isToday || !inVal;
+  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal;
+
+  // 入力済みの時刻を表示
+  document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
+  document.getElementById('stamp-out-time').textContent = outVal ? formatTime(parseTime(outVal)) : '--:--';
+
+  // activeスタイル
+  document.getElementById('stamp-in').classList.toggle('active', !!inVal);
+  document.getElementById('stamp-out').classList.toggle('active', !!outVal);
+
+  // ライブ更新（出勤済み・退勤未入力・今日）
+  const needLive = isToday && !!inVal && !outVal;
+  document.getElementById('live-indicator').style.display = needLive ? 'inline' : 'none';
+  if(needLive && !liveTimer){
+    liveTimer = setInterval(()=>{ updateDaySummary(true); }, 60000);
+  } else if(!needLive && liveTimer){
+    clearInterval(liveTimer); liveTimer = null;
+  }
+}
+
+function initPunchTab(){
+  const today = toDateStr(new Date());
+  document.getElementById('punch-date').value = today;
+  const dn=['日','月','火','水','木','金','土'];
+  const d0=new Date(today+'T00:00:00');
+  document.getElementById('punch-date-display').textContent=
+    `${today} (${dn[d0.getDay()]})`;
+  document.getElementById('today-date').textContent =
+    new Date().toLocaleDateString('ja-JP',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  selectLeave('normal');
+  loadDayToPunch(today);
+  renderPresetButtons();
+}
+
+function loadDayToPunch(ds){
+  breakRows=[];
+  document.getElementById('break-list').innerHTML='';
+  const d = getDay(ds);
+  if(d){
+    document.getElementById('punch-in').value  = d.timeIn  || '';
+    document.getElementById('punch-out').value = d.timeOut || '';
+    selectLeave(d.leave || 'normal');
+    if(d.hourlyHours) document.getElementById('hourly-hours').value = d.hourlyHours;
+    for(const b of (d.breaks||[])) addBreakRow(b.start, b.end);
+    // 休憩が1件以下なら2行目（空欄）も追加
+    if((d.breaks||[]).length <= 1) addBreakRow('','');
+  } else {
+    document.getElementById('punch-in').value  = '';
+    document.getElementById('punch-out').value = '';
+    selectLeave('normal');
+    // デフォルト休憩: 設定があればそれ、なければ1200-1300固定
+    const bp = settings.breakPresets || [];
+    if(bp.length > 0){
+      for(const b of bp) addBreakRow(b.start, b.end);
+    } else {
+      addBreakRow('1200','1300');
+    }
+    addBreakRow('',''); // 2行目空欄
+  }
+  updateDaySummary();
+  updateStampButtons();
+}
+function selectLeave(lv){selectedLeave=lv;document.querySelectorAll('#leave-chips .leave-chip').forEach(c=>c.classList.toggle('selected',c.dataset.leave===lv));const away=['paid','comp','half'].includes(lv);document.getElementById('work-time-card').style.opacity=away?'0.5':'1';document.getElementById('break-card').style.opacity=away?'0.5':'1';document.getElementById('hourly-leave-input').style.display=lv==='hourly'?'block':'none';updateDaySummary();}
+function isBreakValid(b,inVal,outVal){
+  if(!b||!b.start||!b.end)return true;
+  const bs=parseTime(b.start),be=parseTime(b.end);
+  if(bs===null||be===null)return false;
+  const inM=parseTime(inVal),outM=parseTime(outVal);
+  if(inM===null||outM===null)return true;
+  let wEnd=outM;if(wEnd<=inM)wEnd+=24*60;
+  let bStart=bs;if(bStart<inM)bStart+=24*60;
+  let bEnd=be;if(bEnd<=bStart)bEnd+=24*60;
+  return bStart>=inM&&bEnd<=wEnd;
+}
+function addBreakRow(start='',end=''){
+  const idx=breakRows.length;breakRows.push({start,end});
+  const div=document.createElement('div');div.className='break-row';div.dataset.idx=idx;
+  const i1=document.createElement('input');i1.type='text';i1.placeholder='開始 1200';i1.value=start;i1.maxLength=6;
+  i1.addEventListener('input',e=>{breakRows[idx].start=e.target.value;updateDaySummary();});
+  const sep=document.createElement('span');sep.textContent='〜';sep.style.cssText='color:var(--text2);flex-shrink:0';
+  const i2=document.createElement('input');i2.type='text';i2.placeholder='終了 1300';i2.value=end;i2.maxLength=6;
+  i2.addEventListener('input',e=>{breakRows[idx].end=e.target.value;updateDaySummary();});
+  const errBadge=document.createElement('span');
+  errBadge.className='break-err-badge';errBadge.dataset.idx=idx;
+  errBadge.textContent='⚠';errBadge.title='勤務時間外の休憩（計算から除外）';
+  errBadge.style.cssText='display:none;color:var(--danger);font-size:14px;flex-shrink:0;cursor:default;';
+  const btn=document.createElement('button');btn.className='btn btn-ghost btn-sm';btn.textContent='✕';
+  btn.addEventListener('click',()=>{breakRows[idx]=null;div.remove();updateDaySummary();});
+  div.append(i1,sep,i2,errBadge,btn);
+  document.getElementById('break-list').appendChild(div);
+}
+function updateDaySummary(live=false){
+  const inVal  = document.getElementById('punch-in').value;
+  let   outVal = document.getElementById('punch-out').value;
+  const today  = toDateStr(new Date());
+  const isToday = document.getElementById('punch-date').value === today;
+  if(isToday && inVal && !outVal) outVal = nowHHMM();
+
+  // 休憩バリデーション: 勤務時間外の行を赤くして計算から除外
+  const validBreaks = [];
+  breakRows.filter(Boolean).forEach(b => {
+    const valid = isBreakValid(b, inVal, outVal);
+    const row = document.querySelector(`.break-row[data-idx="${breakRows.indexOf(b)}"]`);
+    if(row){
+      const badge = row.querySelector('.break-err-badge');
+      if(!valid && b.start && b.end){
+        row.querySelectorAll('input').forEach(i=>i.style.borderColor='var(--danger)');
+        if(badge) badge.style.display='inline';
+      } else {
+        row.querySelectorAll('input').forEach(i=>i.style.borderColor='');
+        if(badge) badge.style.display='none';
+      }
+    }
+    if(valid) validBreaks.push(b);
+  });
+
+  const o={timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks};
+  const wM=calcWorkMinutes(o);
+  const bM=validBreaks.reduce((s,b)=>{const bs=parseTime(b.start),be=parseTime(b.end);if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=1440;return s+bd;}return s;},0);
+  const stdM=(settings.stdHours||8)*60;
+  document.getElementById('today-work-hours').textContent=formatHours(wM)+'h';
+  document.getElementById('today-break-hours').textContent=formatHours(bM)+'h';
+  document.getElementById('today-overtime').textContent=formatHours(Math.max(0,wM-stdM))+'h';
+  updateStampButtons();
+}
+function autoSavePunch(){
+  const ds=document.getElementById('punch-date').value;
+  if(!ds)return;
+  const inVal=document.getElementById('punch-in').value.trim();
+  const outVal=document.getElementById('punch-out').value.trim();
+  const validBreaks=breakRows.filter(Boolean).filter(b=>isBreakValid(b,inVal,outVal)&&b.start&&b.end);
+  setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks});
+  saveStorage();
+  // 月次タブが表示中なら更新
+  if(document.getElementById('page-month').classList.contains('active')) renderMonthTab();
+}
+
+function savePunchDay(){
+  const ds=document.getElementById('punch-date').value;
+  if(!ds)return;
+  const inVal=document.getElementById('punch-in').value.trim();
+  const outVal=document.getElementById('punch-out').value.trim();
+  const validBreaks=breakRows.filter(Boolean).filter(b=>isBreakValid(b,inVal,outVal)&&b.start&&b.end);
+  setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks});
+  saveStorage();
+  const[y,m]=ds.split('-').map(Number);
+  if(getMonthKey(y,m)===getMonthKey(currentMonth.getFullYear(),currentMonth.getMonth()+1))renderMonthTab();
+  alert('保存しました');
+}
+
+// MONTH
+// 暦日数別法定限度時間（分）
+function calcLegalLimit(y, m) {
+  const dim = new Date(y, m, 0).getDate();
+  const limitByDays = { 28: 160.0, 29: 165.7, 30: 171.4, 31: 177.1 };
+  const calLimit = (limitByDays[dim] || 160.0) * 60;
+  const bizDays = getBusinessDays(y, m);
+  const bizLimit = bizDays.length * 8 * 60; // 法定基準は8h固定
+  return Math.max(160 * 60, Math.min(calLimit, bizLimit));
+}
+
+function calcPrescribed(bizDays){const MIN_H=160,stdH=settings.stdHours||8;return Math.max(MIN_H,bizDays.length*stdH)*60;}
+function renderMonthTab(){
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+  document.getElementById('month-label').textContent=`${y}/${String(m).padStart(2,'0')}`;
+  const key=getMonthKey(y,m),data=monthData[key]||{days:{},schedules:{}};
+  const bizDays=getBusinessDays(y,m),pres=calcPrescribed(bizDays);
+  const legalLimit=calcLegalLimit(y,m); // 法定限度時間（分）
+  const today=toDateStr(new Date()),dim=new Date(y,m,0).getDate();
+
+  // 実績集計
+  let actualMins=0, holidayWorkMins=0; // 法定休日(日曜)労働は別集計
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(ds>today)continue;
+    const obj=(data.days||{})[String(d)];
+    if(!obj)continue;
+    const dow=new Date(ds+'T00:00:00').getDay();
+    const wM=calcWorkMinutes(obj);
+    if(dow===0){ // 日曜=法定休日
+      holidayWorkMins+=wM;
+    } else {
+      actualMins+=wM; // 月〜土の実労働（法定限度時間の対象）
+    }
+  }
+
+  // 予定合計（月全体・有給等除外・法定休日除外）
+  let schedMins=0;
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=new Date(ds+'T00:00:00').getDay();
+    if(dow===0)continue; // 日曜除外
+    const sob=(data.schedules||{})[String(d)];
+    const obj=(data.days||{})[String(d)];
+    const actualLeave=obj?.leave||'normal';
+    if(['paid','comp','half'].includes(actualLeave))continue;
+    if(sob&&sob.timeIn&&sob.timeOut){
+      schedMins+=calcWorkMinutes({timeIn:sob.timeIn,timeOut:sob.timeOut,breaks:sob.breaks||[]});
+    } else if(isBusinessDay(ds)){
+      schedMins+=DEFAULT_WORK_MINS;
+    }
+  }
+
+  // 実労働日数カウント
+  let actualWorkDays=0;
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(ds>today)continue;
+    const obj=(data.days||{})[String(d)];
+    if(obj&&calcWorkMinutes(obj)>0)actualWorkDays++;
+  }
+
+  // 法定時間外計算用: 実績済み日は実績、未入力営業日(日曜除く)は計画値で補完
+  let combinedMins=0; // 実績+計画合算（日曜除く）
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=new Date(ds+'T00:00:00').getDay();
+    if(dow===0)continue; // 日曜除外
+    const obj=(data.days||{})[String(d)];
+    const sob=(data.schedules||{})[String(d)];
+    if(obj){
+      // 実績あり
+      combinedMins+=calcWorkMinutes(obj);
+    } else {
+      // 実績なし: 計画で補完
+      if(sob&&sob.timeIn&&sob.timeOut){
+        const actualLeave=obj?.leave||'normal';
+        if(!['paid','comp','half'].includes(actualLeave))
+          combinedMins+=calcWorkMinutes({timeIn:sob.timeIn,timeOut:sob.timeOut,breaks:sob.breaks||[]});
+      } else if(isBusinessDay(ds)){
+        combinedMins+=DEFAULT_WORK_MINS;
+      }
+    }
+  }
+
+  const legalOt=Math.max(0,combinedMins-legalLimit);
+  const legalRemain=Math.max(0,legalLimit-actualMins); // 実績のみで計算
+
+  document.getElementById('m-work-days-actual').textContent=actualWorkDays;
+  document.getElementById('m-workdays').textContent=`${bizDays.length}営業日`;
+  document.getElementById('m-legal-ot').textContent=formatHours(legalOt);
+  document.getElementById('m-actual').textContent=formatHours(actualMins);
+  document.getElementById('m-sched-total').textContent=formatHours(schedMins);
+  document.getElementById('m-holiday-work').textContent=formatHours(holidayWorkMins);
+
+  const legalLimitH=(legalLimit/60).toFixed(1);
+  document.getElementById('m-legal-limit-label').textContent=`限度 ${legalLimitH}h`;
+  const remainEl=document.getElementById('m-legal-remain');
+  remainEl.textContent=formatHours(legalRemain);
+  remainEl.style.color=legalRemain<=0?'var(--danger)':legalRemain<10*60?'var(--warn)':'var(--text)';
+
+  renderMonthChart(y,m,data,bizDays,legalLimit,legalLimit);
+  renderDayList(y,m,data);
+}
+
+let chartPending = false;
+function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
+  const container=document.getElementById('chart-container');
+  if(container.offsetParent===null){chartPending=true;return;}
+  chartPending=false;
+  const dim=new Date(y,m,0).getDate(),today=toDateStr(new Date());
+  const monthEnd=`${y}-${String(m).padStart(2,'0')}-${String(dim).padStart(2,'0')}`;
+  const isPast = monthEnd < today.slice(0,7)+'-01' ? false : monthEnd < today; // 過去月判定
+  const isCurrentMonth = (y===new Date().getFullYear()&&m===new Date().getMonth()+1);
+  const labels=[],sC=[],acC=[],fC=[];
+  let rS=0,rA=0,lastD=0,cnt=0;
+
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    labels.push(d);
+    const sob=(data.schedules||{})[String(d)];
+    const obj=(data.days||{})[String(d)];
+    const actualLeave=obj?.leave||'normal';
+
+    // 予定ライン
+    if(['paid','comp','half'].includes(actualLeave)){
+      // 除外
+    } else if(sob&&sob.timeIn&&sob.timeOut){
+      rS+=calcWorkMinutes({timeIn:sob.timeIn,timeOut:sob.timeOut,breaks:sob.breaks||[]});
+    } else if(isBusinessDay(ds)){
+      rS+=DEFAULT_WORK_MINS;
+    }
+    sC.push(parseFloat((rS/60).toFixed(2)));
+
+    // 実績累積（過去月・当月共通）
+    if(ds<=today){
+      if(obj){
+        const wM=calcWorkMinutesForForecast(obj); // 予測用
+        rA+=wM;
+        lastD=d;
+        if(!['paid','comp'].includes(obj.leave||'normal')) cnt++;
+      }
+      acC.push(parseFloat((rA/60).toFixed(2)));
+    } else {
+      acC.push(null);
+    }
+  }
+
+  // 予測ライン（当月のみ）
+  if(isCurrentMonth){
+    const avg=cnt>0?rA/cnt:0;
+    let rF=rA;
+    for(let d=1;d<=dim;d++){
+      const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      if(d<lastD){fC.push(null);continue;}
+      if(d===lastD){fC.push(parseFloat((rA/60).toFixed(2)));continue;}
+      const futureObj=(data.days||{})[String(d)];
+      const futureLeave=futureObj?.leave||'normal';
+      // 有給・代休の実績がある日は予測に加算しない（半休は通常扱い）
+      if(isBusinessDay(ds)&&!['paid','comp'].includes(futureLeave)) rF+=avg;
+      fC.push(parseFloat((rF/60).toFixed(2)));
+    }
+  }
+
+  if(currentChart)currentChart.destroy();
+  const dk=document.documentElement.getAttribute('data-theme')==='dark';
+  const gc=dk?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',tc=dk?'#5a5f7a':'#9ca3af';
+  const legalH=(legalLimit||173*60)/60;
+
+  // ポイント設定：土日・今日のみ表示
+  const todayIdx=labels.indexOf(parseInt(today.split('-')[2]));
+  const pointRadii=labels.map((d,i)=>{
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=new Date(ds+'T00:00:00').getDay();
+    return (dow===0||dow===6||i===todayIdx)?4:0;
+  });
+  const pointStyles=labels.map((d,i)=>{
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=new Date(ds+'T00:00:00').getDay();
+    return i===todayIdx?'star':(dow===0||dow===6)?'circle':'circle';
+  });
+
+  // 法定超過部分の赤塗りデータ（法定限度より上の部分）
+  const overData=acC.map(v=>v===null?null:Math.max(0,v-legalH));
+  const overDataF=fC.length?fC.map(v=>v===null?null:Math.max(0,v-legalH)):[];
+
+  const datasets=[
+    {label:'予定',data:sC,borderColor:dk?'#5a5f7a':'#adb5bd',backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:1.2,fill:false,spanGaps:true,borderDash:[4,3]},
+    // 実績：法定以下の部分（薄い緑塗り）
+    {label:'実績',data:acC,borderColor:'#3ecf8e',backgroundColor:'rgba(62,207,142,.08)',tension:.3,pointRadius:pointRadii,pointBackgroundColor:'#3ecf8e',borderWidth:2,fill:true,spanGaps:false},
+    // 実績：法定超過部分（赤塗り）- y軸のベースを法定limitにして超過分だけ塗る
+    {label:'超過',data:acC.map(v=>v===null?null:v),borderColor:'transparent',backgroundColor:'rgba(224,82,82,.15)',tension:.3,pointRadius:0,borderWidth:0,
+     fill:{target:{value:legalH},above:'rgba(224,82,82,.18)',below:'transparent'},spanGaps:false},
+  ];
+  if(isCurrentMonth&&fC.length){
+    datasets.push(
+      {label:'予測',data:fC,borderColor:'#4f8ef7',backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2,borderDash:[6,3],fill:false,spanGaps:false},
+      {label:'予測超過',data:fC.map(v=>v===null?null:v),borderColor:'transparent',backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:0,
+       fill:{target:{value:legalH},above:'rgba(79,142,247,.08)',below:'transparent'},spanGaps:false}
+    );
+  }
+  datasets.push(
+    {label:'法定',data:Array(dim).fill(legalH),borderColor:'#e05252',backgroundColor:'transparent',pointRadius:0,borderWidth:2,borderDash:[4,3]}
+  );
+
+  // 今日の縦線プラグイン
+  const todayLinePlugin={
+    id:'todayLine',
+    afterDraw(chart){
+      if(!isCurrentMonth)return;
+      const idx=chart.data.labels.indexOf(parseInt(today.split('-')[2]));
+      if(idx<0)return;
+      const x=chart.scales.x.getPixelForValue(idx);
+      const {top,bottom}=chart.chartArea;
+      const ctx2=chart.ctx;
+      ctx2.save();
+      ctx2.beginPath();
+      ctx2.moveTo(x,top);
+      ctx2.lineTo(x,bottom);
+      ctx2.strokeStyle=dk?'rgba(255,255,255,.45)':'rgba(0,0,0,.3)';
+      ctx2.lineWidth=1.5;
+      ctx2.setLineDash([4,3]);
+      ctx2.stroke();
+      ctx2.restore();
+    }
+  };
+
+  // 法定限度ラベルを右端に表示するプラグイン
+  const legalLabelPlugin={
+    id:'legalLabel',
+    afterDraw(chart){
+      const meta=chart.getDatasetMeta(datasets.findIndex(d=>d.label==='法定'));
+      if(!meta||!meta.data.length)return;
+      const ctx2=chart.ctx;
+      const x=chart.chartArea.right+2;
+      const y2=chart.scales.y.getPixelForValue(legalH);
+      ctx2.save();
+      ctx2.font='bold 9px sans-serif';
+      ctx2.fillStyle='#e05252';
+      ctx2.textAlign='left';
+      ctx2.fillText(`${legalH.toFixed(0)}h`,x,y2+3);
+      ctx2.restore();
+    }
+  };
+
+  currentChart=new Chart(document.getElementById('monthChart').getContext('2d'),{
+    type:'line',
+    data:{labels,datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:tc,maxTicksLimit:10,font:{size:10}},grid:{color:gc}},
+        y:{ticks:{color:tc,font:{size:10}},grid:{color:gc}}
+      },
+      layout:{padding:{right:28}}
+    },
+    plugins:[todayLinePlugin,legalLabelPlugin]
+  });
+}
+
+function renderDayList(y,m,data){
+  const dim=new Date(y,m,0).getDate(),today=toDateStr(new Date()),el=document.getElementById('day-list');
+  const dn=['日','月','火','水','木','金','土'];
+  const leaveStyle={
+    paid:  {label:'有給',bg:'rgba(62,207,142,.15)',color:'var(--success)'},
+    comp:  {label:'代休',bg:'rgba(124,92,191,.15)',color:'#a07fd4'},
+    half:  {label:'半日',bg:'rgba(79,142,247,.15)',color:'var(--accent)'},
+    hourly:{label:'時間休',bg:'rgba(245,166,35,.15)',color:'var(--warn)'},
+  };
+  el.innerHTML='';
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=new Date(ds+'T00:00:00').getDay();
+    const obj=(data.days||{})[String(d)];
+    const sob=(data.schedules||{})[String(d)];
+    const wM=obj?calcWorkMinutes(obj):null;
+    const isT=ds===today;
+    const dc=dow===0?'sun':dow===6?'sat':isHoliday(ds)?'hol':'';
+    const hn=settings.holidays.find(h=>h.date===ds)?.name||'';
+    const ls=obj?.leave&&obj.leave!=='normal'?leaveStyle[obj.leave]:null;
+
+    let timeStr='';
+    if(obj?.timeIn&&obj?.timeOut) timeStr=formatTime(parseTime(obj.timeIn))+'〜'+formatTime(parseTime(obj.timeOut));
+    const sub=[hn,timeStr].filter(Boolean).join(' ');
+
+    // 行の背景色（休暇日）
+    const rowBg=ls?ls.bg:'';
+
+    const item=document.createElement('div');
+    item.className='day-list-item';
+    if(rowBg){
+      item.style.background=rowBg;
+      item.style.margin='0 -14px';
+      item.style.padding='10px 14px';
+      item.style.borderRadius='0';
+    }
+
+    // 休暇バッジ
+    const badge=ls?`<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${ls.bg};color:${ls.color};margin-right:4px;">${ls.label}</span>`:'';
+
+    // 実績/予定 表示
+    // 時刻なし半休・時間休は予定表示にフォールバック
+    const hasTime = obj?.timeIn && obj?.timeOut;
+    const isNoTimeLeave = obj && ['half','hourly'].includes(obj.leave||'') && !hasTime;
+    let rightContent='';
+    if(wM!==null && !isNoTimeLeave){
+      const otColor=wM>(settings.stdHours||8)*60?'var(--warn)':'var(--text)';
+      rightContent=`<div class="day-hours" style="color:${otColor}">${formatHours(wM)}</div>`;
+    } else if(sob){
+      const schedLeaveNames={paid:'有給',comp:'代休',half:'半日'};
+      const schedLv=sob?.leave||'normal';
+      const schedLabel=schedLeaveNames[schedLv]||'';
+      rightContent=schedLabel
+        ?`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br><span style="color:var(--warn)">${schedLabel}</span></div>`
+        :`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${formatTime(parseTime(sob.timeIn))}〜${formatTime(parseTime(sob.timeOut))}</div>`;
+    } else if(isBusinessDay(ds)){
+      // 予定未入力の営業日はデフォルト表示
+      rightContent=`<div style="font-size:10px;color:var(--text3);text-align:right">${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}<br>（デフォルト）</div>`;
+    }
+
+    item.innerHTML=`
+      <div class="day-num ${dc}">${String(d).padStart(2,'0')}<br><span style="font-size:10px;font-weight:400">${dn[dow]}</span></div>
+      <div class="day-info">
+        <div class="day-time" style="${isT?'color:var(--accent)':''}">
+          ${badge}${ls&&!timeStr?'':(wM!==null?formatHours(wM)+'h':'')}
+        </div>
+        <div class="day-sub">${sub}</div>
+      </div>
+      ${rightContent}`;
+    item.addEventListener('click',()=>openDayModal(ds));
+    el.appendChild(item);
+  }
+}
+
+function initScheduleDefaults(y,m){
+  document.getElementById('sched-from').value=`${y}-${String(m).padStart(2,'0')}-01`;
+  document.getElementById('sched-to').value=`${y}-${String(m).padStart(2,'0')}-${new Date(y,m,0).getDate()}`;
+}
+
+function saveScheduleRange(){
+  const from=document.getElementById('sched-from').value;
+  const to=document.getElementById('sched-to').value;
+  const inT=document.getElementById('sched-in').value.trim();
+  const outT=document.getElementById('sched-out').value.trim();
+  if(!from||!to||!inT||!outT){alert('日付・時刻を入力してください');return;}
+  const wo=document.getElementById('sched-weekday-only').checked;
+  const eh=document.getElementById('sched-exclude-hol').checked;
+  const fromD=new Date(from+'T00:00:00'),toD=new Date(to+'T00:00:00');
+  for(let d=new Date(fromD);d<=toD;d.setDate(d.getDate()+1)){
+    const ds=toDateStr(d),dow=d.getDay();
+    if(wo&&(dow===0||dow===6))continue;
+    if(eh&&isHoliday(ds))continue;
+    setSched(ds,{timeIn:inT,timeOut:outT,breaks:(settings.breakPresets||[]).map(b=>({start:b.start,end:b.end}))});
+  }
+  saveStorage();renderMonthTab();alert('予定を入力しました');
+}
+function openDayModal(ds){
+  dayModalDate=ds;
+  modalBreakRows=[];
+  let modalMode='actual'; // 'actual' or 'sched'
+
+  const date=new Date(ds+'T00:00:00');
+  const dn=['日','月','火','水','木','金','土'];
+  document.getElementById('day-modal-title').textContent=`${ds} (${dn[date.getDay()]})`;
+
+  const c=document.getElementById('day-modal-content');
+  c.innerHTML='';
+
+  // 休暇区分（共通）
+  const lr=document.createElement('div');lr.className='leave-type-row';
+  const lnames={normal:'通常',paid:'有給',comp:'代休',half:'半日',hourly:'時間休'};
+  const getInitLeave=()=>{
+    const obj=getDay(ds),sob=getSched(ds);
+    return (modalMode==='actual'?obj?.leave:sob?.leave)||'normal';
+  };
+  const buildLeaveChips=(lv)=>{
+    lr.innerHTML='';
+    Object.entries(lnames).forEach(([l,n])=>{
+      const ch=document.createElement('div');
+      ch.className='leave-chip'+(l===lv?' selected':'');
+      ch.dataset.leave=l;ch.textContent=n;
+      ch.addEventListener('click',()=>{
+        lr.querySelectorAll('.leave-chip').forEach(x=>x.classList.remove('selected'));
+        ch.classList.add('selected');
+      });
+      lr.appendChild(ch);
+    });
+  };
+  c.appendChild(lr);
+
+  // タブ
+  const tabs=document.createElement('div');tabs.className='modal-tabs';
+  const tabActual=document.createElement('div');tabActual.className='modal-tab active';tabActual.textContent='実績';
+  const tabSched=document.createElement('div');tabSched.className='modal-tab';tabSched.textContent='予定';
+  tabs.append(tabActual,tabSched);
+  c.appendChild(tabs);
+
+  // フォーム
+  const form=document.createElement('div');form.id='modal-form';
+  c.appendChild(form);
+
+  const buildForm=(mode)=>{
+    modalMode=mode;
+    modalBreakRows=[];
+    const src=mode==='actual'?getDay(ds):getSched(ds);
+    buildLeaveChips(src?.leave||'normal');
+    form.innerHTML='';
+
+    const tr=document.createElement('div');tr.className='row mt-8';
+    tr.innerHTML=`<div><label>出勤</label><input type="text" id="modal-in" value="${src?.timeIn||''}" maxlength="6" placeholder="0900" style="font-size:20px;font-weight:700;text-align:center"></div><div><label>退勤</label><input type="text" id="modal-out" value="${src?.timeOut||''}" maxlength="6" placeholder="1800" style="font-size:20px;font-weight:700;text-align:center"></div>`;
+    form.appendChild(tr);
+
+    // プリセットボタン
+    if(settings.presets&&settings.presets.length){
+      const pb=document.createElement('div');pb.className='leave-type-row mt-8';
+      settings.presets.forEach(p=>{
+        const chip=document.createElement('div');chip.className='leave-chip';chip.textContent=p.name;
+        chip.addEventListener('click',()=>{
+          document.getElementById('modal-in').value=p.timeIn;
+          document.getElementById('modal-out').value=p.timeOut;
+        });
+        pb.appendChild(chip);
+      });
+      form.appendChild(pb);
+    }
+
+    const bcLabel=document.createElement('div');
+    bcLabel.style.cssText='font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;margin-bottom:2px;font-weight:600;';
+    bcLabel.textContent='休憩';form.appendChild(bcLabel);
+    const bc=document.createElement('div');bc.id='modal-break-container';form.appendChild(bc);
+    for(const b of(src?.breaks||[]))addModalBreakRow(b.start,b.end);
+    const ab=document.createElement('button');
+    ab.style.cssText='width:100%;margin-top:8px;background:transparent;border:1px dashed var(--border);color:var(--text2);border-radius:8px;padding:8px;cursor:pointer;font-size:13px;';
+    ab.textContent='＋ 休憩';ab.addEventListener('click',()=>addModalBreakRow());form.appendChild(ab);
+
+    // 削除ボタン表示切替
+    const delBtn=document.getElementById('btn-modal-delete');
+    const hasData=mode==='actual'?!!getDay(ds):!!getSched(ds);
+    delBtn.style.display=hasData?'flex':'none';
+    delBtn.textContent=mode==='actual'?'🗑 実績削除':'📅 予定削除';
+    delBtn.className=mode==='actual'?'btn btn-danger btn-full':'btn btn-ghost btn-full';
+  };
+
+  tabActual.addEventListener('click',()=>{
+    tabActual.classList.add('active');tabSched.classList.remove('active');
+    buildForm('actual');
+  });
+  tabSched.addEventListener('click',()=>{
+    tabSched.classList.add('active');tabActual.classList.remove('active');
+    buildForm('sched');
+  });
+
+  buildForm('actual');
+  openModal('day-modal');
+}
+function addModalBreakRow(s='',e=''){
+  const idx=modalBreakRows.length;
+  modalBreakRows.push({start:s,end:e});
+  const div=document.createElement('div');
+  div.style.cssText='display:flex;align-items:center;gap:8px;margin-top:8px;';
+  const i1=document.createElement('input');
+  i1.type='text';i1.placeholder='1200';i1.value=s;i1.maxLength=6;
+  i1.style.cssText='flex:1;text-align:center;font-size:16px;font-weight:600;';
+  i1.addEventListener('input',ev=>modalBreakRows[idx].start=ev.target.value);
+  const sep=document.createElement('span');
+  sep.textContent='〜';sep.style.cssText='color:var(--text2);flex-shrink:0;font-size:14px;';
+  const i2=document.createElement('input');
+  i2.type='text';i2.placeholder='1300';i2.value=e;i2.maxLength=6;
+  i2.style.cssText='flex:1;text-align:center;font-size:16px;font-weight:600;';
+  i2.addEventListener('input',ev=>modalBreakRows[idx].end=ev.target.value);
+  const delBtn=document.createElement('button');
+  delBtn.className='btn btn-ghost btn-sm';delBtn.textContent='✕';delBtn.style.flexShrink='0';
+  delBtn.addEventListener('click',()=>{modalBreakRows[idx]=null;div.remove();});
+  div.append(i1,sep,i2,delBtn);
+  document.getElementById('modal-break-container').appendChild(div);
+}
+function saveDayModal(){
+  if(!dayModalDate)return;
+  const lv=document.querySelector('#day-modal-content .leave-chip.selected')?.dataset.leave||'normal';
+  const inT=document.getElementById('modal-in').value.trim();
+  const outT=document.getElementById('modal-out').value.trim();
+  const breaks=modalBreakRows.filter(b=>b&&b.start&&b.end);
+  const mode=document.querySelector('.modal-tab.active')?.textContent==='予定'?'sched':'actual';
+  if(mode==='actual'){
+    setDay(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks});
+  } else {
+    setSched(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks});
+  }
+  saveStorage();closeModal('day-modal');renderMonthTab();
+}
+
+function deleteDayModal(){
+  if(!dayModalDate)return;
+  const[y,m,d]=dayModalDate.split('-');
+  const key=getMonthKey(+y,+m);
+  if(monthData[key]?.days) delete monthData[key].days[String(+d)];
+  saveStorage();closeModal('day-modal');renderMonthTab();
+}
+
+function deleteSchedModal(){
+  if(!dayModalDate)return;
+  const[y,m,d]=dayModalDate.split('-');
+  const key=getMonthKey(+y,+m);
+  if(monthData[key]?.schedules) delete monthData[key].schedules[String(+d)];
+  saveStorage();closeModal('day-modal');renderMonthTab();
+}
+
+function deleteScheduleRange(){
+  const from=document.getElementById('sched-from').value;
+  const to=document.getElementById('sched-to').value;
+  if(!from||!to){alert('日付を入力してください');return;}
+  const wo=document.getElementById('sched-weekday-only').checked;
+  const eh=document.getElementById('sched-exclude-hol').checked;
+  const fromD=new Date(from+'T00:00:00'),toD=new Date(to+'T00:00:00');
+  for(let d=new Date(fromD);d<=toD;d.setDate(d.getDate()+1)){
+    const ds=toDateStr(d),dow=d.getDay();
+    if(wo&&(dow===0||dow===6))continue;
+    if(eh&&isHoliday(ds))continue;
+    const[y,m,day]=ds.split('-');
+    const key=getMonthKey(+y,+m);
+    if(monthData[key]?.schedules) delete monthData[key].schedules[String(+day)];
+  }
+  saveStorage();renderMonthTab();alert('予定を削除しました');
+}
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+
+// ANNUAL
+function renderAnnualTab(){
+  document.getElementById('year-label').textContent=`${currentYear}年`;
+  const cm=new Date().getMonth()+1,cy=new Date().getFullYear();
+  let tA=0,tLL=0,tLOT=0,tHol=0,tPaid=0,tComp=0;
+  const rows=[];
+  for(let mon=1;mon<=12;mon++){
+    const key=getMonthKey(currentYear,mon),data=monthData[key]||{days:{},schedules:{}};
+    const legalLim=calcLegalLimit(currentYear,mon);
+    const dim=new Date(currentYear,mon,0).getDate();
+    let actual=0,holWork=0,paid=0,comp=0;
+    for(let d=1;d<=dim;d++){
+      const obj=(data.days||{})[String(d)];
+      if(!obj)continue;
+      const dow2=new Date(`${currentYear}-${String(mon).padStart(2,'0')}-${String(d).padStart(2,'0')}T00:00:00`).getDay();
+      const wm=calcWorkMinutes(obj);
+      if(dow2===0)holWork+=wm;else actual+=wm;
+      if(obj.leave==='paid')paid++;
+      if(obj.leave==='comp')comp++;
+      if(obj.leave==='half')paid+=0.5;
+    }
+    const lot=Math.max(0,actual-legalLim);
+    tA+=actual;tLL+=legalLim;tLOT+=lot;tHol+=holWork;tPaid+=paid;tComp+=comp;
+    const ic=(currentYear===cy&&mon===cm);
+    const r=(v)=>`style="text-align:right">${v}`;
+    rows.push(`<tr class="${ic?'current-month':''}">
+      <td style="white-space:nowrap">${mon}月</td>
+      <td ${r(formatHours(actual))}</td>
+      <td ${r(formatHours(legalLim))}</td>
+      <td style="text-align:right;color:${lot>0?'var(--warn)':'var(--text)'}">${formatHours(lot)}</td>
+      <td style="text-align:right;color:${holWork>0?'var(--danger)':'var(--text)'}">${formatHours(holWork)}</td>
+      <td ${r(paid>0?paid:'-')}</td>
+      <td ${r(comp>0?comp:'-')}</td>
+    </tr>`);
+  }
+  document.getElementById('annual-tbody').innerHTML=rows.join('');
+  document.getElementById('at-actual').textContent=formatHours(tA);
+  document.getElementById('at-pres').textContent=formatHours(tLL);
+  document.getElementById('at-cot').textContent=formatHours(tLOT);
+  document.getElementById('at-lot').textContent=formatHours(tHol);
+  document.getElementById('at-paid').textContent=tPaid;
+  document.getElementById('at-comp').textContent=tComp;
+}
+
+// EXCEL
+function exportExcel(){const wb=XLSX.utils.book_new(),y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1,key=getMonthKey(y,m),data=monthData[key]||{days:{},schedules:{}},dim=new Date(y,m,0).getDate(),dn=['日','月','火','水','木','金','土'],ln={normal:'通常',paid:'有給',comp:'代休',half:'半日休',hourly:'時間休'};const ws1=[['日','曜日','区分','出勤','退勤','休憩(h)','実労働(h)','残業(h)','備考']];for(let d=1;d<=dim;d++){const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`,dow=new Date(ds+'T00:00:00').getDay(),obj=(data.days||{})[String(d)],hn=settings.holidays.find(h=>h.date===ds)?.name||'';if(obj){const wM=calcWorkMinutes(obj),bM=(obj.breaks||[]).reduce((s,b)=>{const bs=parseTime(b.start),be=parseTime(b.end);if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=1440;return s+bd;}return s;},0);ws1.push([d,dn[dow],ln[obj.leave||'normal']||'通常',obj.timeIn?formatTime(parseTime(obj.timeIn)):'',obj.timeOut?formatTime(parseTime(obj.timeOut)):'',parseFloat((bM/60).toFixed(2)),parseFloat((wM/60).toFixed(2)),parseFloat((Math.max(0,wM-(settings.stdHours||8)*60)/60).toFixed(2)),hn]);}else ws1.push([d,dn[dow],'','','','','','',hn]);}const s1=XLSX.utils.aoa_to_sheet(ws1);s1['!cols']=[{wch:4},{wch:4},{wch:6},{wch:6},{wch:6},{wch:8},{wch:10},{wch:8},{wch:12}];XLSX.utils.book_append_sheet(wb,s1,`${y}年${m}月`);const ws2=[[`${currentYear}年 年間サマリ`],[],['月','実労働(h)','所定(h)','所定残業(h)','法定残業(h)','有給(日)','代休(日)']];let tA=0,tP=0,tCOT=0,tLOT=0,tPaid=0,tComp=0;for(let mon=1;mon<=12;mon++){const mk=getMonthKey(currentYear,mon),md=monthData[mk]||{days:{},schedules:{}},biz=getBusinessDays(currentYear,mon),pres=calcPrescribed(biz),legalLim2=calcLegalLimit(currentYear,mon),dim2=new Date(currentYear,mon,0).getDate();let a=0,p=0,co=0;for(let d=1;d<=dim2;d++){const o=(md.days||{})[String(d)];if(!o)continue;const dow3=new Date(`${currentYear}-${String(mon).padStart(2,'0')}-${String(d).padStart(2,'0')}T00:00:00`).getDay();if(dow3!==0)a+=calcWorkMinutes(o);if(o.leave==='paid')p++;if(o.leave==='comp')co++;if(o.leave==='half')p+=0.5;}const c=Math.max(0,a-pres),l=Math.max(0,a-legalLim2);tA+=a;tP+=pres;tCOT+=c;tLOT+=l;tPaid+=p;tComp+=co;ws2.push([`${mon}月`,parseFloat((a/60).toFixed(2)),parseFloat((pres/60).toFixed(2)),parseFloat((c/60).toFixed(2)),parseFloat((l/60).toFixed(2)),p||0,co||0]);}ws2.push([]);ws2.push(['合計',parseFloat((tA/60).toFixed(2)),parseFloat((tP/60).toFixed(2)),parseFloat((tCOT/60).toFixed(2)),parseFloat((tLOT/60).toFixed(2)),tPaid,tComp]);const s2=XLSX.utils.aoa_to_sheet(ws2);s2['!cols']=[{wch:6},{wch:12},{wch:10},{wch:14},{wch:12},{wch:8},{wch:8}];XLSX.utils.book_append_sheet(wb,s2,`${currentYear}年サマリ`);XLSX.writeFile(wb,`timecard_${currentYear}.xlsx`);}
+
+// SETTINGS
+function renderSettingsUI(){document.getElementById('std-hours').value=settings.stdHours||8;document.getElementById('core-start').value=settings.coreStart||'1000';document.getElementById('core-end').value=settings.coreEnd||'1500';renderPresetList();renderBreakPresetList();renderHolidayYearFilter();renderHolidayList();const dk=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('btn-theme-setting').textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';}
+function renderPresetList(){const el=document.getElementById('preset-list');el.innerHTML=(settings.presets||[]).map((p,i)=>`<div class="preset-item"><div class="preset-name">${p.name}</div><div class="preset-time">${formatTime(parseTime(p.timeIn))}〜${formatTime(parseTime(p.timeOut))}</div><button class="btn btn-ghost btn-sm" data-di="${i}">削除</button></div>`).join('');el.querySelectorAll('[data-di]').forEach(b=>b.addEventListener('click',()=>{settings.presets.splice(+b.dataset.di,1);saveSettingsStorage();renderPresetList();renderPresetButtons();}));}
+function renderBreakPresetList(){const el=document.getElementById('break-preset-list');el.innerHTML=(settings.breakPresets||[]).map((b,i)=>`<div class="preset-item"><div class="preset-name">${formatTime(parseTime(b.start))}〜${formatTime(parseTime(b.end))}</div><button class="btn btn-ghost btn-sm" data-dib="${i}">削除</button></div>`).join('');el.querySelectorAll('[data-dib]').forEach(b=>b.addEventListener('click',()=>{settings.breakPresets.splice(+b.dataset.dib,1);saveSettingsStorage();renderBreakPresetList();}));}
+function renderPresetButtons(){['preset-buttons','sched-preset-buttons'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.innerHTML='';(settings.presets||[]).forEach(p=>{const c=document.createElement('div');c.className='leave-chip';c.textContent=p.name;c.addEventListener('click',()=>{if(id==='preset-buttons'){document.getElementById('punch-in').value=p.timeIn;document.getElementById('punch-out').value=p.timeOut;updateDaySummary();}else{document.getElementById('sched-in').value=p.timeIn;document.getElementById('sched-out').value=p.timeOut;}});el.appendChild(c);});});}
+function renderHolidayYearFilter(){const sel=document.getElementById('holiday-year-filter'),years=[...new Set((settings.holidays||[]).map(h=>h.date.slice(0,4)))].sort();sel.innerHTML=years.map(y=>`<option value="${y}">${y}年</option>`).join('');const cy=new Date().getFullYear().toString();if(years.includes(cy))sel.value=cy;}
+function renderHolidayList(){const yr=document.getElementById('holiday-year-filter').value,list=(settings.holidays||[]).filter(h=>h.date.startsWith(yr)).sort((a,b)=>a.date.localeCompare(b.date)),el=document.getElementById('holiday-list');el.innerHTML=list.map(h=>`<div class="holiday-item"><div class="holiday-date">${h.date}</div><div class="holiday-name">${h.name}</div><button class="btn btn-ghost btn-sm" data-dh="${settings.holidays.indexOf(h)}">削除</button></div>`).join('');el.querySelectorAll('[data-dh]').forEach(b=>b.addEventListener('click',()=>{settings.holidays.splice(+b.dataset.dh,1);saveSettingsStorage();renderHolidayList();}));}
+
+// INIT
+document.addEventListener('DOMContentLoaded',()=>{
+  loadStorage();
+  if(!settings.holidays||settings.holidays.length===0){settings.holidays=[...DEFAULT_HOLIDAYS];saveSettingsStorage();}
+  applyTheme(localStorage.getItem(THEME_KEY)||'dark');
+  document.querySelectorAll('.nav-btn[data-page]').forEach(btn=>btn.addEventListener('click',()=>{
+    const n=btn.dataset.page;
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById(`page-${n}`).classList.add('active');
+    btn.classList.add('active');
+    if(n==='month'){
+      const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+      initScheduleDefaults(y,m);
+      renderMonthTab();
+      // display:none解除後にグラフ再描画
+      if(chartPending) setTimeout(renderMonthTab,50);
+    }
+    if(n==='annual')renderAnnualTab();
+    if(n==='settings')renderSettingsUI();
+  }));
+  document.getElementById('btn-theme').addEventListener('click',toggleTheme);
+  document.getElementById('btn-theme-setting').addEventListener('click',toggleTheme);
+  document.getElementById('punch-in').addEventListener('input',()=>updateDaySummary());
+  document.getElementById('punch-out').addEventListener('input',()=>updateDaySummary());
+  document.getElementById('hourly-hours').addEventListener('input',()=>updateDaySummary());
+  document.getElementById('add-break-btn').addEventListener('click',()=>addBreakRow('',''));
+  document.getElementById('btn-save-punch').addEventListener('click',savePunchDay);
+  document.getElementById('leave-chips').addEventListener('click',e=>{const c=e.target.closest('.leave-chip');if(c)selectLeave(c.dataset.leave);});
+
+  // スタンプボタン
+  document.getElementById('stamp-in').addEventListener('click',()=>{
+    const t=nowHHMM();
+    document.getElementById('punch-in').value=t;
+    document.getElementById('stamp-in-time').textContent=formatTime(parseTime(t));
+    document.getElementById('stamp-in').classList.add('active');
+    updateDaySummary();
+    autoSavePunch();
+  });
+  document.getElementById('stamp-out').addEventListener('click',()=>{
+    const t=nowHHMM();
+    document.getElementById('punch-out').value=t;
+    document.getElementById('stamp-out-time').textContent=formatTime(parseTime(t));
+    document.getElementById('stamp-out').classList.add('active');
+    if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
+    updateDaySummary();
+    autoSavePunch();
+  });
+  document.getElementById('stamp-break-start').addEventListener('click',()=>{
+    const t=nowHHMM();
+    const target=breakRows.findIndex(b=>b&&!b.start);
+    if(target>=0){
+      breakRows[target].start=t;
+      const row=document.querySelector(`.break-row[data-idx="${target}"]`);
+      if(row) row.querySelectorAll('input')[0].value=t;
+    } else {
+      addBreakRow(t,'');
+    }
+    document.getElementById('stamp-break-start-time').textContent=formatTime(parseTime(t));
+    document.getElementById('stamp-break-start').classList.add('active');
+    updateDaySummary();
+    autoSavePunch();
+  });
+  document.getElementById('stamp-break-end').addEventListener('click',()=>{
+    const t=nowHHMM();
+    const target=breakRows.findIndex(b=>b&&b.start&&!b.end);
+    if(target>=0){
+      breakRows[target].end=t;
+      const row=document.querySelector(`.break-row[data-idx="${target}"]`);
+      if(row) row.querySelectorAll('input')[1].value=t;
+    }
+    document.getElementById('stamp-break-end-time').textContent=formatTime(parseTime(t));
+    document.getElementById('stamp-break-end').classList.remove('active');
+    updateDaySummary();
+    autoSavePunch();
+  });
+  document.getElementById('btn-month-prev').addEventListener('click',()=>{
+    currentMonth=new Date(currentMonth.getFullYear(),currentMonth.getMonth()-1,1);
+    const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+    initScheduleDefaults(y,m);
+    renderMonthTab();
+    if(chartPending)setTimeout(renderMonthTab,50);
+  });
+  document.getElementById('btn-month-next').addEventListener('click',()=>{
+    currentMonth=new Date(currentMonth.getFullYear(),currentMonth.getMonth()+1,1);
+    const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+    initScheduleDefaults(y,m);
+    renderMonthTab();
+    if(chartPending)setTimeout(renderMonthTab,50);
+  });
+  document.getElementById('btn-save-schedule').addEventListener('click',saveScheduleRange);
+  document.getElementById('btn-delete-schedule').addEventListener('click',()=>{
+    if(confirm('指定範囲の予定を削除しますか？'))deleteScheduleRange();
+  });
+  document.getElementById('btn-year-prev').addEventListener('click',()=>{currentYear--;renderAnnualTab();});
+  document.getElementById('btn-year-next').addEventListener('click',()=>{currentYear++;renderAnnualTab();});
+  document.getElementById('btn-export-excel').addEventListener('click',exportExcel);
+  document.getElementById('btn-save-work-settings').addEventListener('click',()=>{settings.stdHours=parseFloat(document.getElementById('std-hours').value)||8;settings.coreStart=document.getElementById('core-start').value;settings.coreEnd=document.getElementById('core-end').value;saveSettingsStorage();alert('保存しました');});
+  document.getElementById('btn-add-preset').addEventListener('click',()=>{const n=document.getElementById('new-preset-name').value.trim(),i=document.getElementById('new-preset-in').value.trim(),o=document.getElementById('new-preset-out').value.trim();if(!n||!i||!o)return;settings.presets.push({name:n,timeIn:i,timeOut:o});saveSettingsStorage();renderPresetList();renderPresetButtons();document.getElementById('new-preset-name').value='';document.getElementById('new-preset-in').value='';document.getElementById('new-preset-out').value='';});
+  document.getElementById('btn-add-break-preset').addEventListener('click',()=>{const s=document.getElementById('new-bp-start').value.trim(),e=document.getElementById('new-bp-end').value.trim();if(!s||!e)return;settings.breakPresets.push({start:s,end:e});saveSettingsStorage();renderBreakPresetList();});
+  document.getElementById('btn-add-holiday').addEventListener('click',()=>{const d=document.getElementById('new-hol-date').value,n=document.getElementById('new-hol-name').value.trim();if(!d||!n)return;settings.holidays.push({date:d,name:n});settings.holidays.sort((a,b)=>a.date.localeCompare(b.date));saveSettingsStorage();renderHolidayYearFilter();renderHolidayList();});
+  document.getElementById('holiday-year-filter').addEventListener('change',renderHolidayList);
+  document.getElementById('btn-modal-cancel').addEventListener('click',()=>closeModal('day-modal'));
+  document.getElementById('btn-modal-save').addEventListener('click',saveDayModal);
+  document.getElementById('btn-modal-delete').addEventListener('click',()=>{
+    const mode=document.querySelector('.modal-tab.active')?.textContent==='予定'?'sched':'actual';
+    const msg=mode==='actual'?'この日の実績を削除しますか？':'この日の予定を削除しますか？';
+    if(confirm(msg)){mode==='actual'?deleteDayModal():deleteSchedModal();}
+  });
+  // データ移行
+  document.getElementById('btn-export-json').addEventListener('click',()=>{
+    const payload={version:1,exportedAt:new Date().toISOString(),monthData,settings};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`timecard_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();URL.revokeObjectURL(a.href);
+  });
+  document.getElementById('btn-import-json').addEventListener('click',()=>{
+    document.getElementById('import-file-input').click();
+  });
+  document.getElementById('import-file-input').addEventListener('change',e=>{
+    const file=e.target.files[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const payload=JSON.parse(ev.target.result);
+        if(!payload.monthData||!payload.settings){
+          document.getElementById('import-msg').textContent='❌ ファイル形式が正しくありません';
+          return;
+        }
+        if(!confirm('現在のデータを上書きしてインポートしますか？')){e.target.value='';return;}
+        monthData=payload.monthData;
+        settings={...settings,...payload.settings};
+        // キー正規化
+        for(const key of Object.keys(monthData)){
+          const md=monthData[key];
+          for(const sec of['days','schedules']){
+            if(!md[sec])continue;
+            const norm={};
+            for(const[k,v] of Object.entries(md[sec])){norm[String(+k)]=v;}
+            md[sec]=norm;
+          }
+        }
+        saveStorage();saveSettingsStorage();
+        renderSettingsUI();renderMonthTab();
+        document.getElementById('import-msg').textContent='✅ インポートしました';
+        document.getElementById('import-msg').style.color='var(--success)';
+      }catch(err){
+        document.getElementById('import-msg').textContent='❌ 読み込みエラー: '+err.message;
+        document.getElementById('import-msg').style.color='var(--danger)';
+      }
+      e.target.value='';
+    };
+    reader.readAsText(file);
+  });
+  initPunchTab();
+  // 月次タブは初期非表示なのでデータだけ準備し、タブ切替時に描画
+  const y0=currentMonth.getFullYear(),m0=currentMonth.getMonth()+1;
+  initScheduleDefaults(y0,m0);
+});
+</script>
+</body>
+</html>
