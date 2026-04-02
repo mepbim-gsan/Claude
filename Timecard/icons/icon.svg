@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 背景 -->
+  <rect width="512" height="512" rx="112" fill="#1a1d27"/>
+  <!-- 時計外円 -->
+  <circle cx="256" cy="272" r="168" fill="none" stroke="#4f8ef7" stroke-width="20"/>
+  <!-- 12時マーク -->
+  <line x1="256" y1="120" x2="256" y2="148" stroke="#4f8ef7" stroke-width="14" stroke-linecap="round"/>
+  <!-- 3時マーク -->
+  <line x1="408" y1="272" x2="380" y2="272" stroke="#4f8ef7" stroke-width="14" stroke-linecap="round"/>
+  <!-- 6時マーク -->
+  <line x1="256" y1="424" x2="256" y2="396" stroke="#4f8ef7" stroke-width="14" stroke-linecap="round"/>
+  <!-- 9時マーク -->
+  <line x1="104" y1="272" x2="132" y2="272" stroke="#4f8ef7" stroke-width="14" stroke-linecap="round"/>
+  <!-- 時針（9時方向） -->
+  <line x1="256" y1="272" x2="192" y2="220" stroke="#e8eaf0" stroke-width="16" stroke-linecap="round"/>
+  <!-- 分針（12時方向） -->
+  <line x1="256" y1="272" x2="256" y2="160" stroke="#3ecf8e" stroke-width="12" stroke-linecap="round"/>
+  <!-- 中心点 -->
+  <circle cx="256" cy="272" r="10" fill="#4f8ef7"/>
+  <!-- 上部 タイトル文字省略・シンプルに -->
+</svg>
