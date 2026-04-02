@@ -2,7 +2,7 @@
   "name": "タイムカード",
   "short_name": "タイムカード",
   "description": "勤怠記録・月次集計ツール",
-  "start_url": "/timecard/",
+  "start_url": "/",
   "scope": "/timecard/",
   "display": "standalone",
   "background_color": "#0f1117",
