@@ -1,8 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v03_2026-04-03.8
+  @version   v03_2026-04-03.9
   @changelog
-    v03_2026-04-03.8 - 日次リスト：予定時刻表示が消えていたバグ修正
+    v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
     v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
     v03_2026-04-03.3 - 月次オートスクロール削除・予定一括入力カードを折りたたみ対応
     v03_2026-04-03.2 - 打刻タブに前日・翌日ボタン追加
@@ -303,7 +303,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <button class="theme-btn" id="btn-theme">🌙</button>
+      <span style="font-size:11px;color:var(--text3);">v03_2026-04-03.9</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -735,7 +735,7 @@ function setDay(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m)
 function setSched(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(!monthData[key])monthData[key]={days:{},schedules:{}};monthData[key].schedules[String(+d)]=data;}
 
 // THEME
-function applyTheme(t){document.documentElement.setAttribute('data-theme',t);localStorage.setItem(THEME_KEY,t);const dk=t==='dark';document.getElementById('btn-theme').textContent=dk?'☀️':'🌙';const bs=document.getElementById('btn-theme-setting');if(bs)bs.textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';if(currentChart)renderMonthTab();}
+function applyTheme(t){document.documentElement.setAttribute('data-theme',t);localStorage.setItem(THEME_KEY,t);const dk=t==='dark';const bs=document.getElementById('btn-theme-setting');if(bs)bs.textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';if(currentChart)renderMonthTab();}
 function toggleTheme(){applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
 
 // PUNCH
@@ -755,8 +755,9 @@ function updateStampButtons(){
   // 勤務開始: 今日かつ未入力で押せる
   document.getElementById('stamp-in').disabled  = !isToday || !!inVal;
   document.getElementById('stamp-out').disabled = !isToday || !inVal;
-  document.getElementById('stamp-break-start').disabled = !isToday || !inVal;
-  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal;
+  // 退勤済みなら休憩ボタンは無効
+  document.getElementById('stamp-break-start').disabled = !isToday || !inVal || !!outVal;
+  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal || !!outVal;
 
   // 入力済みの時刻を表示
   document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
@@ -1366,7 +1367,17 @@ function openDayModal(ds){
     bcLabel.style.cssText='font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;margin-bottom:2px;font-weight:600;';
     bcLabel.textContent='休憩';form.appendChild(bcLabel);
     const bc=document.createElement('div');bc.id='modal-break-container';form.appendChild(bc);
-    for(const b of(src?.breaks||[]))addModalBreakRow(b.start,b.end);
+
+    const existingBreaks = src?.breaks||[];
+    if(mode==='actual' && existingBreaks.length===0){
+      // 新規実績：デフォルト休憩を設定
+      const bp=settings.breakPresets||[];
+      if(bp.length>0){ for(const b of bp) addModalBreakRow(b.start,b.end); }
+      else { addModalBreakRow('1200','1300'); }
+    } else {
+      for(const b of existingBreaks) addModalBreakRow(b.start,b.end);
+    }
+
     const ab=document.createElement('button');
     ab.style.cssText='width:100%;margin-top:8px;background:transparent;border:1px dashed var(--border);color:var(--text2);border-radius:8px;padding:8px;cursor:pointer;font-size:13px;';
     ab.textContent='＋ 休憩';ab.addEventListener('click',()=>addModalBreakRow());form.appendChild(ab);
@@ -1399,17 +1410,36 @@ function addModalBreakRow(s='',e=''){
   const i1=document.createElement('input');
   i1.type='text';i1.placeholder='1200';i1.value=s;i1.maxLength=6;
   i1.style.cssText='flex:1;text-align:center;font-size:16px;font-weight:600;';
-  i1.addEventListener('input',ev=>modalBreakRows[idx].start=ev.target.value);
-  const sep=document.createElement('span');
-  sep.textContent='〜';sep.style.cssText='color:var(--text2);flex-shrink:0;font-size:14px;';
   const i2=document.createElement('input');
   i2.type='text';i2.placeholder='1300';i2.value=e;i2.maxLength=6;
   i2.style.cssText='flex:1;text-align:center;font-size:16px;font-weight:600;';
-  i2.addEventListener('input',ev=>modalBreakRows[idx].end=ev.target.value);
+  const errBadge=document.createElement('span');
+  errBadge.textContent='⚠';errBadge.title='勤務時間外の休憩';
+  errBadge.style.cssText='display:none;color:var(--danger);font-size:14px;flex-shrink:0;';
+  const validateBreak=()=>{
+    const inVal=document.getElementById('modal-in')?.value||'';
+    const outVal=document.getElementById('modal-out')?.value||'';
+    const b=modalBreakRows[idx];
+    if(!b||!b.start||!b.end){errBadge.style.display='none';i1.style.borderColor='';i2.style.borderColor='';return;}
+    const valid=isBreakValid(b,inVal,outVal);
+    errBadge.style.display=valid?'none':'inline';
+    i1.style.borderColor=valid?'':'var(--danger)';
+    i2.style.borderColor=valid?'':'var(--danger)';
+  };
+  i1.addEventListener('input',ev=>{modalBreakRows[idx].start=ev.target.value;validateBreak();});
+  i2.addEventListener('input',ev=>{modalBreakRows[idx].end=ev.target.value;validateBreak();});
+  // modal-inとmodal-outの変更時も再検証
+  setTimeout(()=>{
+    document.getElementById('modal-in')?.addEventListener('input',validateBreak);
+    document.getElementById('modal-out')?.addEventListener('input',validateBreak);
+    validateBreak();
+  },0);
+  const sep=document.createElement('span');
+  sep.textContent='〜';sep.style.cssText='color:var(--text2);flex-shrink:0;font-size:14px;';
   const delBtn=document.createElement('button');
   delBtn.className='btn btn-ghost btn-sm';delBtn.textContent='✕';delBtn.style.flexShrink='0';
   delBtn.addEventListener('click',()=>{modalBreakRows[idx]=null;div.remove();});
-  div.append(i1,sep,i2,delBtn);
+  div.append(i1,sep,i2,errBadge,delBtn);
   document.getElementById('modal-break-container').appendChild(div);
 }
 function saveDayModal(){
@@ -1539,7 +1569,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(n==='annual')renderAnnualTab();
     if(n==='settings')renderSettingsUI();
   }));
-  document.getElementById('btn-theme').addEventListener('click',toggleTheme);
   document.getElementById('btn-theme-setting').addEventListener('click',toggleTheme);
   // 打刻タブ 日付前後移動
   document.getElementById('btn-date-prev').addEventListener('click',()=>{
