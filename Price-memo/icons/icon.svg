@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 背景 -->
+  <rect width="512" height="512" rx="96" fill="#1a1d27"/>
+  <!-- タグ形状 -->
+  <path d="M120 130 L120 300 L256 420 L392 300 L392 130 Z"
+        fill="none" stroke="#4f8ef7" stroke-width="22" stroke-linejoin="round"/>
+  <!-- ¥ マーク -->
+  <text x="256" y="285" text-anchor="middle"
+        font-family="'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif"
+        font-size="160" font-weight="700" fill="#4f8ef7">¥</text>
+  <!-- ドット（値段メモらしさ） -->
+  <circle cx="256" cy="148" r="18" fill="#f5a623"/>
+</svg>
