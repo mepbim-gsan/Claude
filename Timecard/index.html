@@ -1,8 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v03_2026-04-03.7
+  @version   v03_2026-04-03.8
   @changelog
-    v03_2026-04-03.7 - 予測グラフ：退勤未入力の実績を平均計算から除外
+    v03_2026-04-03.8 - 日次リスト：予定時刻表示が消えていたバグ修正
     v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
     v03_2026-04-03.3 - 月次オートスクロール削除・予定一括入力カードを折りたたみ対応
     v03_2026-04-03.2 - 打刻タブに前日・翌日ボタン追加
@@ -1250,9 +1250,9 @@ function renderDayList(y,m,data){
       const schedLabel=schedLeaveNames[schedLv]||'';
       rightContent=schedLabel
         ?`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br><span style="color:var(--warn)">${schedLabel}</span></div>`
-        :`<div style="font-size:11px;color:var(--text3);text-align:right">予定</div>`;
+        :`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${formatTime(parseTime(sob.timeIn))}〜${formatTime(parseTime(sob.timeOut))}</div>`;
     } else if(isBusinessDay(ds)){
-      rightContent=`<div style="font-size:11px;color:var(--text3);text-align:right">予定</div>`;
+      rightContent=`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}</div>`;
     }
 
     item.innerHTML=`
