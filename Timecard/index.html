@@ -330,6 +330,19 @@ label:first-child{margin-top:0;}
         <input type="number" id="hourly-hours" min="0.5" max="8" step="0.5" value="1">
       </div>
     </div>
+    <div class="card">
+      <div class="card-title">
+        本日サマリ
+        <span id="live-indicator" style="display:none;margin-left:6px;font-size:11px;color:var(--success);font-weight:400;">
+          <span class="live-badge"></span>計算中
+        </span>
+      </div>
+      <div class="day-summary">
+        <div class="day-stat"><div class="day-stat-val" id="today-work-hours">--</div><div class="day-stat-label">実労働時間</div></div>
+        <div class="day-stat"><div class="day-stat-val" id="today-break-hours">--</div><div class="day-stat-label">休憩時間</div></div>
+        <div class="day-stat"><div class="day-stat-val" id="today-overtime">--</div><div class="day-stat-label">残業(8h超)</div></div>
+      </div>
+    </div>
     <div class="card" id="work-time-card">
       <div class="card-title">出退勤</div>
       <!-- スタンプボタン -->
@@ -361,19 +374,6 @@ label:first-child{margin-top:0;}
       <div class="card-title">休憩</div>
       <div id="break-list"></div>
       <button id="add-break-btn">＋ 休憩を追加</button>
-    </div>
-    <div class="card">
-      <div class="card-title">
-        本日サマリ
-        <span id="live-indicator" style="display:none;margin-left:6px;font-size:11px;color:var(--success);font-weight:400;">
-          <span class="live-badge"></span>計算中
-        </span>
-      </div>
-      <div class="day-summary">
-        <div class="day-stat"><div class="day-stat-val" id="today-work-hours">--</div><div class="day-stat-label">実労働時間</div></div>
-        <div class="day-stat"><div class="day-stat-val" id="today-break-hours">--</div><div class="day-stat-label">休憩時間</div></div>
-        <div class="day-stat"><div class="day-stat-val" id="today-overtime">--</div><div class="day-stat-label">残業(8h超)</div></div>
-      </div>
     </div>
     <button id="btn-save-punch" class="btn btn-primary btn-full">💾 保存</button>
   </div>
