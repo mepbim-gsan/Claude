@@ -1,8 +1,9 @@
 <!--
   @tool      タイムカード
-  @version   v03_2026-04-03.4
+  @version   v03_2026-04-03.6
   @changelog
-    v03_2026-04-03.4 - PWA対応（manifest.json・sw.js・apple-touch-icon・SW登録）
+    v03_2026-04-03.6 - 日次リスト：予定時刻をrightContentに復活
+    v03_2026-04-03.3 - 月次オートスクロール削除・予定一括入力カードを折りたたみ対応
     v03_2026-04-03.2 - 打刻タブに前日・翌日ボタン追加
     v03_2026-04-03 - Firebase Firestore対応・Googleログイン・ユーザー別保存
     v02_2026-04-03.3 - 月次日次一覧：休暇色付き行をカード幅いっぱいに広げ文字位置ずれを修正
@@ -21,12 +22,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>タイムカード</title>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0f1117">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="タイムカード">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
@@ -1200,7 +1195,18 @@ function renderDayList(y,m,data){
 
     let timeStr='';
     if(obj?.timeIn&&obj?.timeOut) timeStr=formatTime(parseTime(obj.timeIn))+'〜'+formatTime(parseTime(obj.timeOut));
-    const sub=[hn,timeStr].filter(Boolean).join(' ');
+
+    // 休憩時間合計（実績あり時のみ）
+    let breakStr='';
+    if(obj?.breaks?.length){
+      const bM=(obj.breaks).reduce((s,b)=>{
+        const bs=parseTime(b.start),be=parseTime(b.end);
+        if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=1440;return s+bd;}
+        return s;
+      },0);
+      if(bM>0) breakStr=` 休憩${formatHours(bM)}h`;
+    }
+    const sub=[hn, timeStr+breakStr].filter(Boolean).join(' ');
 
     // 行の背景色（休暇日）
     const rowBg=ls?ls.bg:'';
@@ -1221,10 +1227,20 @@ function renderDayList(y,m,data){
     // 時刻なし半休・時間休は予定表示にフォールバック
     const hasTime = obj?.timeIn && obj?.timeOut;
     const isNoTimeLeave = obj && ['half','hourly'].includes(obj.leave||'') && !hasTime;
+
+    // day-subの予定時刻（実績なし時）
+    let subSched='';
+    if(!obj && sob?.timeIn && sob?.timeOut){
+      subSched=formatTime(parseTime(sob.timeIn))+'〜'+formatTime(parseTime(sob.timeOut));
+    } else if(!obj && isBusinessDay(ds) && !sob){
+      subSched=`${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}`;
+    }
+    const subFinal=[hn, timeStr+breakStr, subSched].filter(Boolean).join(' ');
+
     let rightContent='';
     if(wM!==null && !isNoTimeLeave){
       const otColor=wM>(settings.stdHours||8)*60?'var(--warn)':'var(--text)';
-      rightContent=`<div class="day-hours" style="color:${otColor}">${formatHours(wM)}</div>`;
+      rightContent=`<div class="day-hours" style="color:${otColor}">${formatHours(wM)}h</div>`;
     } else if(sob){
       const schedLeaveNames={paid:'有給',comp:'代休',half:'半日'};
       const schedLv=sob?.leave||'normal';
@@ -1233,8 +1249,7 @@ function renderDayList(y,m,data){
         ?`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br><span style="color:var(--warn)">${schedLabel}</span></div>`
         :`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${formatTime(parseTime(sob.timeIn))}〜${formatTime(parseTime(sob.timeOut))}</div>`;
     } else if(isBusinessDay(ds)){
-      // 予定未入力の営業日はデフォルト表示
-      rightContent=`<div style="font-size:10px;color:var(--text3);text-align:right">${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}<br>（デフォルト）</div>`;
+      rightContent=`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}</div>`;
     }
 
     item.innerHTML=`
@@ -1243,7 +1258,7 @@ function renderDayList(y,m,data){
         <div class="day-time" style="${isT?'color:var(--accent)':''}">
           ${badge}${ls&&!timeStr?'':(wM!==null?formatHours(wM)+'h':'')}
         </div>
-        <div class="day-sub">${sub}</div>
+        <div class="day-sub">${subFinal}</div>
       </div>
       ${rightContent}`;
     item.addEventListener('click',()=>openDayModal(ds));
@@ -1674,14 +1689,6 @@ document.addEventListener('DOMContentLoaded',()=>{
   const y0=currentMonth.getFullYear(),m0=currentMonth.getMonth()+1;
   initScheduleDefaults(y0,m0);
 });
-</script>
-<script>
-if('serviceWorker' in navigator){
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/Claude/Timecard/sw.js', {scope: '/Claude/Timecard/'})
-      .catch(e => console.warn('SW registration failed:', e));
-  });
-}
 </script>
 </body>
 </html>
