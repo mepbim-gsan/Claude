@@ -1,8 +1,9 @@
 <!--
   @tool      タイムカード
-  @version   v03_2026-04-03.6
+  @version   v03_2026-04-03.7
   @changelog
-    v03_2026-04-03.6 - 日次リスト：予定時刻をrightContentに復活
+    v03_2026-04-03.7 - 予測グラフ：退勤未入力の実績を平均計算から除外
+    v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
     v03_2026-04-03.3 - 月次オートスクロール削除・予定一括入力カードを折りたたみ対応
     v03_2026-04-03.2 - 打刻タブに前日・翌日ボタン追加
     v03_2026-04-03 - Firebase Firestore対応・Googleログイン・ユーザー別保存
@@ -22,12 +23,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>タイムカード</title>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0f1117">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="タイムカード">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
@@ -1054,10 +1049,12 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
     // 実績累積（過去月・当月共通）
     if(ds<=today){
       if(obj){
-        const wM=calcWorkMinutesForForecast(obj); // 予測用
+        // timeIn・timeOut両方入力済みの日のみ平均計算に使用
+        const hasFullTime = obj.timeIn && obj.timeOut;
+        const wM=calcWorkMinutesForForecast(obj);
         rA+=wM;
         lastD=d;
-        if(!['paid','comp'].includes(obj.leave||'normal')) cnt++;
+        if(hasFullTime && !['paid','comp'].includes(obj.leave||'normal')) cnt++;
       }
       acC.push(parseFloat((rA/60).toFixed(2)));
     } else {
@@ -1253,9 +1250,9 @@ function renderDayList(y,m,data){
       const schedLabel=schedLeaveNames[schedLv]||'';
       rightContent=schedLabel
         ?`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br><span style="color:var(--warn)">${schedLabel}</span></div>`
-        :`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${formatTime(parseTime(sob.timeIn))}〜${formatTime(parseTime(sob.timeOut))}</div>`;
+        :`<div style="font-size:11px;color:var(--text3);text-align:right">予定</div>`;
     } else if(isBusinessDay(ds)){
-      rightContent=`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}</div>`;
+      rightContent=`<div style="font-size:11px;color:var(--text3);text-align:right">予定</div>`;
     }
 
     item.innerHTML=`
@@ -1695,14 +1692,6 @@ document.addEventListener('DOMContentLoaded',()=>{
   const y0=currentMonth.getFullYear(),m0=currentMonth.getMonth()+1;
   initScheduleDefaults(y0,m0);
 });
-</script>
-<script>
-if('serviceWorker' in navigator){
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/Claude/Timecard/sw.js', {scope: '/Claude/Timecard/'})
-      .catch(e => console.warn('SW registration failed:', e));
-  });
-}
 </script>
 </body>
 </html>
