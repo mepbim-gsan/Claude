@@ -534,6 +534,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
   100%{box-shadow:0 0 0 0 #d4603a00,0 0 0 0 #d4603a00}
 }
 .tc.task-highlight{animation:task-glow 2s ease forwards}
+.mc.task-highlight{animation:task-glow 2s ease forwards}
 /* 展開エリア：リンクコピーボタン */
 .exp-share-btn{display:flex;align-items:center;gap:4px;padding:3px 10px;border:1.5px solid var(--bd);border-radius:99px;background:transparent;color:var(--mt);font-size:.68rem;font-weight:600;cursor:pointer;transition:all .15s;width:fit-content}
 .exp-share-btn:hover{border-color:var(--ac);color:var(--ac)}
@@ -1592,10 +1593,11 @@ function buildTaskCard(t){
     shareBtn.addEventListener('click',e=>{
       e.stopPropagation();
       const url=location.origin+location.pathname+'?task='+t.id;
-      navigator.clipboard.writeText(url).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
-        // fallback
+      const due=t.due?` (期限: ${fmtD(t.due)})`:'';
+      const text=`${t.title}${due}\n${url}`;
+      navigator.clipboard.writeText(text).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
         const ta=document.createElement('textarea');
-        ta.value=url; ta.style.cssText='position:fixed;opacity:0';
+        ta.value=text; ta.style.cssText='position:fixed;opacity:0';
         document.body.appendChild(ta); ta.select(); document.execCommand('copy');
         document.body.removeChild(ta); showMsg('リンクをコピーしました');
       });
@@ -3166,9 +3168,10 @@ function buildMemoCard(m){
   mShareBtn.addEventListener('click',e=>{
     e.stopPropagation();
     const url=location.origin+location.pathname+'?memo='+m.id;
-    navigator.clipboard.writeText(url).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
+    const text=`${m.title}\n${url}`;
+    navigator.clipboard.writeText(text).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
       const ta=document.createElement('textarea');
-      ta.value=url; ta.style.cssText='position:fixed;opacity:0';
+      ta.value=text; ta.style.cssText='position:fixed;opacity:0';
       document.body.appendChild(ta); ta.select(); document.execCommand('copy');
       document.body.removeChild(ta); showMsg('リンクをコピーしました');
     });
