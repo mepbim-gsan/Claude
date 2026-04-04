@@ -1,9 +1,14 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v10_2026-04-04
-  @chat      Couple_Task_09_ダッシュボード改善
+  @version   v11_2026-04-04
+  @chat      Couple_Task_11_通知機能について
   @changelog
+    v11_2026-04-04
+      - [タスク] リンク共有機能追加（展開エリアに「🔗 共有」ボタン・?task=ID付きURL生成）
+      - [メモ] リンク共有機能追加（展開エリアに「🔗 共有」ボタン・?memo=ID付きURL生成）
+      - [共通] ディープリンク対応（URLパラメータ→sessionStorage退避→ログイン後ハイライト遷移）
+
     v10_2026-04-04 - PWA化（manifest.json, sw.js, アイコン追加）
 
     v09_2026-03-31
@@ -520,6 +525,17 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 .tc-del-btn{position:absolute;right:0;top:0;bottom:0;width:88px;background:rgba(192,57,43,.88);backdrop-filter:blur(2px);color:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;border-radius:0 var(--r) var(--r) 0;opacity:0;pointer-events:none;transition:opacity .18s ease}
 .tc-del-btn span{font-size:1.3rem;line-height:1}
 .tc-wrap.swiped .tc-del-btn{opacity:1;pointer-events:auto}
+/* タスクリンク共有：グローハイライト */
+@keyframes task-glow{
+  0%  {box-shadow:0 0 0 0 #d4603a99,0 0 0 0 #d4603a33}
+  30% {box-shadow:0 0 0 5px #d4603a66,0 0 0 14px #d4603a1a}
+  70% {box-shadow:0 0 0 5px #d4603a66,0 0 0 14px #d4603a1a}
+  100%{box-shadow:0 0 0 0 #d4603a00,0 0 0 0 #d4603a00}
+}
+.tc.task-highlight{animation:task-glow 2s ease forwards}
+/* 展開エリア：リンクコピーボタン */
+.exp-share-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px solid var(--bd);border-radius:99px;background:var(--sf);color:var(--sub);font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s;width:fit-content}
+.exp-share-btn:hover{border-color:var(--ac);color:var(--ac)}
 /* 設定行スワイプ */
 .srow-wrap{position:relative;overflow:hidden}
 .srow-del{position:absolute;right:0;top:0;bottom:0;width:72px;background:rgba(192,57,43,.88);backdrop-filter:blur(2px);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;cursor:pointer;border:none;opacity:0;pointer-events:none;transition:opacity .18s ease}
@@ -1103,7 +1119,15 @@ function closeSwipe(wrap){
   if(swipedCard===wrap) swipedCard=null;
 } // 現在スワイプ中のカード // 開いているカードIDを記憶
 
-const APP_VERSION = 'v10_2026-04-04'; // ← バージョンはここだけ変更
+const APP_VERSION = 'v11_2026-04-04'; // ← バージョンはここだけ変更
+
+// タスクリンク共有：URLパラメータをsessionStorageに退避（Google認証リダイレクト対策）
+(()=>{
+  const tid = new URLSearchParams(location.search).get('task');
+  if(tid) sessionStorage.setItem('_openTaskId', tid);
+  const mid = new URLSearchParams(location.search).get('memo');
+  if(mid) sessionStorage.setItem('_openMemoId', mid);
+})();
 const G  = id => document.getElementById(id);
 const CE = (tag,prop) => Object.assign(document.createElement(tag), prop);
 function genId(){ return '_'+Math.random().toString(36).slice(2,9) }
@@ -1178,6 +1202,42 @@ function loginAs(uid){
   G('ver-settings').textContent = APP_VERSION; // CHANGED: バージョン一元管理
   renderAll();
   if(window._startSync) window._startSync(applyRemoteData);
+  // タスクリンク共有：sessionStorageにtask IDがあれば該当カードへ遷移＆ハイライト
+  const _openTid = sessionStorage.getItem('_openTaskId');
+  if(_openTid){
+    sessionStorage.removeItem('_openTaskId');
+    setTimeout(()=>{
+      showPage('tasks');
+      curFil='all'; updateFbar(); renderTasks();
+      setTimeout(()=>{
+        const card=document.getElementById('tc-'+_openTid);
+        if(!card) return;
+        card.scrollIntoView({behavior:'smooth',block:'center'});
+        setTimeout(()=>{
+          card.classList.add('task-highlight');
+          setTimeout(()=>card.classList.remove('task-highlight'), 2400);
+        }, 400);
+      }, 100);
+    }, 800);
+  }
+  // メモリンク共有
+  const _openMid = sessionStorage.getItem('_openMemoId');
+  if(_openMid){
+    sessionStorage.removeItem('_openMemoId');
+    setTimeout(()=>{
+      showPage('memo');
+      curMFil='all'; renderMemos();
+      setTimeout(()=>{
+        const card=document.getElementById('mc-'+_openMid);
+        if(!card) return;
+        card.scrollIntoView({behavior:'smooth',block:'center'});
+        setTimeout(()=>{
+          card.classList.add('task-highlight');
+          setTimeout(()=>card.classList.remove('task-highlight'), 2400);
+        }, 400);
+      }, 100);
+    }, 800);
+  }
 }
 
 // Google認証成功後: googleUidとST.usersを紐づけ（自動）
@@ -1480,24 +1540,23 @@ function buildTaskCard(t){
     }
   }
   // EXPAND
-  if(hasx){
-    const exp=CE('div',{className:'tcexp'});
+  const exp=CE('div',{className:'tcexp'});
 
-    // メモ
-    if(t.memo){
-      const sec=CE('div',{className:'esec'});
-      sec.innerHTML=`<div class="elbl">メモ</div><div class="ememo">${esc(t.memo)}</div>`;
-      exp.appendChild(sec);
-    }
-    // URL
-    if(t.url){
-      const sec=CE('div',{className:'esec'});
-      sec.innerHTML='<div class="elbl">リンク</div>';
-      const a=CE('a',{className:'eurl',href:t.url,target:'_blank',rel:'noopener',textContent:'🔗 '+t.url});
-      sec.appendChild(a); exp.appendChild(sec);
-    }
-    // サブタスク
-    if((t.subs||[]).length){
+  // メモ
+  if(t.memo){
+    const sec=CE('div',{className:'esec'});
+    sec.innerHTML=`<div class="elbl">メモ</div><div class="ememo">${esc(t.memo)}</div>`;
+    exp.appendChild(sec);
+  }
+  // URL
+  if(t.url){
+    const sec=CE('div',{className:'esec'});
+    sec.innerHTML='<div class="elbl">リンク</div>';
+    const a=CE('a',{className:'eurl',href:t.url,target:'_blank',rel:'noopener',textContent:'🔗 '+t.url});
+    sec.appendChild(a); exp.appendChild(sec);
+  }
+  // サブタスク
+  if((t.subs||[]).length){
       const sec=CE('div',{className:'esec'});
       sec.innerHTML='<div class="elbl">サブタスク</div>';
       const sl=CE('div',{className:'slist'});
@@ -1526,8 +1585,22 @@ function buildTaskCard(t){
       });
       sec.appendChild(sl); exp.appendChild(sec);
     }
+    // 共有ボタン（常に表示）
+    const shareBtn=CE('button',{className:'exp-share-btn'});
+    shareBtn.innerHTML='🔗 共有';
+    shareBtn.addEventListener('click',e=>{
+      e.stopPropagation();
+      const url=location.origin+location.pathname+'?task='+t.id;
+      navigator.clipboard.writeText(url).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
+        // fallback
+        const ta=document.createElement('textarea');
+        ta.value=url; ta.style.cssText='position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta); showMsg('リンクをコピーしました');
+      });
+    });
+    exp.appendChild(shareBtn);
     card.appendChild(exp);
-  }
   return wrap;
 }
 
@@ -3085,6 +3158,22 @@ function buildMemoCard(m){
   main.appendChild(archBtn); main.appendChild(info); main.appendChild(acts);
   main.addEventListener('click',()=>{ card.classList.toggle('open'); if(card.classList.contains('open')){ markMemoRead(m.id); const dot=card.querySelector('.tc-unread-dot'); if(dot) dot.remove(); updateBdg(); } }); // CHANGED: 展開で既読
   card.appendChild(main);
+  // メモ展開エリア（共有ボタン）
+  const mexp=CE('div',{className:'tcexp'});
+  const mShareBtn=CE('button',{className:'exp-share-btn'});
+  mShareBtn.innerHTML='🔗 共有';
+  mShareBtn.addEventListener('click',e=>{
+    e.stopPropagation();
+    const url=location.origin+location.pathname+'?memo='+m.id;
+    navigator.clipboard.writeText(url).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
+      const ta=document.createElement('textarea');
+      ta.value=url; ta.style.cssText='position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta); showMsg('リンクをコピーしました');
+    });
+  });
+  mexp.appendChild(mShareBtn);
+  card.appendChild(mexp);
   // 更新日時・最終編集者（右下、タスク完了時刻と同じスタイル）
   if(m.updatedAt){
     const dl=CE('div');
