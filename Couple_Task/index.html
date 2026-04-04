@@ -322,6 +322,7 @@ input,textarea,select{font-family:inherit}
 .ib:hover{background:var(--bg2);color:var(--tx)}
 .tcexp{border-top:1px solid var(--bd);padding:14px 16px;background:var(--sf2);display:none}
 .tc.open .tcexp{display:block}
+.mc.open .tcexp{display:block}
 .esec{margin-bottom:12px}.esec:last-child{margin-bottom:0}
 .elbl{font-size:.72rem;font-weight:700;color:var(--mt);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .ememo{font-size:.85rem;line-height:1.6;color:var(--sub);white-space:pre-wrap}
@@ -534,7 +535,7 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
 }
 .tc.task-highlight{animation:task-glow 2s ease forwards}
 /* 展開エリア：リンクコピーボタン */
-.exp-share-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px solid var(--bd);border-radius:99px;background:var(--sf);color:var(--sub);font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s;width:fit-content}
+.exp-share-btn{display:flex;align-items:center;gap:4px;padding:3px 10px;border:1.5px solid var(--bd);border-radius:99px;background:transparent;color:var(--mt);font-size:.68rem;font-weight:600;cursor:pointer;transition:all .15s;width:fit-content}
 .exp-share-btn:hover{border-color:var(--ac);color:var(--ac)}
 /* 設定行スワイプ */
 .srow-wrap{position:relative;overflow:hidden}
@@ -3172,24 +3173,27 @@ function buildMemoCard(m){
       document.body.removeChild(ta); showMsg('リンクをコピーしました');
     });
   });
-  mexp.appendChild(mShareBtn);
-  card.appendChild(mexp);
-  // 更新日時・最終編集者（右下、タスク完了時刻と同じスタイル）
+  // 共有ボタン（左）と最終編集者・日時（右）を1行に
+  const mfooter=CE('div');
+  mfooter.style.cssText='display:flex;align-items:center;justify-content:space-between';
+  mfooter.appendChild(mShareBtn);
   if(m.updatedAt){
     const dl=CE('div');
-    dl.style.cssText='text-align:right;font-size:.68rem;color:var(--mt);padding:0 14px 6px;margin-top:-4px;display:flex;align-items:center;justify-content:flex-end;gap:4px';
+    dl.style.cssText='display:flex;align-items:center;gap:4px;font-size:.68rem;color:var(--mt)';
     if(editor&&editor.name!=='?'){
       const col=uColor(m.updatedBy);
       const av=CE('span');
       av.style.cssText=`width:14px;height:14px;border-radius:50%;background:${col};color:${textOnBg(col)};display:inline-flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:700;flex-shrink:0`;
       av.textContent=editor.name.charAt(0);
-      const nm=CE('span',{textContent:editor.name});
-      const sep=CE('span',{textContent:'·'});
-      dl.appendChild(av); dl.appendChild(nm); dl.appendChild(sep);
+      dl.appendChild(av);
+      dl.appendChild(CE('span',{textContent:editor.name}));
+      dl.appendChild(CE('span',{textContent:'·'}));
     }
     dl.appendChild(CE('span',{textContent:fmtDT(m.updatedAt)}));
-    card.appendChild(dl);
+    mfooter.appendChild(dl);
   }
+  mexp.appendChild(mfooter);
+  card.appendChild(mexp);
   // スワイプ・右クリック削除（タスクと同パターン）
   const wrap=CE('div',{className:'tc-wrap'});
   const delBtn=CE('button',{className:'tc-del-btn'});
