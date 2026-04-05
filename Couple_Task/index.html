@@ -1129,7 +1129,7 @@ function closeSwipe(wrap){
   if(swipedCard===wrap) swipedCard=null;
 } // 現在スワイプ中のカード // 開いているカードIDを記憶
 
-const APP_VERSION = 'v11_2026-04-05'; // ← バージョンはここだけ変更
+const APP_VERSION = 'v12_2026-04-06'; // ← バージョンはここだけ変更
 
 // タスクリンク共有：URLパラメータをsessionStorageに退避（Google認証リダイレクト対策）
 (()=>{
@@ -1492,7 +1492,9 @@ function buildTaskCard(t){
   chk.textContent=t.done?'✓':'';
   chk.addEventListener('click',e=>{
     e.stopPropagation();
-    t.done=!t.done; t.doneAt=t.done?new Date().toISOString():null; t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString(); renderAll(); save(); // CHANGED: updatedBy
+    t.done=!t.done; t.doneAt=t.done?new Date().toISOString():null; t.updatedBy=ST.uid||null; t.updatedAt=new Date().toISOString();
+    if(t.done) navigator.vibrate?.(50);
+    renderAll(); save(); // CHANGED: updatedBy
   });
 
   // タイトルエリア
@@ -1625,7 +1627,7 @@ function buildTaskCard(t){
         const sdel=CE('button',{className:'sdel',textContent:'✕'});
         const toggle=()=>{
           s.done=!s.done;
-          item.classList.toggle('done',s.done);
+          if(s.done) navigator.vibrate?.(50);
           schk.textContent=s.done?'✓':'';
           const sd=t.subs.filter(x=>x.done).length;
           const cardEl=document.getElementById('tc-'+t.id);
@@ -1663,7 +1665,7 @@ function buildTaskCard(t){
         try{
           const file=await captureCardAsFile(card);
           if(navigator.canShare&&navigator.canShare({files:[file]})){
-            await navigator.share({title:t.title,text:shareText+'\n'+url,files:[file]});
+            await navigator.share({title:shareText+'\n'+url,text:shareText+'\n'+url,files:[file]});
           } else {
             await navigator.share({title:t.title,text:shareText,url});
           }
@@ -3229,6 +3231,7 @@ function buildMemoCard(m){
   archBtn.addEventListener('click',e=>{
     e.stopPropagation();
     m.archived=!m.archived;
+    if(m.archived) navigator.vibrate?.(50);
     renderMemos(); updateBdg(); save();
   });
   const info=CE('div',{className:'mcinfo'});
