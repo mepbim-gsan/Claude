@@ -1623,11 +1623,18 @@ function buildTaskCard(t){
       e.stopPropagation();
       const url=location.origin+location.pathname+'?task='+t.id;
       const due=t.due?` (期限: ${fmtD(t.due)})`:'';
-      const text=`${t.title}${due}`;
+      const subs=t.subs||[];
+      let body=`${t.title}${due}`;
+      if(subs.length>0 && subs.length<=3){
+        body+='\n'+subs.map(s=>`・${s.tx}`).join('\n');
+      } else if(subs.length>3){
+        body+=`\n（サブタスク${subs.length}件）`;
+      }
+      const shareText=body;
       if(navigator.share){
-        navigator.share({title:t.title,text,url}).catch(()=>{});
+        navigator.share({title:t.title,text:shareText,url}).catch(()=>{});
       } else {
-        const copyText=`${text}\n${url}`;
+        const copyText=`${shareText}\n${url}`;
         navigator.clipboard.writeText(copyText).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
           const ta=document.createElement('textarea');
           ta.value=copyText; ta.style.cssText='position:fixed;opacity:0';
