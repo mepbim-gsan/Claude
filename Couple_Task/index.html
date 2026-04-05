@@ -1623,13 +1623,18 @@ function buildTaskCard(t){
       e.stopPropagation();
       const url=location.origin+location.pathname+'?task='+t.id;
       const due=t.due?` (期限: ${fmtD(t.due)})`:'';
-      const text=`${t.title}${due}\n${url}`;
-      navigator.clipboard.writeText(text).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
-        const ta=document.createElement('textarea');
-        ta.value=text; ta.style.cssText='position:fixed;opacity:0';
-        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
-        document.body.removeChild(ta); showMsg('リンクをコピーしました');
-      });
+      const text=`${t.title}${due}`;
+      if(navigator.share){
+        navigator.share({title:t.title,text,url}).catch(()=>{});
+      } else {
+        const copyText=`${text}\n${url}`;
+        navigator.clipboard.writeText(copyText).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
+          const ta=document.createElement('textarea');
+          ta.value=copyText; ta.style.cssText='position:fixed;opacity:0';
+          document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+          document.body.removeChild(ta); showMsg('リンクをコピーしました');
+        });
+      }
     });
     exp.appendChild(shareBtn);
     card.appendChild(exp);
@@ -3230,13 +3235,17 @@ function buildMemoCard(m){
   mShareBtn.addEventListener('click',e=>{
     e.stopPropagation();
     const url=location.origin+location.pathname+'?memo='+m.id;
-    const text=`${m.title}\n${url}`;
-    navigator.clipboard.writeText(text).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
-      const ta=document.createElement('textarea');
-      ta.value=text; ta.style.cssText='position:fixed;opacity:0';
-      document.body.appendChild(ta); ta.select(); document.execCommand('copy');
-      document.body.removeChild(ta); showMsg('リンクをコピーしました');
-    });
+    if(navigator.share){
+      navigator.share({title:m.title,text:m.title,url}).catch(()=>{});
+    } else {
+      const copyText=`${m.title}\n${url}`;
+      navigator.clipboard.writeText(copyText).then(()=>showMsg('リンクをコピーしました')).catch(()=>{
+        const ta=document.createElement('textarea');
+        ta.value=copyText; ta.style.cssText='position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta); showMsg('リンクをコピーしました');
+      });
+    }
   });
   // 共有ボタン（左）と最終編集者・日時（右）を1行に
   const mfooter=CE('div');
