@@ -1,13 +1,18 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v12_2026-04-06
+  @version   v12_2026-04-06.3
   @chat      Couple_Task_12_Vibration API
   @changelog
+    v12_2026-04-06.3
+      - [タスク] 共有時にテキスト+URLをクリップボードに事前コピー（LINE貼り付け用）
+
+    v12_2026-04-06.2
+      - [タスク] 共有ボタンにhtml2canvasによるカードスクショ添付（navigator.share files対応環境のみ）
+
     v12_2026-04-06
       - [タスク] タスク完了・サブタスク完了時にVibration API（50ms）で触覚フィードバック
       - [メモ] メモアーカイブ時にVibration API（50ms）で触覚フィードバック
-      - [タスク] 共有ボタンにhtml2canvasによるカードスクショ添付（navigator.share files対応環境のみ）
 
     v11_2026-04-05
       - [タスク・メモ] 編集中の下書きをlocalStorageに自動保存・復元
@@ -1129,7 +1134,7 @@ function closeSwipe(wrap){
   if(swipedCard===wrap) swipedCard=null;
 } // 現在スワイプ中のカード // 開いているカードIDを記憶
 
-const APP_VERSION = 'v12_2026-04-06'; // ← バージョンはここだけ変更
+const APP_VERSION = 'v12_2026-04-06.3'; // ← バージョンはここだけ変更
 
 // タスクリンク共有：URLパラメータをsessionStorageに退避（Google認証リダイレクト対策）
 (()=>{
@@ -1666,6 +1671,8 @@ function buildTaskCard(t){
         try{
           const file=await captureCardAsFile(card);
           if(navigator.canShare&&navigator.canShare({files:[file]})){
+            // LINEはfiles共有時textを無視するためクリップボードに事前コピー
+            navigator.clipboard.writeText(shareText+'\n'+url).catch(()=>{});
             await navigator.share({title:shareText+'\n'+url,text:shareText+'\n'+url,files:[file]});
           } else {
             await navigator.share({title:t.title,text:shareText,url});
