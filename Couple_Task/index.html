@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <!--
   @tool      ふたりのタスク
-  @version   v11_2026-04-04
+  @version   v11_2026-04-05
   @chat      Couple_Task_11_通知機能について
   @changelog
-    v11_2026-04-04
-      - [タスク] リンク共有機能追加（展開エリアに「🔗 共有」ボタン・?task=ID付きURL生成）
-      - [メモ] リンク共有機能追加（展開エリアに「🔗 共有」ボタン・?memo=ID付きURL生成）
-      - [共通] ディープリンク対応（URLパラメータ→sessionStorage退避→ログイン後ハイライト遷移）
+    v11_2026-04-05
+      - [タスク・メモ] 編集中の下書きをlocalStorageに自動保存・復元
+      - [タスク・メモ] 起動時に下書きがあれば自動的にモーダルを開いて復元
+      - [タスク・メモ] 下書き保存時に他モーダルの下書きを相互クリア（同時保存防止）
+      - [タスク・メモ] ディープリンク遷移時は下書きを破棄
+      - [タスク・メモ] リンク共有機能追加（展開エリアに「🔗 共有」ボタン・タイトル+URL形式でコピー）
+      - [共通] ディープリンク対応（?task=ID / ?memo=IDでログイン後ハイライト遷移）
 
     v10_2026-04-04 - PWA化（manifest.json, sw.js, アイコン追加）
 
@@ -1121,7 +1124,7 @@ function closeSwipe(wrap){
   if(swipedCard===wrap) swipedCard=null;
 } // 現在スワイプ中のカード // 開いているカードIDを記憶
 
-const APP_VERSION = 'v11_2026-04-04'; // ← バージョンはここだけ変更
+const APP_VERSION = 'v11_2026-04-05'; // ← バージョンはここだけ変更
 
 // タスクリンク共有：URLパラメータをsessionStorageに退避（Google認証リダイレクト対策）
 (()=>{
@@ -1208,6 +1211,8 @@ function loginAs(uid){
   const _openTid = sessionStorage.getItem('_openTaskId');
   if(_openTid){
     sessionStorage.removeItem('_openTaskId');
+    // ディープリンク時は下書きを破棄
+    _clearTDraftAll(); _clearMDraftAll();
     setTimeout(()=>{
       showPage('tasks');
       curFil='all'; updateFbar(); renderTasks();
@@ -1226,6 +1231,8 @@ function loginAs(uid){
   const _openMid = sessionStorage.getItem('_openMemoId');
   if(_openMid){
     sessionStorage.removeItem('_openMemoId');
+    // ディープリンク時は下書きを破棄
+    _clearTDraftAll(); _clearMDraftAll();
     setTimeout(()=>{
       showPage('memo');
       curMFil='all'; renderMemos();
@@ -1238,6 +1245,28 @@ function loginAs(uid){
           setTimeout(()=>card.classList.remove('task-highlight'), 2400);
         }, 400);
       }, 100);
+    }, 800);
+  }
+  // 下書き復元：ディープリンクがない場合のみ自動モーダルオープン
+  if(!_openTid && !_openMid){
+    setTimeout(()=>{
+      // タスク下書き確認
+      const tKeys=Object.keys(localStorage).filter(k=>k.startsWith('draft-task-'));
+      if(tKeys.length){
+        const key=tKeys[0];
+        const id=key==='draft-task-new'?null:key.replace('draft-task-','');
+        showPage('tasks');
+        setTimeout(()=>openTModal(id),300);
+        return;
+      }
+      // メモ下書き確認
+      const mKeys=Object.keys(localStorage).filter(k=>k.startsWith('draft-memo-'));
+      if(mKeys.length){
+        const key=mKeys[0];
+        const id=key==='draft-memo-new'?null:key.replace('draft-memo-','');
+        showPage('memo');
+        setTimeout(()=>openMModal(id),300);
+      }
     }, 800);
   }
 }
@@ -2093,13 +2122,36 @@ function renderColorPresets(){
 // ══════════════════════════════════════════
 //  TASK MODAL
 // ══════════════════════════════════════════
+function _tDraftKey(){ return editTid ? 'draft-task-'+editTid : 'draft-task-new'; }
+function _saveTDraft(){
+  try{
+    const d={title:G('ftitle').value,cat:G('fcat').value,due:G('fdue').value,
+      memo:G('fmemo').value,url:G('furl').value,
+      aids:JSON.stringify(mAids),subs:JSON.stringify(mSubs),
+      tags:JSON.stringify(mTags),star:G('fstar').classList.contains('on')};
+    localStorage.setItem(_tDraftKey(),JSON.stringify(d));
+    // 他モーダルの下書きを相互クリア
+    _clearMDraftAll();
+  }catch{}
+}
+function _clearTDraft(){ try{ localStorage.removeItem(_tDraftKey()); }catch{} }
+function _clearTDraftAll(){ try{ Object.keys(localStorage).filter(k=>k.startsWith('draft-task-')).forEach(k=>localStorage.removeItem(k)); }catch{} }
+
 function openTModal(id){
   editTid=id||null;
   const isEdit=!!id;
   G('tmodalttl').textContent=isEdit?'タスクを編集':'タスクを追加';
   G('fcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   mSubs=[];
-  if(isEdit){
+  // 下書き復元を試みる
+  let draft=null;
+  try{ const s=localStorage.getItem(_tDraftKey()); if(s) draft=JSON.parse(s); }catch{}
+  if(draft){
+    G('ftitle').value=draft.title||''; G('fcat').value=draft.cat||'';
+    G('fdue').value=draft.due||''; G('fmemo').value=draft.memo||''; G('furl').value=draft.url||'';
+    mAids=JSON.parse(draft.aids||'[]'); mSubs=JSON.parse(draft.subs||'[]'); mTags=JSON.parse(draft.tags||'[]');
+    const on=!!draft.star; G('fstar').textContent=on?'★':'☆'; G('fstar').classList.toggle('on',on);
+  } else if(isEdit){
     const t=ST.tasks.find(x=>x.id===id);
     G('ftitle').value=t.title; G('fcat').value=t.cid||'';
     G('fdue').value=t.due||''; G('fmemo').value=t.memo||''; G('furl').value=t.url||'';
@@ -2138,7 +2190,7 @@ function tryClose(snapFn, snapRef, closeFn){
   if(snapFn() !== snapRef){ cfmDlg('変更が保存されていません。閉じますか？', closeFn, '閉じる'); } else { closeFn(); }
 }
 
-function closeTModal(){ G('tmodal').classList.remove('open'); editTid=null; }
+function closeTModal(){ _clearTDraft(); G('tmodal').classList.remove('open'); editTid=null; }
 
 function renderTAsgn(){
   const el=G('fasgn'); el.innerHTML='';
@@ -2540,12 +2592,17 @@ G('btnLogout').addEventListener('click',()=>{
 G('btnAddTask').addEventListener('click',()=>openTModal());
 G('btnCloseTM').addEventListener('click',()=>tryClose(tSnap,_tSnap,closeTModal));
 G('btnSaveTask').addEventListener('click',saveTask);
-G('fstar').addEventListener('click',()=>{ const on=G('fstar').classList.toggle('on'); G('fstar').textContent=on?'★':'☆'; });
+G('fstar').addEventListener('click',()=>{ const on=G('fstar').classList.toggle('on'); G('fstar').textContent=on?'★':'☆'; _saveTDraft(); });
+// タスク下書き保存（各フィールド変更時）
+['ftitle','fdue','fmemo','furl','fcat'].forEach(id=>{
+  G(id).addEventListener('input',_saveTDraft);
+  G(id).addEventListener('change',_saveTDraft);
+});
 
 // サブタスク追加
 G('btnAddSub').addEventListener('click',()=>{
   const tx=G('fsubin').value.trim(); if(!tx)return;
-  mSubs.push({id:genId(),tx,done:false}); G('fsubin').value=''; renderMSubs();
+  mSubs.push({id:genId(),tx,done:false}); G('fsubin').value=''; renderMSubs(); _saveTDraft();
 });
 G('fsubin').addEventListener('keydown',e=>{if(e.key==='Enter')G('btnAddSub').click();});
 G('btnAddRSub').addEventListener('click',()=>{
@@ -2703,7 +2760,12 @@ G('btn-toggle-tags').addEventListener('click',()=>{
 G('btnAddMemo').addEventListener('click',()=>openMModal());
 G('btnCloseMM').addEventListener('click',()=>tryClose(mSnap,_mSnap,closeMModal));
 G('btnSaveMemo').addEventListener('click',saveMemo);
-G('mfstar').addEventListener('click',()=>{ const on=G('mfstar').classList.toggle('on'); G('mfstar').textContent=on?'★':'☆'; });
+G('mfstar').addEventListener('click',()=>{ const on=G('mfstar').classList.toggle('on'); G('mfstar').textContent=on?'★':'☆'; _saveMDraft(); });
+// メモ下書き保存（各フィールド変更時）
+['mftitle','mfbody','mfcat'].forEach(id=>{
+  G(id).addEventListener('input',_saveMDraft);
+  G(id).addEventListener('change',_saveMDraft);
+});
 G('msrch').addEventListener('input',()=>{ G('msrch-clear').style.display=G('msrch').value?'block':'none'; renderMemos(); }); // CHANGED: ✕表示制御
 G('msrch-clear').addEventListener('click',()=>{ G('msrch').value=''; G('msrch-clear').style.display='none'; renderMemos(); }); // CHANGED: ✕クリア
 G('rsrch').addEventListener('input',()=>{ G('rsrch-clear').style.display=G('rsrch').value?'block':'none'; renderRecur(); }); // CHANGED: 定型検索
@@ -3227,12 +3289,32 @@ function buildMemoCard(m){
   return wrap;
 }
 
+function _mDraftKey(){ return editMid ? 'draft-memo-'+editMid : 'draft-memo-new'; }
+function _saveMDraft(){
+  try{
+    const d={title:G('mftitle').value,body:G('mfbody').value,cat:G('mfcat').value,
+      tags:JSON.stringify(mMTags),star:G('mfstar').classList.contains('on')};
+    localStorage.setItem(_mDraftKey(),JSON.stringify(d));
+    // 他モーダルの下書きを相互クリア
+    _clearTDraftAll();
+  }catch{}
+}
+function _clearMDraft(){ try{ localStorage.removeItem(_mDraftKey()); }catch{} }
+function _clearMDraftAll(){ try{ Object.keys(localStorage).filter(k=>k.startsWith('draft-memo-')).forEach(k=>localStorage.removeItem(k)); }catch{} }
+
 function openMModal(id){
   editMid=id||null;
   const isEdit=!!id;
   G('mmodalttl').textContent=isEdit?'メモを編集':'メモを追加';
   G('mfcat').innerHTML='<option value="">なし</option>'+ST.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  if(isEdit){
+  // 下書き復元を試みる
+  let draft=null;
+  try{ const s=localStorage.getItem(_mDraftKey()); if(s) draft=JSON.parse(s); }catch{}
+  if(draft){
+    G('mftitle').value=draft.title||''; G('mfbody').value=draft.body||''; G('mfcat').value=draft.cat||'';
+    mMTags=JSON.parse(draft.tags||'[]');
+    const on=!!draft.star; G('mfstar').textContent=on?'★':'☆'; G('mfstar').classList.toggle('on',on);
+  } else if(isEdit){
     const m=(ST.memos||[]).find(x=>x.id===id); if(!m)return;
     G('mftitle').value=m.title; G('mfbody').value=m.body||''; G('mfcat').value=m.cid||'';
     mMTags=[...(m.tags||[])];
@@ -3248,7 +3330,7 @@ function openMModal(id){
   if(!isEdit) setTimeout(()=>G('mftitle').focus(),100);
   setTimeout(()=>{ _mSnap=mSnap(); },0);
 }
-function closeMModal(){ G('mmodal').classList.remove('open'); editMid=null; }
+function closeMModal(){ _clearMDraft(); G('mmodal').classList.remove('open'); editMid=null; }
 
 
 function renderMMTags(){
