@@ -1628,6 +1628,7 @@ function buildTaskCard(t){
         const toggle=()=>{
           s.done=!s.done;
           if(s.done) navigator.vibrate?.(50);
+          item.classList.toggle('done',s.done);
           schk.textContent=s.done?'✓':'';
           const sd=t.subs.filter(x=>x.done).length;
           const cardEl=document.getElementById('tc-'+t.id);
