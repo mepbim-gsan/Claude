@@ -1,7 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v04_2026-04-06.2
+  @version   v04_2026-04-06.3
   @changelog
+    v04_2026-04-06.3 - 所定外グラフを所定内との間のみ面塗りに変更
     v04_2026-04-06.2 - 所定内グラフの塗りつぶし除去（線のみ）
     v04_2026-04-06 - 所定時間外計算追加（日別所定内・所定外累積グラフ・ダッシュボード集計）
     v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
@@ -305,7 +306,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v04_2026-04-06.2</span>
+      <span style="font-size:11px;color:var(--text3);">v04_2026-04-06.3</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -593,7 +594,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-06.2</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-06.3</div>
   </div>
 
 </div>
@@ -1188,8 +1189,8 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
     );
   }
   datasets.push(
-    {label:'所定内',data:presInC,borderColor:'rgba(96,160,208,.6)',backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:1,fill:false,spanGaps:false},
-    {label:'所定外',data:presOtC,borderColor:'rgba(245,166,35,.5)',backgroundColor:'rgba(245,166,35,.08)',tension:.3,pointRadius:0,borderWidth:1,fill:'origin',spanGaps:false},
+    {label:'所定内',data:presInC,borderColor:'rgba(96,160,208,.5)',backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:1,fill:false,spanGaps:false},
+    {label:'所定外',data:presOtC,borderColor:'rgba(245,166,35,.5)',backgroundColor:'rgba(245,166,35,.1)',tension:.3,pointRadius:0,borderWidth:1,fill:'-1',spanGaps:false},
     {label:'法定',data:Array(dim).fill(legalH),borderColor:'#e05252',backgroundColor:'transparent',pointRadius:0,borderWidth:2,borderDash:[4,3]}
   );
 
