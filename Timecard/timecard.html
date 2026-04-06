@@ -1,8 +1,12 @@
 <!--
   @tool      タイムカード
-  @version   v03_2026-04-03
+  @version   v03_2026-04-03.9
   @changelog
-    v03_2026-04-03 - Firebase Firestore対応・Googleログイン・ユーザー別保存（users/{uid}/data/timecard-main）
+    v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
+    v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
+    v03_2026-04-03.3 - 月次オートスクロール削除・予定一括入力カードを折りたたみ対応
+    v03_2026-04-03.2 - 打刻タブに前日・翌日ボタン追加
+    v03_2026-04-03 - Firebase Firestore対応・Googleログイン・ユーザー別保存
     v02_2026-04-03.3 - 月次日次一覧：休暇色付き行をカード幅いっぱいに広げ文字位置ずれを修正
     v02_2026-04-03.2 - 月次日次一覧：時刻なし半休・時間休は予定表示にフォールバック
     v02_2026-04-03 - 起動時にinitPunchTab()が呼ばれず日付未設定・自動保存不可だったバグ修正
@@ -210,6 +214,7 @@ body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;backgroun
 .page-title{font-size:18px;font-weight:700;}
 .month-nav{display:flex;align-items:center;gap:8px;}
 .month-nav button{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;}
+.month-nav-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:36px;height:36px;border-radius:8px;cursor:pointer;font-size:18px;flex-shrink:0;}
 .month-label{font-size:15px;font-weight:600;min-width:80px;text-align:center;}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
 .card-title{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
@@ -298,7 +303,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <button class="theme-btn" id="btn-theme">🌙</button>
+      <span style="font-size:11px;color:var(--text3);">v03_2026-04-03.9</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -308,7 +313,11 @@ label:first-child{margin-top:0;}
     <div class="card">
       <div class="card-title">対象日</div>
       <input type="date" id="punch-date" style="display:none">
-      <div style="font-size:16px;font-weight:700;color:var(--accent)" id="punch-date-display">--</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="month-nav-btn" id="btn-date-prev">‹</button>
+        <div style="flex:1;font-size:16px;font-weight:700;color:var(--accent);text-align:center;" id="punch-date-display">--</div>
+        <button class="month-nav-btn" id="btn-date-next">›</button>
+      </div>
       <div class="leave-type-row mt-8" id="leave-chips">
         <div class="leave-chip selected" data-leave="normal">通常</div>
         <div class="leave-chip" data-leave="paid">有給</div>
@@ -319,6 +328,19 @@ label:first-child{margin-top:0;}
       <div id="hourly-leave-input" style="display:none;margin-top:10px;">
         <label>時間休 取得時間数</label>
         <input type="number" id="hourly-hours" min="0.5" max="8" step="0.5" value="1">
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        本日サマリ
+        <span id="live-indicator" style="display:none;margin-left:6px;font-size:11px;color:var(--success);font-weight:400;">
+          <span class="live-badge"></span>計算中
+        </span>
+      </div>
+      <div class="day-summary">
+        <div class="day-stat"><div class="day-stat-val" id="today-work-hours">--</div><div class="day-stat-label">実労働時間</div></div>
+        <div class="day-stat"><div class="day-stat-val" id="today-break-hours">--</div><div class="day-stat-label">休憩時間</div></div>
+        <div class="day-stat"><div class="day-stat-val" id="today-overtime">--</div><div class="day-stat-label">残業(8h超)</div></div>
       </div>
     </div>
     <div class="card" id="work-time-card">
@@ -352,19 +374,6 @@ label:first-child{margin-top:0;}
       <div class="card-title">休憩</div>
       <div id="break-list"></div>
       <button id="add-break-btn">＋ 休憩を追加</button>
-    </div>
-    <div class="card">
-      <div class="card-title">
-        本日サマリ
-        <span id="live-indicator" style="display:none;margin-left:6px;font-size:11px;color:var(--success);font-weight:400;">
-          <span class="live-badge"></span>計算中
-        </span>
-      </div>
-      <div class="day-summary">
-        <div class="day-stat"><div class="day-stat-val" id="today-work-hours">--</div><div class="day-stat-label">実労働時間</div></div>
-        <div class="day-stat"><div class="day-stat-val" id="today-break-hours">--</div><div class="day-stat-label">休憩時間</div></div>
-        <div class="day-stat"><div class="day-stat-val" id="today-overtime">--</div><div class="day-stat-label">残業(8h超)</div></div>
-      </div>
     </div>
     <button id="btn-save-punch" class="btn btn-primary btn-full">💾 保存</button>
   </div>
@@ -430,23 +439,27 @@ label:first-child{margin-top:0;}
       </div>
     </div>
     <div class="card">
-      <div class="card-title">予定入力（範囲一括）</div>
-      <div class="row">
-        <div><label>開始日</label><input type="date" id="sched-from"></div>
-        <div><label>終了日</label><input type="date" id="sched-to"></div>
+      <div class="card-title" id="sched-toggle" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        予定入力（範囲一括）<span id="sched-toggle-icon" style="font-size:12px;color:var(--text3);">▶ 開く</span>
       </div>
-      <div class="row mt-8" id="sched-time-row">
-        <div><label>出勤</label><input type="text" id="sched-in" placeholder="0900" maxlength="6"></div>
-        <div><label>退勤</label><input type="text" id="sched-out" placeholder="1800" maxlength="6"></div>
-      </div>
-      <div style="margin-top:8px;">
-        <label><input type="checkbox" id="sched-weekday-only" checked style="width:auto;margin-right:4px;">平日のみ</label>
-        <label style="margin-top:4px;"><input type="checkbox" id="sched-exclude-hol" checked style="width:auto;margin-right:4px;">祝日除く</label>
-      </div>
-      <div id="sched-preset-buttons" class="leave-type-row mt-8"></div>
-      <div class="row mt-8">
-        <button id="btn-save-schedule" class="btn btn-ghost btn-full">一括入力</button>
-        <button id="btn-delete-schedule" class="btn btn-danger btn-full">一括削除</button>
+      <div id="sched-body" style="display:none;">
+        <div class="row" style="margin-top:10px;">
+          <div><label>開始日</label><input type="date" id="sched-from"></div>
+          <div><label>終了日</label><input type="date" id="sched-to"></div>
+        </div>
+        <div class="row mt-8" id="sched-time-row">
+          <div><label>出勤</label><input type="text" id="sched-in" placeholder="0900" maxlength="6"></div>
+          <div><label>退勤</label><input type="text" id="sched-out" placeholder="1800" maxlength="6"></div>
+        </div>
+        <div style="margin-top:8px;">
+          <label><input type="checkbox" id="sched-weekday-only" checked style="width:auto;margin-right:4px;">平日のみ</label>
+          <label style="margin-top:4px;"><input type="checkbox" id="sched-exclude-hol" checked style="width:auto;margin-right:4px;">祝日除く</label>
+        </div>
+        <div id="sched-preset-buttons" class="leave-type-row mt-8"></div>
+        <div class="row mt-8">
+          <button id="btn-save-schedule" class="btn btn-ghost btn-full">一括入力</button>
+          <button id="btn-delete-schedule" class="btn btn-danger btn-full">一括削除</button>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -722,7 +735,7 @@ function setDay(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m)
 function setSched(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(!monthData[key])monthData[key]={days:{},schedules:{}};monthData[key].schedules[String(+d)]=data;}
 
 // THEME
-function applyTheme(t){document.documentElement.setAttribute('data-theme',t);localStorage.setItem(THEME_KEY,t);const dk=t==='dark';document.getElementById('btn-theme').textContent=dk?'☀️':'🌙';const bs=document.getElementById('btn-theme-setting');if(bs)bs.textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';if(currentChart)renderMonthTab();}
+function applyTheme(t){document.documentElement.setAttribute('data-theme',t);localStorage.setItem(THEME_KEY,t);const dk=t==='dark';const bs=document.getElementById('btn-theme-setting');if(bs)bs.textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';if(currentChart)renderMonthTab();}
 function toggleTheme(){applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
 
 // PUNCH
@@ -742,8 +755,9 @@ function updateStampButtons(){
   // 勤務開始: 今日かつ未入力で押せる
   document.getElementById('stamp-in').disabled  = !isToday || !!inVal;
   document.getElementById('stamp-out').disabled = !isToday || !inVal;
-  document.getElementById('stamp-break-start').disabled = !isToday || !inVal;
-  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal;
+  // 退勤済みなら休憩ボタンは無効
+  document.getElementById('stamp-break-start').disabled = !isToday || !inVal || !!outVal;
+  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal || !!outVal;
 
   // 入力済みの時刻を表示
   document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
@@ -764,17 +778,23 @@ function updateStampButtons(){
 }
 
 function initPunchTab(){
+  loadDateToPunch(toDateStr(new Date()));
+  renderPresetButtons();
+}
+
+function loadDateToPunch(ds){
   const today = toDateStr(new Date());
-  document.getElementById('punch-date').value = today;
   const dn=['日','月','火','水','木','金','土'];
-  const d0=new Date(today+'T00:00:00');
-  document.getElementById('punch-date-display').textContent=
-    `${today} (${dn[d0.getDay()]})`;
+  const d0 = new Date(ds+'T00:00:00');
+  document.getElementById('punch-date').value = ds;
+  document.getElementById('punch-date-display').textContent = `${ds} (${dn[d0.getDay()]})`;
   document.getElementById('today-date').textContent =
     new Date().toLocaleDateString('ja-JP',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  // 翌日ボタンは今日以降には進めない
+  document.getElementById('btn-date-next').disabled = ds >= today;
+  document.getElementById('btn-date-next').style.opacity = ds >= today ? '0.3' : '1';
   selectLeave('normal');
-  loadDayToPunch(today);
-  renderPresetButtons();
+  loadDayToPunch(ds);
 }
 
 function loadDayToPunch(ds){
@@ -1030,10 +1050,12 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
     // 実績累積（過去月・当月共通）
     if(ds<=today){
       if(obj){
-        const wM=calcWorkMinutesForForecast(obj); // 予測用
+        // timeIn・timeOut両方入力済みの日のみ平均計算に使用
+        const hasFullTime = obj.timeIn && obj.timeOut;
+        const wM=calcWorkMinutesForForecast(obj);
         rA+=wM;
         lastD=d;
-        if(!['paid','comp'].includes(obj.leave||'normal')) cnt++;
+        if(hasFullTime && !['paid','comp'].includes(obj.leave||'normal')) cnt++;
       }
       acC.push(parseFloat((rA/60).toFixed(2)));
     } else {
@@ -1177,7 +1199,18 @@ function renderDayList(y,m,data){
 
     let timeStr='';
     if(obj?.timeIn&&obj?.timeOut) timeStr=formatTime(parseTime(obj.timeIn))+'〜'+formatTime(parseTime(obj.timeOut));
-    const sub=[hn,timeStr].filter(Boolean).join(' ');
+
+    // 休憩時間合計（実績あり時のみ）
+    let breakStr='';
+    if(obj?.breaks?.length){
+      const bM=(obj.breaks).reduce((s,b)=>{
+        const bs=parseTime(b.start),be=parseTime(b.end);
+        if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=1440;return s+bd;}
+        return s;
+      },0);
+      if(bM>0) breakStr=` 休憩${formatHours(bM)}h`;
+    }
+    const sub=[hn, timeStr+breakStr].filter(Boolean).join(' ');
 
     // 行の背景色（休暇日）
     const rowBg=ls?ls.bg:'';
@@ -1198,10 +1231,20 @@ function renderDayList(y,m,data){
     // 時刻なし半休・時間休は予定表示にフォールバック
     const hasTime = obj?.timeIn && obj?.timeOut;
     const isNoTimeLeave = obj && ['half','hourly'].includes(obj.leave||'') && !hasTime;
+
+    // day-subの予定時刻（実績なし時）
+    let subSched='';
+    if(!obj && sob?.timeIn && sob?.timeOut){
+      subSched=formatTime(parseTime(sob.timeIn))+'〜'+formatTime(parseTime(sob.timeOut));
+    } else if(!obj && isBusinessDay(ds) && !sob){
+      subSched=`${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}`;
+    }
+    const subFinal=[hn, timeStr+breakStr, subSched].filter(Boolean).join(' ');
+
     let rightContent='';
     if(wM!==null && !isNoTimeLeave){
       const otColor=wM>(settings.stdHours||8)*60?'var(--warn)':'var(--text)';
-      rightContent=`<div class="day-hours" style="color:${otColor}">${formatHours(wM)}</div>`;
+      rightContent=`<div class="day-hours" style="color:${otColor}">${formatHours(wM)}h</div>`;
     } else if(sob){
       const schedLeaveNames={paid:'有給',comp:'代休',half:'半日'};
       const schedLv=sob?.leave||'normal';
@@ -1210,8 +1253,7 @@ function renderDayList(y,m,data){
         ?`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br><span style="color:var(--warn)">${schedLabel}</span></div>`
         :`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${formatTime(parseTime(sob.timeIn))}〜${formatTime(parseTime(sob.timeOut))}</div>`;
     } else if(isBusinessDay(ds)){
-      // 予定未入力の営業日はデフォルト表示
-      rightContent=`<div style="font-size:10px;color:var(--text3);text-align:right">${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}<br>（デフォルト）</div>`;
+      rightContent=`<div style="font-size:11px;color:var(--text3);text-align:right">予定<br>${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}</div>`;
     }
 
     item.innerHTML=`
@@ -1220,10 +1262,11 @@ function renderDayList(y,m,data){
         <div class="day-time" style="${isT?'color:var(--accent)':''}">
           ${badge}${ls&&!timeStr?'':(wM!==null?formatHours(wM)+'h':'')}
         </div>
-        <div class="day-sub">${sub}</div>
+        <div class="day-sub">${subFinal}</div>
       </div>
       ${rightContent}`;
     item.addEventListener('click',()=>openDayModal(ds));
+    if(isT) item.dataset.today='true';
     el.appendChild(item);
   }
 }
@@ -1324,7 +1367,17 @@ function openDayModal(ds){
     bcLabel.style.cssText='font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;margin-bottom:2px;font-weight:600;';
     bcLabel.textContent='休憩';form.appendChild(bcLabel);
     const bc=document.createElement('div');bc.id='modal-break-container';form.appendChild(bc);
-    for(const b of(src?.breaks||[]))addModalBreakRow(b.start,b.end);
+
+    const existingBreaks = src?.breaks||[];
+    if(mode==='actual' && existingBreaks.length===0){
+      // 新規実績：デフォルト休憩を設定
+      const bp=settings.breakPresets||[];
+      if(bp.length>0){ for(const b of bp) addModalBreakRow(b.start,b.end); }
+      else { addModalBreakRow('1200','1300'); }
+    } else {
+      for(const b of existingBreaks) addModalBreakRow(b.start,b.end);
+    }
+
     const ab=document.createElement('button');
     ab.style.cssText='width:100%;margin-top:8px;background:transparent;border:1px dashed var(--border);color:var(--text2);border-radius:8px;padding:8px;cursor:pointer;font-size:13px;';
     ab.textContent='＋ 休憩';ab.addEventListener('click',()=>addModalBreakRow());form.appendChild(ab);
@@ -1357,17 +1410,36 @@ function addModalBreakRow(s='',e=''){
   const i1=document.createElement('input');
   i1.type='text';i1.placeholder='1200';i1.value=s;i1.maxLength=6;
   i1.style.cssText='flex:1;text-align:center;font-size:16px;font-weight:600;';
-  i1.addEventListener('input',ev=>modalBreakRows[idx].start=ev.target.value);
-  const sep=document.createElement('span');
-  sep.textContent='〜';sep.style.cssText='color:var(--text2);flex-shrink:0;font-size:14px;';
   const i2=document.createElement('input');
   i2.type='text';i2.placeholder='1300';i2.value=e;i2.maxLength=6;
   i2.style.cssText='flex:1;text-align:center;font-size:16px;font-weight:600;';
-  i2.addEventListener('input',ev=>modalBreakRows[idx].end=ev.target.value);
+  const errBadge=document.createElement('span');
+  errBadge.textContent='⚠';errBadge.title='勤務時間外の休憩';
+  errBadge.style.cssText='display:none;color:var(--danger);font-size:14px;flex-shrink:0;';
+  const validateBreak=()=>{
+    const inVal=document.getElementById('modal-in')?.value||'';
+    const outVal=document.getElementById('modal-out')?.value||'';
+    const b=modalBreakRows[idx];
+    if(!b||!b.start||!b.end){errBadge.style.display='none';i1.style.borderColor='';i2.style.borderColor='';return;}
+    const valid=isBreakValid(b,inVal,outVal);
+    errBadge.style.display=valid?'none':'inline';
+    i1.style.borderColor=valid?'':'var(--danger)';
+    i2.style.borderColor=valid?'':'var(--danger)';
+  };
+  i1.addEventListener('input',ev=>{modalBreakRows[idx].start=ev.target.value;validateBreak();});
+  i2.addEventListener('input',ev=>{modalBreakRows[idx].end=ev.target.value;validateBreak();});
+  // modal-inとmodal-outの変更時も再検証
+  setTimeout(()=>{
+    document.getElementById('modal-in')?.addEventListener('input',validateBreak);
+    document.getElementById('modal-out')?.addEventListener('input',validateBreak);
+    validateBreak();
+  },0);
+  const sep=document.createElement('span');
+  sep.textContent='〜';sep.style.cssText='color:var(--text2);flex-shrink:0;font-size:14px;';
   const delBtn=document.createElement('button');
   delBtn.className='btn btn-ghost btn-sm';delBtn.textContent='✕';delBtn.style.flexShrink='0';
   delBtn.addEventListener('click',()=>{modalBreakRows[idx]=null;div.remove();});
-  div.append(i1,sep,i2,delBtn);
+  div.append(i1,sep,i2,errBadge,delBtn);
   document.getElementById('modal-break-container').appendChild(div);
 }
 function saveDayModal(){
@@ -1497,8 +1569,20 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(n==='annual')renderAnnualTab();
     if(n==='settings')renderSettingsUI();
   }));
-  document.getElementById('btn-theme').addEventListener('click',toggleTheme);
   document.getElementById('btn-theme-setting').addEventListener('click',toggleTheme);
+  // 打刻タブ 日付前後移動
+  document.getElementById('btn-date-prev').addEventListener('click',()=>{
+    const cur = document.getElementById('punch-date').value;
+    const d = new Date(cur+'T00:00:00'); d.setDate(d.getDate()-1);
+    loadDateToPunch(toDateStr(d));
+  });
+  document.getElementById('btn-date-next').addEventListener('click',()=>{
+    const cur = document.getElementById('punch-date').value;
+    const today = toDateStr(new Date());
+    if(cur >= today) return;
+    const d = new Date(cur+'T00:00:00'); d.setDate(d.getDate()+1);
+    loadDateToPunch(toDateStr(d));
+  });
   document.getElementById('punch-in').addEventListener('input',()=>updateDaySummary());
   document.getElementById('punch-out').addEventListener('input',()=>updateDaySummary());
   document.getElementById('hourly-hours').addEventListener('input',()=>updateDaySummary());
@@ -1569,6 +1653,13 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-save-schedule').addEventListener('click',saveScheduleRange);
   document.getElementById('btn-delete-schedule').addEventListener('click',()=>{
     if(confirm('指定範囲の予定を削除しますか？'))deleteScheduleRange();
+  });
+  document.getElementById('sched-toggle').addEventListener('click',()=>{
+    const body = document.getElementById('sched-body');
+    const icon = document.getElementById('sched-toggle-icon');
+    const open = body.style.display === 'none';
+    body.style.display = open ? 'block' : 'none';
+    icon.textContent = open ? '▼ 閉じる' : '▶ 開く';
   });
   document.getElementById('btn-year-prev').addEventListener('click',()=>{currentYear--;renderAnnualTab();});
   document.getElementById('btn-year-next').addEventListener('click',()=>{currentYear++;renderAnnualTab();});
