@@ -1,7 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v03_2026-04-03.9
+  @version   v04_2026-04-06
   @changelog
+    v04_2026-04-06 - 所定時間外計算追加（日別所定内・所定外累積グラフ・ダッシュボード集計）
     v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
     v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
     v03_2026-04-03.3 - 月次オートスクロール削除・予定一括入力カードを折りたたみ対応
@@ -303,7 +304,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v03_2026-04-03.9</span>
+      <span style="font-size:11px;color:var(--text3);">v04_2026-04-06</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -427,6 +428,19 @@ label:first-child{margin-top:0;}
           <div class="stat-box-sub">h</div>
         </div>
       </div>
+      <!-- 3段目：所定時間 -->
+      <div class="stat-box" style="grid-column:span 3;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0;background:transparent;border:none;">
+        <div class="stat-box">
+          <div class="stat-box-label">所定労働時間</div>
+          <div class="stat-box-val" id="m-pres-work" style="color:var(--accent)">--</div>
+          <div class="stat-box-sub">h（実績累計）</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-label">所定時間外</div>
+          <div class="stat-box-val" id="m-pres-ot" style="color:var(--warn)">--</div>
+          <div class="stat-box-sub">h（実績累計）</div>
+        </div>
+      </div>
     </div>
     <div class="card">
       <div class="card-title">累積推移</div>
@@ -436,6 +450,8 @@ label:first-child{margin-top:0;}
         <span style="color:#4f8ef7">╌ 予測</span>
         <span style="color:#e05252">─ 法定限度</span>
         <span style="color:var(--text3)">╌ 予定</span>
+        <span style="color:#60a0d0">░ 所定内</span>
+        <span style="color:#f5a623">░ 所定外</span>
       </div>
     </div>
     <div class="card">
@@ -576,7 +592,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v03_2026-04-03</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-06</div>
   </div>
 
 </div>
@@ -729,6 +745,18 @@ function calcWorkMinutesForForecast(o){
   return Math.max(0,t);
 }
 
+// 所定内時間（分）: 日曜・土曜→0、有給→stdHours×60、半休（時刻なし）→4×60、通常→min(実労働, stdHours×60)
+function calcPrescribedInMinutes(obj, dow) {
+  if(dow === 0 || dow === 6) return 0;
+  const stdM = (settings.stdHours || 8) * 60;
+  if(!obj) return 0;
+  const lv = obj.leave || 'normal';
+  if(lv === 'paid' || lv === 'comp') return stdM;
+  if(lv === 'half' && !obj.timeIn) return 4 * 60;
+  const wM = calcWorkMinutes(obj);
+  if(wM === 0) return 0;
+  return Math.min(wM, stdM);
+}
 function getDay(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.days||{})[String(+d)]||null;}
 function getSched(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.schedules||{})[String(+d)]||null;}
 function setDay(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(!monthData[key])monthData[key]={days:{},schedules:{}};monthData[key].days[String(+d)]=data;}
@@ -1008,6 +1036,27 @@ function renderMonthTab(){
   document.getElementById('m-sched-total').textContent=formatHours(schedMins);
   document.getElementById('m-holiday-work').textContent=formatHours(holidayWorkMins);
 
+  // 所定内・所定外集計（今日以前の実績のみ）
+  let presInMins=0,presOtMins=0;
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(ds>today)continue;
+    const obj=(data.days||{})[String(d)];
+    if(!obj)continue;
+    const dow=new Date(ds+'T00:00:00').getDay();
+    if(dow===0)continue;
+    const pIn=calcPrescribedInMinutes(obj,dow);
+    const wM=(obj.leave==='paid'||obj.leave==='comp')?(settings.stdHours||8)*60
+            :(obj.leave==='half'&&!obj.timeIn)?4*60
+            :calcWorkMinutes(obj);
+    presInMins+=pIn;
+    presOtMins+=Math.max(0,wM-pIn);
+  }
+  document.getElementById('m-pres-work').textContent=formatHours(presInMins);
+  const presOtEl=document.getElementById('m-pres-ot');
+  presOtEl.textContent=formatHours(presOtMins);
+  presOtEl.style.color=presOtMins>0?'var(--warn)':'var(--text)';
+
   const legalLimitH=(legalLimit/60).toFixed(1);
   document.getElementById('m-legal-limit-label').textContent=`限度 ${legalLimitH}h`;
   const remainEl=document.getElementById('m-legal-remain');
@@ -1084,6 +1133,27 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
   const gc=dk?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',tc=dk?'#5a5f7a':'#9ca3af';
   const legalH=(legalLimit||173*60)/60;
 
+  // 所定内・所定外累積データ（今日以前の実績のみ）
+  const today2=toDateStr(new Date());
+  let rPresIn=0,rPresOt=0;
+  const presInC=[],presOtC=[];
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(ds>today2){presInC.push(null);presOtC.push(null);continue;}
+    const obj2=(data.days||{})[String(d)];
+    const dow2=new Date(ds+'T00:00:00').getDay();
+    if(obj2&&dow2!==0){
+      const pIn=calcPrescribedInMinutes(obj2,dow2);
+      const wM2=(obj2.leave==='paid'||obj2.leave==='comp')?(settings.stdHours||8)*60
+               :(obj2.leave==='half'&&!obj2.timeIn)?4*60
+               :calcWorkMinutes(obj2);
+      rPresIn+=pIn;
+      rPresOt+=Math.max(0,wM2-pIn);
+    }
+    presInC.push(parseFloat((rPresIn/60).toFixed(2)));
+    presOtC.push(parseFloat(((rPresIn+rPresOt)/60).toFixed(2)));
+  }
+
   // ポイント設定：土日・今日のみ表示
   const todayIdx=labels.indexOf(parseInt(today.split('-')[2]));
   const pointRadii=labels.map((d,i)=>{
@@ -1117,6 +1187,8 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
     );
   }
   datasets.push(
+    {label:'所定内',data:presInC,borderColor:'rgba(96,160,208,.6)',backgroundColor:'rgba(96,160,208,.07)',tension:.3,pointRadius:0,borderWidth:1,fill:'origin',spanGaps:false},
+    {label:'所定外',data:presOtC,borderColor:'rgba(245,166,35,.5)',backgroundColor:'rgba(245,166,35,.08)',tension:.3,pointRadius:0,borderWidth:1,fill:'-1',spanGaps:false},
     {label:'法定',data:Array(dim).fill(legalH),borderColor:'#e05252',backgroundColor:'transparent',pointRadius:0,borderWidth:2,borderDash:[4,3]}
   );
 
