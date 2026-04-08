@@ -2339,6 +2339,7 @@ function renderMSubs(){
       }
     },{passive:true});
     grip.addEventListener('touchcancel',mCleanup,{passive:true});
+    del.addEventListener('click',()=>{ mSubs.splice(i,1); renderMSubs(); });
     item.append(grip,chk,tx,del);
     el.appendChild(item);
   });
