@@ -1146,6 +1146,7 @@ const APP_VERSION = 'v12_2026-04-06.3'; // ← バージョンはここだけ変
 const G  = id => document.getElementById(id);
 const CE = (tag,prop) => Object.assign(document.createElement(tag), prop);
 function genId(){ return '_'+Math.random().toString(36).slice(2,9) }
+function todayJST(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
 // html2canvas 動的ロード（初回のみ）
 function loadHtml2Canvas(){
@@ -1331,7 +1332,7 @@ function loginDemo(){
     {id:'c3',name:'子ども',color:'#a8d8c8'},{id:'c4',name:'手続き',color:'#b5c4f0'},
     {id:'c5',name:'外出',color:'#c4b5e8'},
   ];
-  const d=(plus)=>{ const dt=new Date(); dt.setDate(dt.getDate()+plus); return dt.toISOString().slice(0,10); };
+  const d=(plus)=>{ const dt=new Date(); dt.setDate(dt.getDate()+plus); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
   ST.tasks  = [
     {id:'t01',title:'牛乳・卵の買い出し',cid:'c2',aids:['u1'],due:d(2),done:false,memo:'セール中に買う',url:'',imgs:[],subs:[{id:'s1a',tx:'牛乳2本',done:false},{id:'s1b',tx:'卵Mサイズ',done:true}],tags:['週次'],star:false,doneAt:null,at:new Date().toISOString(),updatedBy:'u1',updatedAt:new Date().toISOString()},
     {id:'t02',title:'洗濯物を畳む',cid:'c1',aids:['u1','u2'],due:'',done:true,memo:'',url:'',imgs:[],subs:[],tags:['週次'],star:false,doneAt:new Date().toISOString(),at:new Date().toISOString(),updatedBy:'u2',updatedAt:new Date(Date.now()-1800000).toISOString()},
@@ -1875,7 +1876,7 @@ function fmtDateJP(iso){
 function openGenDlg(rid){
   const r=ST.recurs.find(x=>x.id===rid); if(!r)return;
   const lastGen=Array.isArray(r.lastGen)?r.lastGen:[];
-  const today=new Date().toISOString().slice(0,10);
+  const today=todayJST();
 
   G('gen-dlg-title').textContent=`「${r.title}」のタスクを作成`;
   const body=G('gen-dlg-body'); body.innerHTML='';
