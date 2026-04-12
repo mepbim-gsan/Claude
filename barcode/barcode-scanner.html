@@ -1,0 +1,746 @@
+<!--
+  @tool      バーコードスキャナー
+  @version   v01_2026-04-12
+  @changelog
+    v01_2026-04-12 - 初版
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>バーコードスキャナー</title>
+<style>
+  :root {
+    --paper:       #faf7f2;
+    --surface:     #f4f0e8;
+    --border:      #ddd5c4;
+    --ink:         #2e2a22;
+    --ink-light:   #6b5e4a;
+    --ink-faint:   #9c8e7c;
+    --accent:      #c0392b;
+    --accent-light:#f9ecea;
+    --shadow:      rgba(0,0,0,0.08);
+    --green:       #27ae60;
+    --green-light: #eaf7ee;
+    --amber:       #e67e22;
+    --amber-light: #fef4e8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100dvh;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  /* ヘッダー */
+  .header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-title { font-size: 16px; font-weight: 700; letter-spacing: 0.04em; }
+  .header-sub   { font-size: 11px; color: #a09080; margin-top: 1px; }
+
+  /* メインコンテンツ */
+  .main { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* カメラビューエリア */
+  .camera-section {
+    background: #1a1a1a;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    aspect-ratio: 4/3;
+  }
+
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* スキャン枠オーバーレイ */
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .scan-frame {
+    width: 70%;
+    aspect-ratio: 3/1;
+    position: relative;
+  }
+  .scan-frame::before,
+  .scan-frame::after,
+  .scan-frame > span::before,
+  .scan-frame > span::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: #fff;
+    border-style: solid;
+  }
+  .scan-frame::before  { top:0;    left:0;  border-width: 3px 0 0 3px; }
+  .scan-frame::after   { top:0;    right:0; border-width: 3px 3px 0 0; }
+  .scan-frame > span::before { bottom:0; left:0;  border-width: 0 0 3px 3px; }
+  .scan-frame > span::after  { bottom:0; right:0; border-width: 0 3px 3px 0; }
+
+  /* スキャンライン */
+  .scan-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(192,57,43,0.8), transparent);
+    animation: scanAnim 2s ease-in-out infinite;
+    top: 50%;
+  }
+  @keyframes scanAnim {
+    0%, 100% { top: 10%;  opacity: 0.4; }
+    50%       { top: 90%; opacity: 1;   }
+  }
+
+  /* カメラ停止中の表示 */
+  .camera-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #888;
+    background: #1a1a1a;
+  }
+  .camera-placeholder .icon { font-size: 40px; }
+  .camera-placeholder .txt  { font-size: 13px; }
+
+  /* ボタン群 */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+  }
+  .btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--ink-light);
+    border: 1px solid var(--border);
+  }
+
+  /* 手入力エリア */
+  .manual-row {
+    display: flex;
+    gap: 8px;
+  }
+  .manual-input {
+    flex: 1;
+    padding: 11px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    background: white;
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.15s;
+    -moz-appearance: textfield;
+  }
+  .manual-input::-webkit-inner-spin-button,
+  .manual-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .manual-input:focus { border-color: var(--accent); }
+  .manual-input::placeholder { color: var(--ink-faint); }
+  .btn-search {
+    padding: 11px 16px;
+    background: var(--ink);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .btn-search:active { transform: scale(0.97); }
+  .btn-search:disabled { background: #ccc; cursor: not-allowed; }
+
+  /* 結果カード */
+  .result-card {
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+  }
+  .result-card.show { display: block; }
+
+  .result-header {
+    padding: 10px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .result-barcode {
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-family: monospace;
+    letter-spacing: 0.08em;
+  }
+  .result-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+  .result-status.found {
+    background: var(--green-light);
+    color: var(--green);
+  }
+  .result-status.not-found {
+    background: var(--amber-light);
+    color: var(--amber);
+  }
+  .result-status.error {
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+
+  .result-body { padding: 14px; }
+
+  .product-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.4;
+    margin-bottom: 10px;
+  }
+  .product-name.unknown {
+    color: var(--ink-faint);
+    font-weight: 400;
+    font-size: 14px;
+  }
+
+  .product-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .meta-chip {
+    font-size: 11px;
+    color: var(--ink-light);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    border-radius: 20px;
+  }
+
+  /* コピーボタン */
+  .btn-copy {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1.5px solid #e8b4b0;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn-copy:active { background: #f5d0cd; }
+  .btn-copy.copied {
+    background: var(--green-light);
+    color: var(--green);
+    border-color: #a8ddb8;
+  }
+
+  /* ローディング */
+  .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 履歴 */
+  .history-section { display: flex; flex-direction: column; gap: 8px; }
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .btn-clear-history {
+    background: none;
+    border: none;
+    font-size: 11px;
+    color: var(--ink-faint);
+    cursor: pointer;
+    padding: 2px 4px;
+    font-family: inherit;
+  }
+  .history-list { display: flex; flex-direction: column; gap: 6px; }
+  .history-item {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .history-item:active { background: var(--surface); }
+  .history-item-barcode {
+    font-size: 10px;
+    color: var(--ink-faint);
+    font-family: monospace;
+    white-space: nowrap;
+  }
+  .history-item-name {
+    flex: 1;
+    font-size: 13px;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .history-item-name.unknown { color: var(--ink-faint); }
+
+  /* 区切り線 */
+  .divider {
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* API note */
+  .api-note {
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-align: center;
+    padding: 4px 0 8px;
+  }
+  .api-note a { color: var(--ink-faint); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-title">📷 バーコードスキャナー</div>
+    <div class="header-sub">JANコード → 商品名検索</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- カメラ -->
+  <div class="camera-section" id="cameraSection">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="camera-placeholder" id="cameraPlaceholder">
+      <div class="icon">📷</div>
+      <div class="txt">カメラ停止中</div>
+    </div>
+    <div class="scan-overlay" id="scanOverlay" style="display:none;">
+      <div class="scan-frame">
+        <span></span>
+        <div class="scan-line"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- スキャンボタン -->
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btnScan" onclick="toggleCamera()">
+      <span>📷</span><span>スキャン開始</span>
+    </button>
+    <button class="btn btn-secondary" id="btnStop" onclick="stopCamera()" style="display:none;">
+      ⏹ 停止
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 手入力 -->
+  <div>
+    <div style="font-size:12px; color:var(--ink-faint); margin-bottom:6px;">バーコード番号を直接入力</div>
+    <div class="manual-row">
+      <input type="tel" class="manual-input" id="manualInput"
+             placeholder="4901234567890"
+             maxlength="14"
+             oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+             onkeydown="if(event.key==='Enter')searchByBarcode(this.value)">
+      <button class="btn-search" id="btnSearchManual" onclick="searchManual()">検索</button>
+    </div>
+  </div>
+
+  <!-- 結果カード -->
+  <div class="result-card" id="resultCard">
+    <div class="result-header">
+      <span class="result-barcode" id="resultBarcode">—</span>
+      <span class="result-status" id="resultStatus">—</span>
+    </div>
+    <div class="result-body">
+      <div class="product-name" id="resultName">—</div>
+      <div class="product-meta" id="resultMeta"></div>
+      <button class="btn-copy" id="btnCopy" onclick="copyName()">
+        📋 商品名をコピー
+      </button>
+    </div>
+  </div>
+
+  <!-- 履歴 -->
+  <div class="history-section" id="historySection" style="display:none;">
+    <div class="history-header">
+      <span>最近のスキャン履歴</span>
+      <button class="btn-clear-history" onclick="clearHistory()">クリア</button>
+    </div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <div class="api-note">
+    商品情報: <a href="https://world.openfoodfacts.org" target="_blank">Open Food Facts</a>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// 状態
+// ============================================================
+let stream       = null;
+let scanning     = false;
+let detector     = null;
+let scanInterval = null;
+let lastBarcode  = '';
+let cooldown     = false; // 連続スキャン抑制
+
+// ============================================================
+// 履歴
+// ============================================================
+const HISTORY_KEY = 'barcode-scanner-history';
+const HISTORY_MAX = 20;
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function saveHistory(list) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+}
+function addHistory(barcode, name, found) {
+  const list = loadHistory().filter(h => h.barcode !== barcode);
+  list.unshift({ barcode, name, found, ts: Date.now() });
+  saveHistory(list.slice(0, HISTORY_MAX));
+  renderHistory();
+}
+function clearHistory() {
+  saveHistory([]);
+  renderHistory();
+}
+function renderHistory() {
+  const list = loadHistory();
+  const sec  = document.getElementById('historySection');
+  const el   = document.getElementById('historyList');
+  if (!list.length) { sec.style.display = 'none'; return; }
+  sec.style.display = 'flex';
+  el.innerHTML = list.map(h => `
+    <div class="history-item" onclick="searchByBarcode('${h.barcode}')">
+      <span class="history-item-barcode">${h.barcode}</span>
+      <span class="history-item-name ${h.found ? '' : 'unknown'}">${esc(h.name)}</span>
+      <span style="font-size:10px;color:var(--ink-faint)">${relTime(h.ts)}</span>
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function relTime(ts) {
+  const d = Date.now() - ts;
+  if (d < 60000)      return 'たった今';
+  if (d < 3600000)    return Math.floor(d/60000)  + '分前';
+  if (d < 86400000)   return Math.floor(d/3600000) + '時間前';
+  return Math.floor(d/86400000) + '日前';
+}
+
+// ============================================================
+// カメラ / BarcodeDetector
+// ============================================================
+async function toggleCamera() {
+  if (scanning) { stopCamera(); return; }
+  await startCamera();
+}
+
+async function startCamera() {
+  // BarcodeDetector サポート確認
+  if (!('BarcodeDetector' in window)) {
+    alert('このブラウザはBarcodeDetector APIに対応していません。\nバーコード番号を手入力してください。');
+    return;
+  }
+
+  try {
+    detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','itf','qr_code'] });
+  } catch(e) {
+    alert('BarcodeDetectorの初期化に失敗しました。');
+    return;
+  }
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+  } catch(e) {
+    alert('カメラのアクセスが拒否されました。\nブラウザの設定でカメラを許可してください。');
+    return;
+  }
+
+  const video = document.getElementById('video');
+  video.srcObject = stream;
+  await video.play();
+
+  scanning = true;
+  document.getElementById('cameraPlaceholder').style.display = 'none';
+  document.getElementById('scanOverlay').style.display       = 'flex';
+  document.getElementById('btnScan').style.display           = 'none';
+  document.getElementById('btnStop').style.display           = 'flex';
+
+  // 検出ループ
+  scanInterval = setInterval(() => detectFrame(video), 300);
+}
+
+function stopCamera() {
+  scanning = false;
+  clearInterval(scanInterval);
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  const video = document.getElementById('video');
+  video.srcObject = null;
+
+  document.getElementById('cameraPlaceholder').style.display = 'flex';
+  document.getElementById('scanOverlay').style.display       = 'none';
+  document.getElementById('btnScan').style.display           = 'flex';
+  document.getElementById('btnStop').style.display           = 'none';
+}
+
+async function detectFrame(video) {
+  if (!detector || cooldown || video.readyState < 2) return;
+  try {
+    const barcodes = await detector.detect(video);
+    if (barcodes.length > 0) {
+      const code = barcodes[0].rawValue;
+      if (code !== lastBarcode) {
+        lastBarcode = code;
+        cooldown    = true;
+        // 振動フィードバック
+        if (navigator.vibrate) navigator.vibrate(40);
+        await searchByBarcode(code);
+        setTimeout(() => { cooldown = false; }, 2000);
+      }
+    }
+  } catch(e) {
+    // 検出エラーは無視
+  }
+}
+
+// ============================================================
+// 商品検索 (Open Food Facts)
+// ============================================================
+async function searchByBarcode(barcode) {
+  barcode = String(barcode).trim();
+  if (!barcode) return;
+
+  // 入力欄にも反映
+  document.getElementById('manualInput').value = barcode;
+
+  showResultLoading(barcode);
+
+  try {
+    const res = await fetch(
+      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,product_name_ja,brands,quantity,categories_tags`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    const data = await res.json();
+
+    if (data.status === 1 && data.product) {
+      const p    = data.product;
+      const name = p.product_name_ja || p.product_name || '';
+      const brand = p.brands || '';
+      const qty   = p.quantity || '';
+      const cats  = (p.categories_tags || [])
+        .filter(c => c.startsWith('ja:'))
+        .slice(0, 2)
+        .map(c => c.replace('ja:',''));
+
+      if (name) {
+        showResult(barcode, name, brand, qty, cats, 'found');
+        addHistory(barcode, name, true);
+      } else {
+        // 商品はあるが日本語名なし
+        const fallback = p.product_name || '名称不明（登録あり）';
+        showResult(barcode, fallback, brand, qty, cats, 'found');
+        addHistory(barcode, fallback, true);
+      }
+    } else {
+      showResult(barcode, '商品が見つかりませんでした', '', '', [], 'not-found');
+      addHistory(barcode, '未登録商品', false);
+    }
+  } catch(e) {
+    if (e.name === 'TimeoutError') {
+      showResult(barcode, 'タイムアウト（通信に失敗しました）', '', '', [], 'error');
+    } else {
+      showResult(barcode, 'エラーが発生しました', '', '', [], 'error');
+    }
+  }
+}
+
+function searchManual() {
+  const val = document.getElementById('manualInput').value.trim();
+  if (!val) { document.getElementById('manualInput').focus(); return; }
+  searchByBarcode(val);
+}
+
+// ============================================================
+// 結果表示
+// ============================================================
+function showResultLoading(barcode) {
+  const card = document.getElementById('resultCard');
+  card.classList.add('show');
+  document.getElementById('resultBarcode').textContent = barcode;
+  document.getElementById('resultStatus').textContent  = '検索中…';
+  document.getElementById('resultStatus').className    = 'result-status';
+  document.getElementById('resultName').textContent    = '';
+  document.getElementById('resultName').className      = 'product-name';
+  document.getElementById('resultMeta').innerHTML      = '';
+  document.getElementById('btnCopy').style.display     = 'none';
+
+  // スピナー
+  const nameEl = document.getElementById('resultName');
+  nameEl.innerHTML = '<span class="loading-spinner"></span>';
+}
+
+function showResult(barcode, name, brand, qty, cats, status) {
+  const card      = document.getElementById('resultCard');
+  const statusEl  = document.getElementById('resultStatus');
+  const nameEl    = document.getElementById('resultName');
+  const metaEl    = document.getElementById('resultMeta');
+  const copyBtn   = document.getElementById('btnCopy');
+
+  card.classList.add('show');
+  document.getElementById('resultBarcode').textContent = barcode;
+
+  if (status === 'found') {
+    statusEl.textContent  = '✓ 見つかりました';
+    statusEl.className    = 'result-status found';
+    nameEl.textContent    = name;
+    nameEl.className      = 'product-name';
+    copyBtn.style.display = 'flex';
+
+    const chips = [];
+    if (brand) chips.push(brand);
+    if (qty)   chips.push(qty);
+    cats.forEach(c => chips.push(c));
+    metaEl.innerHTML = chips.slice(0,4).map(c =>
+      `<span class="meta-chip">${esc(c)}</span>`
+    ).join('');
+  } else if (status === 'not-found') {
+    statusEl.textContent  = '未登録';
+    statusEl.className    = 'result-status not-found';
+    nameEl.textContent    = name;
+    nameEl.className      = 'product-name unknown';
+    copyBtn.style.display = 'none';
+    metaEl.innerHTML      = '';
+  } else {
+    statusEl.textContent  = 'エラー';
+    statusEl.className    = 'result-status error';
+    nameEl.textContent    = name;
+    nameEl.className      = 'product-name unknown';
+    copyBtn.style.display = 'none';
+    metaEl.innerHTML      = '';
+  }
+
+  // コピーボタンリセット
+  copyBtn.textContent = '📋 商品名をコピー';
+  copyBtn.classList.remove('copied');
+}
+
+// ============================================================
+// コピー
+// ============================================================
+function copyName() {
+  const name = document.getElementById('resultName').textContent;
+  if (!name) return;
+  navigator.clipboard.writeText(name).then(() => {
+    const btn = document.getElementById('btnCopy');
+    btn.textContent = '✓ コピーしました';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 商品名をコピー';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => {
+    alert('コピーに失敗しました');
+  });
+}
+
+// ============================================================
+// 初期化
+// ============================================================
+renderHistory();
+</script>
+</body>
+</html>
