@@ -1083,8 +1083,8 @@ window._applyConfigFromPopup = function() {
         <button class="btn btn-toggle" id="toggle-per-100" onclick="setCompareMode('100')">100円当たり</button>
       </div>
       <div class="toggle-group" style="margin:0;">
-        <button class="btn btn-toggle" id="sort-date" onclick="setCompareSort('date')">日付順</button>
         <button class="btn btn-toggle active" id="sort-price" onclick="setCompareSort('price')">単価順</button>
+        <button class="btn btn-toggle" id="sort-date" onclick="setCompareSort('date')">日付順</button>
       </div>
     </div>
 
@@ -1264,9 +1264,10 @@ function isearchInput(key) {
   if (!cfg) return;
   const inp = document.getElementById(cfg.inputId);
   const q = inp.value.trim();
-  // hiddenをクリア（入力変更時）
   document.getElementById(cfg.hiddenId).value = '';
   _isearchFocusIdx[key] = -1;
+  // 入力が空になったらfilter系は即再描画
+  if (!q && cfg.onSelect) cfg.onSelect();
   renderIsearchDD(key, q);
 }
 
@@ -1884,13 +1885,9 @@ function renderCompare() {
         group.sort((a, b) => a.perUnit - b.perUnit);
       }
     });
-    // グループ順：グループ代表値（先頭）でソート
+    // グループ順：商品名の五十音順に固定
     const groups = Object.values(groupMap);
-    if (compareSort === 'date') {
-      groups.sort((a, b) => (b[0].date||'').localeCompare(a[0].date||''));
-    } else {
-      groups.sort((a, b) => a[0].perUnit - b[0].perUnit);
-    }
+    groups.sort((a, b) => productName(a[0].productId).localeCompare(productName(b[0].productId), 'ja'));
     el.innerHTML = groups.map(group => {
       const pName = productName(group[0].productId);
       const header = '<div class="compare-section-header">' + esc(pName) + '</div>';
