@@ -1,9 +1,10 @@
 <!--
   @tool      バーコードスキャナー
-  @version   v01_2026-04-12.2
+  @version   v01_2026-04-12.3
   @changelog
     v01_2026-04-12   - 初版
     v01_2026-04-12.2 - 設定画面追加・Yahoo!ショッピングAPI対応・フォールバック検索
+    v01_2026-04-12.3 - ヒットソース表示・Yahoo CORSエラー可視化
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -370,7 +371,29 @@
     background: var(--border);
   }
 
-  /* 設定ボタン（ヘッダー右） */
+  .source-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 20px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .source-yahoo { background: #fff0e0; color: #c05000; border: 1px solid #f0c080; }
+  .source-off   { background: #e8f4fd; color: #2471a3; border: 1px solid #aed6f1; }
+
+  /* 警告メッセージ */
+  .warn-box {
+    background: var(--amber-light);
+    border: 1px solid #f0c070;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: #7d4e00;
+    line-height: 1.6;
+    display: none;
+  }
+  .warn-box.show { display: block; }
   .btn-settings {
     margin-left: auto;
     background: none;
@@ -549,6 +572,9 @@
       </button>
     </div>
   </div>
+
+  <!-- 警告ボックス -->
+  <div class="warn-box" id="warnBox"></div>
 
   <!-- 履歴 -->
   <div class="history-section" id="historySection" style="display:none;">
@@ -734,26 +760,28 @@ async function searchByBarcode(barcode) {
 
   document.getElementById('manualInput').value = barcode;
   showResultLoading(barcode);
+  showWarn('');
 
   const appId = loadYahooAppId();
 
-  // Yahoo!ショッピング優先
   if (appId) {
     const yahooResult = await searchYahoo(barcode, appId);
-    if (yahooResult) {
-      showResult(barcode, yahooResult.name, yahooResult.brand, yahooResult.qty, [], 'found');
+    if (yahooResult === 'cors_error') {
+      showWarn('⚠️ Yahoo! APIへのアクセスがブロックされました（CORSエラー）。\nGitHub Pages等のHTTPS環境で動作確認してください。');
+      // CORSエラー時はOFFにフォールバック
+    } else if (yahooResult) {
+      showResult(barcode, yahooResult.name, yahooResult.brand, yahooResult.qty, [], 'found', 'yahoo');
       addHistory(barcode, yahooResult.name, true);
       return;
     }
   }
 
-  // Open Food Facts フォールバック
   await searchOpenFoodFacts(barcode);
 }
 
 async function searchYahoo(barcode, appId) {
   try {
-    const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${encodeURIComponent(appId)}&jan_code=${encodeURIComponent(barcode)}&results=1&output=json`;
+    const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${encodeURIComponent(appId)}&jan_code=${encodeURIComponent(barcode)}&results=1`;
     const res  = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const data = await res.json();
@@ -762,10 +790,11 @@ async function searchYahoo(barcode, appId) {
     const item  = hits[0];
     const name  = item.name  || '';
     const brand = item.brand?.name || '';
-    const qty   = '';
     if (!name) return null;
-    return { name, brand, qty };
+    return { name, brand, qty: '' };
   } catch(e) {
+    // TypeError: Failed to fetch → CORSエラーの可能性が高い
+    if (e instanceof TypeError) return 'cors_error';
     return null;
   }
 }
@@ -788,15 +817,15 @@ async function searchOpenFoodFacts(barcode) {
         .slice(0, 2)
         .map(c => c.replace('ja:', ''));
       const displayName = name || p.product_name || '名称不明（登録あり）';
-      showResult(barcode, displayName, brand, qty, cats, 'found');
+      showResult(barcode, displayName, brand, qty, cats, 'found', 'off');
       addHistory(barcode, displayName, true);
     } else {
-      showResult(barcode, '商品が見つかりませんでした', '', '', [], 'not-found');
+      showResult(barcode, '商品が見つかりませんでした', '', '', [], 'not-found', '');
       addHistory(barcode, '未登録商品', false);
     }
   } catch(e) {
     const msg = e.name === 'TimeoutError' ? 'タイムアウト（通信に失敗しました）' : 'エラーが発生しました';
-    showResult(barcode, msg, '', '', [], 'error');
+    showResult(barcode, msg, '', '', [], 'error', '');
   }
 }
 
@@ -825,7 +854,13 @@ function showResultLoading(barcode) {
   nameEl.innerHTML = '<span class="loading-spinner"></span>';
 }
 
-function showResult(barcode, name, brand, qty, cats, status) {
+function showWarn(msg) {
+  const el = document.getElementById('warnBox');
+  el.textContent = msg;
+  el.classList.toggle('show', !!msg);
+}
+
+function showResult(barcode, name, brand, qty, cats, status, source) {
   const card      = document.getElementById('resultCard');
   const statusEl  = document.getElementById('resultStatus');
   const nameEl    = document.getElementById('resultName');
@@ -838,8 +873,13 @@ function showResult(barcode, name, brand, qty, cats, status) {
   if (status === 'found') {
     statusEl.textContent  = '✓ 見つかりました';
     statusEl.className    = 'result-status found';
-    nameEl.textContent    = name;
-    nameEl.className      = 'product-name';
+
+    // ソースバッジ
+    const badge = source === 'yahoo'
+      ? '<span class="source-badge source-yahoo">Yahoo!</span>'
+      : '<span class="source-badge source-off">Open Food Facts</span>';
+    nameEl.innerHTML  = esc(name) + badge;
+    nameEl.className  = 'product-name';
     copyBtn.style.display = 'flex';
 
     const chips = [];
@@ -865,7 +905,6 @@ function showResult(barcode, name, brand, qty, cats, status) {
     metaEl.innerHTML      = '';
   }
 
-  // コピーボタンリセット
   copyBtn.textContent = '📋 商品名をコピー';
   copyBtn.classList.remove('copied');
 }
@@ -874,7 +913,12 @@ function showResult(barcode, name, brand, qty, cats, status) {
 // コピー
 // ============================================================
 function copyName() {
-  const name = document.getElementById('resultName').textContent;
+  // バッジ（span）を除いた商品名テキストのみ取得
+  const nameEl = document.getElementById('resultName');
+  const name = Array.from(nameEl.childNodes)
+    .filter(n => n.nodeType === Node.TEXT_NODE)
+    .map(n => n.textContent)
+    .join('').trim();
   if (!name) return;
   navigator.clipboard.writeText(name).then(() => {
     const btn = document.getElementById('btnCopy');
