@@ -1,8 +1,9 @@
 <!--
   @tool      値段メモ
-  @version   v04_2026-04-03
+  @version   v05_2026-04-13
   @changelog
     v04_2026-04-03 - PWA化（manifest.json, sw.js, アイコン追加）
+    v05_2026-04-13 - インクリメンタルサーチ、単位マスタ化、履歴編集、数量式入力、比較バグ修正
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -872,6 +873,31 @@ window._applyConfigFromPopup = function() {
     padding: 7px 12px; font-size: 13px;
     cursor: pointer; white-space: nowrap;
   }
+  /* ---- Incremental search ---- */
+  .isearch-wrap { position: relative; }
+  .isearch-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+    background: white; border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto;
+    box-shadow: 0 4px 12px var(--shadow); display: none;
+  }
+  .isearch-dropdown.open { display: block; }
+  .isearch-item {
+    padding: 10px 12px; font-size: 14px; color: var(--ink);
+    cursor: pointer; border-bottom: 1px solid #f5f0e8;
+  }
+  .isearch-item:last-child { border-bottom: none; }
+  .isearch-item:hover, .isearch-item.focused { background: var(--accent-light); }
+  .isearch-item.add-new { color: var(--accent); font-style: italic; }
+
+  /* ---- 履歴編集ボタン ---- */
+  .entry-edit-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--ink-faint); font-size: 13px; padding: 0 4px;
+    line-height: 1; margin-right: 2px;
+  }
+  .entry-edit-btn:hover { color: var(--accent); }
+
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--ink-faint); border-radius: 3px; }
@@ -923,13 +949,12 @@ window._applyConfigFromPopup = function() {
     <div class="section-title">商品選択</div>
     <div class="form-group">
       <label>商品名</label>
-      <select id="sel-product" onchange="onProductChange()">
-        <option value="">-- 商品を選択 --</option>
-      </select>
-    </div>
-    <div class="inline-add">
-      <input type="text" id="new-product" placeholder="新しい商品名を追加...">
-      <button class="btn btn-secondary btn-sm" onclick="addProduct()">＋追加</button>
+      <div class="isearch-wrap" id="isearch-product-wrap">
+        <input type="text" id="sel-product-input" placeholder="商品名を入力または選択..." autocomplete="off"
+          oninput="isearchInput('product')" onfocus="isearchFocus('product')" onblur="isearchBlur('product')" onkeydown="isearchKey(event,'product')">
+        <input type="hidden" id="sel-product">
+        <div class="isearch-dropdown" id="isearch-product-dd"></div>
+      </div>
     </div>
 
     <div class="divider"></div>
@@ -942,24 +967,14 @@ window._applyConfigFromPopup = function() {
       </div>
       <div class="form-group">
         <label>数量</label>
-        <input type="number" id="inp-qty" placeholder="500" min="0" step="0.01" inputmode="decimal" oninput="calcUnitPrice()">
+        <input type="text" id="inp-qty" placeholder="500 または 21×12" inputmode="text"
+          oninput="onQtyInput()" onblur="evalQty(this)">
       </div>
     </div>
     <div class="unit-row">
       <div class="form-group">
         <label>単位</label>
-        <select id="inp-unit" onchange="calcUnitPrice()">
-          <option value="g">g</option>
-          <option value="ml">ml</option>
-          <option value="枚">枚</option>
-          <option value="個">個</option>
-          <option value="本">本</option>
-          <option value="袋">袋</option>
-          <option value="パック">パック</option>
-          <option value="L">L</option>
-          <option value="kg">kg</option>
-          <option value="m">m</option>
-        </select>
+        <select id="inp-unit" onchange="calcUnitPrice()"></select>
       </div>
       <div class="form-group">
         <label>税区分</label>
@@ -1000,13 +1015,12 @@ window._applyConfigFromPopup = function() {
 
     <div class="form-group" style="margin-bottom:12px;">
       <label>お店</label>
-      <select id="sel-store">
-        <option value="">-- お店を選択 --</option>
-      </select>
-    </div>
-    <div class="inline-add" style="margin-bottom:16px;">
-      <input type="text" id="new-store" placeholder="新しいお店を追加...">
-      <button class="btn btn-secondary btn-sm" onclick="addStore()">＋追加</button>
+      <div class="isearch-wrap" id="isearch-store-wrap">
+        <input type="text" id="sel-store-input" placeholder="お店を入力または選択..." autocomplete="off"
+          oninput="isearchInput('store')" onfocus="isearchFocus('store')" onblur="isearchBlur('store')" onkeydown="isearchKey(event,'store')">
+        <input type="hidden" id="sel-store">
+        <div class="isearch-dropdown" id="isearch-store-dd"></div>
+      </div>
     </div>
 
     <div class="form-row">
@@ -1033,13 +1047,19 @@ window._applyConfigFromPopup = function() {
   <div class="content" id="tab-history">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
       <div class="section-title" style="margin:0; border:none; padding:0;">履歴一覧</div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <select id="filter-product" onchange="renderHistory()" style="font-size:12px; padding:6px 8px; width:140px;">
-          <option value="">全商品</option>
-        </select>
-        <select id="filter-store" onchange="renderHistory()" style="font-size:12px; padding:6px 8px; width:120px;">
-          <option value="">全お店</option>
-        </select>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <div class="isearch-wrap" style="width:140px;">
+          <input type="text" id="filter-product-input" placeholder="全商品" autocomplete="off" style="font-size:12px;padding:6px 8px;"
+            oninput="isearchInput('filter-product')" onfocus="isearchFocus('filter-product')" onblur="isearchBlur('filter-product')" onkeydown="isearchKey(event,'filter-product')">
+          <input type="hidden" id="filter-product">
+          <div class="isearch-dropdown" id="isearch-filter-product-dd"></div>
+        </div>
+        <div class="isearch-wrap" style="width:120px;">
+          <input type="text" id="filter-store-input" placeholder="全お店" autocomplete="off" style="font-size:12px;padding:6px 8px;"
+            oninput="isearchInput('filter-store')" onfocus="isearchFocus('filter-store')" onblur="isearchBlur('filter-store')" onkeydown="isearchKey(event,'filter-store')">
+          <input type="hidden" id="filter-store">
+          <div class="isearch-dropdown" id="isearch-filter-store-dd"></div>
+        </div>
       </div>
     </div>
     <div id="history-list"></div>
@@ -1049,9 +1069,12 @@ window._applyConfigFromPopup = function() {
   <div class="content" id="tab-compare">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
       <div class="section-title" style="margin:0; border:none; padding:0;">商品比較</div>
-      <select id="compare-product-select" onchange="renderCompare()" style="font-size:14px; padding:8px 32px 8px 10px; max-width:200px;">
-        <option value="">全商品</option>
-      </select>
+      <div class="isearch-wrap" style="max-width:200px;">
+        <input type="text" id="compare-product-input" placeholder="全商品" autocomplete="off" style="font-size:14px;padding:8px 10px;"
+          oninput="isearchInput('compare-product')" onfocus="isearchFocus('compare-product')" onblur="isearchBlur('compare-product')" onkeydown="isearchKey(event,'compare-product')">
+        <input type="hidden" id="compare-product-select">
+        <div class="isearch-dropdown" id="isearch-compare-product-dd"></div>
+      </div>
     </div>
 
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; align-items:center;">
@@ -1060,8 +1083,8 @@ window._applyConfigFromPopup = function() {
         <button class="btn btn-toggle" id="toggle-per-100" onclick="setCompareMode('100')">100円当たり</button>
       </div>
       <div class="toggle-group" style="margin:0;">
-        <button class="btn btn-toggle active" id="sort-date" onclick="setCompareSort('date')">日付順</button>
-        <button class="btn btn-toggle" id="sort-price" onclick="setCompareSort('price')">単価順</button>
+        <button class="btn btn-toggle" id="sort-date" onclick="setCompareSort('date')">日付順</button>
+        <button class="btn btn-toggle active" id="sort-price" onclick="setCompareSort('price')">単価順</button>
       </div>
     </div>
 
@@ -1074,7 +1097,14 @@ window._applyConfigFromPopup = function() {
     <div id="product-list-settings" class="master-list" style="margin-bottom:20px;"></div>
 
     <div class="section-title">お店マスタ</div>
-    <div id="store-list-settings" class="master-list"></div>
+    <div id="store-list-settings" class="master-list" style="margin-bottom:20px;"></div>
+
+    <div class="section-title">単位マスタ</div>
+    <div id="unit-list-settings" class="master-list" style="margin-bottom:8px;"></div>
+    <div class="inline-add" style="margin-bottom:20px;">
+      <input type="text" id="new-unit" placeholder="新しい単位を追加...">
+      <button class="btn btn-secondary btn-sm" onclick="addUnit()">＋追加</button>
+    </div>
 
     <div class="divider"></div>
     <div class="section-title">データ管理</div>
@@ -1112,6 +1142,7 @@ window._applyConfigFromPopup = function() {
 let state = {
   products: [],  // {id, name}
   stores:   [],  // {id, name}
+  units:    [],  // {id, name}
   entries:  [],
   compareMode: 'unit'
 };
@@ -1119,11 +1150,13 @@ let state = {
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
 
 function loadState() {
+  const DEFAULT_UNITS = ['g','ml','L','kg','枚','個','本','袋','パック','m','cm','錠','粒','食','回','冊'];
   try {
     const saved = localStorage.getItem('price-memo-v1');
     if (!saved) {
       state.products = ['食パン','牛乳','卵','ティッシュ'].map(n => ({id: newId(), name: n}));
       state.stores   = ['イオン','ローソン','ドラッグストア'].map(n => ({id: newId(), name: n}));
+      state.units    = DEFAULT_UNITS.map(n => ({id: newId(), name: n}));
       return;
     }
     const parsed = JSON.parse(saved);
@@ -1133,6 +1166,10 @@ function loadState() {
     }
     if (parsed.stores && parsed.stores.length && typeof parsed.stores[0] === 'string') {
       parsed.stores = parsed.stores.map(n => ({id: newId(), name: n}));
+    }
+    // unitsマイグレーション（未保存の場合はデフォルト生成）
+    if (!parsed.units || !parsed.units.length) {
+      parsed.units = DEFAULT_UNITS.map(n => ({id: newId(), name: n}));
     }
     // entry移行
     if (parsed.entries) {
@@ -1152,6 +1189,7 @@ function loadState() {
   } catch(err) {
     state.products = ['食パン','牛乳','卵','ティッシュ'].map(n => ({id: newId(), name: n}));
     state.stores   = ['イオン','ローソン','ドラッグストア'].map(n => ({id: newId(), name: n}));
+    state.units    = DEFAULT_UNITS.map(n => ({id: newId(), name: n}));
   }
 }
 
@@ -1170,12 +1208,15 @@ function saveState() {
 // Firestoreからのリモート状態適用（複数デバイス同期）
 window._applyRemoteState = function(remote) {
   try {
-    // マイグレーション（旧データ対応）
+    const DEFAULT_UNITS = ['g','ml','L','kg','枚','個','本','袋','パック','m','cm','錠','粒','食','回','冊'];
     if (remote.products && remote.products.length && typeof remote.products[0] === 'string') {
       remote.products = remote.products.map(n => ({id: newId(), name: n}));
     }
     if (remote.stores && remote.stores.length && typeof remote.stores[0] === 'string') {
       remote.stores = remote.stores.map(n => ({id: newId(), name: n}));
+    }
+    if (!remote.units || !remote.units.length) {
+      remote.units = DEFAULT_UNITS.map(n => ({id: newId(), name: n}));
     }
     state = remote;
     localStorage.setItem('price-memo-v1', JSON.stringify(state));
@@ -1199,70 +1240,190 @@ function init() {
 function refreshAll() {
   updateProductSelects();
   updateStoreSelects();
+  updateUnitSelect();
   renderHistory();
   renderCompare();
   renderSettings();
 }
 
 // ============================================================
-// SELECTS
+// SELECTS / INCREMENTAL SEARCH
 // ============================================================
 function sortedProducts() { return [...state.products].sort((a,b) => a.name.localeCompare(b.name,'ja')); }
 function sortedStores()   { return [...state.stores].sort((a,b)   => a.name.localeCompare(b.name,'ja')); }
+function sortedUnits()    { return state.units || []; }
 function productName(id)  { const p = state.products.find(p => p.id === id); return p ? p.name : '不明'; }
 function storeName(id)    { if (!id) return ''; const s = state.stores.find(s => s.id === id); return s ? s.name : ''; }
 
-function updateProductSelects() {
-  const sp = sortedProducts();
-  ['sel-product','compare-product-select','filter-product'].forEach(elId => {
-    const el = document.getElementById(elId);
-    const cur = el.value;
-    const first = elId === 'sel-product' ? '<option value="">-- 商品を選択 --</option>' : '<option value="">全商品</option>';
-    el.innerHTML = first + sp.map(p =>
-      '<option value="' + p.id + '"' + (p.id === cur ? ' selected' : '') + '>' + esc(p.name) + '</option>'
-    ).join('');
+// isearchConfigは下のopenEditModal後に定義
+
+let _isearchFocusIdx = {};
+
+function isearchInput(key) {
+  const cfg = isearchConfig(key);
+  if (!cfg) return;
+  const inp = document.getElementById(cfg.inputId);
+  const q = inp.value.trim();
+  // hiddenをクリア（入力変更時）
+  document.getElementById(cfg.hiddenId).value = '';
+  _isearchFocusIdx[key] = -1;
+  renderIsearchDD(key, q);
+}
+
+function isearchFocus(key) {
+  const cfg = isearchConfig(key);
+  if (!cfg) return;
+  const inp = document.getElementById(cfg.inputId);
+  _isearchFocusIdx[key] = -1;
+  renderIsearchDD(key, inp.value.trim());
+}
+
+function isearchBlur(key) {
+  setTimeout(() => {
+    const cfg = isearchConfig(key);
+    if (!cfg) return;
+    const dd = document.getElementById(cfg.ddId);
+    if (dd) dd.classList.remove('open');
+    const hidden = document.getElementById(cfg.hiddenId);
+    const inp = document.getElementById(cfg.inputId);
+    if (!hidden.value) {
+      if (key.startsWith('filter-') || key === 'compare-product') {
+        inp.value = '';
+        inp.style.borderColor = '';
+      } else {
+        // 入力テキストがあるのに未選択 → エラー表示
+        if (inp.value.trim()) {
+          inp.style.borderColor = 'var(--accent)';
+          inp.style.boxShadow   = '0 0 0 3px var(--accent-light)';
+        } else {
+          inp.style.borderColor = '';
+          inp.style.boxShadow   = '';
+        }
+      }
+    } else {
+      inp.style.borderColor = '';
+      inp.style.boxShadow   = '';
+    }
+  }, 200);
+}
+
+function isearchKey(ev, key) {
+  const cfg = isearchConfig(key);
+  if (!cfg) return;
+  const dd = document.getElementById(cfg.ddId);
+  if (!dd.classList.contains('open')) return;
+  const items = dd.querySelectorAll('.isearch-item');
+  let idx = _isearchFocusIdx[key] || -1;
+  if (ev.key === 'ArrowDown') {
+    ev.preventDefault();
+    idx = Math.min(idx + 1, items.length - 1);
+  } else if (ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    idx = Math.max(idx - 1, 0);
+  } else if (ev.key === 'Enter') {
+    ev.preventDefault();
+    if (idx >= 0 && items[idx]) items[idx].click();
+    return;
+  } else if (ev.key === 'Escape') {
+    dd.classList.remove('open');
+    return;
+  }
+  _isearchFocusIdx[key] = idx;
+  items.forEach((el, i) => el.classList.toggle('focused', i === idx));
+}
+
+function renderIsearchDD(key, q) {
+  const cfg = isearchConfig(key);
+  if (!cfg) return;
+  const dd = document.getElementById(cfg.ddId);
+  const allItems = cfg.items();
+  const lower = q.toLowerCase();
+  const filtered = q ? allItems.filter(i => i.name.toLowerCase().includes(lower)) : allItems;
+
+  let html = filtered.map(item =>
+    '<div class="isearch-item" data-id="' + item.id + '" data-name="' + esc(item.name) + '">' + esc(item.name) + '</div>'
+  ).join('');
+
+  if (cfg.allowAdd && q && !allItems.some(i => i.name === q)) {
+    html += '<div class="isearch-item add-new" data-id="__add__" data-name="' + esc(q) + '">＋「' + esc(q) + '」を追加</div>';
+  }
+
+  dd.innerHTML = html || '<div class="isearch-item" style="color:var(--ink-faint);">候補なし</div>';
+  dd.classList.add('open');
+
+  dd.querySelectorAll('.isearch-item').forEach(el => {
+    el.onmousedown = (e) => e.preventDefault(); // blurを防ぐ
+    el.onclick = () => {
+      const id   = el.dataset.id;
+      const name = el.dataset.name;
+      if (id === '__add__') {
+        isearchAddNew(key, name);
+      } else {
+        selectIsearchItem(key, id, name);
+      }
+      dd.classList.remove('open');
+    };
   });
+}
+
+function selectIsearchItem(key, id, name) {
+  const cfg = isearchConfig(key);
+  if (!cfg) return;
+  const inp = document.getElementById(cfg.inputId);
+  inp.value  = name;
+  inp.style.borderColor = '';
+  inp.style.boxShadow   = '';
+  document.getElementById(cfg.hiddenId).value = id;
+  if (cfg.onSelect) cfg.onSelect();
+}
+
+function isearchAddNew(key, name) {
+  if (key === 'product') {
+    if (state.products.some(p => p.name === name)) return;
+    const id = newId();
+    state.products.push({id, name});
+    saveState(); refreshAll();
+    selectIsearchItem(key, id, name);
+  } else if (key === 'store') {
+    if (state.stores.some(s => s.name === name)) return;
+    const id = newId();
+    state.stores.push({id, name});
+    saveState(); refreshAll();
+    selectIsearchItem(key, id, name);
+  }
+}
+
+function updateProductSelects() {
+  // インクリメンタルサーチはDD再描画のみ（hiddenとinputは保持）
 }
 
 function updateStoreSelects() {
-  const ss = sortedStores();
-  ['sel-store','filter-store'].forEach(elId => {
-    const el = document.getElementById(elId);
-    const cur = el.value;
-    const first = elId === 'sel-store' ? '<option value="">-- お店を選択 --</option>' : '<option value="">全お店</option>';
-    el.innerHTML = first + ss.map(s =>
-      '<option value="' + s.id + '"' + (s.id === cur ? ' selected' : '') + '>' + esc(s.name) + '</option>'
-    ).join('');
-  });
+  // 同上
+}
+
+function updateUnitSelect() {
+  const el = document.getElementById('inp-unit');
+  if (!el) return;
+  const cur = el.value;
+  el.innerHTML = sortedUnits().map(u =>
+    '<option value="' + esc(u.name) + '"' + (u.name === cur ? ' selected' : '') + '>' + esc(u.name) + '</option>'
+  ).join('');
+  if (!el.value && sortedUnits().length) el.value = sortedUnits()[0].name;
 }
 
 // ============================================================
-// ADD PRODUCT / STORE
+// ADD UNIT
 // ============================================================
-function addProduct() {
-  const v = document.getElementById('new-product').value.trim();
+function addUnit() {
+  const v = document.getElementById('new-unit').value.trim();
   if (!v) return;
-  if (state.products.some(p => p.name === v)) { showMsg('product-msg', 'すでに登録されています'); return; }
-  const id = newId();
-  state.products.push({id, name: v});
-  document.getElementById('new-product').value = '';
+  if (state.units.some(u => u.name === v)) { return; }
+  state.units.push({id: newId(), name: v});
+  document.getElementById('new-unit').value = '';
   saveState(); refreshAll();
-  document.getElementById('sel-product').value = id;
-}
-
-function addStore() {
-  const v = document.getElementById('new-store').value.trim();
-  if (!v) return;
-  if (state.stores.some(s => s.name === v)) { showMsg('store-msg', 'すでに登録されています'); return; }
-  const id = newId();
-  state.stores.push({id, name: v});
-  document.getElementById('new-store').value = '';
-  saveState(); refreshAll();
-  document.getElementById('sel-store').value = id;
 }
 
 function onProductChange() {
-  // CHANGED: 商品の過去記録から最後に使った単位を自動セット
   const pid = document.getElementById('sel-product').value;
   if (!pid) return;
   const entries = [...state.entries]
@@ -1272,18 +1433,12 @@ function onProductChange() {
     const lastUnit = entries[0].unit;
     const unitSel = document.getElementById('inp-unit');
     if (lastUnit && unitSel) {
-      // optionに存在する値かチェックしてからセット
-      const opts = Array.from(unitSel.options).map(o => o.value);
-      if (opts.includes(lastUnit)) {
-        unitSel.value = lastUnit;
-      } else {
-        // 既存optionにない単位はoptionを追加してセット
-        const opt = document.createElement('option');
-        opt.value = lastUnit;
-        opt.textContent = lastUnit;
-        unitSel.appendChild(opt);
-        unitSel.value = lastUnit;
+      // マスタに存在しない単位は追加してからセット
+      if (!state.units.some(u => u.name === lastUnit)) {
+        state.units.push({id: newId(), name: lastUnit});
+        updateUnitSelect();
       }
+      unitSel.value = lastUnit;
       calcUnitPrice();
     }
   }
@@ -1334,11 +1489,42 @@ function perUnitDisplay(perUnit, unit) {
 }
 
 // ============================================================
-// CALC
+// QTY EXPRESSION INPUT
 // ============================================================
+function evalQtyExpr(s) {
+  // ×, ÷ を * / に変換し、数値と演算子のみ許可
+  const normalized = s.replace(/×/g,'*').replace(/÷/g,'/').replace(/[^0-9+\-*/.]/g,'');
+  if (!normalized) return NaN;
+  // 数式として安全に評価（加減乗除のみ許可）
+  if (!/^[\d+\-*/.]+$/.test(normalized)) return NaN;
+  try {
+    const result = Function('"use strict"; return (' + normalized + ')')();
+    return (typeof result === 'number' && isFinite(result) && result > 0) ? result : NaN;
+  } catch { return NaN; }
+}
+
+function evalQty(input) {
+  const val = input.value.trim();
+  if (!val) return;
+  const result = evalQtyExpr(val);
+  if (!isNaN(result)) {
+    input.value = parseFloat(result.toFixed(4));
+    calcUnitPrice();
+  }
+}
+
+function onQtyInput() {
+  const input = document.getElementById('inp-qty');
+  const val = input.value;
+  // 式が完結していればリアルタイム計算（末尾が演算子でない場合）
+  if (val && !/[+\-*\/×÷]$/.test(val.trim())) {
+    const result = evalQtyExpr(val);
+    if (!isNaN(result)) calcUnitPrice();
+  }
+}
 function calcUnitPrice() {
   const price = parseFloat(document.getElementById('inp-price').value);
-  const qty   = parseFloat(document.getElementById('inp-qty').value);
+  const qty   = evalQtyExpr(document.getElementById('inp-qty').value);
   const unit  = document.getElementById('inp-unit').value;
   const tax   = document.getElementById('inp-tax').value;
   const box   = document.getElementById('result-box');
@@ -1378,7 +1564,7 @@ function calcUnitPrice() {
 function saveEntry() {
   const productId = document.getElementById('sel-product').value;
   const price     = parseFloat(document.getElementById('inp-price').value);
-  const qty       = parseFloat(document.getElementById('inp-qty').value);
+  const qty       = evalQtyExpr(document.getElementById('inp-qty').value);
   const unit      = document.getElementById('inp-unit').value;
   const tax       = document.getElementById('inp-tax').value;
   const storeId   = document.getElementById('sel-store').value;
@@ -1407,6 +1593,9 @@ function saveEntry() {
 
 function clearForm() {
   document.getElementById('sel-product').value = '';
+  document.getElementById('sel-product-input').value = '';
+  document.getElementById('sel-store').value = '';
+  document.getElementById('sel-store-input').value = '';
   document.getElementById('inp-price').value = '';
   document.getElementById('inp-qty').value = '';
   document.getElementById('inp-tax').value = 'in';
@@ -1444,7 +1633,10 @@ function renderHistory() {
     const sName = storeName(e.storeId);
     return '<div class="entry-card" data-entry-id="' + e.id + '">' +
       '<div class="entry-product">' + esc(pName) + '</div>' +
-      '<button class="entry-del-btn" data-action="del-entry" title="削除">✕</button>' +
+      '<div style="display:flex;gap:2px;align-items:center;">' +
+        '<button class="entry-edit-btn" data-action="edit-entry" title="編集">✏️</button>' +
+        '<button class="entry-del-btn" data-action="del-entry" title="削除">✕</button>' +
+      '</div>' +
       '<div class="entry-prices">' +
         '<div class="price-block">' +
           '<span class="price-value">' + displayPrice.toLocaleString(undefined,{maximumFractionDigits:0}) + '<span class="price-unit">円</span></span>' +
@@ -1465,23 +1657,177 @@ function renderHistory() {
   }).join('');
 
   el.onclick = (ev) => {
-    const btn = ev.target.closest('[data-action="del-entry"]');
+    const btn = ev.target.closest('[data-action]');
     if (!btn) return;
     const card = btn.closest('[data-entry-id]');
     if (!card) return;
     const id = card.dataset.entryId;
-    confirmInline(card, 'この記録を削除しますか？', () => {
-      state.entries = state.entries.filter(e => e.id !== id);
-      saveState(); refreshAll();
-    });
+    if (btn.dataset.action === 'del-entry') {
+      confirmInline(card, 'この記録を削除しますか？', () => {
+        state.entries = state.entries.filter(e => e.id !== id);
+        saveState(); refreshAll();
+      });
+    } else if (btn.dataset.action === 'edit-entry') {
+      openEditModal(id);
+    }
   };
+}
+
+function openEditModal(id) {
+  const entry = state.entries.find(e => e.id === id);
+  if (!entry) return;
+
+  const existing = document.getElementById('entry-edit-modal');
+  if (existing) existing.remove();
+
+  const pName = productName(entry.productId);
+  const sName = storeName(entry.storeId);
+  const dateVal = entry.date ? entry.date.replace(/\//g, '-') : '';
+
+  // 単位options生成
+  const unitOpts = sortedUnits().map(u =>
+    '<option value="' + esc(u.name) + '"' + (u.name === entry.unit ? ' selected' : '') + '>' + esc(u.name) + '</option>'
+  ).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'entry-edit-modal';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);' +
+    'z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0;';
+
+  overlay.innerHTML =
+    '<div style="background:var(--paper);border-radius:16px 16px 0 0;padding:20px 16px 32px;width:100%;' +
+      'max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 -4px 24px rgba(0,0,0,0.2);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div style="font-size:15px;font-weight:700;color:var(--ink);">記録を編集</div>' +
+        '<button id="em-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink-faint);">✕</button>' +
+      '</div>' +
+      // 商品
+      '<div style="margin-bottom:10px;">' +
+        '<label style="font-size:11px;color:var(--ink-light);font-weight:500;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">商品名</label>' +
+        '<div class="isearch-wrap" id="em-product-wrap">' +
+          '<input type="text" id="em-product-input" value="' + esc(pName) + '" autocomplete="off" ' +
+            'style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--border);border-radius:6px;" ' +
+            'oninput="isearchInput(\'em-product\')" onfocus="isearchFocus(\'em-product\')" onblur="isearchBlur(\'em-product\')" onkeydown="isearchKey(event,\'em-product\')">' +
+          '<input type="hidden" id="em-product" value="' + esc(entry.productId) + '">' +
+          '<div class="isearch-dropdown" id="isearch-em-product-dd"></div>' +
+        '</div>' +
+      '</div>' +
+      // 単価・数量
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">' +
+        '<div>' +
+          '<label style="font-size:11px;color:var(--ink-light);font-weight:500;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">単価 (円)</label>' +
+          '<input type="number" id="em-price" value="' + entry.price + '" min="0" step="0.01" inputmode="decimal" ' +
+            'style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--border);border-radius:6px;">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:11px;color:var(--ink-light);font-weight:500;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">数量</label>' +
+          '<input type="text" id="em-qty" value="' + entry.qty + '" inputmode="text" ' +
+            'style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--border);border-radius:6px;" ' +
+            'onblur="evalQty(this)">' +
+        '</div>' +
+      '</div>' +
+      // 単位・税
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">' +
+        '<div>' +
+          '<label style="font-size:11px;color:var(--ink-light);font-weight:500;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">単位</label>' +
+          '<select id="em-unit" style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--border);border-radius:6px;background:white;-webkit-appearance:none;appearance:none;">' + unitOpts + '</select>' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:11px;color:var(--ink-light);font-weight:500;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">税区分</label>' +
+          '<select id="em-tax" style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--border);border-radius:6px;background:white;-webkit-appearance:none;appearance:none;">' +
+            '<option value="in"' + (entry.tax==='in'?' selected':'') + '>税込</option>' +
+            '<option value="ex8"' + (entry.tax==='ex8'?' selected':'') + '>税抜（8%）</option>' +
+            '<option value="ex10"' + (entry.tax==='ex10'?' selected':'') + '>税抜（10%）</option>' +
+          '</select>' +
+        '</div>' +
+      '</div>' +
+      // お店
+      '<div style="margin-bottom:10px;">' +
+        '<label style="font-size:11px;color:var(--ink-light);font-weight:500;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">お店</label>' +
+        '<div class="isearch-wrap" id="em-store-wrap">' +
+          '<input type="text" id="em-store-input" value="' + esc(sName) + '" autocomplete="off" ' +
+            'style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--border);border-radius:6px;" ' +
+            'oninput="isearchInput(\'em-store\')" onfocus="isearchFocus(\'em-store\')" onblur="isearchBlur(\'em-store\')" onkeydown="isearchKey(event,\'em-store\')">' +
+          '<input type="hidden" id="em-store" value="' + esc(entry.storeId||'') + '">' +
+          '<div class="isearch-dropdown" id="isearch-em-store-dd"></div>' +
+        '</div>' +
+      '</div>' +
+      // 日付・メモ
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">' +
+        '<div>' +
+          '<label style="font-size:11px;color:var(--ink-light);font-weight:500;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">日付</label>' +
+          '<input type="date" id="em-date" value="' + dateVal + '" style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--border);border-radius:6px;">' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-bottom:16px;">' +
+        '<label style="font-size:11px;color:var(--ink-light);font-weight:500;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">メモ</label>' +
+        '<textarea id="em-memo" style="width:100%;font-size:15px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;min-height:60px;font-family:inherit;resize:vertical;">' + esc(entry.memo||'') + '</textarea>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">' +
+        '<button id="em-cancel" class="btn btn-secondary">キャンセル</button>' +
+        '<button id="em-save" class="btn btn-primary">💾 保存する</button>' +
+      '</div>' +
+      '<div id="em-msg" style="font-size:12px;margin-top:6px;min-height:16px;"></div>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  // isearchConfigに編集モーダル用エントリを動的追加
+  _emProductId = entry.productId;
+  _emStoreId   = entry.storeId || '';
+
+  document.getElementById('em-close').onclick  = () => overlay.remove();
+  document.getElementById('em-cancel').onclick = () => overlay.remove();
+  overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
+
+  document.getElementById('em-save').onclick = () => {
+    const productId = document.getElementById('em-product').value;
+    const price     = parseFloat(document.getElementById('em-price').value);
+    const qty       = evalQtyExpr(document.getElementById('em-qty').value);
+    const unit      = document.getElementById('em-unit').value;
+    const tax       = document.getElementById('em-tax').value;
+    const storeId   = document.getElementById('em-store').value;
+    const memo      = document.getElementById('em-memo').value.trim();
+    const dateRaw   = document.getElementById('em-date').value;
+    const date      = dateRaw ? dateRaw.replace(/-/g,'/') : '';
+    const msgEl     = document.getElementById('em-msg');
+
+    if (!productId) { msgEl.textContent='商品を選択してください'; msgEl.style.color='var(--accent)'; return; }
+    if (isNaN(price)||price<=0) { msgEl.textContent='単価を入力してください'; msgEl.style.color='var(--accent)'; return; }
+    if (isNaN(qty)||qty<=0)     { msgEl.textContent='数量を入力してください'; msgEl.style.color='var(--accent)'; return; }
+
+    const taxRate = tax==='ex8'?1.08:tax==='ex10'?1.10:1.0;
+    const priceIn = price * taxRate;
+    const idx = state.entries.findIndex(e => e.id === id);
+    if (idx !== -1) {
+      state.entries[idx] = { ...state.entries[idx], productId, storeId, price, qty, unit, tax, memo, date, priceIn, perUnit: priceIn/qty };
+    }
+    saveState(); refreshAll();
+    overlay.remove();
+  };
+}
+
+// 編集モーダル用isearch設定を動的解決
+let _emProductId = '', _emStoreId = '';
+// isearchConfig（全キー統合定義）
+function isearchConfig(key) {
+  const base = {
+    'product':        { items: () => sortedProducts(), hiddenId: 'sel-product',          inputId: 'sel-product-input',      ddId: 'isearch-product-dd',         allowAdd: true,  onSelect: onProductChange },
+    'store':          { items: () => sortedStores(),   hiddenId: 'sel-store',             inputId: 'sel-store-input',        ddId: 'isearch-store-dd',           allowAdd: true  },
+    'filter-product': { items: () => sortedProducts(), hiddenId: 'filter-product',        inputId: 'filter-product-input',   ddId: 'isearch-filter-product-dd',  allowAdd: false, onSelect: renderHistory },
+    'filter-store':   { items: () => sortedStores(),   hiddenId: 'filter-store',          inputId: 'filter-store-input',     ddId: 'isearch-filter-store-dd',    allowAdd: false, onSelect: renderHistory },
+    'compare-product':{ items: () => sortedProducts(), hiddenId: 'compare-product-select',inputId: 'compare-product-input',  ddId: 'isearch-compare-product-dd', allowAdd: false, onSelect: renderCompare },
+    'em-product':     { items: () => sortedProducts(), hiddenId: 'em-product',            inputId: 'em-product-input',       ddId: 'isearch-em-product-dd',      allowAdd: true  },
+    'em-store':       { items: () => sortedStores(),   hiddenId: 'em-store',              inputId: 'em-store-input',         ddId: 'isearch-em-store-dd',        allowAdd: true  },
+  };
+  return base[key] || null;
 }
 
 // ============================================================
 // COMPARE
 // ============================================================
 let compareMode = 'unit';
-let compareSort = 'date';
+let compareSort = 'price';
 
 function setCompareMode(mode) {
   compareMode = mode;
@@ -1508,47 +1854,72 @@ function renderCompare() {
     el.innerHTML = '<div class="empty"><span>📊</span>記録がありません</div>';
     return;
   }
-  if (compareSort === 'date') {
-    entries.sort((a, b) => (b.date||'').localeCompare(a.date||''));
-  } else {
-    entries.sort((a, b) => a.perUnit - b.perUnit);
-  }
 
+  // bestMap（商品ごとの最安perUnit）
   const bestMap = {};
   entries.forEach(e => {
     if (!bestMap[e.productId] || e.perUnit < bestMap[e.productId]) bestMap[e.productId] = e.perUnit;
   });
 
-  let lastPid = null;
-  el.innerHTML = entries.map(e => {
-    const isBest = e.perUnit === bestMap[e.productId];
-    const {val: puVal, label: puLabel} = perUnitDisplay(e.perUnit, e.unit);
-    const displayPrice = e.priceIn != null ? e.priceIn : e.price;
-    const valMain = compareMode === 'unit'
-      ? puVal + '<span style="font-size:11px;font-weight:400;"> / ' + puLabel.replace('円 / ','') + '</span>'
-      : (e.qty / displayPrice * 100).toFixed(1) + ' ' + e.unit + '<span style="font-size:11px;font-weight:400;"> / 100円</span>';
-    const taxLabel = e.tax === 'ex8' ? '税抜8%' : e.tax === 'ex10' ? '税抜10%' : '税込';
-    const pName = productName(e.productId);
-    const sName = storeName(e.storeId);
-    let header = '';
-    if (!pid && e.productId !== lastPid) {
-      header = '<div class="compare-section-header">' + esc(pName) + '</div>';
-      lastPid = e.productId;
+  if (pid) {
+    // 単一商品選択時：ソートのみ
+    if (compareSort === 'date') {
+      entries.sort((a, b) => (b.date||'').localeCompare(a.date||''));
+    } else {
+      entries.sort((a, b) => a.perUnit - b.perUnit);
     }
-    return header +
-      '<div class="compare-card' + (isBest ? ' best-card' : '') + '">' +
-        '<div class="cc-date">' + esc(e.date||'—') + '</div>' +
-        '<div class="cc-store">' + esc(sName||'お店なし') + '</div>' +
-        '<div class="cc-price-main">' + valMain +
-          (isBest ? '<span class="best-badge" style="display:block;font-size:9px;margin-top:2px;">最安</span>' : '') +
-        '</div>' +
-        '<div class="cc-input">' + displayPrice.toLocaleString(undefined,{maximumFractionDigits:0}) +
-          '円（税込） ／ ' + e.qty + e.unit +
-          ' <span style="background:#e8f0fe;color:#3a5fc8;padding:0 4px;border-radius:3px;font-size:10px;">' + taxLabel + '</span>' +
-        '</div>' +
-        (e.memo ? '<div class="cc-memo">' + esc(e.memo) + '</div>' : '') +
-      '</div>';
-  }).join('');
+    el.innerHTML = entries.map(e => renderCompareCard(e, false, bestMap)).join('');
+  } else {
+    // 全商品：商品ごとにグループ化してからソート（グループ重複防止）
+    const groupMap = {};
+    entries.forEach(e => {
+      if (!groupMap[e.productId]) groupMap[e.productId] = [];
+      groupMap[e.productId].push(e);
+    });
+    // グループ内ソート
+    Object.values(groupMap).forEach(group => {
+      if (compareSort === 'date') {
+        group.sort((a, b) => (b.date||'').localeCompare(a.date||''));
+      } else {
+        group.sort((a, b) => a.perUnit - b.perUnit);
+      }
+    });
+    // グループ順：グループ代表値（先頭）でソート
+    const groups = Object.values(groupMap);
+    if (compareSort === 'date') {
+      groups.sort((a, b) => (b[0].date||'').localeCompare(a[0].date||''));
+    } else {
+      groups.sort((a, b) => a[0].perUnit - b[0].perUnit);
+    }
+    el.innerHTML = groups.map(group => {
+      const pName = productName(group[0].productId);
+      const header = '<div class="compare-section-header">' + esc(pName) + '</div>';
+      return header + group.map(e => renderCompareCard(e, false, bestMap)).join('');
+    }).join('');
+  }
+}
+
+function renderCompareCard(e, showProduct, bestMap) {
+  const isBest = e.perUnit === bestMap[e.productId];
+  const {val: puVal, label: puLabel} = perUnitDisplay(e.perUnit, e.unit);
+  const displayPrice = e.priceIn != null ? e.priceIn : e.price;
+  const valMain = compareMode === 'unit'
+    ? puVal + '<span style="font-size:11px;font-weight:400;"> / ' + puLabel.replace('円 / ','') + '</span>'
+    : (e.qty / displayPrice * 100).toFixed(1) + ' ' + e.unit + '<span style="font-size:11px;font-weight:400;"> / 100円</span>';
+  const taxLabel = e.tax === 'ex8' ? '税抜8%' : e.tax === 'ex10' ? '税抜10%' : '税込';
+  const sName = storeName(e.storeId);
+  return '<div class="compare-card' + (isBest ? ' best-card' : '') + '">' +
+    '<div class="cc-date">' + esc(e.date||'—') + '</div>' +
+    '<div class="cc-store">' + esc(sName||'お店なし') + '</div>' +
+    '<div class="cc-price-main">' + valMain +
+      (isBest ? '<span class="best-badge" style="display:block;font-size:9px;margin-top:2px;">最安</span>' : '') +
+    '</div>' +
+    '<div class="cc-input">' + displayPrice.toLocaleString(undefined,{maximumFractionDigits:0}) +
+      '円（税込） ／ ' + e.qty + e.unit +
+      ' <span style="background:#e8f0fe;color:#3a5fc8;padding:0 4px;border-radius:3px;font-size:10px;">' + taxLabel + '</span>' +
+    '</div>' +
+    (e.memo ? '<div class="cc-memo">' + esc(e.memo) + '</div>' : '') +
+  '</div>';
 }
 
 // ============================================================
@@ -1557,6 +1928,7 @@ function renderCompare() {
 function renderSettings() {
   renderMasterList('product-list-settings', state.products, 'product');
   renderMasterList('store-list-settings',   state.stores,   'store');
+  renderMasterList('unit-list-settings',    state.units || [], 'unit');
   // Firebase config UI描画（moduleロード待ち）
   const _tryRender = (n) => {
     if (window._renderFirebaseConfigUI) {
@@ -1565,8 +1937,7 @@ function renderSettings() {
       setTimeout(() => _tryRender(n - 1), 200);
     }
   };
-  _tryRender(20); // 最大4秒待つ
-  // 同期状態表示更新
+  _tryRender(20);
   const el = document.getElementById('settings-auth-status');
   if (el) {
     const info = document.getElementById('auth-info');
@@ -1605,10 +1976,10 @@ function renderMasterList(containerId, items, type) {
 }
 
 function startRename(type, id) {
-  const items = type === 'product' ? state.products : state.stores;
+  const items = type === 'product' ? state.products : type === 'store' ? state.stores : state.units;
   const item  = items.find(x => x.id === id);
   if (!item) return;
-  const containerId = type === 'product' ? 'product-list-settings' : 'store-list-settings';
+  const containerId = type === 'product' ? 'product-list-settings' : type === 'store' ? 'store-list-settings' : 'unit-list-settings';
   const row = document.getElementById(containerId).querySelector('[data-id="' + id + '"]');
   if (!row) return;
 
@@ -1632,7 +2003,7 @@ function startRename(type, id) {
 
 function commitRename(type, id, newValue) {
   const trimmed = (newValue || '').trim();
-  const items   = type === 'product' ? state.products : state.stores;
+  const items   = type === 'product' ? state.products : type === 'store' ? state.stores : state.units;
   const item    = items.find(x => x.id === id);
   if (!item) return;
   if (!trimmed || trimmed === item.name) { renderSettings(); return; }
@@ -1646,12 +2017,12 @@ function commitRename(type, id, newValue) {
 }
 
 function removeMaster(type, id) {
-  const items = type === 'product' ? state.products : state.stores;
+  const items = type === 'product' ? state.products : type === 'store' ? state.stores : state.units;
   const item  = items.find(x => x.id === id);
   if (!item) return;
-  const count = type === 'product'
-    ? state.entries.filter(e => e.productId === id).length
-    : state.entries.filter(e => e.storeId   === id).length;
+  let count = 0;
+  if (type === 'product') count = state.entries.filter(e => e.productId === id).length;
+  if (type === 'store')   count = state.entries.filter(e => e.storeId   === id).length;
   const msg = count > 0
     ? item.name + ' には ' + count + ' 件の記録があります。マスタを削除しても記録は残ります。削除しますか？'
     : item.name + ' を削除しますか？';
