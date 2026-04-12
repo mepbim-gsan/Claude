@@ -1,8 +1,9 @@
 <!--
   @tool      バーコードスキャナー
-  @version   v01_2026-04-12
+  @version   v01_2026-04-12.2
   @changelog
-    v01_2026-04-12 - 初版
+    v01_2026-04-12   - 初版
+    v01_2026-04-12.2 - 設定画面追加・Yahoo!ショッピングAPI対応・フォールバック検索
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -369,6 +370,87 @@
     background: var(--border);
   }
 
+  /* 設定ボタン（ヘッダー右） */
+  .btn-settings {
+    margin-left: auto;
+    background: none;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #d0c8bc;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .btn-settings:active { background: rgba(255,255,255,0.1); }
+
+  /* 設定パネル */
+  .settings-panel {
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+  }
+  .settings-panel.show { display: block; }
+  .settings-panel-header {
+    padding: 10px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink-light);
+  }
+  .settings-panel-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .settings-row label {
+    display: block;
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-bottom: 5px;
+  }
+  .settings-input-row {
+    display: flex;
+    gap: 8px;
+  }
+  .settings-input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    background: var(--paper);
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .settings-input:focus { border-color: var(--accent); }
+  .btn-save-key {
+    padding: 10px 14px;
+    background: var(--ink);
+    color: white;
+    border: none;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .btn-save-key:active { opacity: 0.8; }
+  .settings-status {
+    font-size: 11px;
+    min-height: 16px;
+    color: var(--green);
+  }
+  .settings-note {
+    font-size: 11px;
+    color: var(--ink-faint);
+    line-height: 1.6;
+  }
+
   /* API note */
   .api-note {
     font-size: 11px;
@@ -382,13 +464,36 @@
 <body>
 
 <div class="header">
-  <div>
-    <div class="header-title">📷 バーコードスキャナー</div>
-    <div class="header-sub">JANコード → 商品名検索</div>
+  <div style="display:flex; align-items:center; width:100%;">
+    <div>
+      <div class="header-title">📷 バーコードスキャナー</div>
+      <div class="header-sub">JANコード → 商品名検索</div>
+    </div>
+    <button class="btn-settings" onclick="toggleSettings()">⚙️ 設定</button>
   </div>
 </div>
 
 <div class="main">
+
+  <!-- 設定パネル -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="settings-panel-header">⚙️ API設定</div>
+    <div class="settings-panel-body">
+      <div class="settings-row">
+        <label>Yahoo!ショッピング アプリケーションID</label>
+        <div class="settings-input-row">
+          <input type="text" class="settings-input" id="yahooAppIdInput"
+                 placeholder="dj00aiZpPXh..." autocomplete="off" spellcheck="false">
+          <button class="btn-save-key" onclick="saveYahooAppId()">保存</button>
+        </div>
+        <div class="settings-status" id="settingsStatus"></div>
+      </div>
+      <div class="settings-note">
+        取得先: <a href="https://e.developer.yahoo.co.jp/dashboard/" target="_blank" style="color:var(--ink-faint);">Yahoo!デベロッパーネットワーク</a><br>
+        設定するとYahoo!ショッピングを優先検索し、見つからない場合はOpen Food Factsで再検索します。
+      </div>
+    </div>
+  </div>
 
   <!-- カメラ -->
   <div class="camera-section" id="cameraSection">
@@ -470,6 +575,29 @@ let detector     = null;
 let scanInterval = null;
 let lastBarcode  = '';
 let cooldown     = false; // 連続スキャン抑制
+
+const YAHOO_KEY = 'barcode-scanner-yahoo-appid';
+
+function loadYahooAppId() {
+  return localStorage.getItem(YAHOO_KEY) || '';
+}
+function saveYahooAppId() {
+  const val = document.getElementById('yahooAppIdInput').value.trim();
+  localStorage.setItem(YAHOO_KEY, val);
+  const st = document.getElementById('settingsStatus');
+  st.textContent = val ? '✓ 保存しました' : 'クリアしました';
+  st.style.color = val ? 'var(--green)' : 'var(--ink-faint)';
+  setTimeout(() => { st.textContent = ''; }, 2000);
+}
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  const show  = !panel.classList.contains('show');
+  panel.classList.toggle('show', show);
+  if (show) {
+    document.getElementById('yahooAppIdInput').value = loadYahooAppId();
+    document.getElementById('settingsStatus').textContent = '';
+  }
+}
 
 // ============================================================
 // 履歴
@@ -598,17 +726,51 @@ async function detectFrame(video) {
 }
 
 // ============================================================
-// 商品検索 (Open Food Facts)
+// 商品検索 Yahoo!ショッピング → Open Food Facts フォールバック
 // ============================================================
 async function searchByBarcode(barcode) {
   barcode = String(barcode).trim();
   if (!barcode) return;
 
-  // 入力欄にも反映
   document.getElementById('manualInput').value = barcode;
-
   showResultLoading(barcode);
 
+  const appId = loadYahooAppId();
+
+  // Yahoo!ショッピング優先
+  if (appId) {
+    const yahooResult = await searchYahoo(barcode, appId);
+    if (yahooResult) {
+      showResult(barcode, yahooResult.name, yahooResult.brand, yahooResult.qty, [], 'found');
+      addHistory(barcode, yahooResult.name, true);
+      return;
+    }
+  }
+
+  // Open Food Facts フォールバック
+  await searchOpenFoodFacts(barcode);
+}
+
+async function searchYahoo(barcode, appId) {
+  try {
+    const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${encodeURIComponent(appId)}&jan_code=${encodeURIComponent(barcode)}&results=1&output=json`;
+    const res  = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hits = data?.hits;
+    if (!hits || hits.length === 0) return null;
+    const item  = hits[0];
+    const name  = item.name  || '';
+    const brand = item.brand?.name || '';
+    const qty   = '';
+    if (!name) return null;
+    return { name, brand, qty };
+  } catch(e) {
+    return null;
+  }
+}
+
+async function searchOpenFoodFacts(barcode) {
   try {
     const res = await fetch(
       `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,product_name_ja,brands,quantity,categories_tags`,
@@ -617,34 +779,24 @@ async function searchByBarcode(barcode) {
     const data = await res.json();
 
     if (data.status === 1 && data.product) {
-      const p    = data.product;
-      const name = p.product_name_ja || p.product_name || '';
+      const p     = data.product;
+      const name  = p.product_name_ja || p.product_name || '';
       const brand = p.brands || '';
       const qty   = p.quantity || '';
       const cats  = (p.categories_tags || [])
         .filter(c => c.startsWith('ja:'))
         .slice(0, 2)
-        .map(c => c.replace('ja:',''));
-
-      if (name) {
-        showResult(barcode, name, brand, qty, cats, 'found');
-        addHistory(barcode, name, true);
-      } else {
-        // 商品はあるが日本語名なし
-        const fallback = p.product_name || '名称不明（登録あり）';
-        showResult(barcode, fallback, brand, qty, cats, 'found');
-        addHistory(barcode, fallback, true);
-      }
+        .map(c => c.replace('ja:', ''));
+      const displayName = name || p.product_name || '名称不明（登録あり）';
+      showResult(barcode, displayName, brand, qty, cats, 'found');
+      addHistory(barcode, displayName, true);
     } else {
       showResult(barcode, '商品が見つかりませんでした', '', '', [], 'not-found');
       addHistory(barcode, '未登録商品', false);
     }
   } catch(e) {
-    if (e.name === 'TimeoutError') {
-      showResult(barcode, 'タイムアウト（通信に失敗しました）', '', '', [], 'error');
-    } else {
-      showResult(barcode, 'エラーが発生しました', '', '', [], 'error');
-    }
+    const msg = e.name === 'TimeoutError' ? 'タイムアウト（通信に失敗しました）' : 'エラーが発生しました';
+    showResult(barcode, msg, '', '', [], 'error');
   }
 }
 
