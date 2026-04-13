@@ -1,7 +1,9 @@
 <!--
   @tool      タイムカード
-  @version   v03_2026-04-03.9
+  @version   v04_2026-04-13.6
   @changelog
+    v04_2026-04-13.6 - 勤務時間帯ヒートマップ追加（月次タブ・折りたたみ・移動平均線）
+    v04_2026-04-13 - 過去月・未来月表示時に今日と同じ日付にドットが出る問題を修正
     v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
     v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
     v03_2026-04-03.3 - 月次オートスクロール削除・予定一括入力カードを折りたたみ対応
@@ -439,7 +441,31 @@ label:first-child{margin-top:0;}
       </div>
     </div>
     <div class="card">
-      <div class="card-title" id="sched-toggle" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+      <div class="card-title" id="heatmap-toggle" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">
+        勤務時間帯<span id="heatmap-toggle-icon" style="font-size:12px;color:var(--text3);">▶ 開く</span>
+      </div>
+      <div id="heatmap-body" style="display:none;margin-top:12px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <button id="heatmap-avg-week" class="btn btn-ghost btn-sm" style="font-size:11px;">週次平均</button>
+          <button id="heatmap-avg-month" class="btn btn-ghost btn-sm" style="font-size:11px;">月次平均</button>
+          <button id="heatmap-avg-none" class="btn btn-ghost btn-sm" style="font-size:11px;">移動平均なし</button>
+        </div>
+        <div style="display:flex;align-items:flex-start;">
+          <canvas id="heatmapLabelCanvas" style="flex-shrink:0;display:block;"></canvas>
+          <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;flex:1;">
+            <canvas id="heatmapCanvas" style="display:block;"></canvas>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:8px;font-size:10px;color:var(--text2);align-items:center;flex-wrap:wrap;">
+          <span><span style="display:inline-block;width:12px;height:12px;background:#3ecf8e;border-radius:2px;vertical-align:middle;margin-right:4px;opacity:.75"></span>勤務</span>
+          <span><span style="display:inline-block;width:12px;height:12px;background:#5a5f7a;border-radius:2px;vertical-align:middle;margin-right:4px;opacity:.6"></span>休憩</span>
+          <span style="color:#4f8ef7">─ 出勤移動平均</span>
+          <span style="color:#f5a623">─ 退勤移動平均</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="sched-toggle" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">
         予定入力（範囲一括）<span id="sched-toggle-icon" style="font-size:12px;color:var(--text3);">▶ 開く</span>
       </div>
       <div id="sched-body" style="display:none;">
@@ -1015,10 +1041,196 @@ function renderMonthTab(){
   remainEl.style.color=legalRemain<=0?'var(--danger)':legalRemain<10*60?'var(--warn)':'var(--text)';
 
   renderMonthChart(y,m,data,bizDays,legalLimit,legalLimit);
+  renderHeatmap(y,m,data);
   renderDayList(y,m,data);
 }
 
 let chartPending = false;
+let heatmapPending = false;
+let heatmapAvgMode = 'week'; // 'week' | 'month' | 'none'
+
+function renderHeatmap(y, m, data) {
+  const body = document.getElementById('heatmap-body');
+  if (!body || body.style.display === 'none') { heatmapPending = true; return; }
+  heatmapPending = false;
+
+  const canvasLabel = document.getElementById('heatmapLabelCanvas');
+  const canvas      = document.getElementById('heatmapCanvas');
+  const dk  = document.documentElement.getAttribute('data-theme') === 'dark';
+  const dim = new Date(y, m, 0).getDate();
+
+  const COLS    = 48;   // 30分刻み
+  const ROW_H   = 14;
+  const LABEL_W = 26;   // 日付列幅
+  const HEADER_H = 20;
+  const CELL_W  = 10;   // 固定幅（横スクロール前提）
+  const gridW   = COLS * CELL_W;
+  const totalH  = HEADER_H + dim * ROW_H;
+  const dpr     = window.devicePixelRatio || 1;
+
+  // --- ラベルCanvas ---
+  canvasLabel.width  = LABEL_W * dpr;
+  canvasLabel.height = totalH * dpr;
+  canvasLabel.style.width  = LABEL_W + 'px';
+  canvasLabel.style.height = totalH + 'px';
+  const ctxL = canvasLabel.getContext('2d');
+  ctxL.scale(dpr, dpr);
+
+  // --- グリッドCanvas ---
+  canvas.width  = gridW * dpr;
+  canvas.height = totalH * dpr;
+  canvas.style.width  = gridW + 'px';
+  canvas.style.height = totalH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // 色定義
+  const bgColor    = dk ? '#1a1d27' : '#ffffff';
+  const gridColor  = dk ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)';
+  const labelColor = dk ? '#5a5f7a' : '#9ca3af';
+  const workColor  = dk ? 'rgba(62,207,142,.72)' : 'rgba(22,163,74,.65)';
+  const breakColor = dk ? 'rgba(90,95,122,.5)'   : 'rgba(156,163,175,.45)';
+  const weekendBg  = dk ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.03)';
+  const todayBg    = dk ? 'rgba(79,142,247,.1)'   : 'rgba(37,99,235,.07)';
+  const todayStr   = toDateStr(new Date());
+
+  // 背景
+  ctxL.fillStyle = bgColor; ctxL.fillRect(0, 0, LABEL_W, totalH);
+  ctx.fillStyle  = bgColor; ctx.fillRect(0, 0, gridW, totalH);
+
+  // グリッドヘッダー時刻ラベル（3h刻み）
+  ctx.fillStyle = labelColor;
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  for (let h = 0; h < 24; h += 3) {
+    ctx.fillText(`${h}`, h * 2 * CELL_W, HEADER_H - 5);
+  }
+
+  // 縦グリッド（3h実線）
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  for (let h = 0; h <= 24; h += 3) {
+    const x = h * 2 * CELL_W + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, HEADER_H); ctx.lineTo(x, totalH); ctx.stroke();
+  }
+
+  // 出退勤データ収集（移動平均用）
+  const inMins = [], outMins = [], rowDates = [];
+  for (let d = 1; d <= dim; d++) {
+    const ds  = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow = new Date(ds + 'T00:00:00').getDay();
+    const obj = (data.days || {})[String(d)];
+    const lv  = obj?.leave || 'normal';
+    const skip = dow === 0 || dow === 6 || isHoliday(ds) || ['paid','comp','half'].includes(lv);
+    rowDates.push({ ds, dow, obj, lv, skip });
+    if (!skip && obj?.timeIn && obj?.timeOut) {
+      inMins.push(parseTime(obj.timeIn));
+      outMins.push(parseTime(obj.timeOut));
+    } else {
+      inMins.push(null);
+      outMins.push(null);
+    }
+  }
+
+  // 移動平均計算
+  function movingAvg(arr, win) {
+    return arr.map((_, i) => {
+      const vals = [];
+      for (let j = Math.max(0, i - win + 1); j <= i; j++) {
+        if (arr[j] !== null) vals.push(arr[j]);
+      }
+      return vals.length > 0 ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+    });
+  }
+  const win    = heatmapAvgMode === 'week' ? 7 : heatmapAvgMode === 'month' ? 30 : 0;
+  const avgIn  = win > 0 ? movingAvg(inMins, win)  : null;
+  const avgOut = win > 0 ? movingAvg(outMins, win) : null;
+
+  // 各行描画
+  for (let d = 0; d < dim; d++) {
+    const { ds, dow, obj } = rowDates[d];
+    const y0 = HEADER_H + d * ROW_H;
+    const isWeekend = dow === 0 || dow === 6;
+    const isToday   = ds === todayStr;
+
+    // ラベル列の行背景
+    const rowBg = isToday ? todayBg : isWeekend ? weekendBg : null;
+    if (rowBg) {
+      ctxL.fillStyle = rowBg;
+      ctxL.fillRect(0, y0, LABEL_W, ROW_H);
+    }
+
+    // グリッド列の行背景
+    if (isToday) {
+      ctx.fillStyle = todayBg;
+      ctx.fillRect(0, y0, gridW, ROW_H);
+    } else if (isWeekend) {
+      ctx.fillStyle = weekendBg;
+      ctx.fillRect(0, y0, gridW, ROW_H);
+    }
+
+    // 日付ラベル
+    ctxL.fillStyle = dow === 0 ? (dk?'#e05252':'#dc2626') : dow === 6 ? '#4f8ef7' : labelColor;
+    ctxL.font = 'bold 9px sans-serif';
+    ctxL.textAlign = 'right';
+    ctxL.fillText(String(d + 1).padStart(2,' '), LABEL_W - 3, y0 + ROW_H - 3);
+
+    if (!obj || !obj.timeIn || !obj.timeOut) continue;
+
+    const inM  = parseTime(obj.timeIn);
+    const outM = parseTime(obj.timeOut);
+    if (inM === null || outM === null) continue;
+    const inSlot  = Math.floor(inM / 30);
+    const outSlot = Math.ceil(outM / 30);
+
+    // 勤務セル
+    ctx.fillStyle = workColor;
+    for (let s = inSlot; s < Math.min(outSlot, COLS); s++) {
+      ctx.fillRect(s * CELL_W + 1, y0 + 1, CELL_W - 1, ROW_H - 2);
+    }
+
+    // 休憩セル上書き
+    if (obj.breaks) {
+      ctx.fillStyle = breakColor;
+      for (const b of obj.breaks) {
+        const bs = parseTime(b.start), be = parseTime(b.end);
+        if (bs === null || be === null) continue;
+        const bsSlot = Math.floor(bs / 30);
+        const beSlot = Math.ceil(be / 30);
+        for (let s = Math.max(bsSlot, inSlot); s < Math.min(beSlot, outSlot, COLS); s++) {
+          ctx.fillRect(s * CELL_W + 1, y0 + 1, CELL_W - 1, ROW_H - 2);
+        }
+      }
+    }
+  }
+
+  // 移動平均線（グリッドCanvas上）
+  if (avgIn && avgOut) {
+    const drawLine = (avgArr, color) => {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 3;
+      ctx.beginPath();
+      let started = false;
+      for (let d = 0; d < dim; d++) {
+        const v = avgArr[d];
+        if (v === null) { started = false; continue; }
+        const x  = (v / 30) * CELL_W;
+        const yc = HEADER_H + d * ROW_H + ROW_H / 2;
+        if (!started) { ctx.moveTo(x, yc); started = true; }
+        else ctx.lineTo(x, yc);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+    drawLine(avgIn,  '#4f8ef7');
+    drawLine(avgOut, '#f5a623');
+  }
+}
+
 function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
   const container=document.getElementById('chart-container');
   if(container.offsetParent===null){chartPending=true;return;}
@@ -1084,8 +1296,8 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
   const gc=dk?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',tc=dk?'#5a5f7a':'#9ca3af';
   const legalH=(legalLimit||173*60)/60;
 
-  // ポイント設定：土日・今日のみ表示
-  const todayIdx=labels.indexOf(parseInt(today.split('-')[2]));
+  // ポイント設定：土日・今日のみ表示（当月以外はtodayIdxを無効化）
+  const todayIdx=isCurrentMonth?labels.indexOf(parseInt(today.split('-')[2])):-1;
   const pointRadii=labels.map((d,i)=>{
     const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const dow=new Date(ds+'T00:00:00').getDay();
@@ -1654,6 +1866,35 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-delete-schedule').addEventListener('click',()=>{
     if(confirm('指定範囲の予定を削除しますか？'))deleteScheduleRange();
   });
+  document.getElementById('heatmap-toggle').addEventListener('click', () => {
+    const body = document.getElementById('heatmap-body');
+    const icon = document.getElementById('heatmap-toggle-icon');
+    const open = body.style.display === 'none';
+    body.style.display = open ? 'block' : 'none';
+    icon.textContent = open ? '▼ 閉じる' : '▶ 開く';
+    if (open && heatmapPending) {
+      const y = currentMonth.getFullYear(), m = currentMonth.getMonth() + 1;
+      const data = monthData[getMonthKey(y,m)] || {};
+      renderHeatmap(y, m, data);
+    }
+  });
+  function updateHeatmapAvgButtons() {
+    ['week','month','none'].forEach(mode => {
+      const btn = document.getElementById(`heatmap-avg-${mode}`);
+      if (btn) btn.style.borderColor = heatmapAvgMode === mode ? 'var(--accent)' : '';
+      if (btn) btn.style.color = heatmapAvgMode === mode ? 'var(--accent)' : '';
+    });
+  }
+  ['week','month','none'].forEach(mode => {
+    document.getElementById(`heatmap-avg-${mode}`).addEventListener('click', () => {
+      heatmapAvgMode = mode;
+      updateHeatmapAvgButtons();
+      const y = currentMonth.getFullYear(), m = currentMonth.getMonth() + 1;
+      const data = monthData[getMonthKey(y,m)] || {};
+      renderHeatmap(y, m, data);
+    });
+  });
+  updateHeatmapAvgButtons();
   document.getElementById('sched-toggle').addEventListener('click',()=>{
     const body = document.getElementById('sched-body');
     const icon = document.getElementById('sched-toggle-icon');
