@@ -2,7 +2,15 @@
   @tool      タイムカード
   @version   v04_2026-04-13.10
   @changelog
-    v04_2026-04-13.10 - 勤務時間帯ヒートマップ追加（月次タブ・折りたたみ・移動平均線）
+    v04_2026-04-13.10 - 移動平均線がnull（土日等）で途切れる問題を修正
+    v04_2026-04-13.9 - 移動平均線x座標を24時でクリップ（24時超退勤の平均値対応）
+    v04_2026-04-13.8 - ヒートマップ日またぎ（25時等）の翌日行折り返し描画対応
+    v04_2026-04-13.7 - ヒートマップ休憩セルをグレーのみに変更（勤務色の上書き廃止）
+    v04_2026-04-13.6 - 折りたたみカード閉時の下余白を修正（margin-bottom:0）
+    v04_2026-04-13.5 - 勤務時間帯カードの余白をsched-toggleと統一
+    v04_2026-04-13.4 - ヒートマップグリッドを3h実線に変更
+    v04_2026-04-13.3 - ヒートマップ日付列をスクロール固定化（2Canvas構成）
+    v04_2026-04-13.2 - 勤務時間帯ヒートマップ追加（月次タブ・折りたたみ・移動平均線）
     v04_2026-04-13 - 過去月・未来月表示時に今日と同じ日付にドットが出る問題を修正
     v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
     v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
@@ -305,7 +313,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v03_2026-04-03.9</span>
+      <span style="font-size:11px;color:var(--text3);">v04_2026-04-13.10</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -602,7 +610,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v03_2026-04-03</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-13.10</div>
   </div>
 
 </div>
