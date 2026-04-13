@@ -1,8 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v04_2026-04-13.15
+  @version   v04_2026-04-13.17
   @changelog
-    v04_2026-04-13.15 - 移動平均線がnull（土日等）で途切れる問題を修正
+    v04_2026-04-13.17 - 移動平均線がnull（土日等）で途切れる問題を修正
     v04_2026-04-13.9 - 移動平均線x座標を24時でクリップ（24時超退勤の平均値対応）
     v04_2026-04-13.8 - ヒートマップ日またぎ（25時等）の翌日行折り返し描画対応
     v04_2026-04-13.7 - ヒートマップ休憩セルをグレーのみに変更（勤務色の上書き廃止）
@@ -313,7 +313,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v04_2026-04-13.15</span>
+      <span style="font-size:11px;color:var(--text3);">v04_2026-04-13.17</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -414,9 +414,9 @@ label:first-child{margin-top:0;}
             <span style="font-size:10px;color:#4f8ef7">h</span>
           </div>
           <div style="display:flex;align-items:baseline;justify-content:flex-end;gap:4px;">
-            <span style="font-size:9px;color:var(--text3);font-weight:600;min-width:44px;text-align:right;">実績+計画</span>
+            <span id="m-legal-ot-plan-label" style="font-size:9px;color:var(--text3);font-weight:600;min-width:44px;text-align:right;">実績+計画</span>
             <span id="m-legal-ot-plan" style="font-size:18px;font-weight:700;color:var(--text2);min-width:36px;text-align:right;">--</span>
-            <span style="font-size:10px;color:var(--text3)">h</span>
+            <span id="m-legal-ot-plan-unit" style="font-size:10px;color:var(--text3)">h</span>
           </div>
         </div>
       </div>
@@ -629,7 +629,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-13.15</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-13.17</div>
   </div>
 
 </div>
@@ -1091,9 +1091,16 @@ function renderMonthTab(){
   if(legalOtEl){
     legalOtEl.textContent=forecastOt!==null?formatHours(forecastOt):'--';
   }
-  // 計画超過（グレー）
+  // 計画超過（グレー）/ 過去月は実績のみ（緑）
   const legalOtPlanEl=document.getElementById('m-legal-ot-plan');
-  if(legalOtPlanEl) legalOtPlanEl.textContent=formatHours(planOt);
+  const legalOtPlanLabel=document.getElementById('m-legal-ot-plan-label');
+  const legalOtPlanUnit=document.getElementById('m-legal-ot-plan-unit');
+  const planColor=isCurrentMonth?'var(--text2)':'#3ecf8e';
+  const planLabelColor=isCurrentMonth?'var(--text3)':'#3ecf8e';
+  const planLabelText=isCurrentMonth?'実績+計画':'実績';
+  if(legalOtPlanEl){ legalOtPlanEl.textContent=formatHours(planOt); legalOtPlanEl.style.color=planColor; }
+  if(legalOtPlanLabel){ legalOtPlanLabel.textContent=planLabelText; legalOtPlanLabel.style.color=planLabelColor; }
+  if(legalOtPlanUnit) legalOtPlanUnit.style.color=planLabelColor;
 
   document.getElementById('m-actual').textContent=formatHours(actualMins);
   document.getElementById('m-sched-total').textContent=formatHours(schedMins);
@@ -1473,12 +1480,12 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
       ctx2.lineWidth=1.5;
       ctx2.setLineDash([3,2]);
       ctx2.stroke();
-      // ラベル
+      // ラベル：グラフエリア外の上部に描画
       ctx2.font='bold 9px sans-serif';
       ctx2.fillStyle='#e05252';
       ctx2.textAlign='center';
       const label=`⚠ ${labels[forecastOverDay]}日`;
-      ctx2.fillText(label, x, top+9);
+      ctx2.fillText(label, x, top - 4);
       ctx2.restore();
     }
   };
@@ -1533,7 +1540,7 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
         x:{ticks:{color:tc,maxTicksLimit:10,font:{size:10}},grid:{color:gc}},
         y:{ticks:{color:tc,font:{size:10}},grid:{color:gc}}
       },
-      layout:{padding:{right:28}}
+      layout:{padding:{right:28,top:16}}
     },
     plugins:[forecastOverPlugin,todayLinePlugin,legalLabelPlugin]
   });
