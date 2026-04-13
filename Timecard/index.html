@@ -1,8 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v04_2026-04-13.8
+  @version   v04_2026-04-13.10
   @changelog
-    v04_2026-04-13.8 - 勤務時間帯ヒートマップ追加（月次タブ・折りたたみ・移動平均線）
+    v04_2026-04-13.10 - 勤務時間帯ヒートマップ追加（月次タブ・折りたたみ・移動平均線）
     v04_2026-04-13 - 過去月・未来月表示時に今日と同じ日付にドットが出る問題を修正
     v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
     v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
@@ -1242,8 +1242,8 @@ function renderHeatmap(y, m, data) {
       let started = false;
       for (let d = 0; d < dim; d++) {
         const v = avgArr[d];
-        if (v === null) { started = false; continue; }
-        const x  = (v / 30) * CELL_W;
+        if (v === null) continue;
+        const x  = Math.min((v / 30) * CELL_W, gridW - 1);
         const yc = HEADER_H + d * ROW_H + ROW_H / 2;
         if (!started) { ctx.moveTo(x, yc); started = true; }
         else ctx.lineTo(x, yc);
