@@ -1,8 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v04_2026-04-13.6
+  @version   v04_2026-04-13.7
   @changelog
-    v04_2026-04-13.6 - 勤務時間帯ヒートマップ追加（月次タブ・折りたたみ・移動平均線）
+    v04_2026-04-13.7 - 勤務時間帯ヒートマップ追加（月次タブ・折りたたみ・移動平均線）
     v04_2026-04-13 - 過去月・未来月表示時に今日と同じ日付にドットが出る問題を修正
     v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
     v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
@@ -1184,24 +1184,31 @@ function renderHeatmap(y, m, data) {
     const inSlot  = Math.floor(inM / 30);
     const outSlot = Math.ceil(outM / 30);
 
-    // 勤務セル
-    ctx.fillStyle = workColor;
-    for (let s = inSlot; s < Math.min(outSlot, COLS); s++) {
-      ctx.fillRect(s * CELL_W + 1, y0 + 1, CELL_W - 1, ROW_H - 2);
-    }
-
-    // 休憩セル上書き
+    // 休憩スロットのセットを事前構築
+    const breakSlots = new Set();
     if (obj.breaks) {
-      ctx.fillStyle = breakColor;
       for (const b of obj.breaks) {
         const bs = parseTime(b.start), be = parseTime(b.end);
         if (bs === null || be === null) continue;
         const bsSlot = Math.floor(bs / 30);
         const beSlot = Math.ceil(be / 30);
         for (let s = Math.max(bsSlot, inSlot); s < Math.min(beSlot, outSlot, COLS); s++) {
-          ctx.fillRect(s * CELL_W + 1, y0 + 1, CELL_W - 1, ROW_H - 2);
+          breakSlots.add(s);
         }
       }
+    }
+
+    // 勤務セル（休憩スロットは除外）
+    ctx.fillStyle = workColor;
+    for (let s = inSlot; s < Math.min(outSlot, COLS); s++) {
+      if (!breakSlots.has(s))
+        ctx.fillRect(s * CELL_W + 1, y0 + 1, CELL_W - 1, ROW_H - 2);
+    }
+
+    // 休憩セル（グレーのみ）
+    ctx.fillStyle = breakColor;
+    for (const s of breakSlots) {
+      ctx.fillRect(s * CELL_W + 1, y0 + 1, CELL_W - 1, ROW_H - 2);
     }
   }
 
