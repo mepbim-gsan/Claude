@@ -1,8 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v04_2026-04-13.11
+  @version   v04_2026-04-13.12
   @changelog
-    v04_2026-04-13.11 - 移動平均線がnull（土日等）で途切れる問題を修正
+    v04_2026-04-13.12 - 移動平均線がnull（土日等）で途切れる問題を修正
     v04_2026-04-13.9 - 移動平均線x座標を24時でクリップ（24時超退勤の平均値対応）
     v04_2026-04-13.8 - ヒートマップ日またぎ（25時等）の翌日行折り返し描画対応
     v04_2026-04-13.7 - ヒートマップ休憩セルをグレーのみに変更（勤務色の上書き廃止）
@@ -313,7 +313,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v04_2026-04-13.11</span>
+      <span style="font-size:11px;color:var(--text3);">v04_2026-04-13.12</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -407,7 +407,7 @@ label:first-child{margin-top:0;}
       </div>
       <div class="stat-box">
         <div class="stat-box-label">法定時間外（見込）</div>
-        <div class="stat-box-val" id="m-legal-ot" style="color:var(--warn)">--</div>
+        <div class="stat-box-val" id="m-legal-ot" style="color:#4f8ef7">--</div>
         <div class="stat-box-sub" id="m-legal-ot-sub" style="font-size:9px;line-height:1.4;">--</div>
       </div>
       <div class="stat-box">
@@ -420,7 +420,7 @@ label:first-child{margin-top:0;}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <div style="display:flex;align-items:baseline;gap:6px;">
             <span class="stat-box-label" style="margin-bottom:0;">実績</span>
-            <span style="font-size:20px;font-weight:700;color:var(--accent)" id="m-actual">--</span>
+            <span style="font-size:20px;font-weight:700;color:#3ecf8e" id="m-actual">--</span>
             <span style="font-size:11px;color:var(--text2)">h</span>
             <span style="font-size:11px;color:var(--text3)">/</span>
             <span style="font-size:13px;font-weight:600;color:var(--text2)" id="m-sched-total">--</span>
@@ -619,7 +619,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-13.11</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-13.12</div>
   </div>
 
 </div>
@@ -1046,7 +1046,9 @@ function renderMonthTab(){
 
   document.getElementById('m-work-days-actual').textContent=actualWorkDays;
   document.getElementById('m-workdays').textContent=`${bizDays.length}営業日`;
-  document.getElementById('m-legal-ot').textContent=formatHours(legalOt);
+  const legalOtEl=document.getElementById('m-legal-ot');
+  legalOtEl.textContent=formatHours(legalOt);
+  legalOtEl.style.color='#4f8ef7'; // 予測と同じ青
   document.getElementById('m-actual').textContent=formatHours(actualMins);
   document.getElementById('m-sched-total').textContent=formatHours(schedMins);
   document.getElementById('m-holiday-work').textContent=formatHours(holidayWorkMins);
@@ -1057,35 +1059,36 @@ function renderMonthTab(){
   remainEl.textContent=formatHours(legalRemain);
   remainEl.style.color=legalRemain<=0?'var(--danger)':legalRemain<10*60?'var(--warn)':'var(--text)';
 
-  // ② 法定時間外カード：見込みサブテキスト
+  // ② 法定時間外カード：見込みサブテキスト（限度時間は削除）
   const legalOtSubEl=document.getElementById('m-legal-ot-sub');
   if(legalOtSubEl){
-    if(legalOt>0){
-      legalOtSubEl.textContent=`実績+計画 ${formatHours(combinedMins)}h ／ 限度 ${legalLimitH}h`;
-      legalOtSubEl.style.color='var(--warn)';
-    } else {
-      legalOtSubEl.textContent=`実績+計画 ${formatHours(combinedMins)}h ／ 限度 ${legalLimitH}h`;
-      legalOtSubEl.style.color='var(--text3)';
-    }
+    legalOtSubEl.textContent=`実績+計画 ${formatHours(combinedMins)}h`;
+    legalOtSubEl.style.color=legalOt>0?'#4f8ef7':'var(--text3)';
   }
 
-  // ③ プログレスバー更新
-  const maxVal=Math.max(combinedMins, legalLimit, actualMins)*1.05; // 少し余白
+  // 実績値を緑に（グラフの実績ラインと統一）
+  const actualEl=document.getElementById('m-actual');
+  if(actualEl) actualEl.style.color='#3ecf8e';
+
+  // ③ プログレスバー更新（色：緑→黄(+45h超)→赤(+45h超)）
+  const maxVal=Math.max(combinedMins, legalLimit, actualMins)*1.05;
   const pctActual=Math.min(actualMins/maxVal*100,100);
   const pctLegal=Math.min(legalLimit/maxVal*100,100);
   const pctLabel=Math.round(actualMins/(legalLimit||1)*100);
+  const overMins=actualMins-legalLimit; // 負の場合は未超過
+  const barColor=overMins>=45*60?'var(--danger)':overMins>=0?'var(--warn)':'#3ecf8e';
   const progActual=document.getElementById('m-progress-actual');
   const progMarker=document.getElementById('m-progress-legal-marker');
   const progPct=document.getElementById('m-progress-pct');
   const progMaxLabel=document.getElementById('m-progress-max-label');
   if(progActual){
     progActual.style.width=pctActual+'%';
-    progActual.style.background=actualMins>=legalLimit?'var(--danger)':actualMins>=legalLimit*0.9?'var(--warn)':'var(--accent)';
+    progActual.style.background=barColor;
   }
   if(progMarker) progMarker.style.left=pctLegal+'%';
   if(progPct){
     progPct.textContent=pctLabel+'%';
-    progPct.style.color=pctLabel>=100?'var(--danger)':pctLabel>=90?'var(--warn)':'var(--text2)';
+    progPct.style.color=overMins>=45*60?'var(--danger)':overMins>=0?'var(--warn)':'var(--text2)';
   }
   if(progMaxLabel) progMaxLabel.textContent=formatHours(maxVal)+'h';
 
