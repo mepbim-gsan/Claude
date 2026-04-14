@@ -1,8 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v04_2026-04-13.19
+  @version   v04_2026-04-13.20
   @changelog
-    v04_2026-04-13.19 - 移動平均線がnull（土日等）で途切れる問題を修正
+    v04_2026-04-13.20 - 移動平均線がnull（土日等）で途切れる問題を修正
     v04_2026-04-13.9 - 移動平均線x座標を24時でクリップ（24時超退勤の平均値対応）
     v04_2026-04-13.8 - ヒートマップ日またぎ（25時等）の翌日行折り返し描画対応
     v04_2026-04-13.7 - ヒートマップ休憩セルをグレーのみに変更（勤務色の上書き廃止）
@@ -313,7 +313,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v04_2026-04-13.19</span>
+      <span style="font-size:11px;color:var(--text3);">v04_2026-04-13.20</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -629,7 +629,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-13.19</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-13.20</div>
   </div>
 
 </div>
@@ -898,6 +898,7 @@ function addBreakRow(start='',end=''){
   const sep=document.createElement('span');sep.textContent='〜';sep.style.cssText='color:var(--text2);flex-shrink:0';
   const i2=document.createElement('input');i2.type='text';i2.placeholder='終了 1300';i2.value=end;i2.maxLength=6;
   i2.addEventListener('input',e=>{breakRows[idx].end=e.target.value;updateDaySummary();});
+  i2.addEventListener('change',e=>{if(e.target.value)sortBreakRows();});
   const errBadge=document.createElement('span');
   errBadge.className='break-err-badge';errBadge.dataset.idx=idx;
   errBadge.textContent='⚠';errBadge.title='勤務時間外の休憩（計算から除外）';
@@ -941,12 +942,26 @@ function updateDaySummary(live=false){
   document.getElementById('today-overtime').textContent=formatHours(Math.max(0,wM-stdM))+'h';
   updateStampButtons();
 }
+function sortBreakRows(){
+  // 開始時刻でbreakRowsを昇順ソートし再レンダリング
+  const valid=breakRows.filter(Boolean);
+  valid.sort((a,b)=>{
+    const am=parseTime(a.start)||0;
+    const bm=parseTime(b.start)||0;
+    return am-bm;
+  });
+  breakRows.length=0;
+  document.getElementById('break-list').innerHTML='';
+  valid.forEach(b=>addBreakRow(b.start,b.end));
+}
 function autoSavePunch(){
   const ds=document.getElementById('punch-date').value;
   if(!ds)return;
   const inVal=document.getElementById('punch-in').value.trim();
   const outVal=document.getElementById('punch-out').value.trim();
-  const validBreaks=breakRows.filter(Boolean).filter(b=>isBreakValid(b,inVal,outVal)&&b.start&&b.end);
+  // 開始のみの休憩も保存対象に含める（終了が空でも記録）
+  const allBreaks=breakRows.filter(Boolean).filter(b=>b.start);
+  const validBreaks=allBreaks.filter(b=>!b.end||isBreakValid(b,inVal,outVal));
   setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks});
   saveStorage();
   // 月次タブが表示中なら更新
@@ -2005,6 +2020,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('stamp-break-end-time').textContent=formatTime(parseTime(t));
     document.getElementById('stamp-break-end').classList.remove('active');
     updateDaySummary();
+    sortBreakRows(); // 終了確定後に昇順ソート
     autoSavePunch();
   });
   document.getElementById('btn-month-prev').addEventListener('click',()=>{
