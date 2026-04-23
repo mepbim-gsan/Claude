@@ -2,8 +2,8 @@
   "name": "タイムカード",
   "short_name": "タイムカード",
   "description": "勤怠記録・月次集計ツール",
-  "start_url": "/Claude/Timecard/",
-  "scope": "/Claude/Timecard/",
+  "start_url": "/timecard/",
+  "scope": "/timecard/",
   "display": "standalone",
   "background_color": "#0f1117",
   "theme_color": "#0f1117",
@@ -13,39 +13,13 @@
       "src": "icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     },
     {
       "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "出勤",
-      "short_name": "出勤",
-      "url": "/Claude/Timecard/index.html?action=in",
-      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "退勤",
-      "short_name": "退勤",
-      "url": "/Claude/Timecard/index.html?action=out",
-      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "purpose": "any maskable"
     }
   ]
 }
