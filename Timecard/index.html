@@ -1,8 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v04_2026-04-13.22
+  @version   v04_2026-04-15.4
   @changelog
-    v04_2026-04-13.22 - 移動平均線がnull（土日等）で途切れる問題を修正
+    v04_2026-04-15.4 - 移動平均線がnull（土日等）で途切れる問題を修正
     v04_2026-04-13.9 - 移動平均線x座標を24時でクリップ（24時超退勤の平均値対応）
     v04_2026-04-13.8 - ヒートマップ日またぎ（25時等）の翌日行折り返し描画対応
     v04_2026-04-13.7 - ヒートマップ休憩セルをグレーのみに変更（勤務色の上書き廃止）
@@ -33,6 +33,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>タイムカード</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0f1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
@@ -111,15 +116,29 @@ function setupAuth() {
     updateAuthUI(user);
     if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
     if (user) {
+      // ログイン済み：ロード完了まで打刻ボタンを無効化
+      _setPunchLock(true);
       const uid = user.uid;
       const ref = doc(db, 'users', uid, 'data', FIRESTORE_DOC);
+      let _firstLoad = true;
       _unsubscribe = onSnapshot(ref, snap => {
         if (Date.now() - window._lastWriteAt < 1500) return;
         if (snap.exists()) {
           window._applyRemoteState(snap.data());
         }
-        // 未登録の場合はlocalStorageのデータをそのまま使用（初回は何もしない）
+        // 初回ロード完了：ボタン有効化＋pendingAction実行
+        if (_firstLoad) {
+          _firstLoad = false;
+          _setPunchLock(false);
+          if (window._pendingAction) {
+            window._pendingAction();
+            window._pendingAction = null;
+          }
+        }
       });
+    } else {
+      // ログアウト中：即時有効
+      _setPunchLock(false);
     }
   });
 }
@@ -313,13 +332,14 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v04_2026-04-13.22</span>
+      <span style="font-size:11px;color:var(--text3);">v04_2026-04-15.4</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
       <span id="auth-info" style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
       <button id="auth-btn" class="btn btn-ghost btn-sm" style="flex-shrink:0;">Googleでログイン</button>
     </div>
+    <div id="punch-sync-indicator" style="display:none;text-align:center;font-size:11px;color:var(--text3);padding:4px 0 8px;">⏳ データ同期中…</div>
     <div class="card">
       <div class="card-title">対象日</div>
       <input type="date" id="punch-date" style="display:none">
@@ -629,7 +649,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-13.22</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-15.4</div>
   </div>
 
 </div>
@@ -954,6 +974,18 @@ function sortBreakRows(){
   document.getElementById('break-list').innerHTML='';
   valid.forEach(b=>addBreakRow(b.start,b.end));
 }
+function _setPunchLock(locked) {
+  const ids = ['stamp-in','stamp-out','stamp-break-start','stamp-break-end'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = locked;
+    el.style.opacity = locked ? '0.4' : '';
+  });
+  const indicator = document.getElementById('punch-sync-indicator');
+  if (indicator) indicator.style.display = locked ? 'block' : 'none';
+}
+
 function autoSavePunch(){
   const ds=document.getElementById('punch-date').value;
   if(!ds)return;
@@ -2150,7 +2182,74 @@ document.addEventListener('DOMContentLoaded',()=>{
   // 月次タブは初期非表示なのでデータだけ準備し、タブ切替時に描画
   const y0=currentMonth.getFullYear(),m0=currentMonth.getMonth()+1;
   initScheduleDefaults(y0,m0);
+
+  // ショートカットからの自動打刻（?action=in / ?action=out）
+  const urlAction=new URLSearchParams(location.search).get('action');
+  if(urlAction==='in'||urlAction==='out'){
+    // URLパラメータをクリア（履歴を汚さない）
+    history.replaceState(null,'',location.pathname);
+
+    // Firestoreロード完了後に実行（ログイン済みの場合）
+    // ログイン未確認の場合はpendingActionに登録
+    window._pendingAction = () => {
+      // 打刻タブに切替
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
+      document.querySelector('.tab-btn[data-tab="punch"]')?.classList.add('active');
+      document.getElementById('page-punch')?.classList.add('active');
+
+      const inEl=document.getElementById('punch-in');
+      const outEl=document.getElementById('punch-out');
+      const t=nowHHMM();
+      let msg='';
+
+      if(urlAction==='in'){
+        if(inEl&&!inEl.value){
+          inEl.value=t;
+          document.getElementById('stamp-in-time').textContent=formatTime(parseTime(t));
+          document.getElementById('stamp-in').classList.add('active');
+          updateDaySummary();
+          autoSavePunch();
+          msg=`出勤を記録しました（${formatTime(parseTime(t))}）`;
+        } else {
+          msg='すでに出勤が記録されています';
+        }
+      } else {
+        if(inEl&&inEl.value&&outEl&&!outEl.value){
+          outEl.value=t;
+          document.getElementById('stamp-out-time').textContent=formatTime(parseTime(t));
+          document.getElementById('stamp-out').classList.add('active');
+          if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
+          updateDaySummary();
+          autoSavePunch();
+          msg=`退勤を記録しました（${formatTime(parseTime(t))}）`;
+        } else if(!inEl?.value){
+          msg='出勤が記録されていません';
+        } else {
+          msg='すでに退勤が記録されています';
+        }
+      }
+
+      // トースト表示
+      if(msg){
+        const toast=document.createElement('div');
+        toast.textContent=msg;
+        toast.style.cssText='position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap;';
+        document.body.appendChild(toast);
+        setTimeout(()=>toast.remove(),3000);
+      }
+    };
+  }
 });
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
 </script>
 </body>
 </html>
