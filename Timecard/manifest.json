@@ -21,5 +21,19 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "出勤",
+      "short_name": "出勤",
+      "url": "/Claude/Timecard/?action=in",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "退勤",
+      "short_name": "退勤",
+      "url": "/Claude/Timecard/?action=out",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }
