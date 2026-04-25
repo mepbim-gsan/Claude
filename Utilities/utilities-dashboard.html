@@ -953,6 +953,60 @@ function _renderMonthlyChart() {
     { label:'📦 その他', data:months.map(m=>getOth(m)),             type:'bar', backgroundColor:'#8b5cf6cc', borderColor:'#8b5cf6', borderWidth:1, borderRadius:3, order:2 },
   ];
 
+  // 表示中データセットの合計平均を描画するプラグイン
+  const avgLinePlugin = {
+    id: 'monthlyAvgLine',
+    afterDraw(chart) {
+      const ctx2 = chart.ctx;
+      const visibleDatasets = chart.data.datasets.filter((_,i) => chart.isDatasetVisible(i));
+      if (!visibleDatasets.length) return;
+      const n = chart.data.labels.length;
+      const totals = Array.from({length:n}, (_,i) =>
+        visibleDatasets.reduce((s, ds) => s + (ds.data[i] || 0), 0)
+      );
+      const validTotals = totals.filter(v => v > 0);
+      if (!validTotals.length) return;
+      const avg = validTotals.reduce((s,v) => s+v, 0) / validTotals.length;
+
+      const yAxis = chart.scales.y;
+      const xAxis = chart.scales.x;
+      const yPx = yAxis.getPixelForValue(avg);
+
+      ctx2.save();
+      ctx2.beginPath();
+      ctx2.setLineDash([4, 4]);
+      ctx2.strokeStyle = '#64748b';
+      ctx2.lineWidth = 1.5;
+      ctx2.moveTo(xAxis.left, yPx);
+      ctx2.lineTo(xAxis.right, yPx);
+      ctx2.stroke();
+
+      // ラベル表示
+      ctx2.setLineDash([]);
+      ctx2.fillStyle = '#64748b';
+      ctx2.font = '10px sans-serif';
+      ctx2.textAlign = 'right';
+      const label = '平均 ¥' + Math.round(avg).toLocaleString();
+      ctx2.font = 'bold 11px sans-serif';
+      const tw = ctx2.measureText(label).width;
+      const pad = 6, bh = 18;
+      const bx = xAxis.right - tw - pad * 2 - 4;
+      const by = yPx - bh / 2;
+      // 白背景
+      ctx2.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx2.beginPath();
+      ctx2.roundRect(bx, by, tw + pad * 2, bh, 4);
+      ctx2.fill();
+      // テキスト（背景の垂直中央）
+      ctx2.fillStyle = '#475569';
+      ctx2.textAlign = 'center';
+      ctx2.textBaseline = 'middle';
+      ctx2.fillText(label, bx + (tw + pad * 2) / 2, yPx);
+      ctx2.textBaseline = 'alphabetic';
+      ctx2.restore();
+    }
+  };
+
   const ctx = document.getElementById('chartMonthly');
   if (!ctx) return;
   if (charts2.monthly) charts2.monthly.destroy();
@@ -965,7 +1019,8 @@ function _renderMonthlyChart() {
         x:{ stacked:true, grid:{display:false}, ticks:{font:{size:10}} },
         y:{ stacked:true, ticks:{ callback: v=>'¥'+v.toLocaleString(), font:{size:10} } }
       }
-    }
+    },
+    plugins: [avgLinePlugin]
   });
 }
 
