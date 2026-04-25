@@ -1,0 +1,1382 @@
+<!--
+  @tool      光熱費ダッシュボード
+  @version   v01_2026-04-19
+  @changelog
+    v01_2026-04-19   - 初版
+    v01_2026-04-19.2 - type=module廃止→通常script+動的import、サンプルデータ対応
+    v01_2026-04-19.3 - ダッシュボード刷新：サービス別グラフ（棒=今年/折れ線=前年）、金額/使用量タブ切替、前年同月比較表
+    v01_2026-04-19.4 - 単価（円/kWh・円/m³）タブ追加
+    v01_2026-04-19.5 - メモ欄追加（契約名・備考）、サンプルデータを実データに差し替え
+    v01_2026-04-19.6 - 年度選択（4月〜3月）、表を全月スクロール表示、年度合計カード追加
+    v01_2026-04-25   - 年度セレクタをヘッダー下に固定、サマリーカードに月表示追加
+    v01_2026-04-25.2 - グラフに年間平均線追加、単価を小数点1桁固定
+    v01_2026-04-26   - 比較タブ追加（月間金額比較・年間金額推移）
+    v01_2026-04-26.2 - 月/年度◀▶ナビ、履歴カード形式、その他カテゴリ追加、比較タブothers対応・凡例クリックON/OFF
+    v01_2026-04-26.3 - CSVエクスポート・インポート追加（設定モーダル内）
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>光熱費ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f1f5f9; color: #1e293b; }
+
+#authArea, #setupScreen {
+  display: none; position: fixed; inset: 0; background: #f1f5f9;
+  flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 100;
+}
+#authArea h2 { font-size: 1.2rem; color: #475569; }
+.btn-google {
+  display: flex; align-items: center; gap: 8px; padding: 12px 24px;
+  background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
+  font-size: 1rem; cursor: pointer; box-shadow: 0 1px 3px #0001;
+}
+
+#app { display: none; max-width: 640px; margin: 0 auto; padding-bottom: 80px; }
+
+.app-header {
+  position: sticky; top: 0; z-index: 10; background: #fff;
+  border-bottom: 1px solid #e2e8f0; padding: 12px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.app-header h1 { font-size: 1rem; font-weight: 700; }
+.header-right  { display: flex; align-items: center; gap: 8px; }
+.user-name     { font-size: 0.75rem; color: #64748b; }
+.btn-icon      { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 4px; }
+.chart-title-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.seg-btns { display:flex; gap:4px; }
+.seg-btn { padding:4px 10px; border:1px solid #e2e8f0; border-radius:16px; font-size:0.75rem; background:#fff; color:#64748b; cursor:pointer; }
+.seg-btn.active { background:#3b82f6; color:#fff; border-color:#3b82f6; }
+.period-nav { display:flex; align-items:center; gap:8px; margin-bottom:0; }
+.period-nav-btn {
+  flex-shrink:0; width:36px; height:36px;
+  border:1px solid #e2e8f0; border-radius:8px; background:#fff;
+  font-size:0.9rem; line-height:1; cursor:pointer; color:#475569;
+  display:flex; align-items:center; justify-content:center; padding:0;
+}
+.period-nav-btn:active { background:#f1f5f9; }
+.period-nav-input {
+  flex:1; height:36px; padding:0 10px;
+  border:1px solid #e2e8f0; border-radius:8px;
+  font-size:0.9rem; background:#fff; color:#1e293b;
+  -webkit-appearance:auto; appearance:auto;
+  font-family:inherit;
+}
+
+.form-group input[type=number] { text-align:right; }
+.form-group textarea { width:100%; padding:9px 10px; border:1px solid #e2e8f0; border-radius:8px; font-size:0.95rem; resize:vertical; min-height:64px; }
+.form-group textarea:focus { outline:none; border-color:#3b82f6; }
+
+/* 履歴カード */
+.hist-cards { display:flex; flex-direction:column; gap:10px; }
+.hist-card { background:#fff; border-radius:12px; padding:14px 16px; box-shadow:0 1px 3px #0001; }
+.hist-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.hist-card-ym { font-size:0.72rem; color:#64748b; }
+.hist-card-type { font-size:0.9rem; font-weight:700; }
+.hist-card-values { display:flex; gap:16px; margin-bottom:4px; }
+.hist-card-amount { font-size:1.1rem; font-weight:700; }
+.hist-card-usage { font-size:0.82rem; color:#64748b; align-self:flex-end; }
+.hist-card-memo { font-size:0.75rem; color:#94a3b8; margin-top:4px; }
+.hist-card-actions { display:flex; gap:6px; margin-top:10px; }
+.hist-card.editing { background:#eff6ff; }
+.hist-edit-row { display:flex; gap:8px; margin-bottom:6px; }
+.hist-edit-row input { flex:1; padding:7px 9px; border:1px solid #93c5fd; border-radius:6px; font-size:0.85rem; text-align:right; }
+.hist-edit-row textarea { flex:1; padding:7px 9px; border:1px solid #93c5fd; border-radius:6px; font-size:0.85rem; resize:none; min-height:52px; }
+
+.sample-badge  { display: inline-block; background: #fef3c7; color: #92400e; font-size: 0.68rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px; }
+.fy-bar { position: sticky; top: 49px; z-index: 9; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; padding: 8px 16px; display: none; }
+.fy-bar select { width: 100%; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; background: #fff; }
+
+.tab-bar {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 640px; background: #fff; border-top: 1px solid #e2e8f0; display: flex;
+}
+.tab-btn {
+  flex: 1; padding: 10px 0 8px; border: none; background: none;
+  font-size: 0.7rem; color: #94a3b8; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.tab-btn .ti { font-size: 1.3rem; }
+.tab-btn.active { color: #3b82f6; }
+
+.tab-pane { padding: 16px; }
+
+/* ── Summary cards ── */
+.summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 20px; }
+.summary-card { background: #fff; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px #0001; border-top: 4px solid #e2e8f0; }
+.summary-card.electricity { border-top: 4px solid #f59e0b; }
+.summary-card.gas         { border-top: 4px solid #ef4444; }
+.summary-card.water       { border-top: 4px solid #3b82f6; }
+.summary-card.total       { border-top: 4px solid #8b5cf6; }
+.s-label  { font-size: 0.72rem; color: #64748b; margin-bottom: 4px; }
+.s-amount { font-size: 1.1rem; font-weight: 700; }
+.s-sub    { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; }
+.s-sub.up   { color: #ef4444; }
+.s-sub.down { color: #22c55e; }
+
+/* ── Service section ── */
+.service-section { background: #fff; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 1px 3px #0001; overflow: hidden; }
+.service-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid #f1f5f9;
+}
+.service-header-left { display: flex; align-items: center; gap: 8px; }
+.service-name { font-size: 0.9rem; font-weight: 700; }
+.service-amount { font-size: 0.82rem; color: #64748b; }
+
+/* ── Metric tabs (金額/使用量) ── */
+.metric-tabs { display: flex; border-bottom: 1px solid #f1f5f9; }
+.metric-tab {
+  flex: 1; padding: 8px 0; font-size: 0.82rem; color: #94a3b8;
+  border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.metric-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
+
+.chart-wrap { height: 180px; padding: 12px 12px 8px; }
+
+/* ── 比較表 ── */
+.compare-table-wrap { padding: 0 12px 12px; }
+.compare-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.compare-table th { color: #94a3b8; font-weight: 500; padding: 6px 4px; text-align: right; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; background: #fff; z-index: 1; box-shadow: 0 1px 0 #e2e8f0; }
+.compare-table th:first-child { text-align: left; }
+.compare-table td { padding: 6px 4px; text-align: right; border-bottom: 1px solid #f8fafc; }
+.compare-table td:first-child { text-align: left; color: #64748b; }
+.compare-table tr:last-child td { border-bottom: none; }
+.diff-up   { color: #ef4444; font-weight: 600; }
+.diff-down { color: #22c55e; font-weight: 600; }
+.no-data   { color: #cbd5e1; }
+
+/* ── Input form ── */
+.input-ym { width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 1rem; margin-bottom: 16px; }
+.svc-block { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px #0001; }
+.svc-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; }
+.form-row  { display: flex; gap: 10px; }
+.form-group { flex: 1; }
+.form-group label { font-size: 0.72rem; color: #64748b; display: block; margin-bottom: 4px; }
+.form-group input { width: 100%; padding: 9px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.95rem; }
+.form-group input:focus { outline: none; border-color: #3b82f6; }
+.btn-save { width: 100%; padding: 14px; background: #3b82f6; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 12px; }
+.btn-save:active { background: #2563eb; }
+
+/* ── History ── */
+.hist-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.hist-tab { padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; font-size: 0.8rem; cursor: pointer; color: #64748b; }
+.hist-tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.history-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px #0001; }
+.history-table th { background: #f8fafc; font-size: 0.72rem; color: #64748b; padding: 10px 8px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+.history-table th:nth-child(3), .history-table th:nth-child(4) { text-align: right; }
+.history-table td { padding: 9px 8px; font-size: 0.82rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.history-table td:nth-child(3), .history-table td:nth-child(4) { text-align: right; }
+.history-table td:nth-child(5) { text-align: left; }
+.history-table tr:last-child td { border-bottom: none; }
+.history-table .empty { text-align: center; color: #94a3b8; padding: 24px; }
+.history-table .memo-cell { color: #64748b; font-size: 0.75rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editing-row td { background: #eff6ff; }
+.editing-row input { width: 100%; padding: 5px 7px; border: 1px solid #93c5fd; border-radius: 6px; font-size: 0.82rem; }
+
+.btn-sm { padding: 4px 10px; border-radius: 6px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.75rem; cursor: pointer; color: #374151; }
+.btn-sm+.btn-sm { margin-left: 4px; }
+.btn-sm.btn-primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.btn-sm.btn-danger  { color: #ef4444; border-color: #fca5a5; }
+
+/* ── Settings modal ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: #0008; align-items: flex-end; justify-content: center; z-index: 200; }
+.modal-sheet { background: #fff; border-radius: 20px 20px 0 0; padding: 20px 16px 36px; width: 100%; max-width: 640px; }
+.modal-title { font-size: 1rem; font-weight: 700; margin-bottom: 14px; }
+.modal-sheet textarea { width: 100%; height: 140px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.8rem; font-family: monospace; resize: vertical; }
+.modal-actions { display: flex; gap: 8px; margin-top: 12px; }
+.btn-modal { flex: 1; padding: 11px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem; cursor: pointer; background: #fff; }
+.btn-modal.primary  { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.btn-modal.danger   { color: #ef4444; }
+.btn-modal.sign-out { color: #64748b; }
+
+/* ── Setup screen ── */
+#setupScreen .setup-card { background: #fff; border-radius: 16px; padding: 24px; width: 90%; max-width: 400px; box-shadow: 0 4px 16px #0002; }
+#setupScreen h2 { font-size: 1.1rem; margin-bottom: 8px; }
+#setupScreen p  { font-size: 0.82rem; color: #64748b; margin-bottom: 14px; }
+#setupConfigInput { width: 100%; height: 120px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.78rem; font-family: monospace; resize: none; }
+.btn-setup { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 8px; font-size: 0.95rem; cursor: pointer; }
+.btn-setup.primary   { background: #3b82f6; color: #fff; }
+.btn-setup.secondary { background: #64748b; color: #fff; }
+
+#toast {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(10px);
+  background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 20px;
+  font-size: 0.85rem; opacity: 0; transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none; z-index: 300; white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- Setup -->
+<div id="setupScreen">
+  <div class="setup-card">
+    <h2>🔧 Firebase設定</h2>
+    <p>FirebaseプロジェクトのconfigをJSON形式で貼り付けてください。</p>
+    <textarea id="setupConfigInput" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}'></textarea>
+    <button class="btn-setup primary"   onclick="_setupFirebase()">設定して開始</button>
+    <button class="btn-setup secondary" onclick="_startSampleMode()">サンプルデータで試す</button>
+  </div>
+</div>
+
+<!-- Auth -->
+<div id="authArea">
+  <h2>光熱費ダッシュボード</h2>
+  <button class="btn-google" onclick="_signIn()">
+    <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+    Googleでログイン
+  </button>
+  <button class="btn-setup secondary" style="width:auto;padding:10px 24px" onclick="_startSampleMode()">サンプルデータで試す</button>
+</div>
+
+<!-- App -->
+<div id="app">
+  <header class="app-header">
+    <h1>💡 光熱費ダッシュボード<span class="sample-badge" id="sampleBadge" style="display:none">サンプル</span></h1>
+    <div class="header-right">
+      <span class="user-name" id="userName"></span>
+      <button class="btn-icon" onclick="_openSettings()">⚙️</button>
+    </div>
+  </header>
+  <div class="fy-bar" id="fyBar" style="display:none">
+    <div class="period-nav">
+      <button class="period-nav-btn" onclick="_stepFY(-1)">◀</button>
+      <select id="fySelect" onchange="_onFYChange(this.value)" class="period-nav-input"></select>
+      <button class="period-nav-btn" onclick="_stepFY(+1)">▶</button>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="tab-pane" id="tab-dashboard">
+    <div class="summary-grid" id="summaryCards"></div>
+    <div id="service-electricity" class="service-section"></div>
+    <div id="service-gas"         class="service-section"></div>
+    <div id="service-water"       class="service-section"></div>
+  </div>
+
+  <!-- Input -->
+  <div class="tab-pane" id="tab-input" style="display:none">
+    <div class="period-nav" style="margin-bottom:16px;">
+      <button class="period-nav-btn" onclick="_stepMonth(-1)">◀</button>
+      <input type="month" id="inputYearMonth" onchange="_onYearMonthChange()" class="period-nav-input">
+      <button class="period-nav-btn" onclick="_stepMonth(+1)">▶</button>
+    </div>
+    <div class="svc-block">
+      <div class="svc-title">⚡ 電気（auでんき）</div>
+      <div class="form-row">
+        <div class="form-group"><label>請求金額（円）</label><input type="number" id="elecAmount" placeholder="8500"></div>
+        <div class="form-group"><label>使用量（kWh）</label><input type="number" id="elecKwh" placeholder="320"></div>
+      </div>
+      <div class="form-group" style="margin-top:8px"><label>メモ</label><textarea id="elecMemo" rows="2" placeholder="契約名・備考など"></textarea></div>
+    </div>
+    <div class="svc-block">
+      <div class="svc-title">🔥 ガス（東京ガス）</div>
+      <div class="form-row">
+        <div class="form-group"><label>請求金額（円）</label><input type="number" id="gasAmount" placeholder="4200"></div>
+        <div class="form-group"><label>使用量（m³）</label><input type="number" id="gasM3" placeholder="18"></div>
+      </div>
+      <div class="form-group" style="margin-top:8px"><label>メモ</label><textarea id="gasMemo" rows="2" placeholder="契約名・備考など"></textarea></div>
+    </div>
+    <div class="svc-block">
+      <div class="svc-title">💧 水道（東京都水道局）</div>
+      <div class="form-row">
+        <div class="form-group"><label>請求金額（円）</label><input type="number" id="waterAmount" placeholder="3800"></div>
+        <div class="form-group"><label>使用量（m³）</label><input type="number" id="waterM3" placeholder="20"></div>
+      </div>
+      <div class="form-group" style="margin-top:8px"><label>メモ</label><textarea id="waterMemo" rows="2" placeholder="契約名・備考など"></textarea></div>
+    </div>
+    <div class="svc-block">
+      <div class="svc-title">📦 その他（灯油など）</div>
+      <div class="form-row">
+        <div class="form-group"><label>金額（円）</label><input type="number" id="otherAmount" placeholder="3000"></div>
+        <div class="form-group"><label>内容</label><input type="text" id="otherLabel" placeholder="例: 灯油20L"></div>
+      </div>
+      <div class="form-group" style="margin-top:8px"><label>メモ</label><textarea id="otherMemo" rows="2" placeholder="備考など"></textarea></div>
+    </div>
+    <button class="btn-save" onclick="_saveInput()">保存</button>
+  </div>
+
+  <!-- Compare -->
+  <div class="tab-pane" id="tab-compare" style="display:none">
+    <div class="chart-section">
+      <div class="chart-title">月間 金額比較 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
+      <div class="chart-wrap" style="height:220px"><canvas id="chartMonthly"></canvas></div>
+    </div>
+    <div class="chart-section">
+      <div class="chart-title">年間 金額推移 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
+      <div class="chart-wrap" style="height:220px"><canvas id="chartAnnual"></canvas></div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="tab-pane" id="tab-history" style="display:none">
+    <div class="hist-tabs">
+      <button class="hist-tab active" data-type="all"         onclick="_switchHistoryType('all')">すべて</button>
+      <button class="hist-tab"        data-type="electricity" onclick="_switchHistoryType('electricity')">⚡ 電気</button>
+      <button class="hist-tab"        data-type="gas"         onclick="_switchHistoryType('gas')">🔥 ガス</button>
+      <button class="hist-tab"        data-type="water"       onclick="_switchHistoryType('water')">💧 水道</button>
+      <button class="hist-tab"        data-type="others"      onclick="_switchHistoryType('others')">📦 その他</button>
+    </div>
+    <div class="hist-cards" id="historyCards"></div>
+  </div>
+</div>
+
+<nav class="tab-bar">
+  <button class="tab-btn active" data-tab="dashboard" onclick="_switchTab('dashboard')"><span class="ti">📊</span>ダッシュボード</button>
+  <button class="tab-btn"        data-tab="compare"   onclick="_switchTab('compare')">  <span class="ti">📈</span>比較</button>
+  <button class="tab-btn"        data-tab="input"     onclick="_switchTab('input')">    <span class="ti">✏️</span>入力</button>
+  <button class="tab-btn"        data-tab="history"   onclick="_switchTab('history')">  <span class="ti">📋</span>履歴</button>
+</nav>
+
+<div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)_closeSettings()">
+  <div class="modal-sheet">
+    <div class="modal-title">⚙️ 設定</div>
+    <textarea id="configInput" placeholder="Firebase config JSON"></textarea>
+    <div class="modal-actions">
+      <button class="btn-modal primary"  onclick="_saveSettings()">保存</button>
+      <button class="btn-modal danger"   onclick="_clearSettings()">設定削除</button>
+      <button class="btn-modal sign-out" onclick="_signOut();_closeSettings()">ログアウト</button>
+    </div>
+    <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
+      <div style="font-size:0.82rem;font-weight:600;color:#475569;margin-bottom:10px;">データ入出力</div>
+      <div class="modal-actions">
+        <button class="btn-modal" onclick="_exportCSV()">📥 CSVエクスポート</button>
+        <button class="btn-modal" onclick="_importCSVClick()">📤 CSVインポート</button>
+      </div>
+      <input type="file" id="csvFileInput" accept=".csv" style="display:none" onchange="_importCSV(this)">
+      <div style="font-size:0.72rem;color:#94a3b8;margin-top:8px;">インポートは既存データとマージ（同年月・同種別は上書き）</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────
+const CONFIG_KEY = 'firebase-config-v1';
+const DOC_PATH   = 'shared/utilities-data';
+
+function _loadConfig() {
+  try { const s = localStorage.getItem(CONFIG_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function _parseFirebaseConfig(text) {
+  if (!text?.trim()) return null;
+  try { return JSON.parse(text.trim()); } catch {}
+  try {
+    const s = text.replace(/\/\/.*$/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
+    const m = s.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    return JSON.parse(m[0].replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":').replace(/'/g,'"'));
+  } catch {}
+  return null;
+}
+
+// ── State ─────────────────────────────────────────────────────────
+let isSampleMode = false;
+let remoteData   = { electricity: [], gas: [], water: [], others: [] };
+let _lastWriteAt = 0;
+let currentTab   = 'dashboard';
+let historyType  = 'all';
+let editingKey   = null;
+
+let selectedFY = null; // 選択中の年度（null=最新年度）
+// サービス別の表示メトリクス状態
+const metricState = { electricity: 'amount', gas: 'amount', water: 'amount' };
+// Chart.js インスタンス管理
+const charts = {};
+
+// Firebase handles
+let _fbSignIn  = () => {};
+let _fbSignOut = () => {};
+let _fbSave    = async () => {};
+
+// ── Service config ────────────────────────────────────────────────
+const SERVICES = [
+  { key: 'electricity', label: '⚡ 電気', color: '#f59e0b', colorPrev: '#fcd34d', unit: 'kWh', unitKey: 'kwh', amountFmt: v => '¥'+v.toLocaleString(), usageFmt: v => v+' kWh' },
+  { key: 'gas',         label: '🔥 ガス', color: '#ef4444', colorPrev: '#fca5a5', unit: 'm³',  unitKey: 'm3',  amountFmt: v => '¥'+v.toLocaleString(), usageFmt: v => v+' m³'  },
+  { key: 'water',       label: '💧 水道', color: '#3b82f6', colorPrev: '#93c5fd', unit: 'm³',  unitKey: 'm3',  amountFmt: v => '¥'+v.toLocaleString(), usageFmt: v => v+' m³'  },
+];
+// その他はSERVICESとは別管理（金額・ラベルのみ）
+// remoteData.others = [{year, month, amount, label, memo}]
+function _unitLabel(metric, svc) {
+  if (metric==='amount') return '';
+  if (metric==='usage')  return '('+svc.unit+')';
+  return '(円/'+svc.unit+')';
+}
+
+// ── Sample data ───────────────────────────────────────────────────
+function _generateSampleData() {
+  return {
+    others: [
+  {year:2022,month:12,amount:5600,label:'灯油20L×2缶',memo:'シーズン初回購入'},
+  {year:2023,month:1,amount:2800,label:'灯油20L',memo:''},
+  {year:2023,month:2,amount:2800,label:'灯油20L',memo:''},
+  {year:2023,month:12,amount:5600,label:'灯油20L×2缶',memo:'シーズン初回購入'},
+  {year:2024,month:1,amount:2900,label:'灯油20L',memo:''},
+  {year:2024,month:2,amount:2900,label:'灯油20L',memo:''},
+  {year:2024,month:12,amount:5800,label:'灯油20L×2缶',memo:'シーズン初回購入'},
+  {year:2025,month:1,amount:2900,label:'灯油20L',memo:''}
+  ],
+    electricity: [
+  {year:2022,month:4,amount:16060,kwh:567,memo:'auでんき'},
+  {year:2022,month:5,amount:10050,kwh:365,memo:'auでんき'},
+  {year:2022,month:6,amount:5800,kwh:198,memo:'auでんき'},
+  {year:2022,month:7,amount:5000,kwh:150,memo:'auでんき'},
+  {year:2022,month:8,amount:5000,kwh:166,memo:'auでんき'},
+  {year:2022,month:9,amount:10770,kwh:375,memo:'auでんき'},
+  {year:2022,month:10,amount:15860,kwh:576,memo:'auでんき'},
+  {year:2022,month:11,amount:19030,kwh:687,memo:'auでんき'},
+  {year:2022,month:12,amount:20300,kwh:721,memo:'auでんき'},
+  {year:2023,month:1,amount:20670,kwh:737,memo:'auでんき'},
+  {year:2023,month:2,amount:21300,kwh:753,memo:'auでんき'},
+  {year:2023,month:3,amount:20050,kwh:710,memo:'auでんき'},
+  {year:2023,month:4,amount:16420,kwh:593,memo:'auでんき'},
+  {year:2023,month:5,amount:10850,kwh:395,memo:'auでんき'},
+  {year:2023,month:6,amount:5220,kwh:183,memo:'auでんき'},
+  {year:2023,month:7,amount:5000,kwh:150,memo:'東京電力燃料費調整額高騰'},
+  {year:2023,month:8,amount:5620,kwh:200,memo:'東京電力燃料費調整額高騰'},
+  {year:2023,month:9,amount:10490,kwh:383,memo:'東京電力燃料費調整額高騰'},
+  {year:2023,month:10,amount:16450,kwh:590,memo:'auでんき'},
+  {year:2023,month:11,amount:19210,kwh:691,memo:'auでんき'},
+  {year:2023,month:12,amount:20350,kwh:733,memo:'auでんき'},
+  {year:2024,month:1,amount:21100,kwh:754,memo:'auでんき'},
+  {year:2024,month:2,amount:21380,kwh:767,memo:'auでんき'},
+  {year:2024,month:3,amount:19450,kwh:699,memo:'auでんき'},
+  {year:2024,month:4,amount:16110,kwh:565,memo:'auでんき'},
+  {year:2024,month:5,amount:10240,kwh:374,memo:'auでんき'},
+  {year:2024,month:6,amount:5000,kwh:164,memo:'auでんき'},
+  {year:2024,month:7,amount:5000,kwh:150,memo:'auでんき'},
+  {year:2024,month:8,amount:5620,kwh:192,memo:'auでんき'},
+  {year:2024,month:9,amount:10720,kwh:389,memo:'auでんき'},
+  {year:2024,month:10,amount:16280,kwh:588,memo:'auでんき'},
+  {year:2024,month:11,amount:19630,kwh:703,memo:'auでんき'},
+  {year:2024,month:12,amount:20360,kwh:722,memo:'auでんき'},
+  {year:2025,month:1,amount:20880,kwh:735,memo:'auでんき'},
+  {year:2025,month:2,amount:20570,kwh:732,memo:'auでんき'},
+  {year:2025,month:3,amount:19200,kwh:688,memo:'auでんき'}
+  ],
+    gas: [
+  {year:2022,month:4,amount:7000,m3:40,memo:'東京ガス'},
+  {year:2022,month:5,amount:3950,m3:23,memo:'東京ガス'},
+  {year:2022,month:6,amount:2360,m3:13,memo:'東京ガス'},
+  {year:2022,month:7,amount:1800,m3:10,memo:'東京ガス'},
+  {year:2022,month:8,amount:1930,m3:13,memo:'東京ガス'},
+  {year:2022,month:9,amount:4430,m3:24,memo:'東京ガス'},
+  {year:2022,month:10,amount:7240,m3:45,memo:'東京ガス'},
+  {year:2022,month:11,amount:9950,m3:61,memo:'東京ガス'},
+  {year:2022,month:12,amount:11410,m3:71,memo:'東京ガス'},
+  {year:2023,month:1,amount:12530,m3:74,memo:'東京ガス'},
+  {year:2023,month:2,amount:11950,m3:72,memo:'東京ガス'},
+  {year:2023,month:3,amount:9460,m3:59,memo:'東京ガス'},
+  {year:2023,month:4,amount:7040,m3:42,memo:'東京ガス 原料費調整あり'},
+  {year:2023,month:5,amount:4310,m3:26,memo:'東京ガス 原料費調整あり'},
+  {year:2023,month:6,amount:2020,m3:11,memo:'東京ガス 原料費調整あり'},
+  {year:2023,month:7,amount:1800,m3:10,memo:'東京ガス 原料費調整あり'},
+  {year:2023,month:8,amount:2580,m3:16,memo:'東京ガス'},
+  {year:2023,month:9,amount:3920,m3:21,memo:'東京ガス'},
+  {year:2023,month:10,amount:6770,m3:41,memo:'東京ガス'},
+  {year:2023,month:11,amount:9780,m3:57,memo:'東京ガス'},
+  {year:2023,month:12,amount:11950,m3:72,memo:'東京ガス'},
+  {year:2024,month:1,amount:12710,m3:78,memo:'東京ガス'},
+  {year:2024,month:2,amount:11430,m3:67,memo:'東京ガス'},
+  {year:2024,month:3,amount:10060,m3:58,memo:'東京ガス'},
+  {year:2024,month:4,amount:7070,m3:42,memo:'東京ガス'},
+  {year:2024,month:5,amount:3970,m3:25,memo:'東京ガス'},
+  {year:2024,month:6,amount:2620,m3:15,memo:'東京ガス'},
+  {year:2024,month:7,amount:1800,m3:10,memo:'東京ガス'},
+  {year:2024,month:8,amount:2010,m3:13,memo:'東京ガス'},
+  {year:2024,month:9,amount:4130,m3:24,memo:'東京ガス'},
+  {year:2024,month:10,amount:6880,m3:42,memo:'東京ガス'},
+  {year:2024,month:11,amount:9590,m3:57,memo:'東京ガス'},
+  {year:2024,month:12,amount:11520,m3:68,memo:'東京ガス'},
+  {year:2025,month:1,amount:12600,m3:78,memo:'東京ガス'},
+  {year:2025,month:2,amount:11650,m3:68,memo:'東京ガス'},
+  {year:2025,month:3,amount:9900,m3:59,memo:'東京ガス'}
+  ],
+    water: [
+  {year:2022,month:4,amount:4980,m3:22,memo:''},
+  {year:2022,month:6,amount:4590,m3:19,memo:''},
+  {year:2022,month:8,amount:4500,m3:20,memo:''},
+  {year:2022,month:10,amount:5130,m3:21,memo:''},
+  {year:2022,month:12,amount:4980,m3:20,memo:''},
+  {year:2023,month:2,amount:5030,m3:20,memo:''},
+  {year:2023,month:4,amount:4460,m3:20,memo:''},
+  {year:2023,month:6,amount:5120,m3:22,memo:''},
+  {year:2023,month:8,amount:5060,m3:23,memo:''},
+  {year:2023,month:10,amount:5100,m3:22,memo:''},
+  {year:2023,month:12,amount:4690,m3:21,memo:''},
+  {year:2024,month:2,amount:4800,m3:21,memo:''},
+  {year:2024,month:4,amount:5020,m3:22,memo:''},
+  {year:2024,month:6,amount:4730,m3:19,memo:''},
+  {year:2024,month:8,amount:5110,m3:23,memo:''},
+  {year:2024,month:10,amount:5030,m3:22,memo:''},
+  {year:2024,month:12,amount:5090,m3:23,memo:''},
+  {year:2025,month:2,amount:4460,m3:19,memo:''}
+  ]
+  };
+}
+
+
+// ── Utilities ─────────────────────────────────────────────────────
+function _todayJST() { return new Date(Date.now() + 9*3600*1000).toISOString().slice(0,7); }
+function _mk(year, month) { return `${year}-${String(month).padStart(2,'0')}`; }
+function _last12Months() {
+  const now = new Date(Date.now() + 9*3600*1000);
+  return Array.from({length:12}, (_,i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (11-i), 1);
+    return _mk(d.getFullYear(), d.getMonth()+1);
+  });
+}
+// 年度(4月始まり)の月キー配列を返す
+function _fiscalMonths(fy) {
+  return Array.from({length:12}, (_,i) => {
+    const month = ((i + 3) % 12) + 1;
+    const year  = i < 9 ? fy : fy + 1;
+    return _mk(year, month);
+  });
+}
+// データ内の年度一覧（降順）
+function _availableFiscalYears() {
+  const fys = new Set();
+  ['electricity','gas','water'].forEach(t => {
+    remoteData[t].forEach(r => {
+      fys.add(r.month >= 4 ? r.year : r.year - 1);
+    });
+  });
+  return [...fys].sort((a,b) => b - a);
+}
+function _get(type, year, month) {
+  return remoteData[type].find(r => r.year===year && r.month===month) || null;
+}
+function _upsert(type, rec) {
+  const arr = remoteData[type];
+  const i = arr.findIndex(r => r.year===rec.year && r.month===rec.month);
+  if (i >= 0) arr[i] = rec; else arr.push(rec);
+  arr.sort((a,b) => a.year!==b.year ? a.year-b.year : a.month-b.month);
+}
+function _del(type, year, month) {
+  remoteData[type] = remoteData[type].filter(r => !(r.year===year && r.month===month));
+}
+function _upsertOther(rec) {
+  const arr = remoteData.others;
+  const i = arr.findIndex(r => r.year===rec.year && r.month===rec.month && r.label===rec.label);
+  if (i >= 0) arr[i] = rec; else arr.push(rec);
+  arr.sort((a,b) => a.year!==b.year ? a.year-b.year : a.month-b.month);
+}
+function _delOther(year, month, label) {
+  remoteData.others = remoteData.others.filter(r => !(r.year===year && r.month===month && r.label===label));
+}
+function _getOthers(year, month) {
+  return remoteData.others.filter(r => r.year===year && r.month===month);
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+function _toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Navigation ────────────────────────────────────────────────────
+function _switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('.tab-pane').forEach(p => p.style.display = p.id==='tab-'+tab ? 'block' : 'none');
+  // 年度バーはダッシュボード・比較タブで表示
+  const fyBar = document.getElementById('fyBar');
+  if (fyBar) fyBar.style.display = (tab==='dashboard'||tab==='compare') ? 'block' : 'none';
+  // display:block後にレンダリング（iframe環境でのgetElementById null対策）
+  setTimeout(() => {
+    if (tab==='dashboard') _renderDashboard();
+    if (tab==='compare')   _renderCompare();
+    if (tab==='input')     _renderInput();
+    if (tab==='history')   _renderHistory();
+  }, 0);
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────
+function _renderDashboard() {
+  const fys = _availableFiscalYears();
+  if (selectedFY === null && fys.length > 0) selectedFY = fys[0];
+  const fy = selectedFY || new Date().getFullYear();
+
+  // 固定バーのセレクタ更新
+  const fyBar = document.getElementById('fyBar');
+  const fySelect = document.getElementById('fySelect');
+  if (fyBar && fySelect) {
+    fyBar.style.display = 'block';
+    fySelect.innerHTML = fys.map(y =>
+      `<option value="${y}" ${y===fy?'selected':''}>${y}年度（${y}/4〜${y+1}/3）</option>`
+    ).join('');
+  }
+
+  _renderSummaryCards(fy);
+  SERVICES.forEach(svc => _renderServiceSection(svc, fy));
+}
+function _stepFY(dir) {
+  const fys = _availableFiscalYears();
+  const idx = fys.indexOf(selectedFY);
+  const next = fys[idx - dir]; // 降順配列なので符号を反転
+  if (next !== undefined) { selectedFY = next; _onFYChange(next); const s=document.getElementById('fySelect'); if(s) s.value=next; }
+}
+function _stepMonth(dir) {
+  const el = document.getElementById('inputYearMonth');
+  if (!el || !el.value) return;
+  const [y,m] = el.value.split('-');
+  const d = new Date(+y, +m-1+dir, 1);
+  el.value = _mk(d.getFullYear(), d.getMonth()+1);
+  _onYearMonthChange();
+}
+function _onFYChange(val) {
+  selectedFY = parseInt(val);
+  if (currentTab === 'dashboard') {
+    _renderSummaryCards(selectedFY);
+    SERVICES.forEach(svc => _renderServiceSection(svc, selectedFY));
+  }
+  if (currentTab === 'compare') _renderCompare();
+}
+
+function _renderSummaryCards(fy) {
+  const months = _fiscalMonths(fy);
+  let html = '';
+
+  SERVICES.forEach(svc => {
+    // 年間合計
+    let totalAmount = 0, totalUsage = 0, usageCount = 0;
+    months.forEach(m => {
+      const [y,mo] = m.split('-');
+      const r = _get(svc.key, +y, +mo);
+      if (!r) return;
+      totalAmount += r.amount || 0;
+      if (r[svc.unitKey] != null) { totalUsage += r[svc.unitKey]; usageCount++; }
+    });
+    const avgUnit = (totalAmount > 0 && totalUsage > 0)
+      ? (totalAmount / totalUsage).toFixed(1) : null;
+
+    const amountStr = totalAmount > 0 ? '¥'+totalAmount.toLocaleString() : '—';
+    const usageStr  = usageCount  > 0 ? totalUsage.toLocaleString()+' '+svc.unit : '—';
+    const unitStr   = avgUnit     ? '平均 '+avgUnit+'円/'+svc.unit : '';
+
+    html += `<div class="summary-card ${svc.key}">
+      <div class="s-label">${svc.label} ${fy}年度</div>
+      <div class="s-amount" style="color:${svc.color}">${amountStr}</div>
+      <div class="s-sub">${usageStr}</div>
+      <div class="s-sub">${unitStr}</div>
+    </div>`;
+  });
+
+  // 年間総合計
+  let grandTotal = 0;
+  months.forEach(m => {
+    const [y,mo] = m.split('-');
+    SERVICES.forEach(s => { grandTotal += _get(s.key,+y,+mo)?.amount||0; });
+    grandTotal += _getOthers(+y,+mo).reduce((s,r)=>s+(r.amount||0),0);
+  });
+  html += `<div class="summary-card total" style="grid-column:1/-1;">
+    <div class="s-label">${fy}年度 合計</div>
+    <div class="s-amount">¥${grandTotal.toLocaleString()}</div>
+  </div>`;
+
+  const sc = document.getElementById('summaryCards'); if (!sc) { console.error('summaryCards not found'); return; } sc.innerHTML = html;
+}
+
+function _renderServiceSection(svc, fy) {
+  const container = document.getElementById('service-' + svc.key);
+  if (!container) { console.error('container not found:', 'service-' + svc.key); return; }
+  const metric = metricState[svc.key]; // 'amount' | 'usage' | 'unit'
+  const months = _fiscalMonths(fy);
+  const labels = months.map(m => { const [y,mo]=m.split('-'); return `${y.slice(2)}/${mo}`; }); // 4月始まり
+
+  // 今年・前年データ取得
+  function _calcVal(r) {
+    if (!r) return null;
+    if (metric==='amount') return r.amount;
+    if (metric==='usage')  return r[svc.unitKey] ?? null;
+    // unit price
+    if (r.amount != null && r[svc.unitKey] != null && r[svc.unitKey] > 0)
+      return parseFloat((r.amount / r[svc.unitKey]).toFixed(1));
+    return null;
+  }
+  const thisYear = months.map(m => { const [y,mo]=m.split('-'); return _calcVal(_get(svc.key,+y,+mo)); });
+  const prevYear = months.map(m => { const [y,mo]=m.split('-'); return _calcVal(_get(svc.key,+y-1,+mo)); });
+
+  // 年度内の最新データ月
+  const nowKey2 = _mk(new Date(Date.now()+9*3600*1000).getFullYear(), new Date(Date.now()+9*3600*1000).getMonth()+1);
+  const validMs = months.filter(m => m <= nowKey2);
+  const lastM   = validMs.length > 0 ? validMs[validMs.length-1] : months[months.length-1];
+  const [ly,lmo] = lastM.split('-');
+  const latestRec = _get(svc.key, +ly, +lmo);
+  function _fmtVal(r) {
+    if (!r) return '—';
+    if (metric==='amount') return r.amount != null ? '¥'+r.amount.toLocaleString() : '—';
+    if (metric==='usage')  return r[svc.unitKey] != null ? r[svc.unitKey]+' '+svc.unit : '—';
+    if (r.amount != null && r[svc.unitKey] != null && r[svc.unitKey] > 0)
+      return (r.amount/r[svc.unitKey]).toFixed(1)+'円/'+svc.unit;
+    return '—';
+  }
+  const latestStr = _fmtVal(latestRec);
+
+  // 比較表HTML（直近6ヶ月）
+  const tableMonths = [...months].reverse();
+  let tableRows = '';
+  tableMonths.forEach(m => {
+    const [y,mo] = m.split('-');
+    const cur  = _get(svc.key, +y,   +mo);
+    const prev = _get(svc.key, +y-1, +mo);
+    const curVal  = _calcVal(cur);
+    const prevVal = _calcVal(prev);
+    const diff = (curVal!=null && prevVal!=null) ? Math.round((curVal - prevVal)*10)/10 : null;
+    const rate = (curVal!=null && prevVal!=null && prevVal!==0) ? Math.round((curVal/prevVal-1)*1000)/10 : null;
+
+    function _fmtCell(v) {
+      if (v == null) return '<span class="no-data">—</span>';
+      if (metric==='amount') return '¥'+v.toLocaleString();
+      if (metric==='unit')   return v.toFixed(1);
+      return String(v);
+    }
+    const curStr  = _fmtCell(curVal);
+    const prevStr = _fmtCell(prevVal);
+    let diffStr = '<span class="no-data">—</span>';
+    let rateCls = '';
+    if (diff!=null) {
+      rateCls = diff>0 ? 'diff-up' : diff<0 ? 'diff-down' : '';
+      const sign = diff>=0 ? '+' : '';
+      let dVal;
+      if (metric==='amount') dVal = sign+'¥'+Math.abs(diff).toLocaleString();
+      else if (metric==='unit') dVal = sign+Math.abs(diff).toFixed(1);
+      else dVal = sign+Math.abs(diff);
+      const rVal = rate!=null ? ` (${rate>0?'+':''}${rate}%)` : '';
+      diffStr = `<span class="${rateCls}">${dVal}${rVal}</span>`;
+    }
+    tableRows += `<tr>
+      <td>${y.slice(2)}/${mo}</td>
+      <td>${curStr}</td>
+      <td>${prevStr}</td>
+      <td>${diffStr}</td>
+    </tr>`;
+  });
+
+  container.innerHTML = `
+    <div class="service-header">
+      <span class="service-name">${svc.label}</span>
+      <span class="service-amount" id="svc-avg-${svc.key}"></span>
+    </div>
+    <div class="metric-tabs">
+      <button class="metric-tab ${metric==='amount'?'active':''}" onclick="_setMetric('${svc.key}','amount')">金額</button>
+      <button class="metric-tab ${metric==='usage' ?'active':''}" onclick="_setMetric('${svc.key}','usage')">使用量</button>
+      <button class="metric-tab ${metric==='unit'  ?'active':''}" onclick="_setMetric('${svc.key}','unit')">単価</button>
+    </div>
+    <div class="chart-wrap"><canvas id="chart-${svc.key}"></canvas></div>
+    <div class="compare-table-wrap" style="max-height:240px;overflow-y:auto;position:relative;">
+      <table class="compare-table">
+        <thead><tr><th>年月</th><th>今年 ${_unitLabel(metric,svc)}</th><th>前年 ${_unitLabel(metric,svc)}</th><th>差分</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>`;
+
+  // Chart描画
+  const ctx = document.getElementById('chart-'+svc.key).getContext('2d');
+  if (charts[svc.key]) charts[svc.key].destroy();
+
+  const yAxisFmt = metric==='amount' ? v => '¥'+v.toLocaleString()
+    : metric==='usage' ? v => v+' '+svc.unit
+    : v => (+v).toFixed(1)+'円/'+svc.unit;
+
+  // 年間平均（nullを除いた平均）
+  const validVals = thisYear.filter(v => v !== null);
+  const avg = validVals.length > 0 ? parseFloat((validVals.reduce((s,v)=>s+v,0)/validVals.length).toFixed(1)) : null;
+  const avgData = Array(12).fill(avg); // nullの月も含め常に12要素（avgがnullなら線は描画されない）
+
+
+  // ヘッダーの平均値を更新（avg計算後に実行）
+  const avgEl = document.getElementById('svc-avg-'+svc.key);
+  if (avgEl) {
+    if (avg !== null) {
+      if (metric==='amount') avgEl.textContent = '平均¥'+Math.round(avg).toLocaleString();
+      else if (metric==='usage') avgEl.textContent = '平均'+avg+' '+svc.unit;
+      else avgEl.textContent = '平均'+avg.toFixed(1)+'円/'+svc.unit;
+    } else {
+      avgEl.textContent = latestStr;
+    }
+  }
+
+  charts[svc.key] = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: '今年',
+          data: thisYear,
+          backgroundColor: svc.color+'cc',
+          borderColor: svc.color,
+          borderWidth: 1,
+          borderRadius: 3,
+          order: 3,
+        },
+        {
+          type: 'line',
+          label: '前年',
+          data: prevYear,
+          borderColor: svc.colorPrev,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [4,3],
+          pointRadius: 3,
+          pointBackgroundColor: svc.colorPrev,
+          tension: 0.3,
+          order: 2,
+        },
+        {
+          type: 'line',
+          label: '年間平均',
+          data: avgData,
+          borderColor: '#94a3b8',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          tension: 0,
+          spanGaps: true,
+          order: 1,
+          segment: { borderDash: () => [4,4] },
+        },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { ticks: { callback: yAxisFmt, font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function _setMetric(key, metric) {
+  metricState[key] = metric;
+  _renderServiceSection(SERVICES.find(s => s.key===key), selectedFY);
+}
+
+// ── Input ─────────────────────────────────────────────────────────
+function _renderInput() {
+  const ym = _todayJST();
+  document.getElementById('inputYearMonth').value = ym;
+  const [y,m] = ym.split('-');
+  _loadForm(+y, +m);
+}
+function _onYearMonthChange() {
+  const v = document.getElementById('inputYearMonth').value;
+  if (v) { const [y,m]=v.split('-'); _loadForm(+y,+m); }
+}
+function _loadForm(year, month) {
+  const e=_get('electricity',year,month)||{}, g=_get('gas',year,month)||{}, w=_get('water',year,month)||{};
+  document.getElementById('elecAmount').value  = e.amount ?? '';
+  document.getElementById('elecKwh').value     = e.kwh    ?? '';
+  document.getElementById('gasAmount').value   = g.amount ?? '';
+  document.getElementById('gasM3').value       = g.m3     ?? '';
+  document.getElementById('waterAmount').value = w.amount ?? '';
+  document.getElementById('waterM3').value     = w.m3     ?? '';
+  // メモ：サービスごとに個別表示
+  document.getElementById('elecMemo').value  = e.memo  || '';
+  document.getElementById('gasMemo').value   = g.memo  || '';
+  document.getElementById('waterMemo').value = w.memo  || '';
+  // その他
+  const others = _getOthers(year, month);
+  document.getElementById('otherAmount').value = others.length > 0 ? others[0].amount : '';
+  document.getElementById('otherLabel').value  = others.length > 0 ? others[0].label  : '';
+  document.getElementById('otherMemo').value   = others.length > 0 ? others[0].memo   : '';
+}
+async function _saveInput() {
+  if (isSampleMode) { _toast('サンプルモードでは保存できません'); return; }
+  const v = document.getElementById('inputYearMonth').value;
+  if (!v) return;
+  const [y,m]=v.split('-'), year=+y, month=+m;
+  const eA=parseFloat(document.getElementById('elecAmount').value);
+  const eK=parseFloat(document.getElementById('elecKwh').value);
+  const gA=parseFloat(document.getElementById('gasAmount').value);
+  const gM=parseFloat(document.getElementById('gasM3').value);
+  const wA=parseFloat(document.getElementById('waterAmount').value);
+  const wM=parseFloat(document.getElementById('waterM3').value);
+  const elecMemo  = document.getElementById('elecMemo').value.trim();
+  const gasMemo   = document.getElementById('gasMemo').value.trim();
+  const waterMemo = document.getElementById('waterMemo').value.trim();
+  const otherMemo = document.getElementById('otherMemo').value.trim();
+  if (!isNaN(eA)) _upsert('electricity',{year,month,amount:eA,kwh:isNaN(eK)?null:eK,memo:elecMemo});
+  if (!isNaN(gA)) _upsert('gas',        {year,month,amount:gA,m3: isNaN(gM)?null:gM,memo:gasMemo});
+  if (!isNaN(wA)) _upsert('water',      {year,month,amount:wA,m3: isNaN(wM)?null:wM,memo:waterMemo});
+  const oA = parseFloat(document.getElementById('otherAmount').value);
+  const oL = document.getElementById('otherLabel').value.trim();
+  if (!isNaN(oA) && oL) _upsertOther({year,month,amount:oA,label:oL,memo:otherMemo});
+  await _fbSave();
+  _toast('保存しました');
+}
+
+// ── Compare ──────────────────────────────────────────────────────────
+let monthlyMode = 'elec-gas'; // 'elec-gas' | 'all'
+let annualMode  = 'all';      // 'all' | 'elec-gas' | 'elec'
+const charts2 = {};           // 比較タブ用チャート
+
+function _renderCompare() {
+  // fyBarのセレクタ更新（ダッシュボードと共用）
+  const fys = _availableFiscalYears();
+  if (selectedFY === null && fys.length > 0) selectedFY = fys[0];
+  const fySelect = document.getElementById('fySelect');
+  if (fySelect) {
+    fySelect.innerHTML = fys.map(y =>
+      `<option value="${y}" ${y===selectedFY?'selected':''}>${y}年度（${y}/4〜${y+1}/3）</option>`
+    ).join('');
+  }
+  _renderMonthlyChart();
+  _renderAnnualChart();
+}
+
+function _renderMonthlyChart() {
+  const fy = selectedFY || new Date().getFullYear();
+  const months = _fiscalMonths(fy);
+  const labels = months.map(m => { const [y,mo]=m.split('-'); return `${y.slice(2)}/${mo}`; });
+
+  const getAmt = (type, m) => { const [y,mo]=m.split('-'); return _get(type,+y,+mo)?.amount??null; };
+  const getOth = m => { const [y,mo]=m.split('-'); return _getOthers(+y,+mo).reduce((s,r)=>s+(r.amount||0),0)||null; };
+
+  const datasets = [
+    { label:'⚡ 電気', data:months.map(m=>getAmt('electricity',m)), type:'bar', backgroundColor:'#f59e0bcc', borderColor:'#f59e0b', borderWidth:1, borderRadius:3, order:2 },
+    { label:'🔥 ガス', data:months.map(m=>getAmt('gas',m)),         type:'bar', backgroundColor:'#ef4444cc', borderColor:'#ef4444', borderWidth:1, borderRadius:3, order:2 },
+    { label:'💧 水道', data:months.map(m=>getAmt('water',m)),       type:'bar', backgroundColor:'#3b82f6cc', borderColor:'#3b82f6', borderWidth:1, borderRadius:3, order:2 },
+    { label:'📦 その他', data:months.map(m=>getOth(m)),             type:'bar', backgroundColor:'#8b5cf6cc', borderColor:'#8b5cf6', borderWidth:1, borderRadius:3, order:2 },
+  ];
+
+  const ctx = document.getElementById('chartMonthly');
+  if (!ctx) return;
+  if (charts2.monthly) charts2.monthly.destroy();
+  charts2.monthly = new Chart(ctx, {
+    data: { labels, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'top', labels:{ boxWidth:12, font:{size:11} } } },
+      scales:{
+        x:{ stacked:true, grid:{display:false}, ticks:{font:{size:10}} },
+        y:{ stacked:true, ticks:{ callback: v=>'¥'+v.toLocaleString(), font:{size:10} } }
+      }
+    }
+  });
+}
+
+function _renderAnnualChart() {
+  const fys = _availableFiscalYears().reverse(); // 昇順
+
+  const sumFY = (type, fy) => {
+    let t=0;
+    _fiscalMonths(fy).forEach(m=>{ const [y,mo]=m.split('-'); t+=_get(type,+y,+mo)?.amount||0; });
+    return t||null;
+  };
+  const sumOtherFY = fy => {
+    let t=0;
+    _fiscalMonths(fy).forEach(m=>{ const [y,mo]=m.split('-'); t+=_getOthers(+y,+mo).reduce((s,r)=>s+(r.amount||0),0); });
+    return t||null;
+  };
+
+  const labels = fys.map(y => y+'年度');
+  const datasets = [
+    { label:'⚡ 電気',  data:fys.map(fy=>sumFY('electricity',fy)), backgroundColor:'#f59e0bcc', borderColor:'#f59e0b', borderWidth:1, borderRadius:4 },
+    { label:'🔥 ガス',  data:fys.map(fy=>sumFY('gas',fy)),         backgroundColor:'#ef4444cc', borderColor:'#ef4444', borderWidth:1, borderRadius:4 },
+    { label:'💧 水道',  data:fys.map(fy=>sumFY('water',fy)),       backgroundColor:'#3b82f6cc', borderColor:'#3b82f6', borderWidth:1, borderRadius:4 },
+    { label:'📦 その他',data:fys.map(fy=>sumOtherFY(fy)),          backgroundColor:'#8b5cf6cc', borderColor:'#8b5cf6', borderWidth:1, borderRadius:4 },
+  ];
+
+  const ctx = document.getElementById('chartAnnual');
+  if (!ctx) return;
+  if (charts2.annual) charts2.annual.destroy();
+  charts2.annual = new Chart(ctx, {
+    type:'bar',
+    data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'top', labels:{ boxWidth:12, font:{size:11} } } },
+      scales:{
+        x:{ stacked:true, grid:{display:false} },
+        y:{ stacked:true, ticks:{ callback: v=>'¥'+v.toLocaleString(), font:{size:10} } }
+      }
+    }
+  });
+}
+
+// ── History ───────────────────────────────────────────────────────
+function _switchHistoryType(type) {
+  historyType = type;
+  document.querySelectorAll('.hist-tab').forEach(b=>b.classList.toggle('active',b.dataset.type===type));
+  _renderHistory();
+}
+
+function _renderHistory() {
+  const keys = new Set();
+  ['electricity','gas','water'].forEach(t=>remoteData[t].forEach(r=>keys.add(_mk(r.year,r.month))));
+  remoteData.others.forEach(r=>keys.add(_mk(r.year,r.month)));
+  const months = [...keys].sort().reverse();
+
+  const container = document.getElementById('historyCards');
+  if (!months.length) { container.innerHTML='<p style="text-align:center;color:#94a3b8;padding:24px">データがありません</p>'; return; }
+
+  let html = '';
+  months.forEach(mk => {
+    const [y,mo] = mk.split('-'), year=+y, month=+mo, label=`${y}/${mo}`;
+    const types = [
+      { key:'electricity', name:'⚡ 電気', unitKey:'kwh', unit:'kWh' },
+      { key:'gas',         name:'🔥 ガス', unitKey:'m3',  unit:'m³'  },
+      { key:'water',       name:'💧 水道', unitKey:'m3',  unit:'m³'  },
+    ];
+    types.forEach(t => {
+      if (historyType!=='all' && historyType!==t.key) return;
+      const r = _get(t.key, year, month);
+      if (!r) return;
+      const usageStr = r[t.unitKey]!=null ? r[t.unitKey]+' '+t.unit : '';
+      const unitStr  = (r.amount && r[t.unitKey]) ? (r.amount/r[t.unitKey]).toFixed(1)+'円/'+t.unit : '';
+      html += _histCard(t.key, label, year, month, t.name, r.amount, usageStr, unitStr, r.memo||'', t.unitKey);
+    });
+    if (historyType==='all' || historyType==='others') {
+      remoteData.others.filter(r=>r.year===year&&r.month===month).forEach(r => {
+        html += _histCardOther(label, year, month, r);
+      });
+    }
+  });
+  container.innerHTML = html || '<p style="text-align:center;color:#94a3b8;padding:24px">データがありません</p>';
+}
+
+function _histCard(type, label, year, month, typeName, amount, usage, unitPrice, memo, unitKey) {
+  const key = `${type}-${year}-${month}`;
+  if (editingKey === key) {
+    const uf = type==='electricity' ? 'kwh' : 'm3';
+    const ul = type==='electricity' ? 'kWh' : 'm³';
+    const r  = _get(type,year,month)||{};
+    return `<div class="hist-card editing">
+      <div class="hist-card-header">
+        <span class="hist-card-ym">${label}</span>
+        <span class="hist-card-type">${typeName}</span>
+      </div>
+      <div class="hist-edit-row">
+        <input type="number" id="edit-amount" value="${r.amount??''}" placeholder="金額（円）">
+        <input type="number" id="edit-unit"   value="${r[uf]??''}"   placeholder="${ul}">
+      </div>
+      <div class="hist-edit-row">
+        <textarea id="edit-memo" placeholder="メモ">${r.memo??''}</textarea>
+      </div>
+      <div class="hist-card-actions">
+        <button class="btn-sm btn-primary" onclick="_saveEdit('${type}',${year},${month},'${uf}')">保存</button>
+        <button class="btn-sm" onclick="_cancelEdit()">取消</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="hist-card">
+    <div class="hist-card-header">
+      <span class="hist-card-ym">${label}</span>
+      <span class="hist-card-type">${typeName}</span>
+    </div>
+    <div class="hist-card-values">
+      <span class="hist-card-amount" style="color:${_svcColor(type)}">¥${amount.toLocaleString()}</span>
+      ${usage ? `<span class="hist-card-usage">${usage}</span>` : ''}
+      ${unitPrice ? `<span class="hist-card-usage">${unitPrice}</span>` : ''}
+    </div>
+    ${memo ? `<div class="hist-card-memo">${memo}</div>` : ''}
+    <div class="hist-card-actions">
+      <button class="btn-sm" onclick="_startEdit('${type}',${year},${month})">編集</button>
+      <button class="btn-sm btn-danger" onclick="_deleteRecord('${type}',${year},${month})">削除</button>
+    </div>
+  </div>`;
+}
+
+function _histCardOther(label, year, month, r) {
+  const key = `others-${year}-${month}-${r.label}`;
+  if (editingKey === key) {
+    return `<div class="hist-card editing">
+      <div class="hist-card-header">
+        <span class="hist-card-ym">${label}</span>
+        <span class="hist-card-type">📦 その他</span>
+      </div>
+      <div class="hist-edit-row">
+        <input type="number" id="edit-amount" value="${r.amount??''}" placeholder="金額（円）">
+        <input type="text"   id="edit-label"  value="${r.label??''}"  placeholder="内容">
+      </div>
+      <div class="hist-edit-row">
+        <textarea id="edit-memo" placeholder="メモ">${r.memo??''}</textarea>
+      </div>
+      <div class="hist-card-actions">
+        <button class="btn-sm btn-primary" onclick="_saveEditOther(${year},${month},'${r.label.replace(/'/g,"\'")}')">保存</button>
+        <button class="btn-sm" onclick="_cancelEdit()">取消</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="hist-card">
+    <div class="hist-card-header">
+      <span class="hist-card-ym">${label}</span>
+      <span class="hist-card-type">📦 ${r.label}</span>
+    </div>
+    <div class="hist-card-values">
+      <span class="hist-card-amount" style="color:#8b5cf6">¥${r.amount.toLocaleString()}</span>
+    </div>
+    ${r.memo ? `<div class="hist-card-memo">${r.memo}</div>` : ''}
+    <div class="hist-card-actions">
+      <button class="btn-sm" onclick="_startEdit('others-${year}-${month}-${r.label.replace(/'/g,"\'")}')">編集</button>
+      <button class="btn-sm btn-danger" onclick="_deleteOther(${year},${month},'${r.label.replace(/'/g,"\'")}')">削除</button>
+    </div>
+  </div>`;
+}
+
+function _svcColor(type) {
+  return type==='electricity'?'#f59e0b':type==='gas'?'#ef4444':type==='water'?'#3b82f6':'#8b5cf6';
+}
+
+function _startEdit(key, y, m) {
+  editingKey = y !== undefined ? `${key}-${y}-${m}` : key;
+  _renderHistory();
+}
+function _cancelEdit() { editingKey=null; _renderHistory(); }
+
+async function _saveEdit(type,year,month,uf) {
+  if (isSampleMode) { _toast('サンプルモードでは保存できません'); return; }
+  const amount=parseFloat(document.getElementById('edit-amount').value);
+  const unit  =parseFloat(document.getElementById('edit-unit').value);
+  if (isNaN(amount)) { _toast('金額を入力してください'); return; }
+  const memo = (document.getElementById('edit-memo')?.value||'').trim();
+  const rec={year,month,amount,memo}; rec[uf]=isNaN(unit)?null:unit;
+  _upsert(type,rec); editingKey=null;
+  await _fbSave(); _toast('更新しました');
+}
+
+async function _saveEditOther(year,month,oldLabel) {
+  if (isSampleMode) { _toast('サンプルモードでは保存できません'); return; }
+  const amount=parseFloat(document.getElementById('edit-amount').value);
+  const label =(document.getElementById('edit-label')?.value||'').trim();
+  const memo  =(document.getElementById('edit-memo')?.value||'').trim();
+  if (isNaN(amount)||!label) { _toast('金額と内容を入力してください'); return; }
+  _delOther(year,month,oldLabel);
+  _upsertOther({year,month,amount,label,memo});
+  editingKey=null;
+  await _fbSave(); _toast('更新しました');
+}
+
+async function _deleteRecord(type,year,month) {
+  if (isSampleMode) { _toast('サンプルモードでは削除できません'); return; }
+  _del(type,year,month);
+  await _fbSave(); _toast('削除しました'); _renderHistory();
+}
+
+async function _deleteOther(year,month,label) {
+  if (isSampleMode) { _toast('サンプルモードでは削除できません'); return; }
+  _delOther(year,month,label);
+  await _fbSave(); _toast('削除しました'); _renderHistory();
+}
+
+
+
+// ── Settings ──────────────────────────────────────────────────────
+// ── CSV Export / Import ──────────────────────────────────────────
+function _memoForCsv(s) {
+  return (s||'').replace(/,/g,'\uff0c').replace(/\r?\n/g,' ');
+}
+
+function _exportCSV() {
+  const NL = String.fromCharCode(10);
+  const rows = [['year','month','type','amount','usage','unit','memo']];
+
+  const typeMap = [
+    { key:'electricity', label:'electricity', unitKey:'kwh', unit:'kWh' },
+    { key:'gas',         label:'gas',         unitKey:'m3',  unit:'m3'  },
+    { key:'water',       label:'water',       unitKey:'m3',  unit:'m3'  },
+  ];
+  typeMap.forEach(function(t) {
+    remoteData[t.key].forEach(function(r) {
+      rows.push([
+        r.year, r.month, t.label,
+        r.amount != null ? r.amount : '',
+        r[t.unitKey] != null ? r[t.unitKey] : '',
+        r[t.unitKey] != null ? t.unit : '',
+        _memoForCsv(r.memo),
+      ]);
+    });
+  });
+  remoteData.others.forEach(function(r) {
+    rows.push([
+      r.year, r.month, 'others',
+      r.amount != null ? r.amount : '', '', '',
+      _memoForCsv((r.label||'') + (r.memo ? ' ' + r.memo : '')),
+    ]);
+  });
+
+  var bom = '\uFEFF';
+  var csv = bom + rows.map(function(r) {
+    return r.map(function(v) { return '"' + v + '"'; }).join(',');
+  }).join(NL);
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url;
+  a.download = 'utilities_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  _toast('エクスポートしました');
+}
+
+function _importCSVClick() {
+  document.getElementById('csvFileInput').value = '';
+  document.getElementById('csvFileInput').click();
+}
+
+async function _importCSV(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var text = await file.text();
+  // BOM除去
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  var NL = String.fromCharCode(10);
+  var lines = text.split(NL).map(function(l){ return l.trim(); }).filter(function(l){ return l.length > 0; });
+  if (!lines.length) { _toast('CSVが空です'); return; }
+
+  // ヘッダー行を解析（順番不問）
+  var headers = _csvParseLine(lines[0]).map(function(h){ return h.trim().toLowerCase(); });
+  function col(h) { return headers.indexOf(h); }
+  var ci = { year:col('year'), month:col('month'), type:col('type'), amount:col('amount'), usage:col('usage'), unit:col('unit'), memo:col('memo') };
+  if (ci.year<0||ci.month<0||ci.type<0||ci.amount<0) { _toast('ヘッダーが不正です'); return; }
+
+  var ok=0, skip=0;
+  for (var i=1;i<lines.length;i++) {
+    var vals = _csvParseLine(lines[i]);
+    if (vals.length < 4) { skip++; continue; }
+    var year  = parseInt(vals[ci.year]);
+    var month = parseInt(vals[ci.month]);
+    var type  = (vals[ci.type]||'').trim();
+    var amount= parseFloat(vals[ci.amount]);
+    if (isNaN(year)||isNaN(month)||isNaN(amount)) { skip++; continue; }
+    var usage = ci.usage>=0 ? parseFloat(vals[ci.usage]) : NaN;
+    var memo  = ci.memo>=0  ? (vals[ci.memo]||'').replace(/\uff0c/g,',') : '';
+
+    if (type==='electricity') {
+      _upsert('electricity',{year:year,month:month,amount:amount,kwh:isNaN(usage)?null:usage,memo:memo});
+      ok++;
+    } else if (type==='gas') {
+      _upsert('gas',{year:year,month:month,amount:amount,m3:isNaN(usage)?null:usage,memo:memo});
+      ok++;
+    } else if (type==='water') {
+      _upsert('water',{year:year,month:month,amount:amount,m3:isNaN(usage)?null:usage,memo:memo});
+      ok++;
+    } else if (type==='others') {
+      var parts = memo.split(' ');
+      var label = parts[0] || 'その他';
+      var otherMemo = parts.slice(1).join(' ');
+      _upsertOther({year:year,month:month,amount:amount,label:label,memo:otherMemo});
+      ok++;
+    } else { skip++; }
+  }
+
+  if (ok > 0) {
+    await _fbSave();
+    _toast(ok + '件インポート' + (skip>0 ? '、'+skip+'件スキップ' : ''));
+    _closeSettings();
+  } else {
+    _toast('インポート失敗（' + skip + '件スキップ）');
+  }
+}
+
+function _csvParseLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i=0;i<line.length;i++) {
+    const c = line[i];
+    if (c==='"') { inQ=!inQ; }
+    else if (c===',' && !inQ) { result.push(cur); cur=''; }
+    else { cur+=c; }
+  }
+  result.push(cur);
+  return result;
+}
+
+function _openSettings() {
+  const cfg=_loadConfig();
+  document.getElementById('configInput').value=cfg?JSON.stringify(cfg,null,2):'';
+  document.getElementById('settingsModal').style.display='flex';
+}
+function _closeSettings() { document.getElementById('settingsModal').style.display='none'; }
+function _saveSettings() {
+  const cfg=_parseFirebaseConfig(document.getElementById('configInput').value);
+  if (!cfg?.apiKey) { _toast('設定が無効です'); return; }
+  localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg));
+  _toast('保存しました。再読み込みします…'); setTimeout(()=>location.reload(),1200);
+}
+function _clearSettings() {
+  localStorage.removeItem(CONFIG_KEY);
+  _toast('削除しました。再読み込みします…'); setTimeout(()=>location.reload(),1200);
+}
+function _signIn()  { _fbSignIn();  }
+function _signOut() { _fbSignOut(); }
+
+// ── Sample mode ───────────────────────────────────────────────────
+function _startSampleMode() {
+  isSampleMode=true;
+  remoteData=_generateSampleData();
+  document.getElementById('setupScreen').style.display='none';
+  document.getElementById('authArea').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('sampleBadge').style.display='inline-block';
+  document.getElementById('userName').textContent='サンプルモード';
+  _switchTab('dashboard');
+}
+
+// ── Setup ─────────────────────────────────────────────────────────
+function _setupFirebase() {
+  const cfg=_parseFirebaseConfig(document.getElementById('setupConfigInput').value);
+  if (!cfg?.apiKey) { _toast('設定が無効です'); return; }
+  localStorage.setItem(CONFIG_KEY,JSON.stringify(cfg)); location.reload();
+}
+
+// ── Firebase (dynamic import) ─────────────────────────────────────
+async function _initFirebase(cfg) {
+  const {initializeApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+  const {getFirestore,doc,setDoc,onSnapshot}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+
+  const app=initializeApp(cfg), auth=getAuth(app), db=getFirestore(app);
+
+  _fbSignIn  = async()=>{ try{ await signInWithPopup(auth,new GoogleAuthProvider()); }catch(e){ _toast('ログイン失敗: '+e.message); } };
+  _fbSignOut = async()=>{ await signOut(auth); };
+  _fbSave    = async()=>{
+    _lastWriteAt=Date.now();
+    await setDoc(doc(db,DOC_PATH),remoteData,{merge:true});
+  };
+
+  onAuthStateChanged(auth,user=>{
+    document.getElementById('authArea').style.display=user?'none':'flex';
+    document.getElementById('app').style.display     =user?'block':'none';
+    if (user) {
+      document.getElementById('userName').textContent=user.displayName||user.email;
+      onSnapshot(doc(db,DOC_PATH),snap=>{
+        if (Date.now()-_lastWriteAt<1500) return;
+        if (snap.exists()) {
+          const d=snap.data();
+          remoteData={electricity:d.electricity||[],gas:d.gas||[],water:d.water||[],others:d.others||[]};
+        }
+        if (currentTab==='dashboard') _renderDashboard();
+        if (currentTab==='history')   _renderHistory();
+      });
+    }
+  });
+}
+
+// ── Boot ──────────────────────────────────────────────────────────
+(function(){
+  const cfg=_loadConfig();
+  if (cfg?.apiKey) {
+    document.getElementById('authArea').style.display='flex';
+    _initFirebase(cfg).catch(e=>{ _toast('Firebase初期化失敗'); console.error(e); });
+  } else {
+    document.getElementById('setupScreen').style.display='flex';
+  }
+})();
+</script>
+</body>
+</html>
