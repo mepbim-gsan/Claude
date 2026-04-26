@@ -1,10 +1,18 @@
 <!--
   @tool      タイムカード
-  @version   v04_2026-04-06.3
+  @version   v05_2026-04-26
   @changelog
-    v04_2026-04-06.3 - 所定外グラフを所定内との間のみ面塗りに変更
-    v04_2026-04-06.2 - 所定内グラフの塗りつぶし除去（線のみ）
-    v04_2026-04-06 - 所定時間外計算追加（日別所定内・所定外累積グラフ・ダッシュボード集計）
+    v05_2026-04-26 - 起動時ログイン画面追加（configあり:authScreen / configなし:setupScreen）
+    v04_2026-04-15.4 - 移動平均線がnull（土日等）で途切れる問題を修正
+    v04_2026-04-13.9 - 移動平均線x座標を24時でクリップ（24時超退勤の平均値対応）
+    v04_2026-04-13.8 - ヒートマップ日またぎ（25時等）の翌日行折り返し描画対応
+    v04_2026-04-13.7 - ヒートマップ休憩セルをグレーのみに変更（勤務色の上書き廃止）
+    v04_2026-04-13.6 - 折りたたみカード閉時の下余白を修正（margin-bottom:0）
+    v04_2026-04-13.5 - 勤務時間帯カードの余白をsched-toggleと統一
+    v04_2026-04-13.4 - ヒートマップグリッドを3h実線に変更
+    v04_2026-04-13.3 - ヒートマップ日付列をスクロール固定化（2Canvas構成）
+    v04_2026-04-13.2 - 勤務時間帯ヒートマップ追加（月次タブ・折りたたみ・移動平均線）
+    v04_2026-04-13 - 過去月・未来月表示時に今日と同じ日付にドットが出る問題を修正
     v03_2026-04-03.9 - 日次モーダル実績新規登録時にデフォルト休憩追加・勤務時間外休憩にエラー表示、打刻：退勤済み時に休憩ボタン無効化
     v03_2026-04-03.5 - 日次リスト：出退勤時刻・休憩時間をday-subに統合、右端は労働時間のみ
     v03_2026-04-03.3 - 月次オートスクロール削除・予定一括入力カードを折りたたみ対応
@@ -26,6 +34,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>タイムカード</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0f1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
@@ -104,15 +117,32 @@ function setupAuth() {
     updateAuthUI(user);
     if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
     if (user) {
+      // ログイン成功：ログイン画面を閉じてappを表示
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      // ロード完了まで打刻ボタンを無効化
+      _setPunchLock(true);
       const uid = user.uid;
       const ref = doc(db, 'users', uid, 'data', FIRESTORE_DOC);
+      let _firstLoad = true;
       _unsubscribe = onSnapshot(ref, snap => {
         if (Date.now() - window._lastWriteAt < 1500) return;
         if (snap.exists()) {
           window._applyRemoteState(snap.data());
         }
-        // 未登録の場合はlocalStorageのデータをそのまま使用（初回は何もしない）
+        // 初回ロード完了：ボタン有効化＋pendingAction実行
+        if (_firstLoad) {
+          _firstLoad = false;
+          _setPunchLock(false);
+          if (window._pendingAction) {
+            window._pendingAction();
+            window._pendingAction = null;
+          }
+        }
       });
+    } else {
+      // ログアウト中：即時有効
+      _setPunchLock(false);
     }
   });
 }
@@ -174,20 +204,35 @@ window._applyConfigFromUI = function() {
   }
 };
 
-window._clearConfigFromUI = function() {
-  window._clearFirebaseConfig();
+window._startWithoutLogin = function() {
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('authScreen').style.display  = 'none';
+  document.getElementById('app').style.display = 'block';
+  // 未ログイン状態のまま既存動作
+  _setPunchLock(false);
+  if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
+};
+
+window._setupAndLogin = function() {
+  const raw = document.getElementById('setupConfigInput')?.value || '';
+  let cfg;
+  try { cfg = JSON.parse(raw); } catch { cfg = null; }
+  if (!cfg?.apiKey) { alert('設定が無効です'); return; }
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
   location.reload();
 };
 
 const savedConfig = loadConfig();
 if (savedConfig) {
+  // config あり → authScreen を表示、Firebase初期化
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
   initFirebase(savedConfig);
 } else {
+  // config なし → setupScreen を表示
+  document.getElementById('setupScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
   window.addEventListener('DOMContentLoaded', () => {
-    const btn  = document.getElementById('auth-btn');
-    const info = document.getElementById('auth-info');
-    if (info) info.textContent = 'Firebase未設定';
-    if (btn)  { btn.textContent = '設定'; btn.onclick = () => { document.querySelector('.nav-btn[data-page="settings"]').click(); }; }
     if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
   });
 }
@@ -276,6 +321,18 @@ label:first-child{margin-top:0;}
 .holiday-item:last-child{border-bottom:none;}
 .holiday-date{font-size:13px;color:var(--text2);width:90px;flex-shrink:0;}
 .holiday-name{flex:1;font-size:14px;}
+/* ── ログイン画面 ── */
+#setupScreen,#authScreen{display:none;position:fixed;inset:0;z-index:400;background:var(--bg);align-items:center;justify-content:center;}
+.login-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:32px 24px;width:min(320px,90vw);display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 4px 24px rgba(0,0,0,.12);}
+.login-card h2{font-size:18px;font-weight:700;margin:0;color:var(--text);}
+.login-card p{font-size:13px;color:var(--text2);margin:0;text-align:center;}
+.login-card textarea{width:100%;box-sizing:border-box;height:80px;font-size:12px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg3);color:var(--text);resize:none;}
+.btn-login-primary{width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s;}
+.btn-login-primary:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
+.btn-login-primary svg{flex-shrink:0;}
+.btn-login-secondary{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer;transition:color .15s;}
+.btn-login-secondary:hover{color:var(--text);}
+.login-divider{width:100%;height:1px;background:var(--border);}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .2s;}
 .modal-overlay.open{opacity:1;pointer-events:all;}
 .modal-sheet{background:var(--bg2);border-radius:20px 20px 0 0;width:100%;padding:20px 16px 32px;transform:translateY(100%);transition:transform .25s ease;max-height:90dvh;overflow-y:auto;}
@@ -300,19 +357,45 @@ label:first-child{margin-top:0;}
 </style>
 </head>
 <body>
-<div id="app">
 
+<!-- Setup Screen（config未設定時） -->
+<div id="setupScreen" style="display:none;position:fixed;inset:0;z-index:400;background:var(--bg);align-items:center;justify-content:center;">
+  <div class="login-card">
+    <h2>⏱ タイムカード</h2>
+    <p>FirebaseのconfigをJSON形式で貼り付けてください。</p>
+    <textarea id="setupConfigInput" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}'></textarea>
+    <button class="btn-login-primary" onclick="window._setupAndLogin()">設定してログイン</button>
+    <div class="login-divider"></div>
+    <button class="btn-login-secondary" onclick="window._startWithoutLogin()">ログインせずに使用</button>
+  </div>
+</div>
+
+<!-- Auth Screen（config設定済み時） -->
+<div id="authScreen" style="display:none;position:fixed;inset:0;z-index:400;background:var(--bg);align-items:center;justify-content:center;">
+  <div class="login-card">
+    <h2>⏱ タイムカード</h2>
+    <button class="btn-login-primary" onclick="window._fbLogin()">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Googleでログイン
+    </button>
+    <div class="login-divider"></div>
+    <button class="btn-login-secondary" onclick="window._startWithoutLogin()">ログインせずに使用</button>
+  </div>
+</div>
+
+<div id="app">
   <!-- 打刻 -->
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v04_2026-04-06.3</span>
+      <span style="font-size:11px;color:var(--text3);">v05_2026-04-26</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
       <span id="auth-info" style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
       <button id="auth-btn" class="btn btn-ghost btn-sm" style="flex-shrink:0;">Googleでログイン</button>
     </div>
+    <div id="punch-sync-indicator" style="display:none;text-align:center;font-size:11px;color:var(--text3);padding:4px 0 8px;">⏳ データ同期中…</div>
     <div class="card">
       <div class="card-title">対象日</div>
       <input type="date" id="punch-date" style="display:none">
@@ -399,48 +482,53 @@ label:first-child{margin-top:0;}
         <div class="stat-box-sub" id="m-workdays">-- 営業日</div>
       </div>
       <div class="stat-box">
-        <div class="stat-box-label">法定時間外労働</div>
-        <div class="stat-box-val" id="m-legal-ot" style="color:var(--warn)">--</div>
-        <div class="stat-box-sub">残業時間(h)</div>
+        <div class="stat-box-label">法定時間外（見込）</div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:2px;">
+          <div style="display:flex;align-items:baseline;justify-content:flex-end;gap:4px;">
+            <span style="font-size:9px;color:#4f8ef7;font-weight:600;min-width:44px;text-align:right;">予測</span>
+            <span id="m-legal-ot" style="font-size:18px;font-weight:700;color:#4f8ef7;min-width:36px;text-align:right;">--</span>
+            <span style="font-size:10px;color:#4f8ef7">h</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:flex-end;gap:4px;">
+            <span id="m-legal-ot-plan-label" style="font-size:9px;color:var(--text3);font-weight:600;min-width:44px;text-align:right;">実績+計画</span>
+            <span id="m-legal-ot-plan" style="font-size:18px;font-weight:700;color:var(--text2);min-width:36px;text-align:right;">--</span>
+            <span id="m-legal-ot-plan-unit" style="font-size:10px;color:var(--text3)">h</span>
+          </div>
+        </div>
       </div>
       <div class="stat-box">
         <div class="stat-box-label">法定休日労働</div>
         <div class="stat-box-val" id="m-holiday-work" style="color:var(--danger)">--</div>
         <div class="stat-box-sub">日曜勤務(h)</div>
       </div>
-      <!-- 2段目 -->
-      <div class="stat-box" style="grid-column:span 3;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0;background:transparent;border:none;">
-        <div class="stat-box" style="text-align:left;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <div class="stat-box-label">法定時間外まで</div>
-            <div style="font-size:10px;color:var(--text3)" id="m-legal-limit-label">限度--h</div>
-          </div>
-          <div style="display:flex;align-items:baseline;gap:6px;margin-top:2px;">
-            <span style="font-size:28px;font-weight:700;" id="m-legal-remain">--</span>
-            <span style="font-size:13px;color:var(--text2)">h 残り</span>
-          </div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-box-label">実労働 / 予定</div>
-          <div style="display:flex;align-items:baseline;justify-content:center;gap:4px;margin-top:4px;">
-            <span class="stat-box-val" id="m-actual" style="color:var(--accent)">--</span>
+      <!-- 2段目：プログレスバー統合カード -->
+      <div class="stat-box" style="grid-column:span 3;text-align:left;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="display:flex;align-items:baseline;gap:6px;">
+            <span class="stat-box-label" style="margin-bottom:0;">実績</span>
+            <span style="font-size:20px;font-weight:700;color:#3ecf8e" id="m-actual">--</span>
+            <span style="font-size:11px;color:var(--text2)">h</span>
             <span style="font-size:11px;color:var(--text3)">/</span>
-            <span style="font-size:16px;font-weight:700;color:var(--text2)" id="m-sched-total">--</span>
+            <span style="font-size:13px;font-weight:600;color:var(--text2)" id="m-sched-total">--</span>
+            <span style="font-size:11px;color:var(--text2)">h 予定</span>
           </div>
-          <div class="stat-box-sub">h</div>
+          <div style="text-align:right;">
+            <div style="font-size:10px;color:var(--text3)" id="m-legal-limit-label">限度 --h</div>
+            <div style="font-size:12px;font-weight:700;" id="m-legal-remain">--</div>
+            <div style="font-size:9px;color:var(--text3)">h 残り</div>
+          </div>
         </div>
-      </div>
-      <!-- 3段目：所定時間 -->
-      <div class="stat-box" style="grid-column:span 3;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0;background:transparent;border:none;">
-        <div class="stat-box">
-          <div class="stat-box-label">所定労働時間</div>
-          <div class="stat-box-val" id="m-pres-work" style="color:var(--accent)">--</div>
-          <div class="stat-box-sub">h（実績累計）</div>
+        <!-- プログレスバー -->
+        <div style="position:relative;height:8px;background:var(--bg3);border-radius:4px;overflow:visible;">
+          <!-- 実績バー -->
+          <div id="m-progress-actual" style="position:absolute;left:0;top:0;height:100%;background:var(--accent);border-radius:4px;transition:width .3s;"></div>
+          <!-- 法定限度マーカー -->
+          <div id="m-progress-legal-marker" style="position:absolute;top:-3px;width:2px;height:14px;background:#e05252;border-radius:1px;"></div>
         </div>
-        <div class="stat-box">
-          <div class="stat-box-label">所定時間外</div>
-          <div class="stat-box-val" id="m-pres-ot" style="color:var(--warn)">--</div>
-          <div class="stat-box-sub">h（実績累計）</div>
+        <div style="display:flex;justify-content:space-between;margin-top:3px;">
+          <span style="font-size:9px;color:var(--text3)">0h</span>
+          <span id="m-progress-pct" style="font-size:9px;color:var(--text2);">--%</span>
+          <span id="m-progress-max-label" style="font-size:9px;color:var(--text3);">--h</span>
         </div>
       </div>
     </div>
@@ -452,12 +540,35 @@ label:first-child{margin-top:0;}
         <span style="color:#4f8ef7">╌ 予測</span>
         <span style="color:#e05252">─ 法定限度</span>
         <span style="color:var(--text3)">╌ 予定</span>
-        <span style="color:#60a0d0">░ 所定内</span>
-        <span style="color:#f5a623">░ 所定外</span>
+        <span id="legend-forecast-over" style="color:#e05252;display:none;">⚠ 超過見込</span>
       </div>
     </div>
     <div class="card">
-      <div class="card-title" id="sched-toggle" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+      <div class="card-title" id="heatmap-toggle" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">
+        勤務時間帯<span id="heatmap-toggle-icon" style="font-size:12px;color:var(--text3);">▶ 開く</span>
+      </div>
+      <div id="heatmap-body" style="display:none;margin-top:12px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <button id="heatmap-avg-week" class="btn btn-ghost btn-sm" style="font-size:11px;">週次平均</button>
+          <button id="heatmap-avg-month" class="btn btn-ghost btn-sm" style="font-size:11px;">月次平均</button>
+          <button id="heatmap-avg-none" class="btn btn-ghost btn-sm" style="font-size:11px;">移動平均なし</button>
+        </div>
+        <div style="display:flex;align-items:flex-start;">
+          <canvas id="heatmapLabelCanvas" style="flex-shrink:0;display:block;"></canvas>
+          <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;flex:1;">
+            <canvas id="heatmapCanvas" style="display:block;"></canvas>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:8px;font-size:10px;color:var(--text2);align-items:center;flex-wrap:wrap;">
+          <span><span style="display:inline-block;width:12px;height:12px;background:#3ecf8e;border-radius:2px;vertical-align:middle;margin-right:4px;opacity:.75"></span>勤務</span>
+          <span><span style="display:inline-block;width:12px;height:12px;background:#5a5f7a;border-radius:2px;vertical-align:middle;margin-right:4px;opacity:.6"></span>休憩</span>
+          <span style="color:#4f8ef7">─ 出勤移動平均</span>
+          <span style="color:#f5a623">─ 退勤移動平均</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="sched-toggle" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">
         予定入力（範囲一括）<span id="sched-toggle-icon" style="font-size:12px;color:var(--text3);">▶ 開く</span>
       </div>
       <div id="sched-body" style="display:none;">
@@ -594,7 +705,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v04_2026-04-06.3</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v05_2026-04-26</div>
   </div>
 
 </div>
@@ -747,18 +858,6 @@ function calcWorkMinutesForForecast(o){
   return Math.max(0,t);
 }
 
-// 所定内時間（分）: 日曜・土曜→0、有給→stdHours×60、半休（時刻なし）→4×60、通常→min(実労働, stdHours×60)
-function calcPrescribedInMinutes(obj, dow) {
-  if(dow === 0 || dow === 6) return 0;
-  const stdM = (settings.stdHours || 8) * 60;
-  if(!obj) return 0;
-  const lv = obj.leave || 'normal';
-  if(lv === 'paid' || lv === 'comp') return stdM;
-  if(lv === 'half' && !obj.timeIn) return 4 * 60;
-  const wM = calcWorkMinutes(obj);
-  if(wM === 0) return 0;
-  return Math.min(wM, stdM);
-}
 function getDay(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.days||{})[String(+d)]||null;}
 function getSched(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.schedules||{})[String(+d)]||null;}
 function setDay(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(!monthData[key])monthData[key]={days:{},schedules:{}};monthData[key].days[String(+d)]=data;}
@@ -875,6 +974,7 @@ function addBreakRow(start='',end=''){
   const sep=document.createElement('span');sep.textContent='〜';sep.style.cssText='color:var(--text2);flex-shrink:0';
   const i2=document.createElement('input');i2.type='text';i2.placeholder='終了 1300';i2.value=end;i2.maxLength=6;
   i2.addEventListener('input',e=>{breakRows[idx].end=e.target.value;updateDaySummary();});
+  i2.addEventListener('change',e=>{if(e.target.value)sortBreakRows();});
   const errBadge=document.createElement('span');
   errBadge.className='break-err-badge';errBadge.dataset.idx=idx;
   errBadge.textContent='⚠';errBadge.title='勤務時間外の休憩（計算から除外）';
@@ -918,12 +1018,38 @@ function updateDaySummary(live=false){
   document.getElementById('today-overtime').textContent=formatHours(Math.max(0,wM-stdM))+'h';
   updateStampButtons();
 }
+function sortBreakRows(){
+  // 開始時刻でbreakRowsを昇順ソートし再レンダリング
+  const valid=breakRows.filter(Boolean);
+  valid.sort((a,b)=>{
+    const am=parseTime(a.start)||0;
+    const bm=parseTime(b.start)||0;
+    return am-bm;
+  });
+  breakRows.length=0;
+  document.getElementById('break-list').innerHTML='';
+  valid.forEach(b=>addBreakRow(b.start,b.end));
+}
+function _setPunchLock(locked) {
+  const ids = ['stamp-in','stamp-out','stamp-break-start','stamp-break-end'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = locked;
+    el.style.opacity = locked ? '0.4' : '';
+  });
+  const indicator = document.getElementById('punch-sync-indicator');
+  if (indicator) indicator.style.display = locked ? 'block' : 'none';
+}
+
 function autoSavePunch(){
   const ds=document.getElementById('punch-date').value;
   if(!ds)return;
   const inVal=document.getElementById('punch-in').value.trim();
   const outVal=document.getElementById('punch-out').value.trim();
-  const validBreaks=breakRows.filter(Boolean).filter(b=>isBreakValid(b,inVal,outVal)&&b.start&&b.end);
+  // 開始のみの休憩も保存対象に含める（終了が空でも記録）
+  const allBreaks=breakRows.filter(Boolean).filter(b=>b.start);
+  const validBreaks=allBreaks.filter(b=>!b.end||isBreakValid(b,inVal,outVal));
   setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks});
   saveStorage();
   // 月次タブが表示中なら更新
@@ -962,6 +1088,7 @@ function renderMonthTab(){
   const bizDays=getBusinessDays(y,m),pres=calcPrescribed(bizDays);
   const legalLimit=calcLegalLimit(y,m); // 法定限度時間（分）
   const today=toDateStr(new Date()),dim=new Date(y,m,0).getDate();
+  const isCurrentMonth=(y===new Date().getFullYear()&&m===new Date().getMonth()+1);
 
   // 実績集計
   let actualMins=0, holidayWorkMins=0; // 法定休日(日曜)労働は別集計
@@ -1031,33 +1158,57 @@ function renderMonthTab(){
   const legalOt=Math.max(0,combinedMins-legalLimit);
   const legalRemain=Math.max(0,legalLimit-actualMins); // 実績のみで計算
 
+  // 予測末端値（青線末端）：実績平均×残り営業日で月末まで延長した累積の最終値
+  let forecastFinalMins = null;
+  if(isCurrentMonth){
+    // renderMonthChartと同じロジックで計算
+    let rA2=0, lastD2=0, cnt2=0;
+    for(let d=1;d<=dim;d++){
+      const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      if(ds>today) break;
+      const obj=(data.days||{})[String(d)];
+      if(obj){
+        const hasFullTime=obj.timeIn&&obj.timeOut;
+        rA2+=calcWorkMinutesForForecast(obj);
+        lastD2=d;
+        if(hasFullTime&&!['paid','comp'].includes(obj.leave||'normal')) cnt2++;
+      }
+    }
+    const avg2=cnt2>0?rA2/cnt2:0;
+    let rF2=rA2;
+    for(let d=lastD2+1;d<=dim;d++){
+      const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const futureObj=(data.days||{})[String(d)];
+      const futureLeave=futureObj?.leave||'normal';
+      if(isBusinessDay(ds)&&!['paid','comp'].includes(futureLeave)) rF2+=avg2;
+    }
+    forecastFinalMins=rF2;
+  }
+  const forecastOt = forecastFinalMins!==null ? Math.max(0, forecastFinalMins-legalLimit) : null;
+  const planOt = Math.max(0, combinedMins-legalLimit);
+
   document.getElementById('m-work-days-actual').textContent=actualWorkDays;
   document.getElementById('m-workdays').textContent=`${bizDays.length}営業日`;
-  document.getElementById('m-legal-ot').textContent=formatHours(legalOt);
+  // 予測超過（青）
+  const legalOtEl=document.getElementById('m-legal-ot');
+  if(legalOtEl){
+    legalOtEl.textContent=forecastOt!==null?formatHours(forecastOt):'--';
+  }
+  // 計画超過（グレー）/ 過去月は実績のみ（緑）
+  const legalOtPlanEl=document.getElementById('m-legal-ot-plan');
+  const legalOtPlanLabel=document.getElementById('m-legal-ot-plan-label');
+  const legalOtPlanUnit=document.getElementById('m-legal-ot-plan-unit');
+  const isPastMonth = new Date(y, m - 1, 1) < new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const planColor=isPastMonth?'#3ecf8e':'var(--text2)';
+  const planLabelColor=isPastMonth?'#3ecf8e':'var(--text3)';
+  const planLabelText=isPastMonth?'実績':'実績+計画';
+  if(legalOtPlanEl){ legalOtPlanEl.textContent=formatHours(planOt); legalOtPlanEl.style.color=planColor; }
+  if(legalOtPlanLabel){ legalOtPlanLabel.textContent=planLabelText; legalOtPlanLabel.style.color=planLabelColor; }
+  if(legalOtPlanUnit) legalOtPlanUnit.style.color=planLabelColor;
+
   document.getElementById('m-actual').textContent=formatHours(actualMins);
   document.getElementById('m-sched-total').textContent=formatHours(schedMins);
   document.getElementById('m-holiday-work').textContent=formatHours(holidayWorkMins);
-
-  // 所定内・所定外集計（今日以前の実績のみ）
-  let presInMins=0,presOtMins=0;
-  for(let d=1;d<=dim;d++){
-    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    if(ds>today)continue;
-    const obj=(data.days||{})[String(d)];
-    if(!obj)continue;
-    const dow=new Date(ds+'T00:00:00').getDay();
-    if(dow===0)continue;
-    const pIn=calcPrescribedInMinutes(obj,dow);
-    const wM=(obj.leave==='paid'||obj.leave==='comp')?(settings.stdHours||8)*60
-            :(obj.leave==='half'&&!obj.timeIn)?4*60
-            :calcWorkMinutes(obj);
-    presInMins+=pIn;
-    presOtMins+=Math.max(0,wM-pIn);
-  }
-  document.getElementById('m-pres-work').textContent=formatHours(presInMins);
-  const presOtEl=document.getElementById('m-pres-ot');
-  presOtEl.textContent=formatHours(presOtMins);
-  presOtEl.style.color=presOtMins>0?'var(--warn)':'var(--text)';
 
   const legalLimitH=(legalLimit/60).toFixed(1);
   document.getElementById('m-legal-limit-label').textContent=`限度 ${legalLimitH}h`;
@@ -1065,11 +1216,262 @@ function renderMonthTab(){
   remainEl.textContent=formatHours(legalRemain);
   remainEl.style.color=legalRemain<=0?'var(--danger)':legalRemain<10*60?'var(--warn)':'var(--text)';
 
+  // 実績値を緑に（グラフの実績ラインと統一）
+  const actualEl=document.getElementById('m-actual');
+  if(actualEl) actualEl.style.color='#3ecf8e';
+
+  // ③ プログレスバー更新（色：緑→黄(+45h超)→赤(+45h超)）
+  const maxVal=Math.max(combinedMins, legalLimit, actualMins)*1.05;
+  const pctActual=Math.min(actualMins/maxVal*100,100);
+  const pctLegal=Math.min(legalLimit/maxVal*100,100);
+  const pctLabel=Math.round(actualMins/(legalLimit||1)*100);
+  const overMins=actualMins-legalLimit;
+  const barColor=overMins>=45*60?'var(--danger)':overMins>=0?'var(--warn)':'#3ecf8e';
+  const progActual=document.getElementById('m-progress-actual');
+  const progMarker=document.getElementById('m-progress-legal-marker');
+  const progPct=document.getElementById('m-progress-pct');
+  const progMaxLabel=document.getElementById('m-progress-max-label');
+  if(progActual){
+    progActual.style.width=pctActual+'%';
+    progActual.style.background=barColor;
+  }
+  if(progMarker) progMarker.style.left=pctLegal+'%';
+  if(progPct){
+    progPct.textContent=pctLabel+'%';
+    progPct.style.color=overMins>=45*60?'var(--danger)':overMins>=0?'var(--warn)':'var(--text2)';
+  }
+  if(progMaxLabel) progMaxLabel.textContent=formatHours(maxVal)+'h';
+
   renderMonthChart(y,m,data,bizDays,legalLimit,legalLimit);
+  renderHeatmap(y,m,data);
   renderDayList(y,m,data);
 }
 
 let chartPending = false;
+let heatmapPending = false;
+let heatmapAvgMode = 'week'; // 'week' | 'month' | 'none'
+
+function renderHeatmap(y, m, data) {
+  const body = document.getElementById('heatmap-body');
+  if (!body || body.style.display === 'none') { heatmapPending = true; return; }
+  heatmapPending = false;
+
+  const canvasLabel = document.getElementById('heatmapLabelCanvas');
+  const canvas      = document.getElementById('heatmapCanvas');
+  const dk  = document.documentElement.getAttribute('data-theme') === 'dark';
+  const dim = new Date(y, m, 0).getDate();
+
+  const COLS    = 48;   // 30分刻み
+  const ROW_H   = 14;
+  const LABEL_W = 26;   // 日付列幅
+  const HEADER_H = 20;
+  const CELL_W  = 10;   // 固定幅（横スクロール前提）
+  const gridW   = COLS * CELL_W;
+  const totalH  = HEADER_H + dim * ROW_H;
+  const dpr     = window.devicePixelRatio || 1;
+
+  // --- ラベルCanvas ---
+  canvasLabel.width  = LABEL_W * dpr;
+  canvasLabel.height = totalH * dpr;
+  canvasLabel.style.width  = LABEL_W + 'px';
+  canvasLabel.style.height = totalH + 'px';
+  const ctxL = canvasLabel.getContext('2d');
+  ctxL.scale(dpr, dpr);
+
+  // --- グリッドCanvas ---
+  canvas.width  = gridW * dpr;
+  canvas.height = totalH * dpr;
+  canvas.style.width  = gridW + 'px';
+  canvas.style.height = totalH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // 色定義
+  const bgColor    = dk ? '#1a1d27' : '#ffffff';
+  const gridColor  = dk ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)';
+  const labelColor = dk ? '#5a5f7a' : '#9ca3af';
+  const workColor  = dk ? 'rgba(62,207,142,.72)' : 'rgba(22,163,74,.65)';
+  const breakColor = dk ? 'rgba(90,95,122,.5)'   : 'rgba(156,163,175,.45)';
+  const weekendBg  = dk ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.03)';
+  const todayBg    = dk ? 'rgba(79,142,247,.1)'   : 'rgba(37,99,235,.07)';
+  const paidBg     = dk ? 'rgba(62,207,142,.1)'   : 'rgba(22,163,74,.08)';
+  const compBg     = dk ? 'rgba(124,92,191,.12)'  : 'rgba(124,92,191,.08)';
+  const halfBg     = dk ? 'rgba(79,142,247,.1)'   : 'rgba(37,99,235,.07)';
+  const holBg      = dk ? 'rgba(245,166,35,.1)'   : 'rgba(245,166,35,.08)';
+  const todayStr   = toDateStr(new Date());
+
+  // 背景
+  ctxL.fillStyle = bgColor; ctxL.fillRect(0, 0, LABEL_W, totalH);
+  ctx.fillStyle  = bgColor; ctx.fillRect(0, 0, gridW, totalH);
+
+  // グリッドヘッダー時刻ラベル（3h刻み）
+  ctx.fillStyle = labelColor;
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  for (let h = 0; h < 24; h += 3) {
+    ctx.fillText(`${h}`, h * 2 * CELL_W, HEADER_H - 5);
+  }
+
+  // 縦グリッド（3h実線）
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  for (let h = 0; h <= 24; h += 3) {
+    const x = h * 2 * CELL_W + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, HEADER_H); ctx.lineTo(x, totalH); ctx.stroke();
+  }
+
+  // 出退勤データ収集（移動平均用）
+  const inMins = [], outMins = [], rowDates = [];
+  for (let d = 1; d <= dim; d++) {
+    const ds  = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow = new Date(ds + 'T00:00:00').getDay();
+    const obj = (data.days || {})[String(d)];
+    const lv  = obj?.leave || 'normal';
+    const skip = dow === 0 || dow === 6 || isHoliday(ds) || ['paid','comp','half'].includes(lv);
+    rowDates.push({ ds, dow, obj, lv, skip });
+    if (!skip && obj?.timeIn && obj?.timeOut) {
+      inMins.push(parseTime(obj.timeIn));
+      outMins.push(parseTime(obj.timeOut));
+    } else {
+      inMins.push(null);
+      outMins.push(null);
+    }
+  }
+
+  // 移動平均計算
+  function movingAvg(arr, win) {
+    return arr.map((_, i) => {
+      const vals = [];
+      for (let j = Math.max(0, i - win + 1); j <= i; j++) {
+        if (arr[j] !== null) vals.push(arr[j]);
+      }
+      return vals.length > 0 ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+    });
+  }
+  const win    = heatmapAvgMode === 'week' ? 7 : heatmapAvgMode === 'month' ? 30 : 0;
+  const avgIn  = win > 0 ? movingAvg(inMins, win)  : null;
+  const avgOut = win > 0 ? movingAvg(outMins, win) : null;
+
+  // セル描画ヘルパー（行インデックスd、スロット範囲、休憩Set）
+  function drawCells(row, sFrom, sTo, breakSlotsArg) {
+    if (row < 0 || row >= dim) return;
+    const y0 = HEADER_H + row * ROW_H;
+    ctx.fillStyle = workColor;
+    for (let s = sFrom; s < Math.min(sTo, COLS); s++) {
+      if (!breakSlotsArg.has(s))
+        ctx.fillRect(s * CELL_W + 1, y0 + 1, CELL_W - 1, ROW_H - 2);
+    }
+    ctx.fillStyle = breakColor;
+    for (const s of breakSlotsArg) {
+      if (s >= sFrom && s < Math.min(sTo, COLS))
+        ctx.fillRect(s * CELL_W + 1, y0 + 1, CELL_W - 1, ROW_H - 2);
+    }
+  }
+
+  // 各行描画
+  for (let d = 0; d < dim; d++) {
+    const { ds, dow, obj, lv } = rowDates[d];
+    const y0 = HEADER_H + d * ROW_H;
+    const isWeekend = dow === 0 || dow === 6;
+    const isToday   = ds === todayStr;
+    const isHol     = isHoliday(ds);
+    const isPaid    = lv === 'paid';
+    const isComp    = lv === 'comp';
+    const isHalf    = lv === 'half';
+
+    // 行背景優先順：今日 > 有給 > 代休 > 半休 > 祝日 > 土日
+    const rowBgColor = isToday ? todayBg
+      : isPaid    ? paidBg
+      : isComp    ? compBg
+      : isHalf    ? halfBg
+      : isHol     ? holBg
+      : isWeekend ? weekendBg
+      : null;
+    if (rowBgColor) {
+      ctxL.fillStyle = rowBgColor;
+      ctxL.fillRect(0, y0, LABEL_W, ROW_H);
+      ctx.fillStyle = rowBgColor;
+      ctx.fillRect(0, y0, gridW, ROW_H);
+    }
+
+    // 日付ラベル色
+    const lblColor = dow === 0 ? (dk?'#e05252':'#dc2626')
+      : dow === 6   ? '#4f8ef7'
+      : isHol       ? (dk?'#f5a623':'#d97706')
+      : isPaid      ? (dk?'#3ecf8e':'#16a34a')
+      : isComp      ? (dk?'#a07fd4':'#7c5cbf')
+      : isHalf      ? '#4f8ef7'
+      : labelColor;
+    ctxL.fillStyle = lblColor;
+    ctxL.font = 'bold 9px sans-serif';
+    ctxL.textAlign = 'right';
+    ctxL.fillText(String(d + 1).padStart(2,' '), LABEL_W - 3, y0 + ROW_H - 3);
+
+    if (!obj || !obj.timeIn || !obj.timeOut) continue;
+
+    const inM  = parseTime(obj.timeIn);
+    const outM = parseTime(obj.timeOut);
+    if (inM === null || outM === null) continue;
+    const inSlot  = Math.floor(inM / 30);
+    const outSlot = Math.ceil(outM / 30); // 25時なら50など48超もあり得る
+
+    // 休憩スロットのセットを事前構築（絶対スロット値で保持）
+    const breakSlots = new Set();
+    if (obj.breaks) {
+      for (const b of obj.breaks) {
+        const bs = parseTime(b.start), be = parseTime(b.end);
+        if (bs === null || be === null) continue;
+        const bsSlot = Math.floor(bs / 30);
+        const beSlot = Math.ceil(be / 30);
+        for (let s = Math.max(bsSlot, inSlot); s < Math.min(beSlot, outSlot); s++) {
+          breakSlots.add(s);
+        }
+      }
+    }
+
+    if (outSlot <= COLS) {
+      // 日またぎなし：当日行のみ
+      drawCells(d, inSlot, outSlot, breakSlots);
+    } else {
+      // 日またぎあり：当日は0〜48、翌日は0〜(outSlot-48)
+      drawCells(d, inSlot, COLS, breakSlots);
+      // 翌日スロットはoutSlot-COLSまで（絶対値をCOLS分シフト）
+      const overSlot = outSlot - COLS;
+      const breakSlotsNext = new Set();
+      for (const s of breakSlots) {
+        if (s >= COLS) breakSlotsNext.add(s - COLS);
+      }
+      drawCells(d + 1, 0, overSlot, breakSlotsNext);
+    }
+  }
+
+  // 移動平均線（グリッドCanvas上）
+  if (avgIn && avgOut) {
+    const drawLine = (avgArr, color) => {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 3;
+      ctx.beginPath();
+      let started = false;
+      for (let d = 0; d < dim; d++) {
+        const v = avgArr[d];
+        if (v === null) continue;
+        const x  = Math.min((v / 30) * CELL_W, gridW - 1);
+        const yc = HEADER_H + d * ROW_H + ROW_H / 2;
+        if (!started) { ctx.moveTo(x, yc); started = true; }
+        else ctx.lineTo(x, yc);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+    drawLine(avgIn,  '#4f8ef7');
+    drawLine(avgOut, '#f5a623');
+  }
+}
+
 function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
   const container=document.getElementById('chart-container');
   if(container.offsetParent===null){chartPending=true;return;}
@@ -1135,29 +1537,8 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
   const gc=dk?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',tc=dk?'#5a5f7a':'#9ca3af';
   const legalH=(legalLimit||173*60)/60;
 
-  // 所定内・所定外累積データ（今日以前の実績のみ）
-  const today2=toDateStr(new Date());
-  let rPresIn=0,rPresOt=0;
-  const presInC=[],presOtC=[];
-  for(let d=1;d<=dim;d++){
-    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    if(ds>today2){presInC.push(null);presOtC.push(null);continue;}
-    const obj2=(data.days||{})[String(d)];
-    const dow2=new Date(ds+'T00:00:00').getDay();
-    if(obj2&&dow2!==0){
-      const pIn=calcPrescribedInMinutes(obj2,dow2);
-      const wM2=(obj2.leave==='paid'||obj2.leave==='comp')?(settings.stdHours||8)*60
-               :(obj2.leave==='half'&&!obj2.timeIn)?4*60
-               :calcWorkMinutes(obj2);
-      rPresIn+=pIn;
-      rPresOt+=Math.max(0,wM2-pIn);
-    }
-    presInC.push(parseFloat((rPresIn/60).toFixed(2)));
-    presOtC.push(parseFloat(((rPresIn+rPresOt)/60).toFixed(2)));
-  }
-
-  // ポイント設定：土日・今日のみ表示
-  const todayIdx=labels.indexOf(parseInt(today.split('-')[2]));
+  // ポイント設定：土日・今日のみ表示（当月以外はtodayIdxを無効化）
+  const todayIdx=isCurrentMonth?labels.indexOf(parseInt(today.split('-')[2])):-1;
   const pointRadii=labels.map((d,i)=>{
     const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const dow=new Date(ds+'T00:00:00').getDay();
@@ -1189,10 +1570,43 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
     );
   }
   datasets.push(
-    {label:'所定内',data:presInC,borderColor:'rgba(96,160,208,.5)',backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:1,fill:false,spanGaps:false},
-    {label:'所定外',data:presOtC,borderColor:'rgba(245,166,35,.5)',backgroundColor:'rgba(245,166,35,.1)',tension:.3,pointRadius:0,borderWidth:1,fill:'-1',spanGaps:false},
     {label:'法定',data:Array(dim).fill(legalH),borderColor:'#e05252',backgroundColor:'transparent',pointRadius:0,borderWidth:2,borderDash:[4,3]}
   );
+
+  // ① 予測ライン超過見込マーカープラグイン
+  let forecastOverDay = null;
+  if(isCurrentMonth && fC.length){
+    for(let i=0;i<fC.length;i++){
+      if(fC[i]!==null && fC[i]>=legalH){ forecastOverDay=i; break; }
+    }
+  }
+  const legendOver=document.getElementById('legend-forecast-over');
+  if(legendOver) legendOver.style.display=(forecastOverDay!==null)?'inline':'none';
+
+  const forecastOverPlugin={
+    id:'forecastOver',
+    afterDraw(chart){
+      if(forecastOverDay===null)return;
+      const x=chart.scales.x.getPixelForValue(forecastOverDay);
+      const {top,bottom}=chart.chartArea;
+      const ctx2=chart.ctx;
+      ctx2.save();
+      ctx2.beginPath();
+      ctx2.moveTo(x,top);
+      ctx2.lineTo(x,bottom);
+      ctx2.strokeStyle='rgba(224,82,82,.7)';
+      ctx2.lineWidth=1.5;
+      ctx2.setLineDash([3,2]);
+      ctx2.stroke();
+      // ラベル：グラフエリア外の上部に描画
+      ctx2.font='bold 9px sans-serif';
+      ctx2.fillStyle='#e05252';
+      ctx2.textAlign='center';
+      const label=`⚠ ${labels[forecastOverDay]}日`;
+      ctx2.fillText(label, x, top - 4);
+      ctx2.restore();
+    }
+  };
 
   // 今日の縦線プラグイン
   const todayLinePlugin={
@@ -1244,9 +1658,9 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
         x:{ticks:{color:tc,maxTicksLimit:10,font:{size:10}},grid:{color:gc}},
         y:{ticks:{color:tc,font:{size:10}},grid:{color:gc}}
       },
-      layout:{padding:{right:28}}
+      layout:{padding:{right:28,top:16}}
     },
-    plugins:[todayLinePlugin,legalLabelPlugin]
+    plugins:[forecastOverPlugin,todayLinePlugin,legalLabelPlugin]
   });
 }
 
@@ -1708,6 +2122,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('stamp-break-end-time').textContent=formatTime(parseTime(t));
     document.getElementById('stamp-break-end').classList.remove('active');
     updateDaySummary();
+    sortBreakRows(); // 終了確定後に昇順ソート
     autoSavePunch();
   });
   document.getElementById('btn-month-prev').addEventListener('click',()=>{
@@ -1728,6 +2143,35 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-delete-schedule').addEventListener('click',()=>{
     if(confirm('指定範囲の予定を削除しますか？'))deleteScheduleRange();
   });
+  document.getElementById('heatmap-toggle').addEventListener('click', () => {
+    const body = document.getElementById('heatmap-body');
+    const icon = document.getElementById('heatmap-toggle-icon');
+    const open = body.style.display === 'none';
+    body.style.display = open ? 'block' : 'none';
+    icon.textContent = open ? '▼ 閉じる' : '▶ 開く';
+    if (open && heatmapPending) {
+      const y = currentMonth.getFullYear(), m = currentMonth.getMonth() + 1;
+      const data = monthData[getMonthKey(y,m)] || {};
+      renderHeatmap(y, m, data);
+    }
+  });
+  function updateHeatmapAvgButtons() {
+    ['week','month','none'].forEach(mode => {
+      const btn = document.getElementById(`heatmap-avg-${mode}`);
+      if (btn) btn.style.borderColor = heatmapAvgMode === mode ? 'var(--accent)' : '';
+      if (btn) btn.style.color = heatmapAvgMode === mode ? 'var(--accent)' : '';
+    });
+  }
+  ['week','month','none'].forEach(mode => {
+    document.getElementById(`heatmap-avg-${mode}`).addEventListener('click', () => {
+      heatmapAvgMode = mode;
+      updateHeatmapAvgButtons();
+      const y = currentMonth.getFullYear(), m = currentMonth.getMonth() + 1;
+      const data = monthData[getMonthKey(y,m)] || {};
+      renderHeatmap(y, m, data);
+    });
+  });
+  updateHeatmapAvgButtons();
   document.getElementById('sched-toggle').addEventListener('click',()=>{
     const body = document.getElementById('sched-body');
     const icon = document.getElementById('sched-toggle-icon');
@@ -1794,7 +2238,74 @@ document.addEventListener('DOMContentLoaded',()=>{
   // 月次タブは初期非表示なのでデータだけ準備し、タブ切替時に描画
   const y0=currentMonth.getFullYear(),m0=currentMonth.getMonth()+1;
   initScheduleDefaults(y0,m0);
+
+  // ショートカットからの自動打刻（?action=in / ?action=out）
+  const urlAction=new URLSearchParams(location.search).get('action');
+  if(urlAction==='in'||urlAction==='out'){
+    // URLパラメータをクリア（履歴を汚さない）
+    history.replaceState(null,'',location.pathname);
+
+    // Firestoreロード完了後に実行（ログイン済みの場合）
+    // ログイン未確認の場合はpendingActionに登録
+    window._pendingAction = () => {
+      // 打刻タブに切替
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
+      document.querySelector('.tab-btn[data-tab="punch"]')?.classList.add('active');
+      document.getElementById('page-punch')?.classList.add('active');
+
+      const inEl=document.getElementById('punch-in');
+      const outEl=document.getElementById('punch-out');
+      const t=nowHHMM();
+      let msg='';
+
+      if(urlAction==='in'){
+        if(inEl&&!inEl.value){
+          inEl.value=t;
+          document.getElementById('stamp-in-time').textContent=formatTime(parseTime(t));
+          document.getElementById('stamp-in').classList.add('active');
+          updateDaySummary();
+          autoSavePunch();
+          msg=`出勤を記録しました（${formatTime(parseTime(t))}）`;
+        } else {
+          msg='すでに出勤が記録されています';
+        }
+      } else {
+        if(inEl&&inEl.value&&outEl&&!outEl.value){
+          outEl.value=t;
+          document.getElementById('stamp-out-time').textContent=formatTime(parseTime(t));
+          document.getElementById('stamp-out').classList.add('active');
+          if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
+          updateDaySummary();
+          autoSavePunch();
+          msg=`退勤を記録しました（${formatTime(parseTime(t))}）`;
+        } else if(!inEl?.value){
+          msg='出勤が記録されていません';
+        } else {
+          msg='すでに退勤が記録されています';
+        }
+      }
+
+      // トースト表示
+      if(msg){
+        const toast=document.createElement('div');
+        toast.textContent=msg;
+        toast.style.cssText='position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap;';
+        document.body.appendChild(toast);
+        setTimeout(()=>toast.remove(),3000);
+      }
+    };
+  }
 });
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
 </script>
 </body>
 </html>
