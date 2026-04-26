@@ -9,7 +9,7 @@
                      内部キーをYYYY-MM-DD_HH:MMに変更、表示を30分刻み（棒グラフ48本・ヒートマップ48スロット）
     v04_2026-04-26 - Firebase対応（Google認証・Firestore同期）、ログインせずに使用モード追加
                      Firestoreデータ構造: solar-dashboard/{YYYY-MM} = {granularity, slots:{...}}
-    v04_2026-04-26.4 - ヘッダーボタン高さ統一（28px固定）
+    v04_2026-04-26.5 - Firestore読み書きにtry-catch追加、エラーをflashで表示
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -404,16 +404,28 @@ async function save(){
   const ums = _affectedMonths(Object.keys(D));
   if(!ums.length) return;
   _syncStatus('同期中…');
-  await _fbSave(ums);
-  _syncStatus('✓ 同期済み', true);
+  try{
+    await _fbSave(ums);
+    _syncStatus('✓ 同期済み', true);
+  }catch(e){
+    _syncStatus('');
+    flash('Firestore書き込みエラー: ' + e.message, true);
+    console.error(e);
+  }
 }
 
 async function clearAll(){
   D = {}; granularity = null;
   if(isSampleMode) return;
   _syncStatus('消去中…');
-  await _fbClear();
-  _syncStatus('');
+  try{
+    await _fbClear();
+    _syncStatus('');
+  }catch(e){
+    _syncStatus('');
+    flash('Firestore削除エラー: ' + e.message, true);
+    console.error(e);
+  }
 }
 
 // Firebase config helpers
@@ -1479,15 +1491,20 @@ async function _initFirebase(cfg){
       document.getElementById('btn-logout').style.display  = 'inline-block';
       document.getElementById('btn-settings').style.display = 'inline-block';
       _syncStatus('読み込み中…');
-      // Firestoreから全データ取得
-      const snap = await getDocs(col);
-      D = {}; granularity = null;
-      snap.docs.forEach(d => {
-        const data = d.data();
-        if(data.granularity) granularity = data.granularity;
-        Object.assign(D, data.slots || {});
-      });
-      _syncStatus('✓ 同期済み', true);
+      try{
+        const snap = await getDocs(col);
+        D = {}; granularity = null;
+        snap.docs.forEach(d => {
+          const data = d.data();
+          if(data.granularity) granularity = data.granularity;
+          Object.assign(D, data.slots || {});
+        });
+        _syncStatus('✓ 同期済み', true);
+      }catch(e){
+        _syncStatus('');
+        flash('Firestore読み込みエラー: ' + e.message, true);
+        console.error(e);
+      }
       monIdx = Math.max(0, months().length-1);
       renderAll();
     }
