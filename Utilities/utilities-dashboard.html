@@ -88,9 +88,9 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 .hist-edit-row input { flex:1; padding:7px 9px; border:1px solid #93c5fd; border-radius:6px; font-size:0.85rem; text-align:right; }
 .hist-edit-row textarea { flex:1; padding:7px 9px; border:1px solid #93c5fd; border-radius:6px; font-size:0.85rem; resize:none; min-height:52px; }
 
-.record-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.record-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px #0001; }
-.record-table th { background: #f8fafc; font-size: 0.72rem; color: #64748b; padding: 10px 8px; text-align: right; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+.record-table-wrap { overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; max-height: calc(100vh - 160px); border-radius: 12px; }
+.record-table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px #0001; }
+.record-table th { background: #f8fafc; font-size: 0.72rem; color: #64748b; padding: 10px 8px; text-align: right; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 2; white-space: nowrap; box-shadow: 0 1px 0 #e2e8f0; }
 .record-table th:first-child { text-align: left; }
 .record-table td { padding: 10px 8px; font-size: 0.85rem; text-align: right; border-bottom: 1px solid #f1f5f9; cursor: pointer; white-space: nowrap; }
 .record-table td:first-child { text-align: left; color: #64748b; font-size: 0.78rem; cursor: default; }
@@ -272,6 +272,18 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
     <div id="service-electricity" class="service-section"></div>
     <div id="service-gas"         class="service-section"></div>
     <div id="service-water"       class="service-section"></div>
+  </div>
+
+  <!-- Compare -->
+  <div class="tab-pane" id="tab-compare" style="display:none">
+    <div class="chart-section">
+      <div class="chart-title">月間 金額比較 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
+      <div class="chart-wrap" style="height:220px"><canvas id="chartMonthly"></canvas></div>
+    </div>
+    <div class="chart-section">
+      <div class="chart-title">年間 金額推移 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
+      <div class="chart-wrap" style="height:220px"><canvas id="chartAnnual"></canvas></div>
+    </div>
   </div>
 
   <!-- Record -->
