@@ -9,8 +9,7 @@
                      内部キーをYYYY-MM-DD_HH:MMに変更、表示を30分刻み（棒グラフ48本・ヒートマップ48スロット）
     v04_2026-04-26 - Firebase対応（Google認証・Firestore同期）、ログインせずに使用モード追加
                      Firestoreデータ構造: solar-dashboard/{YYYY-MM} = {granularity, slots:{...}}
-    v04_2026-04-26.2 - ログインせずに使用（CSV読み込み可・Firestore書き込みなし）に仕様変更
-                       ヘッダーに設定・ログアウトボタン追加
+    v04_2026-04-26.4 - ヘッダーボタン高さ統一（28px固定）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -40,12 +39,12 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
 .h-title{font-size:.95rem;font-weight:700;color:var(--gen);letter-spacing:.04em;}
 .h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
 .h-right{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
-.btn{border:1px solid var(--border);background:var(--bg3);color:var(--text2);padding:5px 12px;font-size:.72rem;cursor:pointer;font-family:inherit;transition:all .15s;border-radius:4px;}
+.btn{display:inline-flex;align-items:center;height:28px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);padding:0 12px;font-size:.72rem;cursor:pointer;font-family:inherit;transition:all .15s;border-radius:4px;white-space:nowrap;}
 .btn:hover{border-color:var(--gen);color:var(--gen);}
 .btn-primary{border-color:var(--gen);color:var(--gen);}
 .btn-primary:hover{background:var(--gen-bg);}
 .btn-danger:hover{border-color:#ef4444;color:#ef4444;}
-.btn-theme{font-size:1rem;padding:4px 9px;}
+.btn-theme{font-size:1rem;padding:0 9px;}
 
 .granularity-badge{font-size:.65rem;padding:3px 8px;border-radius:10px;font-weight:600;border:1px solid var(--border);color:var(--text2);}
 .granularity-badge.g30{border-color:var(--gen);color:var(--gen);background:var(--gen-bg);}
@@ -386,7 +385,10 @@ document.getElementById('btn-theme').addEventListener('click', () => {
 // ================================================================
 // STORAGE（Firebase / サンプルモード共通）
 // ================================================================
-function _syncStatus(msg){ document.getElementById('sync-status').textContent = msg || ''; }
+function _syncStatus(msg, autoClear){
+  document.getElementById('sync-status').textContent = msg || '';
+  if(autoClear) setTimeout(() => document.getElementById('sync-status').textContent = '', 3000);
+}
 
 // Dから変更月セットを取得
 function _affectedMonths(keys){
@@ -403,7 +405,7 @@ async function save(){
   if(!ums.length) return;
   _syncStatus('同期中…');
   await _fbSave(ums);
-  _syncStatus('✓ 同期済み');
+  _syncStatus('✓ 同期済み', true);
 }
 
 async function clearAll(){
@@ -1485,7 +1487,7 @@ async function _initFirebase(cfg){
         if(data.granularity) granularity = data.granularity;
         Object.assign(D, data.slots || {});
       });
-      _syncStatus('✓ 同期済み');
+      _syncStatus('✓ 同期済み', true);
       monIdx = Math.max(0, months().length-1);
       renderAll();
     }
