@@ -13,6 +13,7 @@
     v01_2026-04-26   - 比較タブ追加（月間金額比較・年間金額推移）
     v01_2026-04-26.2 - 月/年度◀▶ナビ、履歴カード形式、その他カテゴリ追加、比較タブothers対応・凡例クリックON/OFF
     v01_2026-04-26.3 - CSVエクスポート・インポート追加（設定モーダル内）
+    v01_2026-04-26.4 - 入力タブ廃止→記録タブ（表形式12ヶ月一覧+セルタップ入力モーダル）
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -87,6 +88,18 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 .hist-edit-row input { flex:1; padding:7px 9px; border:1px solid #93c5fd; border-radius:6px; font-size:0.85rem; text-align:right; }
 .hist-edit-row textarea { flex:1; padding:7px 9px; border:1px solid #93c5fd; border-radius:6px; font-size:0.85rem; resize:none; min-height:52px; }
 
+.record-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.record-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px #0001; }
+.record-table th { background: #f8fafc; font-size: 0.72rem; color: #64748b; padding: 10px 8px; text-align: right; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+.record-table th:first-child { text-align: left; }
+.record-table td { padding: 10px 8px; font-size: 0.85rem; text-align: right; border-bottom: 1px solid #f1f5f9; cursor: pointer; white-space: nowrap; }
+.record-table td:first-child { text-align: left; color: #64748b; font-size: 0.78rem; cursor: default; }
+.record-table tr:last-child td { border-bottom: none; }
+.record-table td.has-data { font-weight: 600; }
+.record-table td.no-data { color: #cbd5e1; }
+.record-table td.future { color: #e2e8f0; cursor: default; }
+.record-table td:not(:first-child):not(.future):hover { background: #f0f9ff; }
+.record-table tr.current-month td:first-child { color: #3b82f6; font-weight: 700; }
 .sample-badge  { display: inline-block; background: #fef3c7; color: #92400e; font-size: 0.68rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px; }
 .fy-bar { position: sticky; top: 49px; z-index: 9; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; padding: 8px 16px; display: none; }
 .fy-bar select { width: 100%; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; background: #fff; }
@@ -113,8 +126,8 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 .summary-card.water       { border-top: 4px solid #3b82f6; }
 .summary-card.total       { border-top: 4px solid #8b5cf6; }
 .s-label  { font-size: 0.72rem; color: #64748b; margin-bottom: 4px; }
-.s-amount { font-size: 1.1rem; font-weight: 700; }
-.s-sub    { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; }
+.s-amount { font-size: 1.1rem; font-weight: 700; text-align: right; }
+.s-sub    { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; text-align: right; }
 .s-sub.up   { color: #ef4444; }
 .s-sub.down { color: #22c55e; }
 
@@ -159,12 +172,13 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 .form-group label { font-size: 0.72rem; color: #64748b; display: block; margin-bottom: 4px; }
 .form-group input { width: 100%; padding: 9px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.95rem; }
 .form-group input:focus { outline: none; border-color: #3b82f6; }
+.form-group input::placeholder, .form-group textarea::placeholder { color: #cbd5e1; }
 .btn-save { width: 100%; padding: 14px; background: #3b82f6; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 12px; }
 .btn-save:active { background: #2563eb; }
 
 /* ── History ── */
-.hist-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
-.hist-tab { padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; font-size: 0.8rem; cursor: pointer; color: #64748b; }
+.hist-tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; padding-bottom: 2px; }
+.hist-tab { padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; font-size: 0.8rem; cursor: pointer; color: #64748b; white-space: nowrap; flex-shrink: 0; }
 .hist-tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 .history-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px #0001; }
 .history-table th { background: #f8fafc; font-size: 0.72rem; color: #64748b; padding: 10px 8px; text-align: left; border-bottom: 1px solid #e2e8f0; }
@@ -260,78 +274,42 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
     <div id="service-water"       class="service-section"></div>
   </div>
 
-  <!-- Input -->
-  <div class="tab-pane" id="tab-input" style="display:none">
-    <div class="period-nav" style="margin-bottom:16px;">
-      <button class="period-nav-btn" onclick="_stepMonth(-1)">◀</button>
-      <input type="month" id="inputYearMonth" onchange="_onYearMonthChange()" class="period-nav-input">
-      <button class="period-nav-btn" onclick="_stepMonth(+1)">▶</button>
-    </div>
-    <div class="svc-block">
-      <div class="svc-title">⚡ 電気（auでんき）</div>
-      <div class="form-row">
-        <div class="form-group"><label>請求金額（円）</label><input type="number" id="elecAmount" placeholder="8500"></div>
-        <div class="form-group"><label>使用量（kWh）</label><input type="number" id="elecKwh" placeholder="320"></div>
-      </div>
-      <div class="form-group" style="margin-top:8px"><label>メモ</label><textarea id="elecMemo" rows="2" placeholder="契約名・備考など"></textarea></div>
-    </div>
-    <div class="svc-block">
-      <div class="svc-title">🔥 ガス（東京ガス）</div>
-      <div class="form-row">
-        <div class="form-group"><label>請求金額（円）</label><input type="number" id="gasAmount" placeholder="4200"></div>
-        <div class="form-group"><label>使用量（m³）</label><input type="number" id="gasM3" placeholder="18"></div>
-      </div>
-      <div class="form-group" style="margin-top:8px"><label>メモ</label><textarea id="gasMemo" rows="2" placeholder="契約名・備考など"></textarea></div>
-    </div>
-    <div class="svc-block">
-      <div class="svc-title">💧 水道（東京都水道局）</div>
-      <div class="form-row">
-        <div class="form-group"><label>請求金額（円）</label><input type="number" id="waterAmount" placeholder="3800"></div>
-        <div class="form-group"><label>使用量（m³）</label><input type="number" id="waterM3" placeholder="20"></div>
-      </div>
-      <div class="form-group" style="margin-top:8px"><label>メモ</label><textarea id="waterMemo" rows="2" placeholder="契約名・備考など"></textarea></div>
-    </div>
-    <div class="svc-block">
-      <div class="svc-title">📦 その他（灯油など）</div>
-      <div class="form-row">
-        <div class="form-group"><label>金額（円）</label><input type="number" id="otherAmount" placeholder="3000"></div>
-        <div class="form-group"><label>内容</label><input type="text" id="otherLabel" placeholder="例: 灯油20L"></div>
-      </div>
-      <div class="form-group" style="margin-top:8px"><label>メモ</label><textarea id="otherMemo" rows="2" placeholder="備考など"></textarea></div>
-    </div>
-    <button class="btn-save" onclick="_saveInput()">保存</button>
-  </div>
-
-  <!-- Compare -->
-  <div class="tab-pane" id="tab-compare" style="display:none">
-    <div class="chart-section">
-      <div class="chart-title">月間 金額比較 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
-      <div class="chart-wrap" style="height:220px"><canvas id="chartMonthly"></canvas></div>
-    </div>
-    <div class="chart-section">
-      <div class="chart-title">年間 金額推移 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
-      <div class="chart-wrap" style="height:220px"><canvas id="chartAnnual"></canvas></div>
-    </div>
-  </div>
-
-  <!-- History -->
+  <!-- Record -->
   <div class="tab-pane" id="tab-history" style="display:none">
-    <div class="hist-tabs">
-      <button class="hist-tab active" data-type="all"         onclick="_switchHistoryType('all')">すべて</button>
-      <button class="hist-tab"        data-type="electricity" onclick="_switchHistoryType('electricity')">⚡ 電気</button>
-      <button class="hist-tab"        data-type="gas"         onclick="_switchHistoryType('gas')">🔥 ガス</button>
-      <button class="hist-tab"        data-type="water"       onclick="_switchHistoryType('water')">💧 水道</button>
-      <button class="hist-tab"        data-type="others"      onclick="_switchHistoryType('others')">📦 その他</button>
+    <div class="record-table-wrap">
+      <table class="record-table" id="recordTable">
+        <thead>
+          <tr>
+            <th>年月</th>
+            <th>⚡ 電気</th>
+            <th>🔥 ガス</th>
+            <th>💧 水道</th>
+            <th>📦 その他</th>
+          </tr>
+        </thead>
+        <tbody id="recordBody"></tbody>
+      </table>
     </div>
-    <div class="hist-cards" id="historyCards"></div>
+  </div>
+
+  <!-- 入力モーダル -->
+  <div class="modal-overlay" id="inputModal" onclick="if(event.target===this)_closeInputModal()">
+    <div class="modal-sheet" id="inputModalSheet">
+      <div class="modal-title" id="inputModalTitle"></div>
+      <div id="inputModalBody"></div>
+      <div class="modal-actions" style="margin-top:12px;">
+        <button class="btn-modal primary" onclick="_saveInputModal()">保存</button>
+        <button class="btn-modal danger"  onclick="_clearInputModal()">クリア</button>
+        <button class="btn-modal"         onclick="_closeInputModal()">閉じる</button>
+      </div>
+    </div>
   </div>
 </div>
 
 <nav class="tab-bar">
   <button class="tab-btn active" data-tab="dashboard" onclick="_switchTab('dashboard')"><span class="ti">📊</span>ダッシュボード</button>
   <button class="tab-btn"        data-tab="compare"   onclick="_switchTab('compare')">  <span class="ti">📈</span>比較</button>
-  <button class="tab-btn"        data-tab="input"     onclick="_switchTab('input')">    <span class="ti">✏️</span>入力</button>
-  <button class="tab-btn"        data-tab="history"   onclick="_switchTab('history')">  <span class="ti">📋</span>履歴</button>
+  <button class="tab-btn"        data-tab="history"   onclick="_switchTab('history')">  <span class="ti">📋</span>記録</button>
 </nav>
 
 <div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)_closeSettings()">
@@ -379,6 +357,7 @@ function _parseFirebaseConfig(text) {
 
 // ── State ─────────────────────────────────────────────────────────
 let isSampleMode = false;
+let _isDirty = false; // 未保存変更あり
 let remoteData   = { electricity: [], gas: [], water: [], others: [] };
 let _lastWriteAt = 0;
 let currentTab   = 'dashboard';
@@ -595,7 +574,6 @@ function _switchTab(tab) {
   setTimeout(() => {
     if (tab==='dashboard') _renderDashboard();
     if (tab==='compare')   _renderCompare();
-    if (tab==='input')     _renderInput();
     if (tab==='history')   _renderHistory();
   }, 0);
 }
@@ -626,6 +604,7 @@ function _stepFY(dir) {
   if (next !== undefined) { selectedFY = next; _onFYChange(next); const s=document.getElementById('fySelect'); if(s) s.value=next; }
 }
 function _stepMonth(dir) {
+  if (_isDirty && !confirm('保存されていない変更があります。移動しますか？')) return;
   const el = document.getElementById('inputYearMonth');
   if (!el || !el.value) return;
   const [y,m] = el.value.split('-');
@@ -866,6 +845,26 @@ function _setMetric(key, metric) {
 }
 
 // ── Input ─────────────────────────────────────────────────────────
+function _setDirty() { _isDirty = true; }
+function _clearDirty() { _isDirty = false; }
+
+async function _clearInput() {
+  if (isSampleMode) { _toast('サンプルモードでは削除できません'); return; }
+  const v = document.getElementById('inputYearMonth').value;
+  if (!v) return;
+  const [y,m] = v.split('-'), year=+y, month=+m;
+  // Firestoreから該当月のデータを削除
+  _del('electricity', year, month);
+  _del('gas',         year, month);
+  _del('water',       year, month);
+  // othersは月単位で全削除
+  remoteData.others = remoteData.others.filter(r => !(r.year===year && r.month===month));
+  await _fbSave();
+  _loadForm(year, month);
+  _clearDirty();
+  _toast('クリアしました');
+}
+
 function _renderInput() {
   const ym = _todayJST();
   document.getElementById('inputYearMonth').value = ym;
@@ -873,6 +872,9 @@ function _renderInput() {
   _loadForm(+y, +m);
 }
 function _onYearMonthChange() {
+  if (_isDirty && !confirm('保存されていない変更があります。移動しますか？')) {
+    return;
+  }
   const v = document.getElementById('inputYearMonth').value;
   if (v) { const [y,m]=v.split('-'); _loadForm(+y,+m); }
 }
@@ -893,6 +895,7 @@ function _loadForm(year, month) {
   document.getElementById('otherAmount').value = others.length > 0 ? others[0].amount : '';
   document.getElementById('otherLabel').value  = others.length > 0 ? others[0].label  : '';
   document.getElementById('otherMemo').value   = others.length > 0 ? others[0].memo   : '';
+  _clearDirty();
 }
 async function _saveInput() {
   if (isSampleMode) { _toast('サンプルモードでは保存できません'); return; }
@@ -916,10 +919,9 @@ async function _saveInput() {
   const oL = document.getElementById('otherLabel').value.trim();
   if (!isNaN(oA) && oL) _upsertOther({year,month,amount:oA,label:oL,memo:otherMemo});
   await _fbSave();
+    _clearDirty();
   _toast('保存しました');
-}
-
-// ── Compare ──────────────────────────────────────────────────────────
+}// ── Compare ──────────────────────────────────────────────────────────
 let monthlyMode = 'elec-gas'; // 'elec-gas' | 'all'
 let annualMode  = 'all';      // 'all' | 'elec-gas' | 'elec'
 const charts2 = {};           // 比較タブ用チャート
@@ -1064,123 +1066,136 @@ function _renderAnnualChart() {
 }
 
 // ── History ───────────────────────────────────────────────────────
-function _switchHistoryType(type) {
-  historyType = type;
-  document.querySelectorAll('.hist-tab').forEach(b=>b.classList.toggle('active',b.dataset.type===type));
+function _renderHistory() {
+  const body = document.getElementById('recordBody');
+  if (!body) return;
+
+  // 直近24ヶ月を生成（古い順）
+  const nowJST = new Date(Date.now() + 9*3600*1000);
+  const nowKey = _mk(nowJST.getFullYear(), nowJST.getMonth()+1);
+  const months = [];
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(nowJST.getFullYear(), nowJST.getMonth() - i, 1);
+    months.push(_mk(d.getFullYear(), d.getMonth()+1));
+  }
+  // データのある月で24ヶ月より古いものも追加
+  const allKeys = new Set(months);
+  ['electricity','gas','water'].forEach(t => remoteData[t].forEach(r => allKeys.add(_mk(r.year,r.month))));
+  remoteData.others.forEach(r => allKeys.add(_mk(r.year,r.month)));
+  const allMonths = [...allKeys].sort().reverse(); // 新しい順
+
+  let html = '';
+  allMonths.forEach(mk => {
+    const [y,mo] = mk.split('-'), year=+y, month=+mo;
+    const isFuture = mk > nowKey;
+    const isCurrent = mk === nowKey;
+    const label = `${y}/${mo}`;
+
+    const eRec = _get('electricity', year, month);
+    const gRec = _get('gas',         year, month);
+    const wRec = _get('water',       year, month);
+    const oRecs = _getOthers(year, month);
+    const oTotal = oRecs.reduce((s,r) => s+(r.amount||0), 0);
+
+    const fmtCell = (rec, type) => {
+      if (isFuture) return `<td class="future">—</td>`;
+      if (!rec) return `<td class="no-data" onclick="_openInputModal(${year},${month},'${type}')">—</td>`;
+      return `<td class="has-data" onclick="_openInputModal(${year},${month},'${type}')" style="color:${_svcColor(type)}">¥${rec.amount.toLocaleString()}</td>`;
+    };
+    const fmtOther = () => {
+      if (isFuture) return `<td class="future">—</td>`;
+      if (!oTotal) return `<td class="no-data" onclick="_openInputModal(${year},${month},'others')">—</td>`;
+      return `<td class="has-data" onclick="_openInputModal(${year},${month},'others')" style="color:#8b5cf6">¥${oTotal.toLocaleString()}</td>`;
+    };
+
+    html += `<tr${isCurrent?' class="current-month"':''}>
+      <td>${label}</td>
+      ${fmtCell(eRec,'electricity')}
+      ${fmtCell(gRec,'gas')}
+      ${fmtCell(wRec,'water')}
+      ${fmtOther()}
+    </tr>`;
+  });
+  body.innerHTML = html;
+}
+
+// ── 入力モーダル ──────────────────────────────────────────────
+let _modalYear = null, _modalMonth = null, _modalType = null;
+
+function _openInputModal(year, month, type) {
+  _modalYear = year; _modalMonth = month; _modalType = type;
+  const svcNames = {electricity:'⚡ 電気', gas:'🔥 ガス', water:'💧 水道', others:'📦 その他'};
+  document.getElementById('inputModalTitle').textContent = `${year}年${month}月 ${svcNames[type]}`;
+
+  let bodyHtml = '';
+  if (type === 'others') {
+    const recs = _getOthers(year, month);
+    const r = recs.length > 0 ? recs[0] : {};
+    bodyHtml = `
+      <div class="form-group" style="margin-bottom:10px"><label>金額（円）</label><input type="number" id="mi-amount" value="${r.amount??''}" placeholder="3000"></div>
+      <div class="form-group" style="margin-bottom:10px"><label>内容</label><input type="text" id="mi-label" value="${r.label??''}" placeholder="例: 灯油20L"></div>
+      <div class="form-group"><label>メモ</label><textarea id="mi-memo" rows="2">${r.memo??''}</textarea></div>`;
+  } else {
+    const r = _get(type, year, month) || {};
+    const unitLabel = type === 'electricity' ? 'kWh' : 'm³';
+    bodyHtml = `
+      <div class="form-row" style="margin-bottom:10px">
+        <div class="form-group"><label>請求金額（円）</label><input type="number" id="mi-amount" value="${r.amount??''}" placeholder="0"></div>
+        <div class="form-group"><label>使用量（${unitLabel}）</label><input type="number" id="mi-usage" value="${r[type==='electricity'?'kwh':'m3']??''}" placeholder="0"></div>
+      </div>
+      <div class="form-group"><label>メモ</label><textarea id="mi-memo" rows="2">${r.memo??''}</textarea></div>`;
+  }
+  document.getElementById('inputModalBody').innerHTML = bodyHtml;
+  document.getElementById('inputModal').style.display = 'flex';
+  // 金額欄にフォーカス
+  setTimeout(() => document.getElementById('mi-amount')?.focus(), 100);
+}
+
+function _closeInputModal() {
+  document.getElementById('inputModal').style.display = 'none';
+  _modalYear = _modalMonth = _modalType = null;
+}
+
+async function _saveInputModal() {
+  if (isSampleMode) { _toast('サンプルモードでは保存できません'); return; }
+  const year = _modalYear, month = _modalMonth, type = _modalType;
+  const amount = parseFloat(document.getElementById('mi-amount').value);
+  const memo   = (document.getElementById('mi-memo')?.value||'').trim();
+
+  if (isNaN(amount)) { _toast('金額を入力してください'); return; }
+
+  if (type === 'others') {
+    const label = (document.getElementById('mi-label')?.value||'').trim();
+    if (!label) { _toast('内容を入力してください'); return; }
+    // 既存削除して追加
+    remoteData.others = remoteData.others.filter(r => !(r.year===year && r.month===month));
+    _upsertOther({year, month, amount, label, memo});
+  } else {
+    const usageEl = document.getElementById('mi-usage');
+    const usage = usageEl ? parseFloat(usageEl.value) : NaN;
+    const uf = type === 'electricity' ? 'kwh' : 'm3';
+    const rec = {year, month, amount, memo};
+    rec[uf] = isNaN(usage) ? null : usage;
+    _upsert(type, rec);
+  }
+  await _fbSave();
+  _toast('保存しました');
+  _closeInputModal();
   _renderHistory();
 }
 
-function _renderHistory() {
-  const keys = new Set();
-  ['electricity','gas','water'].forEach(t=>remoteData[t].forEach(r=>keys.add(_mk(r.year,r.month))));
-  remoteData.others.forEach(r=>keys.add(_mk(r.year,r.month)));
-  const months = [...keys].sort().reverse();
-
-  const container = document.getElementById('historyCards');
-  if (!months.length) { container.innerHTML='<p style="text-align:center;color:#94a3b8;padding:24px">データがありません</p>'; return; }
-
-  let html = '';
-  months.forEach(mk => {
-    const [y,mo] = mk.split('-'), year=+y, month=+mo, label=`${y}/${mo}`;
-    const types = [
-      { key:'electricity', name:'⚡ 電気', unitKey:'kwh', unit:'kWh' },
-      { key:'gas',         name:'🔥 ガス', unitKey:'m3',  unit:'m³'  },
-      { key:'water',       name:'💧 水道', unitKey:'m3',  unit:'m³'  },
-    ];
-    types.forEach(t => {
-      if (historyType!=='all' && historyType!==t.key) return;
-      const r = _get(t.key, year, month);
-      if (!r) return;
-      const usageStr = r[t.unitKey]!=null ? r[t.unitKey]+' '+t.unit : '';
-      const unitStr  = (r.amount && r[t.unitKey]) ? (r.amount/r[t.unitKey]).toFixed(1)+'円/'+t.unit : '';
-      html += _histCard(t.key, label, year, month, t.name, r.amount, usageStr, unitStr, r.memo||'', t.unitKey);
-    });
-    if (historyType==='all' || historyType==='others') {
-      remoteData.others.filter(r=>r.year===year&&r.month===month).forEach(r => {
-        html += _histCardOther(label, year, month, r);
-      });
-    }
-  });
-  container.innerHTML = html || '<p style="text-align:center;color:#94a3b8;padding:24px">データがありません</p>';
-}
-
-function _histCard(type, label, year, month, typeName, amount, usage, unitPrice, memo, unitKey) {
-  const key = `${type}-${year}-${month}`;
-  if (editingKey === key) {
-    const uf = type==='electricity' ? 'kwh' : 'm3';
-    const ul = type==='electricity' ? 'kWh' : 'm³';
-    const r  = _get(type,year,month)||{};
-    return `<div class="hist-card editing">
-      <div class="hist-card-header">
-        <span class="hist-card-ym">${label}</span>
-        <span class="hist-card-type">${typeName}</span>
-      </div>
-      <div class="hist-edit-row">
-        <input type="number" id="edit-amount" value="${r.amount??''}" placeholder="金額（円）">
-        <input type="number" id="edit-unit"   value="${r[uf]??''}"   placeholder="${ul}">
-      </div>
-      <div class="hist-edit-row">
-        <textarea id="edit-memo" placeholder="メモ">${r.memo??''}</textarea>
-      </div>
-      <div class="hist-card-actions">
-        <button class="btn-sm btn-primary" onclick="_saveEdit('${type}',${year},${month},'${uf}')">保存</button>
-        <button class="btn-sm" onclick="_cancelEdit()">取消</button>
-      </div>
-    </div>`;
+async function _clearInputModal() {
+  if (isSampleMode) { _toast('サンプルモードでは削除できません'); return; }
+  const year = _modalYear, month = _modalMonth, type = _modalType;
+  if (type === 'others') {
+    remoteData.others = remoteData.others.filter(r => !(r.year===year && r.month===month));
+  } else {
+    _del(type, year, month);
   }
-  return `<div class="hist-card">
-    <div class="hist-card-header">
-      <span class="hist-card-ym">${label}</span>
-      <span class="hist-card-type">${typeName}</span>
-    </div>
-    <div class="hist-card-values">
-      <span class="hist-card-amount" style="color:${_svcColor(type)}">¥${amount.toLocaleString()}</span>
-      ${usage ? `<span class="hist-card-usage">${usage}</span>` : ''}
-      ${unitPrice ? `<span class="hist-card-usage">${unitPrice}</span>` : ''}
-    </div>
-    ${memo ? `<div class="hist-card-memo">${memo}</div>` : ''}
-    <div class="hist-card-actions">
-      <button class="btn-sm" onclick="_startEdit('${type}',${year},${month})">編集</button>
-      <button class="btn-sm btn-danger" onclick="_deleteRecord('${type}',${year},${month})">削除</button>
-    </div>
-  </div>`;
-}
-
-function _histCardOther(label, year, month, r) {
-  const key = `others-${year}-${month}-${r.label}`;
-  if (editingKey === key) {
-    return `<div class="hist-card editing">
-      <div class="hist-card-header">
-        <span class="hist-card-ym">${label}</span>
-        <span class="hist-card-type">📦 その他</span>
-      </div>
-      <div class="hist-edit-row">
-        <input type="number" id="edit-amount" value="${r.amount??''}" placeholder="金額（円）">
-        <input type="text"   id="edit-label"  value="${r.label??''}"  placeholder="内容">
-      </div>
-      <div class="hist-edit-row">
-        <textarea id="edit-memo" placeholder="メモ">${r.memo??''}</textarea>
-      </div>
-      <div class="hist-card-actions">
-        <button class="btn-sm btn-primary" onclick="_saveEditOther(${year},${month},'${r.label.replace(/'/g,"\'")}')">保存</button>
-        <button class="btn-sm" onclick="_cancelEdit()">取消</button>
-      </div>
-    </div>`;
-  }
-  return `<div class="hist-card">
-    <div class="hist-card-header">
-      <span class="hist-card-ym">${label}</span>
-      <span class="hist-card-type">📦 ${r.label}</span>
-    </div>
-    <div class="hist-card-values">
-      <span class="hist-card-amount" style="color:#8b5cf6">¥${r.amount.toLocaleString()}</span>
-    </div>
-    ${r.memo ? `<div class="hist-card-memo">${r.memo}</div>` : ''}
-    <div class="hist-card-actions">
-      <button class="btn-sm" onclick="_startEdit('others-${year}-${month}-${r.label.replace(/'/g,"\'")}')">編集</button>
-      <button class="btn-sm btn-danger" onclick="_deleteOther(${year},${month},'${r.label.replace(/'/g,"\'")}')">削除</button>
-    </div>
-  </div>`;
+  await _fbSave();
+  _toast('クリアしました');
+  _closeInputModal();
+  _renderHistory();
 }
 
 function _svcColor(type) {
