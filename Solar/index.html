@@ -9,7 +9,7 @@
                      内部キーをYYYY-MM-DD_HH:MMに変更、表示を30分刻み（棒グラフ48本・ヒートマップ48スロット）
     v04_2026-04-26 - Firebase対応（Google認証・Firestore同期）、ログインせずに使用モード追加
                      Firestoreデータ構造: solar-dashboard/{YYYY-MM} = {granularity, slots:{...}}
-    v04_2026-04-26.6 - コレクションをsharedに変更（ドキュメントID: solar-{YYYY-MM}）、Rulesの追加不要に
+    v04_2026-04-26.7 - コレクションをshared-solarに変更（ドキュメントID: solar-{YYYY-MM}）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -334,7 +334,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 // CONSTANTS & STATE
 // ================================================================
 const CONFIG_KEY = 'solar-firebase-config-v1';
-const COLLECTION  = 'shared';
+const COLLECTION  = 'shared-solar';
 const DOC_PREFIX  = 'solar-'; // ドキュメントID: solar-{YYYY-MM}
 
 let D = {};          // { 'YYYY-MM-DD_HH:MM': {gen,sell,buy,con} }
