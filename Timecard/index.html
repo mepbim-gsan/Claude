@@ -1,7 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v05_2026-04-26.2
+  @version   v05_2026-04-26.3
   @changelog
+    v05_2026-04-26.3 - 未ログイン編集時のみdirtyフラグで上書き確認（毎回ダイアログ出る問題を修正）
     v05_2026-04-26.2 - 初回ログイン時キャッシュアップロード・再ログイン時クラウド優先・ログアウト時キャッシュクリア＋authScreen再表示
     v05_2026-04-26 - 起動時ログイン画面追加（configあり:authScreen / configなし:setupScreen）
     v04_2026-04-15.4 - 移動平均線がnull（土日等）で途切れる問題を修正
@@ -141,10 +142,10 @@ function setupAuth() {
           await setDoc(ref, payload);
         }
       } else {
-        // 既存データあり：キャッシュがあれば上書き確認
-        const hasCache = !!localStorage.getItem(STORAGE_KEY);
-        if (hasCache) {
-          const ok = confirm('ローカルに保存されたデータがあります。\nクラウドのデータで上書きしますか？\n\n※キャンセルするとログアウトします。');
+        // 既存データあり：未ログイン中に編集があれば確認
+        const isDirty = !!localStorage.getItem(DIRTY_KEY);
+        if (isDirty) {
+          const ok = confirm('ログインせずに入力したデータがあります。\nクラウドのデータで上書きしますか？\n\n※キャンセルするとログアウトします。');
           if (!ok) {
             await signOut(auth);
             return;
@@ -153,6 +154,9 @@ function setupAuth() {
           localStorage.removeItem(SETTINGS_KEY);
         }
       }
+
+      // dirtyフラグクリア
+      localStorage.removeItem(DIRTY_KEY);
 
       // ログイン画面を閉じてapp表示
       document.getElementById('authScreen').style.display = 'none';
@@ -177,6 +181,7 @@ function setupAuth() {
       // ログアウト：localStorageクリア → authScreen表示
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(SETTINGS_KEY);
+      localStorage.removeItem(DIRTY_KEY);
       document.getElementById('app').style.display = 'none';
       document.getElementById('authScreen').style.display = 'flex';
       _setPunchLock(false);
@@ -425,7 +430,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v05_2026-04-26.2</span>
+      <span style="font-size:11px;color:var(--text3);">v05_2026-04-26.3</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -742,7 +747,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v05_2026-04-26.2</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v05_2026-04-26.3</div>
   </div>
 
 </div>
@@ -780,7 +785,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1';
+const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
 const DEFAULT_WORK_IN   = '0830';
@@ -840,10 +845,12 @@ window._applyRemoteState = function(data) {
 function saveStorage(){
   localStorage.setItem(STORAGE_KEY,JSON.stringify(monthData));
   if(window._saveToFirestore) window._saveToFirestore({monthData, settings});
+  else localStorage.setItem(DIRTY_KEY,'1');
 }
 function saveSettingsStorage(){
   localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
   if(window._saveToFirestore) window._saveToFirestore({monthData, settings});
+  else localStorage.setItem(DIRTY_KEY,'1');
 }
 
 function parseTime(str){if(!str)return null;str=str.toString().replace(':','').trim();if(str.length<3)return null;let h,m;if(str.length<=3){h=parseInt(str.slice(0,1));m=parseInt(str.slice(1));}else{h=parseInt(str.slice(0,-2));m=parseInt(str.slice(-2));}if(isNaN(h)||isNaN(m)||m<0||m>59)return null;return h*60+m;}
