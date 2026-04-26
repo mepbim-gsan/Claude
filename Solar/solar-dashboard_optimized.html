@@ -84,12 +84,13 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
 .dlabel{font-size:.82rem;font-weight:600;min-width:72px;text-align:center;color:var(--sell);}
 
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px;}
-@media(max-width:560px){.kpi-row{grid-template-columns:repeat(2,1fr);}}
+#heat-kpi,#mon-kpi{grid-template-columns:repeat(5,1fr);}
+@media(max-width:560px){.kpi-row,#heat-kpi,#mon-kpi{grid-template-columns:repeat(2,1fr);}}
 .kpi{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:10px 13px;}
 .kpi-lbl{font-size:.65rem;color:var(--text2);margin-bottom:3px;}
 .kpi-val{font-size:1.25rem;font-weight:700;display:flex;justify-content:flex-end;align-items:baseline;gap:2px;text-align:right;font-variant-numeric:tabular-nums;}
 .kpi-unit{font-size:.65rem;color:var(--text2);margin-left:2px;}
-.kpi-sub{font-size:.65rem;color:var(--text2);margin-top:2px;text-align:right;font-variant-numeric:tabular-nums;}
+.kpi-sub{font-size:.65rem;color:var(--text2);margin-top:2px;text-align:right;}
 
 .day-summary{display:none;border:1px solid var(--border);background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:12px;}
 .day-summary.show{display:block;}
@@ -99,8 +100,9 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
 .day-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;}
 .day-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;min-width:0;}
 .day-kpi-lbl{font-size:.62rem;color:var(--text2);margin-bottom:2px;white-space:nowrap;}
-.day-kpi-val{font-size:1rem;font-weight:700;white-space:nowrap;}
+.day-kpi-val{font-size:1rem;font-weight:700;white-space:nowrap;display:flex;justify-content:flex-end;align-items:baseline;gap:2px;text-align:right;font-variant-numeric:tabular-nums;}
 .day-kpi-unit{font-size:.6rem;color:var(--text2);margin-left:2px;}
+.day-kpi-lbl{text-align:right;}
 @media(max-width:560px){
   .tab-content{padding:10px 10px;}
   .sec{padding:12px 10px;margin-bottom:10px;}
@@ -734,17 +736,24 @@ function renderHeatKPI(ym){
   for(const k of Object.keys(ML)) totals[k] = ds.reduce((s,dk) => s+daySum(dk,k), 0);
 
   // 効率指標
+  const selfUse = Math.max(totals.con - totals.buy, 0);
   const jikyu   = totals.con > 0 ? Math.min(totals.gen / totals.con * 100, 999) : 0;
-  const jikaSho = totals.con > 0 ? Math.min((totals.con - totals.buy) / totals.con * 100, 100) : 0;
+  const jikaSho = totals.con > 0 ? Math.min(selfUse / totals.con * 100, 100) : 0;
   const sellRatio= totals.gen > 0 ? Math.min(totals.sell / totals.gen * 100, 100) : 0;
 
-  // 1行目: 発電量・売電量・買電量・消費量
+  // 1行目: 発電量・売電量・買電量・消費量・自家消費量
   document.getElementById('heat-kpi').innerHTML =
-    Object.entries(ML).map(([k,lbl]) => {
-      const t = totals[k], avg = ds.length ? t/ds.length : 0;
+    [
+      ['gen', '発電量', totals.gen, col.gen],
+      ['sell', '売電量', totals.sell, col.sell],
+      ['buy', '買電量', totals.buy, col.buy],
+      ['con', '消費量', totals.con, col.con],
+      ['self', '自家消費量', selfUse, col.con],
+    ].map(([k,lbl,t,color]) => {
+      const avg = ds.length ? t/ds.length : 0;
       return `<div class="kpi">
         <div class="kpi-lbl">${lbl}</div>
-        <div class="kpi-val" style="color:${col[k]}">${t.toFixed(1)}<span class="kpi-unit">kWh</span></div>
+        <div class="kpi-val" style="color:${color}">${t.toFixed(1)}<span class="kpi-unit">kWh</span></div>
         <div class="kpi-sub">平均 ${avg.toFixed(2)} kWh/日</div>
       </div>`;
     }).join('');
@@ -1193,15 +1202,24 @@ function renderHeatTab(){
 // ================================================================
 function renderMonKPI(){
   const cache = _ensureAgg(), col = colors();
-  document.getElementById('mon-kpi').innerHTML = cache.dateList.length
-    ? Object.entries(ML).map(([k,lbl]) => {
-        const t = cache.monthList.reduce((s,ym) => s + (cache.monthTotals[ym]?.[k] || 0), 0);
-        return `<div class="kpi"><div class="kpi-lbl">${lbl}</div>
-          <div class="kpi-val" style="color:${col[k]}">${t.toFixed(0)}<span class="kpi-unit">kWh</span></div></div>`;
-      }).join('')
-    : '';
-}
+  if(!cache.dateList.length){ document.getElementById('mon-kpi').innerHTML = ''; return; }
 
+  const totals = {};
+  for(const k of Object.keys(ML)){
+    totals[k] = cache.monthList.reduce((s,ym) => s + (cache.monthTotals[ym]?.[k] || 0), 0);
+  }
+  const selfUse = Math.max(totals.con - totals.buy, 0);
+
+  document.getElementById('mon-kpi').innerHTML = [
+    ['gen', '発電量', totals.gen, col.gen],
+    ['sell', '売電量', totals.sell, col.sell],
+    ['buy', '買電量', totals.buy, col.buy],
+    ['con', '消費量', totals.con, col.con],
+    ['self', '自家消費量', selfUse, col.con],
+  ].map(([k,lbl,t,color]) => `<div class="kpi"><div class="kpi-lbl">${lbl}</div>
+      <div class="kpi-val" style="color:${color}">${t.toFixed(0)}<span class="kpi-unit">kWh</span></div></div>`
+  ).join('');
+}
 function monthlyMaxAllMetrics(){
   const cache = _ensureAgg();
   let maxV = 0;
