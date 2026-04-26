@@ -9,7 +9,7 @@
                      内部キーをYYYY-MM-DD_HH:MMに変更、表示を30分刻み（棒グラフ48本・ヒートマップ48スロット）
     v04_2026-04-26 - Firebase対応（Google認証・Firestore同期）、ログインせずに使用モード追加
                      Firestoreデータ構造: solar-dashboard/{YYYY-MM} = {granularity, slots:{...}}
-    v04_2026-04-26.7 - コレクションをshared-solarに変更（ドキュメントID: solar-{YYYY-MM}）
+    v04_2026-04-26.9 - ヘッダー整理：CSV・データ消去・ログアウトを設定モーダルに統合
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -167,10 +167,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <span id="user-name" style="font-size:.65rem;color:var(--text2);"></span>
     <span class="granularity-badge" id="gran-badge">未設定</span>
     <button class="btn btn-theme" id="btn-theme">🌙</button>
-    <button class="btn" id="btn-settings" style="display:none" onclick="_openSettings()">⚙ 設定</button>
-    <button class="btn btn-danger" id="btn-logout" style="display:none" onclick="_signOut()">ログアウト</button>
-    <label class="btn btn-primary">▲ CSV アップロード<input type="file" id="csv-in" accept=".csv" style="display:none" multiple></label>
-    <button class="btn btn-danger" id="btn-clr">データ消去</button>
+    <button class="btn" id="btn-settings" onclick="_openSettings()">⚙ 設定</button>
   </div>
 </header>
 
@@ -317,12 +314,34 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 <!-- 設定モーダル -->
 <div id="settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;align-items:center;justify-content:center;">
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:22px;width:90%;max-width:340px;box-shadow:0 8px 24px var(--shadow);">
-    <div style="font-size:.85rem;font-weight:600;margin-bottom:12px;">⚙ Firebase設定</div>
-    <textarea id="settings-config-input" style="width:100%;height:110px;padding:9px;border:1px solid var(--border);border-radius:6px;font-size:.73rem;font-family:monospace;background:var(--bg3);color:var(--text);resize:none;" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}'></textarea>
-    <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;">
-      <button onclick="_saveSettings()" style="padding:7px 16px;border:none;border-radius:6px;background:var(--gen);color:#fff;font-size:.78rem;cursor:pointer;font-family:inherit;">保存して再読込</button>
-      <button onclick="_clearSettings()" style="padding:7px 16px;border:1px solid #ef4444;border-radius:6px;background:transparent;color:#ef4444;font-size:.78rem;cursor:pointer;font-family:inherit;">設定削除</button>
-      <button onclick="_closeSettings()" style="padding:7px 16px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text2);font-size:.78rem;cursor:pointer;font-family:inherit;">閉じる</button>
+    <div style="font-size:.85rem;font-weight:600;margin-bottom:14px;">⚙ 設定</div>
+
+    <!-- CSVアップロード -->
+    <div style="margin-bottom:10px;">
+      <div style="font-size:.7rem;color:var(--text2);margin-bottom:6px;">データ</div>
+      <label class="btn btn-primary" style="width:100%;justify-content:center;cursor:pointer;">
+        ▲ CSV アップロード
+        <input type="file" id="csv-in" accept=".csv" style="display:none" multiple>
+      </label>
+    </div>
+
+    <!-- データ消去 -->
+    <div style="margin-bottom:14px;">
+      <button id="btn-clr" style="width:100%;height:28px;border:1px solid #ef4444;border-radius:4px;background:transparent;color:#ef4444;font-size:.72rem;cursor:pointer;font-family:inherit;">データ消去</button>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px;">
+      <div style="font-size:.7rem;color:var(--text2);margin-bottom:6px;">Firebase設定</div>
+      <textarea id="settings-config-input" style="width:100%;height:90px;padding:9px;border:1px solid var(--border);border-radius:6px;font-size:.73rem;font-family:monospace;background:var(--bg3);color:var(--text);resize:none;" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}'></textarea>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button onclick="_saveSettings()" style="flex:1;height:28px;border:none;border-radius:4px;background:var(--gen);color:#fff;font-size:.72rem;cursor:pointer;font-family:inherit;">保存して再読込</button>
+        <button onclick="_clearSettings()" style="height:28px;padding:0 10px;border:1px solid #ef4444;border-radius:4px;background:transparent;color:#ef4444;font-size:.72rem;cursor:pointer;font-family:inherit;">設定削除</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:6px;">
+      <button id="btn-logout" onclick="_signOut()" style="flex:1;height:28px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);color:var(--text2);font-size:.72rem;cursor:pointer;font-family:inherit;display:none;">ログアウト</button>
+      <button onclick="_closeSettings()" style="flex:1;height:28px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);color:var(--text2);font-size:.72rem;cursor:pointer;font-family:inherit;">閉じる</button>
     </div>
   </div>
 </div>
@@ -1079,11 +1098,12 @@ function renderMonChart(){
   // 全期間4指標共通maxV
   const allMaxV = Math.max(...Object.keys(ML).flatMap(m => moData(m).map(d=>d[1]))) || 1;
 
-  const sp = window.innerWidth<560;
-  const bW = sp ? Math.max(14,Math.floor((window.innerWidth-64)/data.length)-3) : 30;
-  const gap = sp?3:5;
+  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const sp = contW < 560;
+  const bW = sp ? Math.max(12, Math.floor((contW - 64) / data.length) - 3) : 30;
+  const gap = sp ? 3 : 5;
   const mL=44,mT=10,mB=44, cH=170;
-  const W=mL+data.length*(bW+gap)+8, H=cH+mT+mB;
+  const W = Math.max(contW - 8, mL + data.length*(bW+gap) + 8), H=cH+mT+mB;
   const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
   drawGridAndYAxis(svg, allMaxV, mL,mT,W,cH);
   data.forEach(([ym,val],i)=>{
@@ -1285,10 +1305,16 @@ function renderYoY(){
 // ================================================================
 function renderAll(){
   updateRange();
-  if(curTab==='heat')          renderHeatTab();
-  else if(curTab==='monthly'){ renderMonKPI(); renderMonChart(); renderSeaChart(); renderYoYMon(); renderEffChart(); }
-  else if(curTab==='rank')     renderRank();
-  else if(curTab==='yoy')      renderYoY();
+  if(curTab==='heat') renderHeatTab();
+  else if(curTab==='monthly'){
+    renderMonKPI();
+    requestAnimationFrame(()=>{
+      renderMonChart(); renderSeaChart();
+      requestAnimationFrame(()=>{ renderYoYMon(); renderEffChart(); });
+    });
+  }
+  else if(curTab==='rank') renderRank();
+  else if(curTab==='yoy')  renderYoY();
 }
 
 // ================================================================
@@ -1373,6 +1399,7 @@ document.getElementById('csv-in').addEventListener('change', async e=>{
   }
   e.target.value='';
   if(total>0){
+    _closeSettings();
     monIdx = Math.max(0, months().length-1);
     await save(); renderAll();
     flash(`${total} 件取り込みました（粒度: ${granularity}分）`);
@@ -1384,6 +1411,7 @@ document.getElementById('btn-clr').addEventListener('click',()=>{ modalOverlay.c
 document.getElementById('modal-cancel').addEventListener('click',()=>{ modalOverlay.classList.remove('show'); });
 document.getElementById('modal-ok').addEventListener('click', async ()=>{
   modalOverlay.classList.remove('show');
+  _closeSettings();
   await clearAll(); monIdx=0; renderAll();
   flash('データを消去しました');
 });
@@ -1489,8 +1517,7 @@ async function _initFirebase(cfg){
     document.getElementById('appMain').style.display   = user ? 'block' : 'none';
     if(user){
       document.getElementById('user-name').textContent = user.displayName || user.email;
-      document.getElementById('btn-logout').style.display  = 'inline-block';
-      document.getElementById('btn-settings').style.display = 'inline-block';
+      document.getElementById('btn-logout').style.display = 'flex';
       _syncStatus('読み込み中…');
       try{
         const snap = await getDocs(col);
