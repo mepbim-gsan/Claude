@@ -11,6 +11,7 @@
                      Firestoreデータ構造: solar-dashboard/{YYYY-MM} = {granularity, slots:{...}}
     v04_2026-04-26.9 - ヘッダー整理：CSV・データ消去・ログアウトを設定モーダルに統合
     v05_2026-04-27 - 集計キャッシュ追加、月別推移の重複集計を削減、resize再描画をdebounce
+    v06_2026-04-27 - 日別KPI追加、スマホ表示調整、スロット平均キャッシュ追加
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -89,6 +90,28 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
 .kpi-val{font-size:1.25rem;font-weight:700;}
 .kpi-unit{font-size:.65rem;color:var(--text2);margin-left:2px;}
 .kpi-sub{font-size:.65rem;color:var(--text2);margin-top:2px;}
+
+.day-summary{display:none;border:1px solid var(--border);background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:12px;}
+.day-summary.show{display:block;}
+.day-summary-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.day-summary-title{font-size:.78rem;font-weight:700;color:var(--sell);}
+.day-summary-sub{font-size:.64rem;color:var(--text2);}
+.day-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;}
+.day-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;min-width:0;}
+.day-kpi-lbl{font-size:.62rem;color:var(--text2);margin-bottom:2px;white-space:nowrap;}
+.day-kpi-val{font-size:1rem;font-weight:700;white-space:nowrap;}
+.day-kpi-unit{font-size:.6rem;color:var(--text2);margin-left:2px;}
+@media(max-width:560px){
+  .tab-content{padding:10px 10px;}
+  .sec{padding:12px 10px;margin-bottom:10px;}
+  .sec-hd{align-items:flex-start;}
+  .dnav{width:100%;justify-content:flex-end;}
+  .peak-row{width:100%;justify-content:flex-end;}
+  .day-kpi-row{grid-template-columns:repeat(2,1fr);}
+  .day-summary{padding:9px;margin-bottom:10px;}
+  .day-kpi{padding:7px 8px;}
+  .day-kpi-val{font-size:.98rem;}
+}
 
 .scroll{overflow-x:auto;}
 
@@ -213,6 +236,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
         <div class="peak-row" id="peak-row"></div>
       </div>
     </div>
+    <div class="day-summary" id="day-summary"></div>
     <div class="scroll" id="hbar"></div>
   </div>
   <div class="sec">
@@ -370,6 +394,7 @@ let isSampleMode = false;
 let _lastWriteAt = 0;
 let _aggDirty = true;
 let _aggCache = null;
+let _slotAvgCache = new Map();
 let _resizeTimer = null;
 
 // Firebase ハンドル（ログイン前はnoop）
@@ -543,6 +568,7 @@ function parseCSV(text){
 function _invalidateAgg(){
   _aggDirty = true;
   _aggCache = null;
+  _slotAvgCache.clear();
 }
 
 function _ensureAgg(){
@@ -600,16 +626,24 @@ function moDates(ym){ return _ensureAgg().monthDates[ym] || []; }
 
 // スロット別平均（月内の各スロットを日平均）or 特定日の実値
 function slotAvg(ym, m, dk){
+  const cacheKey = `${ym}|${m}|${dk || 'avg'}|${granularity || 0}`;
+  const cached = _slotAvgCache.get(cacheKey);
+  if(cached) return cached;
+
   const sl = slots();
+  let result;
   if(dk){
-    return sl.map(slot => D[`${dk}_${slot}`]?.[m] || 0);
+    result = sl.map(slot => D[`${dk}_${slot}`]?.[m] || 0);
+  } else {
+    const ds = moDates(ym);
+    result = sl.map(slot => {
+      let sum=0, cnt=0;
+      for(const d of ds){ sum += D[`${d}_${slot}`]?.[m]||0; cnt++; }
+      return cnt ? sum/cnt : 0;
+    });
   }
-  const ds = moDates(ym);
-  return sl.map(slot => {
-    let sum=0, cnt=0;
-    for(const d of ds){ sum += D[`${d}_${slot}`]?.[m]||0; cnt++; }
-    return cnt ? sum/cnt : 0;
-  });
+  _slotAvgCache.set(cacheKey, result);
+  return result;
 }
 
 function moData(m){
@@ -726,6 +760,50 @@ function renderHeatKPI(ym){
   </div>`).join('') + '<div class="kpi" style="visibility:hidden"></div>'; // スペーサー
 }
 
+function dayTotals(dk){
+  const t = _ensureAgg().dayTotals[dk] || {gen:0,sell:0,buy:0,con:0};
+  return { gen:t.gen||0, sell:t.sell||0, buy:t.buy||0, con:t.con||0 };
+}
+
+function efficiencyFromTotals(t){
+  return {
+    jikyu: t.con > 0 ? Math.min(t.gen / t.con * 100, 999) : 0,
+    jikaSho: t.con > 0 ? Math.min((t.con - t.buy) / t.con * 100, 100) : 0,
+    sellRatio: t.gen > 0 ? Math.min(t.sell / t.gen * 100, 100) : 0,
+  };
+}
+
+function renderDaySummary(){
+  const el = document.getElementById('day-summary');
+  if(!el) return;
+  if(!selectedDate){ el.classList.remove('show'); el.innerHTML=''; return; }
+
+  const col = colors();
+  const t = dayTotals(selectedDate);
+  const e = efficiencyFromTotals(t);
+  const rows = [
+    {k:'gen', lbl:'発電', val:t.gen, unit:'kWh'},
+    {k:'sell', lbl:'売電', val:t.sell, unit:'kWh'},
+    {k:'buy', lbl:'買電', val:t.buy, unit:'kWh'},
+    {k:'con', lbl:'消費', val:t.con, unit:'kWh'},
+    {k:'gen', lbl:'自給率', val:e.jikyu, unit:'%'},
+    {k:'sell', lbl:'自家消費率', val:e.jikaSho, unit:'%'},
+    {k:'buy', lbl:'売電比率', val:e.sellRatio, unit:'%'},
+    {k:'con', lbl:'自家消費', val:Math.max(t.con - t.buy, 0), unit:'kWh'},
+  ];
+  el.innerHTML = `
+    <div class="day-summary-hd">
+      <div class="day-summary-title">${selectedDate} の日別合計</div>
+      <div class="day-summary-sub">時間帯グラフはこの日の実績値</div>
+    </div>
+    <div class="day-kpi-row">${rows.map(r => `
+      <div class="day-kpi">
+        <div class="day-kpi-lbl">${r.lbl}</div>
+        <div class="day-kpi-val" style="color:${col[r.k]}">${r.val.toFixed(r.unit==='%' ? 1 : 2)}<span class="day-kpi-unit">${r.unit}</span></div>
+      </div>`).join('')}</div>`;
+  el.classList.add('show');
+}
+
 // ================================================================
 // RENDER: 時間帯別棒グラフ（30分/1時間対応）
 // ================================================================
@@ -733,12 +811,14 @@ function renderHourlyBar(ym){
   const el = document.getElementById('hbar');
   el.innerHTML = '';
   const ds = moDates(ym);
-  if(!ds.length){ el.innerHTML = empty(); return; }
+  if(!ds.length){ el.innerHTML = empty(); renderDaySummary(); return; }
 
   const sl   = slots();
   const col  = colors()[hMet];
   const isDay = selectedDate !== null;
   const dk    = isDay ? selectedDate : null;
+
+  renderDaySummary();
 
   // タイトル更新
   document.getElementById('bar-title').textContent =
@@ -1081,6 +1161,8 @@ function renderHeatTab(){
   if(!ms.length){
     document.getElementById('heat-kpi').innerHTML = '';
     document.getElementById('heat-kpi2').innerHTML = '';
+    document.getElementById('day-summary').classList.remove('show');
+    document.getElementById('day-summary').innerHTML = '';
     document.getElementById('hbar').innerHTML = empty();
     document.getElementById('self-chart').innerHTML = '';
     document.getElementById('hmap').innerHTML = '';
