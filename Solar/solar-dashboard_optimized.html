@@ -84,8 +84,8 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
 .dlabel{font-size:.82rem;font-weight:600;min-width:72px;text-align:center;color:var(--sell);}
 
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px;}
-#heat-kpi,#mon-kpi{grid-template-columns:repeat(5,1fr);}
-@media(max-width:560px){.kpi-row,#heat-kpi,#mon-kpi{grid-template-columns:repeat(2,1fr);}}
+#mon-kpi{grid-template-columns:repeat(5,1fr);}
+@media(max-width:560px){.kpi-row,#mon-kpi{grid-template-columns:repeat(2,1fr);}}
 .kpi{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:10px 13px;}
 .kpi-lbl{font-size:.65rem;color:var(--text2);margin-bottom:3px;}
 .kpi-val{font-size:1.25rem;font-weight:700;display:flex;justify-content:flex-end;align-items:baseline;gap:2px;text-align:right;font-variant-numeric:tabular-nums;}
@@ -741,14 +741,13 @@ function renderHeatKPI(ym){
   const jikaSho = totals.con > 0 ? Math.min(selfUse / totals.con * 100, 100) : 0;
   const sellRatio= totals.gen > 0 ? Math.min(totals.sell / totals.gen * 100, 100) : 0;
 
-  // 1行目: 発電量・売電量・買電量・消費量・自家消費量
+  // 1行目: 発電量・売電量・買電量・消費量
   document.getElementById('heat-kpi').innerHTML =
     [
       ['gen', '発電量', totals.gen, col.gen],
       ['sell', '売電量', totals.sell, col.sell],
       ['buy', '買電量', totals.buy, col.buy],
       ['con', '消費量', totals.con, col.con],
-      ['self', '自家消費量', selfUse, col.con],
     ].map(([k,lbl,t,color]) => {
       const avg = ds.length ? t/ds.length : 0;
       return `<div class="kpi">
@@ -758,15 +757,16 @@ function renderHeatKPI(ym){
       </div>`;
     }).join('');
 
-  // 2行目: 効率指標
+  // 2行目: 効率指標＋自家消費量（日別KPIと同じ並び）
   document.getElementById('heat-kpi2').innerHTML = [
-    { lbl:'自給率', val:jikyu,    tip:'発電量÷消費量',              color:'var(--gen)'  },
-    { lbl:'自家消費率', val:jikaSho, tip:'（消費量－買電量）÷消費量', color:'var(--sell)' },
-    { lbl:'売電比率', val:sellRatio, tip:'売電量÷発電量',             color:'var(--buy)'  },
+    { lbl:'自給率', val:jikyu, unit:'%', tip:'発電量÷消費量', color:'var(--gen)' },
+    { lbl:'自家消費率', val:jikaSho, unit:'%', tip:'（消費量－買電量）÷消費量', color:'var(--sell)' },
+    { lbl:'売電比率', val:sellRatio, unit:'%', tip:'売電量÷発電量', color:'var(--buy)' },
+    { lbl:'自家消費量', val:selfUse, unit:'kWh', tip:'消費量－買電量', color:'var(--con)' },
   ].map(r => `<div class="kpi">
     <div class="kpi-lbl">${r.lbl} <span style="font-size:.6rem;color:var(--text2)">${r.tip}</span></div>
-    <div class="kpi-val" style="color:${r.color}">${r.val.toFixed(1)}<span class="kpi-unit">%</span></div>
-  </div>`).join('') + '<div class="kpi" style="visibility:hidden"></div>'; // スペーサー
+    <div class="kpi-val" style="color:${r.color}">${r.unit==='%' ? r.val.toFixed(1) : r.val.toFixed(1)}<span class="kpi-unit">${r.unit}</span></div>
+  </div>`).join('');
 }
 
 function dayTotals(dk){
