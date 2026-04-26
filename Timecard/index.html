@@ -1,7 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v05_2026-04-26
+  @version   v05_2026-04-26.2
   @changelog
+    v05_2026-04-26.2 - 初回ログイン時キャッシュアップロード・再ログイン時クラウド優先・ログアウト時キャッシュクリア＋authScreen再表示
     v05_2026-04-26 - 起動時ログイン画面追加（configあり:authScreen / configなし:setupScreen）
     v04_2026-04-15.4 - 移動平均線がnull（土日等）で途切れる問題を修正
     v04_2026-04-13.9 - 移動平均線x座標を24時でクリップ（24時超退勤の平均値対応）
@@ -45,7 +46,7 @@
 import { initializeApp }   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, doc, setDoc, onSnapshot }
+import { getFirestore, doc, setDoc, getDoc, onSnapshot }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const CONFIG_KEY = 'firebase-config-v1';
@@ -113,24 +114,56 @@ function setupAuth() {
     } catch(e) { console.error('Firestore write error:', e); }
   };
 
-  onAuthStateChanged(auth, user => {
+  onAuthStateChanged(auth, async user => {
     updateAuthUI(user);
     if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
     if (user) {
-      // ログイン成功：ログイン画面を閉じてappを表示
-      document.getElementById('authScreen').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      // ロード完了まで打刻ボタンを無効化
       _setPunchLock(true);
       const uid = user.uid;
       const ref = doc(db, 'users', uid, 'data', FIRESTORE_DOC);
+
+      // Firestoreドキュメント確認（初回判定）
+      const snap0 = await getDoc(ref);
+
+      if (!snap0.exists()) {
+        // 初回ログイン：ローカルキャッシュをアップロード
+        const cached = (() => {
+          try { const d = localStorage.getItem(STORAGE_KEY); return d ? JSON.parse(d) : null; } catch { return null; }
+        })();
+        const cachedSettings = (() => {
+          try { const s = localStorage.getItem(SETTINGS_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+        })();
+        if (cached || cachedSettings) {
+          const payload = {};
+          if (cached) payload.monthData = cached;
+          if (cachedSettings) payload.settings = cachedSettings;
+          window._lastWriteAt = Date.now();
+          await setDoc(ref, payload);
+        }
+      } else {
+        // 既存データあり：キャッシュがあれば上書き確認
+        const hasCache = !!localStorage.getItem(STORAGE_KEY);
+        if (hasCache) {
+          const ok = confirm('ローカルに保存されたデータがあります。\nクラウドのデータで上書きしますか？\n\n※キャンセルするとログアウトします。');
+          if (!ok) {
+            await signOut(auth);
+            return;
+          }
+          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(SETTINGS_KEY);
+        }
+      }
+
+      // ログイン画面を閉じてapp表示
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+
       let _firstLoad = true;
       _unsubscribe = onSnapshot(ref, snap => {
         if (Date.now() - window._lastWriteAt < 1500) return;
         if (snap.exists()) {
           window._applyRemoteState(snap.data());
         }
-        // 初回ロード完了：ボタン有効化＋pendingAction実行
         if (_firstLoad) {
           _firstLoad = false;
           _setPunchLock(false);
@@ -141,7 +174,11 @@ function setupAuth() {
         }
       });
     } else {
-      // ログアウト中：即時有効
+      // ログアウト：localStorageクリア → authScreen表示
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(SETTINGS_KEY);
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('authScreen').style.display = 'flex';
       _setPunchLock(false);
     }
   });
@@ -388,7 +425,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v05_2026-04-26</span>
+      <span style="font-size:11px;color:var(--text3);">v05_2026-04-26.2</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -705,7 +742,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v05_2026-04-26</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v05_2026-04-26.2</div>
   </div>
 
 </div>
