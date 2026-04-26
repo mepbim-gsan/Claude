@@ -9,7 +9,7 @@
                      内部キーをYYYY-MM-DD_HH:MMに変更、表示を30分刻み（棒グラフ48本・ヒートマップ48スロット）
     v04_2026-04-26 - Firebase対応（Google認証・Firestore同期）、ログインせずに使用モード追加
                      Firestoreデータ構造: solar-dashboard/{YYYY-MM} = {granularity, slots:{...}}
-    v04_2026-04-26.5 - Firestore読み書きにtry-catch追加、エラーをflashで表示
+    v04_2026-04-26.6 - コレクションをsharedに変更（ドキュメントID: solar-{YYYY-MM}）、Rulesの追加不要に
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -334,7 +334,8 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 // CONSTANTS & STATE
 // ================================================================
 const CONFIG_KEY = 'solar-firebase-config-v1';
-const COLLECTION  = 'solar-dashboard'; // Firestoreコレクション名
+const COLLECTION  = 'shared';
+const DOC_PREFIX  = 'solar-'; // ドキュメントID: solar-{YYYY-MM}
 
 let D = {};          // { 'YYYY-MM-DD_HH:MM': {gen,sell,buy,con} }
 let granularity = null; // 30 or 60 (minutes)
@@ -1470,7 +1471,7 @@ async function _initFirebase(cfg){
       for(const [k,v] of Object.entries(D)){
         if(k.startsWith(ym)) slots[k] = v;
       }
-      await setDoc(doc(col, ym), { granularity, slots });
+      await setDoc(doc(col, DOC_PREFIX + ym), { granularity, slots });
     }
   };
 
@@ -1479,7 +1480,7 @@ async function _initFirebase(cfg){
     _lastWriteAt = Date.now();
     const snap = await getDocs(col);
     const batch = writeBatch(db);
-    snap.docs.forEach(d => batch.delete(d.ref));
+    snap.docs.forEach(d => { if(d.id.startsWith(DOC_PREFIX)) batch.delete(d.ref); });
     await batch.commit();
   };
 
@@ -1495,6 +1496,7 @@ async function _initFirebase(cfg){
         const snap = await getDocs(col);
         D = {}; granularity = null;
         snap.docs.forEach(d => {
+          if(!d.id.startsWith(DOC_PREFIX)) return;
           const data = d.data();
           if(data.granularity) granularity = data.granularity;
           Object.assign(D, data.slots || {});
