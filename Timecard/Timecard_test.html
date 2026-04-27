@@ -491,9 +491,10 @@ label:first-child{margin-top:0;}
 .work-list-main{display:grid!important;grid-template-columns:34px minmax(0,1fr)!important;gap:10px!important;align-items:center;width:100%;}
 .work-list-main .work-dot{width:18px;height:18px;justify-self:center;cursor:pointer;border:2px solid rgba(255,255,255,.3);}
 .work-list-text{min-width:0;line-height:1.35;}
-.work-list-name{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.work-list-job{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.work-list-help{font-size:10px;color:var(--text3);margin-top:2px;}
+.work-list-title{display:flex;align-items:center;gap:8px;min-width:0;}
+.work-list-name{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.work-list-job{display:inline-flex;align-items:center;max-width:44%;padding:2px 7px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;}
+.work-list-sub{font-size:10px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .work-swipe-actions{border-top:1px solid var(--border);padding-top:8px;margin-top:8px;}
 .job-color-palette{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px;}
 .job-color-swatch{height:34px;border-radius:10px;border:2px solid transparent;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);}
@@ -983,7 +984,7 @@ label:first-child{margin-top:0;}
   <div class="modal-sheet work-manage-sheet">
     <div class="modal-handle"></div>
     <div class="modal-title">WORKリスト編集</div>
-    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px;">●タップでJOBNO色を変更。行タップで編集。左右スワイプでアーカイブ/削除。ドラッグで並び替え。</div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px;">●色変更／ダブルタップ編集／スワイプ操作／ドラッグ並び替え</div>
     <div id="work-list"></div>
     <div id="work-archive-list"></div>
     <div class="divider"></div>
@@ -2719,9 +2720,11 @@ function renderWorkList(){
     <div class="work-list-main">
       <span class="work-dot" data-work-color style="background:${getJobColor(w.jobNo)}" title="JOBNO色を変更"></span>
       <div class="work-list-text">
-        <div class="work-list-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</div>
-        <div class="work-list-job">${escapeHtml(w.jobNo)}</div>
-        <div class="work-list-help">ダブルタップで編集 / スワイプで操作</div>
+        <div class="work-list-title">
+          <div class="work-list-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</div>
+          <div class="work-list-job">${escapeHtml(w.jobNo)}</div>
+        </div>
+        <div class="work-list-sub">${activeRow?'有効':'ARCHIVE'}</div>
       </div>
     </div>
     <div class="work-swipe-actions">
