@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v04_2026-04-26
+  @version   v04_2026-04-27.2
   @changelog
     v01_2026-04-26 - 初版
     v02_2026-04-26 - ライト/ダークモード、月次ダッシュボード、PC/SP対応
     v03_2026-04-26 - 30分/1時間CSV自動判別、粒度をlocalStorageに記録し混在を拒否、
                      内部キーをYYYY-MM-DD_HH:MMに変更、表示を30分刻み（棒グラフ48本・ヒートマップ48スロット）
-    v04_2026-04-26 - Firebase対応（Google認証・Firestore同期）、ログインせずに使用モード追加
-                     Firestoreデータ構造: solar-dashboard/{YYYY-MM} = {granularity, slots:{...}}
-    v04_2026-04-26.9 - ヘッダー整理：CSV・データ消去・ログアウトを設定モーダルに統合
+    v04_2026-04-27 - Firebase対応（Google認証・Firestore同期）、ゲストモード追加
+                     設定モーダル統合（CSV・データ消去・Firebase設定・ログアウト）
+                     集計キャッシュ追加（_aggCache・_slotAvgCache）、月別推移の重複集計削減
+                     resizeをdebounce（180ms）、日別KPIパネル追加、KPIに自家消費量追加
+                     スマホ表示調整、KPI数値右揃え・tabular-nums
+                     Firestoreデータ構造: shared-solar/solar-{YYYY-MM} = {granularity, slots:{...}}
+    v04_2026-04-27.3 - 月次ダッシュボード上段KPIを4列に修正（発電量〜消費量のみ）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -81,15 +85,38 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
 .dnav button:disabled{opacity:.3;cursor:default;}
 .dlabel{font-size:.82rem;font-weight:600;min-width:72px;text-align:center;color:var(--sell);}
 
+/* KPI共通（月間・日別で統一） */
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px;}
-@media(max-width:560px){.kpi-row{grid-template-columns:repeat(2,1fr);}}
-.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:10px 13px;}
-.kpi-lbl{font-size:.65rem;color:var(--text2);margin-bottom:3px;}
-.kpi-val{font-size:1.25rem;font-weight:700;}
+#mon-kpi{grid-template-columns:repeat(5,1fr);}
+@media(max-width:700px){#mon-kpi{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:560px){.kpi-row,#heat-kpi,#heat-kpi2,#mon-kpi{grid-template-columns:repeat(2,1fr);}}
+/* KPIカード：タイトル左上、値右下 */
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:10px 13px;display:flex;flex-direction:column;min-width:0;}
+.kpi-lbl{font-size:.65rem;color:var(--text2);margin-bottom:auto;padding-bottom:6px;}
+.kpi-val{font-size:1.25rem;font-weight:700;display:flex;justify-content:flex-end;align-items:baseline;gap:2px;text-align:right;font-variant-numeric:tabular-nums;}
 .kpi-unit{font-size:.65rem;color:var(--text2);margin-left:2px;}
-.kpi-sub{font-size:.65rem;color:var(--text2);margin-top:2px;}
+.kpi-sub{font-size:.6rem;color:var(--text2);margin-top:2px;text-align:right;line-height:1.4;}
 
-.scroll{overflow-x:auto;}
+/* 日別サマリー（月間KPIと同デザイン） */
+.day-summary{display:none;margin-bottom:14px;}
+.day-summary.show{display:block;}
+.day-summary-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.day-summary-title{font-size:.78rem;font-weight:700;color:var(--sell);}
+.day-summary-sub{font-size:.64rem;color:var(--text2);}
+/* 日別KPIはmonth KPIと同じクラスを使用（.kpi/.kpi-lbl/.kpi-val/.kpi-sub） */
+.day-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
+@media(max-width:700px){.day-kpi-row{grid-template-columns:repeat(4,1fr);}}
+@media(max-width:560px){
+  .tab-content{padding:10px 10px;}
+  .sec{padding:12px 10px;margin-bottom:10px;}
+  .sec-hd{align-items:flex-start;}
+  .dnav{width:100%;justify-content:flex-end;}
+  .peak-row{width:100%;justify-content:flex-end;}
+  .day-kpi-row{grid-template-columns:repeat(2,1fr);}
+  .day-summary{margin-bottom:10px;}
+}
+
+.scroll{overflow-x:auto;min-width:0;}
 
 .peak-row{display:flex;gap:7px;flex-wrap:wrap;}
 .chip{padding:3px 10px;border-radius:10px;font-size:.68rem;font-weight:600;}
@@ -212,6 +239,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
         <div class="peak-row" id="peak-row"></div>
       </div>
     </div>
+    <div class="day-summary" id="day-summary"></div>
     <div class="scroll" id="hbar"></div>
   </div>
   <div class="sec">
@@ -367,6 +395,10 @@ let selectedDate = null; // null=月平均, 'YYYY-MM-DD'=日別
 let selfMode = 'self';   // 'self'=自家消費モード, 'gen'=発電量モード
 let isSampleMode = false;
 let _lastWriteAt = 0;
+let _aggDirty = true;
+let _aggCache = null;
+let _slotAvgCache = new Map();
+let _resizeTimer = null;
 
 // Firebase ハンドル（ログイン前はnoop）
 let _fbSignIn  = () => {};
@@ -435,7 +467,7 @@ async function save(){
 }
 
 async function clearAll(){
-  D = {}; granularity = null;
+  D = {}; granularity = null; _invalidateAgg();
   if(isSampleMode) return;
   _syncStatus('消去中…');
   try{
@@ -529,68 +561,104 @@ function parseCSV(text){
     };
     n++;
   }
+  if(n > 0) _invalidateAgg();
   return n;
 }
 
 // ================================================================
 // AGGREGATION
 // ================================================================
-function allKeys(){ return Object.keys(D).sort(); }
-
-function dates(){
-  const s = new Set();
-  for(const k of allKeys()) s.add(k.slice(0,10));
-  return [...s].sort();
+function _invalidateAgg(){
+  _aggDirty = true;
+  _aggCache = null;
+  _slotAvgCache.clear();
 }
 
-function months(){
-  const s = new Set();
-  for(const dk of dates()) s.add(dk.slice(0,7));
-  return [...s].sort();
+function _ensureAgg(){
+  if(!_aggDirty && _aggCache) return _aggCache;
+
+  const keys = Object.keys(D).sort();
+  const dateSet = new Set();
+  const monthSet = new Set();
+  const dayTotals = {};   // {YYYY-MM-DD:{gen,sell,buy,con}}
+  const monthDates = {};  // {YYYY-MM:[YYYY-MM-DD,...]}
+  const monthTotals = {}; // {YYYY-MM:{gen,sell,buy,con}}
+
+  for(const k of keys){
+    const v = D[k] || {};
+    const dk = k.slice(0,10);
+    const ym = k.slice(0,7);
+    dateSet.add(dk);
+    monthSet.add(ym);
+
+    if(!dayTotals[dk]) dayTotals[dk] = {gen:0,sell:0,buy:0,con:0};
+    if(!monthTotals[ym]) monthTotals[ym] = {gen:0,sell:0,buy:0,con:0};
+
+    for(const m of Object.keys(ML)){
+      const val = v[m] || 0;
+      dayTotals[dk][m] += val;
+      monthTotals[ym][m] += val;
+    }
+  }
+
+  const dateList = [...dateSet].sort();
+  const monthList = [...monthSet].sort();
+  for(const dk of dateList){
+    const ym = dk.slice(0,7);
+    if(!monthDates[ym]) monthDates[ym] = [];
+    monthDates[ym].push(dk);
+  }
+
+  _aggCache = { keys, dateList, monthList, dayTotals, monthDates, monthTotals };
+  _aggDirty = false;
+  return _aggCache;
 }
 
+function allKeys(){ return _ensureAgg().keys; }
+function dates(){ return _ensureAgg().dateList; }
+function months(){ return _ensureAgg().monthList; }
 function slots(){ return granularity === 30 ? SLOTS30 : SLOTS60; }
 
 // 日合計
 function daySum(dk, m){
-  let s = 0;
-  for(const k of allKeys()){
-    if(k.startsWith(dk+'_')) s += D[k][m] || 0;
-  }
-  return s;
+  return _ensureAgg().dayTotals[dk]?.[m] || 0;
 }
 
 // 月の日一覧
-function moDates(ym){ return dates().filter(dk => dk.startsWith(ym)); }
+function moDates(ym){ return _ensureAgg().monthDates[ym] || []; }
 
 // スロット別平均（月内の各スロットを日平均）or 特定日の実値
 function slotAvg(ym, m, dk){
+  const cacheKey = `${ym}|${m}|${dk || 'avg'}|${granularity || 0}`;
+  const cached = _slotAvgCache.get(cacheKey);
+  if(cached) return cached;
+
   const sl = slots();
+  let result;
   if(dk){
-    // 特定日の実値
-    return sl.map(slot => D[`${dk}_${slot}`]?.[m] || 0);
+    result = sl.map(slot => D[`${dk}_${slot}`]?.[m] || 0);
+  } else {
+    const ds = moDates(ym);
+    result = sl.map(slot => {
+      let sum=0, cnt=0;
+      for(const d of ds){ sum += D[`${d}_${slot}`]?.[m]||0; cnt++; }
+      return cnt ? sum/cnt : 0;
+    });
   }
-  // 月平均
-  const ds = moDates(ym);
-  return sl.map(slot => {
-    let sum=0, cnt=0;
-    for(const d of ds){ sum += D[`${d}_${slot}`]?.[m]||0; cnt++; }
-    return cnt ? sum/cnt : 0;
-  });
+  _slotAvgCache.set(cacheKey, result);
+  return result;
 }
 
 function moData(m){
-  return months().map(ym => {
-    const t = moDates(ym).reduce((s,dk) => s + daySum(dk,m), 0);
-    return [ym, t];
-  });
+  const cache = _ensureAgg();
+  return cache.monthList.map(ym => [ym, cache.monthTotals[ym]?.[m] || 0]);
 }
 
 function seaData(m){
   const seas = {'春(3-5)':[],  '夏(6-8)':[],  '秋(9-11)':[],  '冬(12-2)':[]};
   for(const dk of dates()){
     const mo = +dk.slice(5,7), v = daySum(dk,m);
-    if([3,4,5].includes(mo))     seas['春(3-5)'].push(v);
+    if([3,4,5].includes(mo))      seas['春(3-5)'].push(v);
     else if([6,7,8].includes(mo)) seas['夏(6-8)'].push(v);
     else if([9,10,11].includes(mo)) seas['秋(9-11)'].push(v);
     else                           seas['冬(12-2)'].push(v);
@@ -600,16 +668,17 @@ function seaData(m){
 
 function yoyData(){
   const map = {};
-  for(const dk of dates()){
-    const y = dk.slice(0,4), mo = +dk.slice(5,7);
+  for(const [ym, totals] of Object.entries(_ensureAgg().monthTotals)){
+    const y = ym.slice(0,4), mo = +ym.slice(5,7);
     if(!map[y]) map[y] = {};
-    map[y][mo] = (map[y][mo]||0) + daySum(dk,'gen');
+    map[y][mo] = totals.gen || 0;
   }
   return map;
 }
 
 function updateRange(){
-  const ks = allKeys();
+  const cache = _ensureAgg();
+  const ks = cache.keys;
   const badge = document.getElementById('gran-badge');
   if(!ks.length){
     document.getElementById('drng').textContent = 'データ未読み込み';
@@ -617,7 +686,7 @@ function updateRange(){
     badge.textContent = '未設定';
     return;
   }
-  const ds = dates();
+  const ds = cache.dateList;
   document.getElementById('drng').textContent = `${ds[0]} 〜 ${ds[ds.length-1]}  ( ${ds.length} 日分 )`;
   if(granularity === 30){
     badge.className = 'granularity-badge g30';
@@ -668,30 +737,82 @@ function renderHeatKPI(ym){
   for(const k of Object.keys(ML)) totals[k] = ds.reduce((s,dk) => s+daySum(dk,k), 0);
 
   // 効率指標
+  const selfUse = Math.max(totals.con - totals.buy, 0);
   const jikyu   = totals.con > 0 ? Math.min(totals.gen / totals.con * 100, 999) : 0;
-  const jikaSho = totals.con > 0 ? Math.min((totals.con - totals.buy) / totals.con * 100, 100) : 0;
+  const jikaSho = totals.con > 0 ? Math.min(selfUse / totals.con * 100, 100) : 0;
   const sellRatio= totals.gen > 0 ? Math.min(totals.sell / totals.gen * 100, 100) : 0;
 
   // 1行目: 発電量・売電量・買電量・消費量
   document.getElementById('heat-kpi').innerHTML =
-    Object.entries(ML).map(([k,lbl]) => {
-      const t = totals[k], avg = ds.length ? t/ds.length : 0;
+    [
+      ['gen', '発電量', totals.gen, col.gen],
+      ['sell', '売電量', totals.sell, col.sell],
+      ['buy', '買電量', totals.buy, col.buy],
+      ['con', '消費量', totals.con, col.con],
+    ].map(([k,lbl,t,color]) => {
+      const avg = ds.length ? t/ds.length : 0;
       return `<div class="kpi">
         <div class="kpi-lbl">${lbl}</div>
-        <div class="kpi-val" style="color:${col[k]}">${t.toFixed(1)}<span class="kpi-unit">kWh</span></div>
+        <div class="kpi-val" style="color:${color}">${t.toFixed(1)}<span class="kpi-unit">kWh</span></div>
         <div class="kpi-sub">平均 ${avg.toFixed(2)} kWh/日</div>
       </div>`;
     }).join('');
 
-  // 2行目: 効率指標
+  // 2行目: 効率指標＋自家消費量
   document.getElementById('heat-kpi2').innerHTML = [
-    { lbl:'自給率', val:jikyu,    tip:'発電量÷消費量',              color:'var(--gen)'  },
-    { lbl:'自家消費率', val:jikaSho, tip:'（消費量－買電量）÷消費量', color:'var(--sell)' },
-    { lbl:'売電比率', val:sellRatio, tip:'売電量÷発電量',             color:'var(--buy)'  },
+    { lbl:'自給率',     val:jikyu,     unit:'%',   digits:1, tip:'発電量÷消費量',              color:'var(--gen)'  },
+    { lbl:'自家消費率', val:jikaSho,   unit:'%',   digits:1, tip:'（消費量－買電量）÷消費量', color:'var(--sell)' },
+    { lbl:'売電比率',   val:sellRatio, unit:'%',   digits:1, tip:'売電量÷発電量',             color:'var(--buy)'  },
+    { lbl:'自家消費量', val:selfUse,   unit:'kWh', digits:1, tip:'消費量－買電量',             color:'var(--con)'  },
   ].map(r => `<div class="kpi">
-    <div class="kpi-lbl">${r.lbl} <span style="font-size:.6rem;color:var(--text2)">${r.tip}</span></div>
-    <div class="kpi-val" style="color:${r.color}">${r.val.toFixed(1)}<span class="kpi-unit">%</span></div>
-  </div>`).join('') + '<div class="kpi" style="visibility:hidden"></div>'; // スペーサー
+    <div class="kpi-lbl">${r.lbl}</div>
+    <div class="kpi-val" style="color:${r.color}">${r.val.toFixed(r.digits)}<span class="kpi-unit">${r.unit}</span></div>
+    <div class="kpi-sub">${r.tip}</div>
+  </div>`).join('');
+}
+
+function dayTotals(dk){
+  const t = _ensureAgg().dayTotals[dk] || {gen:0,sell:0,buy:0,con:0};
+  return { gen:t.gen||0, sell:t.sell||0, buy:t.buy||0, con:t.con||0 };
+}
+
+function efficiencyFromTotals(t){
+  return {
+    jikyu: t.con > 0 ? Math.min(t.gen / t.con * 100, 999) : 0,
+    jikaSho: t.con > 0 ? Math.min((t.con - t.buy) / t.con * 100, 100) : 0,
+    sellRatio: t.gen > 0 ? Math.min(t.sell / t.gen * 100, 100) : 0,
+  };
+}
+
+function renderDaySummary(){
+  const el = document.getElementById('day-summary');
+  if(!el) return;
+  if(!selectedDate){ el.classList.remove('show'); el.innerHTML=''; return; }
+
+  const col = colors();
+  const t = dayTotals(selectedDate);
+  const e = efficiencyFromTotals(t);
+  const rows = [
+    {k:'gen',  lbl:'発電量',   val:t.gen,                    unit:'kWh'},
+    {k:'sell', lbl:'売電量',   val:t.sell,                   unit:'kWh'},
+    {k:'buy',  lbl:'買電量',   val:t.buy,                    unit:'kWh'},
+    {k:'con',  lbl:'消費量',   val:t.con,                    unit:'kWh'},
+    {k:'gen',  lbl:'自給率',   val:e.jikyu,                  unit:'%'},
+    {k:'sell', lbl:'自家消費率', val:e.jikaSho,              unit:'%'},
+    {k:'buy',  lbl:'売電比率', val:e.sellRatio,              unit:'%'},
+    {k:'con',  lbl:'自家消費量', val:Math.max(t.con - t.buy, 0), unit:'kWh'},
+  ];
+  el.innerHTML = `
+    <div class="day-summary-hd">
+      <div class="day-summary-title">${selectedDate} の日別合計</div>
+      <div class="day-summary-sub">時間帯グラフはこの日の実績値</div>
+    </div>
+    <div class="day-kpi-row">${rows.map(r => `
+      <div class="kpi">
+        <div class="kpi-lbl">${r.lbl}</div>
+        <div class="kpi-val" style="color:${col[r.k]}">${r.val.toFixed(r.unit==='%' ? 1 : 2)}<span class="kpi-unit">${r.unit}</span></div>
+      </div>`).join('')}</div>`;
+  el.classList.add('show');
 }
 
 // ================================================================
@@ -701,12 +822,14 @@ function renderHourlyBar(ym){
   const el = document.getElementById('hbar');
   el.innerHTML = '';
   const ds = moDates(ym);
-  if(!ds.length){ el.innerHTML = empty(); return; }
+  if(!ds.length){ el.innerHTML = empty(); renderDaySummary(); return; }
 
   const sl   = slots();
   const col  = colors()[hMet];
   const isDay = selectedDate !== null;
   const dk    = isDay ? selectedDate : null;
+
+  renderDaySummary();
 
   // タイトル更新
   document.getElementById('bar-title').textContent =
@@ -727,12 +850,13 @@ function renderHourlyBar(ym){
       ピーク ${peakSlot}〜${peakNext} ／ ${avgs[peakIdx].toFixed(3)} kWh
     </span>`;
 
-  const sp  = window.innerWidth < 560;
+  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const sp  = contW < 560;
   const n   = sl.length;
-  const bW  = sp ? Math.max(4, Math.floor((window.innerWidth-58)/n)-1) : (n===48?14:26);
+  const bW  = sp ? Math.max(4, Math.floor((contW-58)/n)-1) : (n===48?14:26);
   const gap = sp ? 1 : 2;
   const mL=44, mT=10, mB=24, cH=130;
-  const W = mL + n*(bW+gap)+6, H = cH+mT+mB;
+  const W = Math.max(contW-4, mL + n*(bW+gap)+6), H = cH+mT+mB;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
   drawGridAndYAxis(svg, maxV, mL, mT, W, cH, 3);
@@ -778,15 +902,16 @@ function renderHeatmap(ym){
   const maxV = d3.max(rows, r=>r.v) || 1;
   const cScale = d3.scaleSequential().domain([0,maxV]).interpolator(d3.interpolate(heatZero, col));
 
-  const sp = window.innerWidth < 560;
+  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const sp = contW < 560;
 
   if(!sp){
     // PC: X=時間スロット, Y=日付
-    const cW = n===48 ? Math.max(12,Math.min(22, Math.floor((window.innerWidth-140)/n)))
-                      : Math.max(18,Math.min(32, Math.floor((window.innerWidth-140)/n)));
+    const cW = n===48 ? Math.max(12,Math.min(22, Math.floor((contW-60)/n)))
+                      : Math.max(18,Math.min(32, Math.floor((contW-60)/n)));
     const cH = Math.max(8, Math.min(20, Math.floor(480/ds.length)));
     const mL=36, mT=24, mR=8, mB=8;
-    const W = mL+n*cW+mR, H = mT+ds.length*cH+mB;
+    const W = Math.max(contW-4, mL+n*cW+mR), H = mT+ds.length*cH+mB;
     const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
     // X軸: スロットラベル（3時間おき）
@@ -821,10 +946,10 @@ function renderHeatmap(ym){
 
   } else {
     // SP: Y=日付, X=時間スロット
-    const cW = Math.max(4, Math.floor((window.innerWidth-44)/n));
+    const cW = Math.max(4, Math.floor((contW-44)/n));
     const cH = Math.max(6, Math.min(14, Math.floor(360/ds.length)));
     const mL=28, mT=20, mB=6;
-    const W = mL+n*cW, H = mT+ds.length*cH+mB;
+    const W = Math.max(contW-4, mL+n*cW), H = mT+ds.length*cH+mB;
     const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
     // X軸: スロット（3時間おき）
@@ -900,14 +1025,15 @@ function renderSelfChart(ym){
   const buyColor  = col.buy;   // 青: 買電量（+側積み上げ）
   const sellColor = col.sell;  // 緑: 売電量（-側）
 
-  const sp  = window.innerWidth < 560;
-  const bW  = sp ? Math.max(4, Math.floor((window.innerWidth-58)/n)-1) : (n===48?14:26);
+  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const sp  = contW < 560;
+  const bW  = sp ? Math.max(4, Math.floor((contW-58)/n)-1) : (n===48?14:26);
   const gap = sp ? 1 : 2;
   const mL=44, mT=10, mB=24;
   const cH_pos = 110;
   const cH_neg = 60;
   const zeroY  = mT + cH_pos;
-  const W = mL + n*(bW+gap)+6;
+  const W = Math.max(contW-4, mL + n*(bW+gap)+6);
   const H = mT + cH_pos + cH_neg + mB;
 
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
@@ -1049,6 +1175,8 @@ function renderHeatTab(){
   if(!ms.length){
     document.getElementById('heat-kpi').innerHTML = '';
     document.getElementById('heat-kpi2').innerHTML = '';
+    document.getElementById('day-summary').classList.remove('show');
+    document.getElementById('day-summary').innerHTML = '';
     document.getElementById('hbar').innerHTML = empty();
     document.getElementById('self-chart').innerHTML = '';
     document.getElementById('hmap').innerHTML = '';
@@ -1078,14 +1206,34 @@ function renderHeatTab(){
 // RENDER: MONTHLY TAB
 // ================================================================
 function renderMonKPI(){
-  const ds = dates(), col = colors();
-  document.getElementById('mon-kpi').innerHTML = ds.length
-    ? Object.entries(ML).map(([k,lbl]) => {
-        const t = ds.reduce((s,dk) => s+daySum(dk,k), 0);
-        return `<div class="kpi"><div class="kpi-lbl">${lbl}</div>
-          <div class="kpi-val" style="color:${col[k]}">${t.toFixed(0)}<span class="kpi-unit">kWh</span></div></div>`;
-      }).join('')
-    : '';
+  const cache = _ensureAgg(), col = colors();
+  if(!cache.dateList.length){ document.getElementById('mon-kpi').innerHTML = ''; return; }
+
+  const totals = {};
+  for(const k of Object.keys(ML)){
+    totals[k] = cache.monthList.reduce((s,ym) => s + (cache.monthTotals[ym]?.[k] || 0), 0);
+  }
+  const selfUse = Math.max(totals.con - totals.buy, 0);
+
+  document.getElementById('mon-kpi').innerHTML = [
+    ['gen', '発電量', totals.gen, col.gen],
+    ['sell', '売電量', totals.sell, col.sell],
+    ['buy', '買電量', totals.buy, col.buy],
+    ['con', '消費量', totals.con, col.con],
+    ['self', '自家消費量', selfUse, col.con],
+  ].map(([k,lbl,t,color]) => `<div class="kpi"><div class="kpi-lbl">${lbl}</div>
+      <div class="kpi-val" style="color:${color}">${t.toFixed(0)}<span class="kpi-unit">kWh</span></div></div>`
+  ).join('');
+}
+function monthlyMaxAllMetrics(){
+  const cache = _ensureAgg();
+  let maxV = 0;
+  for(const ym of cache.monthList){
+    for(const m of Object.keys(ML)){
+      maxV = Math.max(maxV, cache.monthTotals[ym]?.[m] || 0);
+    }
+  }
+  return maxV || 1;
 }
 
 function renderMonChart(){
@@ -1095,8 +1243,8 @@ function renderMonChart(){
   if(!data.length){ el.innerHTML = empty(); return; }
   const col = colors()[monMet];
 
-  // 全期間4指標共通maxV
-  const allMaxV = Math.max(...Object.keys(ML).flatMap(m => moData(m).map(d=>d[1]))) || 1;
+  // 全期間4指標共通maxV（集計キャッシュから取得）
+  const allMaxV = monthlyMaxAllMetrics();
 
   const contW = el.parentElement.clientWidth || window.innerWidth;
   const sp = contW < 560;
@@ -1416,7 +1564,13 @@ document.getElementById('modal-ok').addEventListener('click', async ()=>{
   flash('データを消去しました');
 });
 
-window.addEventListener('resize',()=>{ if(curTab==='heat') renderHeatTab(); });
+window.addEventListener('resize',()=>{
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(()=>{
+    if(curTab==='heat') renderHeatTab();
+    else if(curTab==='monthly') renderAll();
+  }, 180);
+});
 
 function flash(msg, isErr){
   const el=document.createElement('div');
@@ -1453,7 +1607,7 @@ function _clearSettings(){
 // ================================================================
 function _startGuestMode(){
   isSampleMode = true; // Firestore書き込みスキップフラグとして流用
-  D = {}; granularity = null;
+  D = {}; granularity = null; _invalidateAgg();
   document.getElementById('setupScreen').style.display = 'none';
   document.getElementById('authArea').style.display    = 'none';
   document.getElementById('appMain').style.display     = 'block';
@@ -1528,6 +1682,7 @@ async function _initFirebase(cfg){
           if(data.granularity) granularity = data.granularity;
           Object.assign(D, data.slots || {});
         });
+        _invalidateAgg();
         _syncStatus('✓ 同期済み', true);
       }catch(e){
         _syncStatus('');
