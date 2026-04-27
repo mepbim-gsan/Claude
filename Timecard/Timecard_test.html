@@ -2,6 +2,7 @@
   @tool      タイムカード
   @version   v07_2026-04-28
   @changelog
+    v13_2026-04-28 - WORK選択モーダルのWORK名左寄せ表示を追加
     v07_2026-04-28 - WORK選択をスマホ向けモーダル化・出退勤/休憩ロックセルの記録除去・休憩開始中データ保持修正
     v06_2026-04-27.5 - JOB実績を2点タップ範囲塗り方式へ変更・長押しWORK詳細表示対応
     v06_2026-04-27.5 - JOB実績スマホスクロール誤塗り防止・長押し連続塗り/消し対応
@@ -523,6 +524,32 @@ label:first-child{margin-top:0;}
 .job-detail-safe-name{font-size:14px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .job-detail-safe-sub{font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .job-detail-safe-hours{font-size:15px;font-weight:850;color:var(--accent);white-space:nowrap;text-align:right;}
+
+
+/* ── v13: WORK選択 左寄せ調整 ── */
+.work-modal-item{
+  text-align:left!important;
+  justify-items:stretch!important;
+}
+.work-modal-item > span:nth-child(2){
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-start!important;
+  text-align:left!important;
+  min-width:0!important;
+}
+.work-modal-item-name,
+.work-modal-item-job{
+  display:block!important;
+  width:100%!important;
+  text-align:left!important;
+}
+.work-current-button,
+.work-current-main,
+.work-current-text,
+.work-current-sub{
+  text-align:left!important;
+}
 
 </style>
 </head>
