@@ -2,7 +2,7 @@
   @tool      タイムカード
   @version   v07_2026-04-28
   @changelog
-    v13_2026-04-28 - WORK選択モーダルのWORK名左寄せ表示を追加
+    v14_2026-04-28 - WORK選択モーダルのWORK名左寄せ表示を追加
     v07_2026-04-28 - WORK選択をスマホ向けモーダル化・出退勤/休憩ロックセルの記録除去・休憩開始中データ保持修正
     v06_2026-04-27.5 - JOB実績を2点タップ範囲塗り方式へ変更・長押しWORK詳細表示対応
     v06_2026-04-27.5 - JOB実績スマホスクロール誤塗り防止・長押し連続塗り/消し対応
@@ -526,7 +526,7 @@ label:first-child{margin-top:0;}
 .job-detail-safe-hours{font-size:15px;font-weight:850;color:var(--accent);white-space:nowrap;text-align:right;}
 
 
-/* ── v13: WORK選択 左寄せ調整 ── */
+/* ── v14: WORK選択 左寄せ調整 ── */
 .work-modal-item{
   text-align:left!important;
   justify-items:stretch!important;
@@ -2415,17 +2415,26 @@ function updateWorkRangeStatus(){
 
 function getCellLockState(ds,slot){
   const dayData=getDay(ds);
-  if(!dayData?.timeIn || !dayData?.timeOut) return 'off';
-  const inM=parseTime(dayData.timeIn);let outM=parseTime(dayData.timeOut);
+  if(!dayData?.timeIn) return 'off';
+
+  const inM=parseTime(dayData.timeIn);
+  let outM=dayData.timeOut ? parseTime(dayData.timeOut) : 1440; // 退勤未入力なら当日24:00まで入力可
   if(inM===null||outM===null)return 'off';
-  if(outM<=inM)outM+=1440;
+  if(dayData.timeOut && outM<=inM)outM+=1440;
+
   const start=slot*15,end=start+15;
+
+  // 勤務時間の半分以上にかかるセルだけ入力可
   const workOverlap=Math.min(end,outM)-Math.max(start,inM);
   if(workOverlap<7.5)return 'off';
+
+  // 休憩は半分以上かかるセルをロック
+  // 休憩終了が未入力の場合は、休憩開始から24:00までを休憩扱いにする
   for(const b of(dayData.breaks||[])){
-    const bs0=parseTime(b.start),be0=parseTime(b.end);
-    if(bs0===null||be0===null)continue; // 休憩開始中は終了まで未確定なのでロックしない
-    let bs=bs0,be=be0;
+    const bs0=parseTime(b.start);
+    if(bs0===null)continue;
+    const beParsed=b.end ? parseTime(b.end) : null;
+    let bs=bs0,be=(beParsed===null ? 1440 : beParsed);
     if(be<=bs)be+=1440;
     if(bs<inM){bs+=1440;be+=1440;}
     const overlap=Math.min(end,be)-Math.max(start,bs);
