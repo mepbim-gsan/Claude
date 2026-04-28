@@ -2,8 +2,10 @@
   @tool      タイムカード
   @version   v07_2026-04-28
   @changelog
+    v15_2026-04-28 - WORK選択カード化・右上閉じる・WORK管理表示整理
     v14_2026-04-28 - WORK選択モーダルのWORK名左寄せ表示を追加
     v07_2026-04-28 - WORK選択をスマホ向けモーダル化・出退勤/休憩ロックセルの記録除去・休憩開始中データ保持修正
+    v16_2026-04-28 - WORK選択/編集モーダルの右上×を画面固定化
     v06_2026-04-27.5 - JOB実績を2点タップ範囲塗り方式へ変更・長押しWORK詳細表示対応
     v06_2026-04-27.5 - JOB実績スマホスクロール誤塗り防止・長押し連続塗り/消し対応
     v11_2026-04-28 - JOB内訳を完全独立オーバーレイ化・フリーズ対策、集計行表記を内訳へ変更
@@ -526,6 +528,22 @@ label:first-child{margin-top:0;}
 .job-detail-safe-hours{font-size:15px;font-weight:850;color:var(--accent);white-space:nowrap;text-align:right;}
 
 
+/* ── v15: WORK選択カード化・右上閉じる ── */
+.modal-sheet{position:relative;}
+.modal-close-x{position:fixed;right:12px;top:calc(env(safe-area-inset-top, 0px) + 12px);width:40px;height:40px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:22px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:260;box-shadow:0 4px 16px rgba(0,0,0,.28);}
+.modal-close-x:hover{color:var(--text);border-color:var(--accent);}
+.work-modal-list{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(138px,1fr))!important;gap:8px!important;margin-top:8px!important;}
+.work-modal-item{position:relative!important;display:grid!important;grid-template-columns:18px minmax(0,1fr)!important;gap:8px!important;align-items:center!important;min-height:66px!important;padding:12px 10px!important;border-radius:14px!important;text-align:left!important;}
+.work-modal-item .work-dot{width:14px;height:14px;align-self:start;margin-top:2px;}
+.work-modal-item-name{font-size:13px!important;line-height:1.25!important;white-space:normal!important;display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden!important;}
+.work-modal-item-job{font-size:11px!important;margin-top:4px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.work-modal-item-mark{position:absolute;right:7px;top:6px;font-size:10px!important;background:rgba(79,142,247,.16);border:1px solid rgba(79,142,247,.35);border-radius:999px;padding:1px 5px;}
+.work-modal-item:not(.selected) .work-modal-item-mark{display:none;}
+.work-manage-sheet .modal-title,.work-select-sheet .modal-title{padding-right:42px;}
+.work-list-sub{display:none!important;}
+.work-list-name{font-size:15px;}
+.work-list-job{max-width:38%;}
+
 /* ── v14: WORK選択 左寄せ調整 ── */
 .work-modal-item{
   text-align:left!important;
@@ -995,23 +1013,23 @@ label:first-child{margin-top:0;}
 
 <!-- WORK SELECT MODAL -->
 <div class="modal-overlay" id="work-select-modal">
-  <div class="modal-sheet">
+  <div class="modal-sheet work-select-sheet">
+    <button type="button" class="modal-close-x" id="btn-work-select-close" aria-label="閉じる">×</button>
     <div class="modal-handle"></div>
     <div class="modal-title">WORK選択</div>
     <div class="work-modal-search">
       <input type="search" id="work-modal-search" placeholder="WORK名 / JOBNOで検索">
     </div>
     <div id="work-modal-list" class="work-modal-list"></div>
-    <button class="btn btn-ghost btn-full mt-12" id="btn-work-select-close">閉じる</button>
   </div>
 </div>
 
 <!-- WORK MANAGE MODAL -->
 <div class="modal-overlay" id="work-manage-modal">
   <div class="modal-sheet work-manage-sheet">
+    <button type="button" class="modal-close-x" id="btn-work-manage-close" aria-label="閉じる">×</button>
     <div class="modal-handle"></div>
     <div class="modal-title">WORKリスト編集</div>
-    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px;">●色変更／ダブルタップ編集／スワイプ操作／ドラッグ並び替え</div>
     <div id="work-list"></div>
     <div id="work-archive-list"></div>
     <div class="divider"></div>
@@ -1021,9 +1039,8 @@ label:first-child{margin-top:0;}
     </div>
     <input type="hidden" id="new-work-color" value="#4f8ef7">
     <button id="btn-add-work" class="btn btn-ghost btn-full mt-8">＋ WORK追加</button>
-    <button class="btn btn-ghost btn-full mt-12" id="btn-work-manage-close">閉じる</button>
   </div>
-
+</div>
 
 <!-- WORK EDIT MODAL -->
 <div class="modal-overlay" id="work-edit-modal">
@@ -2760,7 +2777,6 @@ function renderWorkList(){
           <div class="work-list-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</div>
           <div class="work-list-job">${escapeHtml(w.jobNo)}</div>
         </div>
-        <div class="work-list-sub">${activeRow?'有効':'ARCHIVE'}</div>
       </div>
     </div>
     <div class="work-swipe-actions">
