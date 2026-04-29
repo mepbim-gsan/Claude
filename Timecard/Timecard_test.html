@@ -1,7 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v06_2026-04-29.8
+  @version   v06_2026-04-29.9
   @changelog
+    v06_2026-04-29.9 - JOB実績タブにカテゴリ別比率追加・年次タブに月別積み上げ棒グラフ＋年間円グラフ追加
     v06_2026-04-29.8 - WORK選択モーダルに命名規則から自動生成するプリセット絞り込みボタンを追加・●色をWORK単位に修正
     v06_2026-04-29.7 - WORK選択カードのメモ2行clamp修正・色管理をJOBNO単位→WORK単位に変更・編集モーダルから色設定削除
     v06_2026-04-29.6 - JOB内訳のWORK行にJOBNO→メモ表示切替・ツールチップにメモ追加・選択中WORKにメモ表示・ヒント文改行
@@ -671,7 +672,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v06_2026-04-29.8</span>
+      <span style="font-size:11px;color:var(--text3);">v06_2026-04-29.9</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -929,6 +930,11 @@ label:first-child{margin-top:0;}
       <div id="work-summary"></div>
     </div>
 
+    <div class="card">
+      <div class="card-title">カテゴリ別集計</div>
+      <div id="work-summary-category"></div>
+    </div>
+
   </div>
 
   <!-- 年間 -->
@@ -966,6 +972,19 @@ label:first-child{margin-top:0;}
           </tr></tfoot>
         </table>
       </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div class="card-title" style="margin-bottom:0;">JOB実績推移</div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="btn-annual-job-mode-jobno" class="btn btn-sm btn-primary" style="font-size:11px;">JOBNO</button>
+          <button type="button" id="btn-annual-job-mode-cat" class="btn btn-sm btn-ghost" style="font-size:11px;">カテゴリ</button>
+        </div>
+      </div>
+      <div style="position:relative;height:220px;"><canvas id="annual-job-bar-chart"></canvas></div>
+      <div style="margin-top:20px;position:relative;height:220px;"><canvas id="annual-job-pie-chart"></canvas></div>
+      <div id="annual-job-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:11px;"></div>
     </div>
     <button id="btn-export-excel" class="btn btn-success btn-full mt-8">📊 Excelで出力</button>
   </div>
@@ -2879,7 +2898,7 @@ function getWorkSummaryData(){
     const arr=logs[dkey]||[];
     (arr||[]).forEach((wid,slot)=>{
       if(!wid)return;
-      if(isWorkCellLocked(ds,slot))return; // ロックセルは集計しない
+      if(isWorkCellLocked(ds,slot))return;
       const w=getWorkById(wid);if(!w)return;
       const job=w.jobNo||'NOJOB';
       if(!byJob[job])byJob[job]={total:0,works:{}};
@@ -2888,6 +2907,47 @@ function getWorkSummaryData(){
     });
   }
   return byJob;
+}
+// WORK名の_前をカテゴリとして集計
+function getWorkCategoryData(y, m){
+  const logs=getWorkLogMonth(y||currentMonth.getFullYear(), m||currentMonth.getMonth()+1);
+  const byCat={};
+  const allDays=Object.keys(logs);
+  for(const dkey of allDays){
+    const yy=y||currentMonth.getFullYear(), mm=m||currentMonth.getMonth()+1;
+    const ds=`${yy}-${String(mm).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
+    const arr=logs[dkey]||[];
+    arr.forEach((wid,slot)=>{
+      if(!wid)return;
+      if(isWorkCellLocked(ds,slot))return;
+      const w=getWorkById(wid);if(!w)return;
+      const match=w.name.match(/^([^_]+)_/);
+      const cat=match?match[1]:'その他';
+      if(!byCat[cat])byCat[cat]={total:0,color:getWorkColor(w.id)};
+      byCat[cat].total+=15;
+      // 最初にヒットしたWORKの色をカテゴリ代表色に
+    });
+  }
+  return byCat;
+}
+function renderWorkSummaryCategory(){
+  const el=document.getElementById('work-summary-category');if(!el)return;
+  const byCat=getWorkCategoryData();
+  const cats=Object.entries(byCat).sort((a,b)=>b[1].total-a[1].total);
+  if(cats.length===0){el.innerHTML='<div style="font-size:13px;color:var(--text2);">未入力です</div>';return;}
+  const total=cats.reduce((s,[,d])=>s+d.total,0);
+  el.innerHTML=cats.map(([cat,data])=>{
+    const pct=total>0?Math.round(data.total/total*100):0;
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+        <span style="font-weight:700;">${escapeHtml(cat)}</span>
+        <span style="color:var(--accent);font-weight:700;">${formatHours(data.total)}h <span style="color:var(--text2);font-weight:400;">${pct}%</span></span>
+      </div>
+      <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:4px;transition:width .4s;"></div>
+      </div>
+    </div>`;
+  }).join('');
 }
 function renderWorkSummary(){
   const el=document.getElementById('work-summary');
@@ -2899,15 +2959,29 @@ function renderWorkSummary(){
   if(jobs.length===0){
     el.innerHTML=head+'<div style="font-size:13px;color:var(--text2);">未入力です</div>';
     document.getElementById('btn-work-summary-month')?.addEventListener('click',()=>setWorkSummaryDay(null));
+    renderWorkSummaryCategory();
     return;
   }
-  el.innerHTML=head+jobs.map(([job,data])=>`<div class="work-summary-row clickable" role="button" tabindex="0" data-job-detail="${escapeHtml(job)}"><div><b>${escapeHtml(job)}</b><div style="font-size:11px;color:var(--text3);">内訳</div></div><div style="text-align:right;font-weight:700;color:var(--accent);">${formatHours(data.total)}h</div><div class="work-summary-detail">${Object.keys(data.works).length} WORK</div></div>`).join('');
+  const total=jobs.reduce((s,[,d])=>s+d.total,0);
+  el.innerHTML=head+jobs.map(([job,data])=>{
+    const pct=total>0?Math.round(data.total/total*100):0;
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px;" class="clickable" role="button" tabindex="0" data-job-detail="${escapeHtml(job)}">
+        <span style="font-weight:700;">${escapeHtml(job)}</span>
+        <span style="color:var(--accent);font-weight:700;">${formatHours(data.total)}h <span style="color:var(--text2);font-weight:400;">${pct}%</span></span>
+      </div>
+      <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:4px;transition:width .4s;"></div>
+      </div>
+    </div>`;
+  }).join('');
   document.getElementById('btn-work-summary-month')?.addEventListener('click',()=>setWorkSummaryDay(null));
   el.querySelectorAll('[data-job-detail]').forEach(row=>{
     const open=()=>showJobBreakdown(row.dataset.jobDetail);
     row.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open();});
     row.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
   });
+  renderWorkSummaryCategory();
 }
 function showJobBreakdown(jobNo){
   // v11: 既存のmodal-overlayを使わず、内訳専用の完全独立オーバーレイを生成する。
@@ -3038,6 +3112,110 @@ function addWorkItem(){
 }
 window.addEventListener('pointerdown',e=>{if(!e.target.closest?.('.work-cell'))hideWorkTooltip();});
 // ANNUAL
+let annualJobChartMode='jobno'; // 'jobno' or 'category'
+let annualBarChart=null, annualPieChart=null;
+
+function getAnnualJobData(mode){
+  const months=[];
+  const keySet=new Set();
+  for(let mon=1;mon<=12;mon++){
+    const data={};
+    const y=currentYear, m=mon;
+    const key=getMonthKey(y,m);
+    const logs=(monthData[key]||{}).workLogs||{};
+    for(const dkey of Object.keys(logs)){
+      const ds=`${y}-${String(m).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
+      const arr=logs[dkey]||[];
+      arr.forEach((wid,slot)=>{
+        if(!wid)return;
+        if(isWorkCellLocked(ds,slot))return;
+        const w=getWorkById(wid);if(!w)return;
+        let label;
+        if(mode==='category'){
+          const match=w.name.match(/^([^_]+)_/);
+          label=match?match[1]:'その他';
+        } else {
+          label=w.jobNo||'NOJOB';
+        }
+        data[label]=(data[label]||0)+15;
+        keySet.add(label);
+      });
+    }
+    months.push(data);
+  }
+  return {months, labels:[...keySet].sort()};
+}
+
+function renderAnnualJobCharts(){
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  const textColor=isDark?'rgba(255,255,255,.7)':'rgba(0,0,0,.6)';
+  const gridColor=isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)';
+
+  const {months,labels}=getAnnualJobData(annualJobChartMode);
+  const monthLabels=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+  // 色割当
+  const palette=WORK_COLORS;
+  const colorMap={};
+  labels.forEach((l,i)=>colorMap[l]=palette[i%palette.length]);
+
+  // 積み上げ棒グラフ
+  const barCtx=document.getElementById('annual-job-bar-chart')?.getContext('2d');
+  if(barCtx){
+    if(annualBarChart)annualBarChart.destroy();
+    annualBarChart=new Chart(barCtx,{
+      type:'bar',
+      data:{
+        labels:monthLabels,
+        datasets:labels.map(l=>({
+          label:l,
+          data:months.map(m=>parseFloat(((m[l]||0)/60).toFixed(1))),
+          backgroundColor:colorMap[l],
+          stack:'s'
+        }))
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}h`}}},
+        scales:{
+          x:{stacked:true,ticks:{color:textColor},grid:{color:gridColor}},
+          y:{stacked:true,ticks:{color:textColor,callback:v=>v+'h'},grid:{color:gridColor}}
+        }
+      }
+    });
+  }
+
+  // 年間合計の円グラフ
+  const totalMap={};
+  months.forEach(m=>Object.entries(m).forEach(([l,v])=>totalMap[l]=(totalMap[l]||0)+v));
+  const pieLabels=Object.keys(totalMap).sort((a,b)=>totalMap[b]-totalMap[a]);
+  const pieCtx=document.getElementById('annual-job-pie-chart')?.getContext('2d');
+  if(pieCtx){
+    if(annualPieChart)annualPieChart.destroy();
+    annualPieChart=new Chart(pieCtx,{
+      type:'doughnut',
+      data:{
+        labels:pieLabels,
+        datasets:[{data:pieLabels.map(l=>parseFloat(((totalMap[l]||0)/60).toFixed(1))),backgroundColor:pieLabels.map(l=>colorMap[l]),borderWidth:2}]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed}h`}}}
+      }
+    });
+  }
+
+  // 凡例
+  const legendEl=document.getElementById('annual-job-legend');
+  if(legendEl){
+    const total=Object.values(totalMap).reduce((s,v)=>s+v,0);
+    legendEl.innerHTML=pieLabels.map(l=>{
+      const pct=total>0?Math.round((totalMap[l]||0)/total*100):0;
+      return `<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:${colorMap[l]};display:inline-block;flex-shrink:0;"></span>${escapeHtml(l)} ${pct}%</span>`;
+    }).join('');
+  }
+}
+
 function renderAnnualTab(){
   document.getElementById('year-label').textContent=`${currentYear}年`;
   const cm=new Date().getMonth()+1,cy=new Date().getFullYear();
@@ -3079,6 +3257,7 @@ function renderAnnualTab(){
   document.getElementById('at-lot').textContent=formatHours(tHol);
   document.getElementById('at-paid').textContent=tPaid;
   document.getElementById('at-comp').textContent=tComp;
+  renderAnnualJobCharts();
 }
 
 // EXCEL
@@ -3263,6 +3442,18 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
   document.getElementById('btn-year-prev').addEventListener('click',()=>{currentYear--;renderAnnualTab();});
   document.getElementById('btn-year-next').addEventListener('click',()=>{currentYear++;renderAnnualTab();});
+  document.getElementById('btn-annual-job-mode-jobno')?.addEventListener('click',()=>{
+    annualJobChartMode='jobno';
+    document.getElementById('btn-annual-job-mode-jobno').className='btn btn-sm btn-primary';
+    document.getElementById('btn-annual-job-mode-cat').className='btn btn-sm btn-ghost';
+    renderAnnualJobCharts();
+  });
+  document.getElementById('btn-annual-job-mode-cat')?.addEventListener('click',()=>{
+    annualJobChartMode='category';
+    document.getElementById('btn-annual-job-mode-jobno').className='btn btn-sm btn-ghost';
+    document.getElementById('btn-annual-job-mode-cat').className='btn btn-sm btn-primary';
+    renderAnnualJobCharts();
+  });
   document.getElementById('btn-export-excel').addEventListener('click',exportExcel);
   document.getElementById('btn-save-work-settings').addEventListener('click',()=>{settings.stdHours=parseFloat(document.getElementById('std-hours').value)||8;settings.coreStart=document.getElementById('core-start').value;settings.coreEnd=document.getElementById('core-end').value;saveSettingsStorage();alert('保存しました');});
   document.getElementById('btn-add-preset').addEventListener('click',()=>{const n=document.getElementById('new-preset-name').value.trim(),i=document.getElementById('new-preset-in').value.trim(),o=document.getElementById('new-preset-out').value.trim();if(!n||!i||!o)return;settings.presets.push({name:n,timeIn:i,timeOut:o});saveSettingsStorage();renderPresetList();renderPresetButtons();document.getElementById('new-preset-name').value='';document.getElementById('new-preset-in').value='';document.getElementById('new-preset-out').value='';});
