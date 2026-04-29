@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v05_2026-04-27.3
+  @version   v05_2026-04-27.5
   @changelog
     v01_2026-04-26 - 初版
     v02_2026-04-26 - ライト/ダークモード、月次ダッシュボード、PC/SP対応
@@ -15,7 +15,8 @@
                      Firestoreデータ構造: shared-solar/solar-{YYYY-MM} = {granularity, slots:{...}}
     v05_2026-04-27 - タブ全面刷新：月次ダッシュボード→日次分析、月別推移→月間推移（ヒストグラム・月別表追加）
                      劣化トレンド→年間推移（年別KPI・累計・劣化診断）、日別ランキング→ランキング（日別Top15×4＋月別・年別）
-    v05_2026-04-27.3 - ランキング値を小数第一位・白space:nowrap、経年劣化診断を降順表示
+    v05_2026-04-27.5 - 箱ひげ図追加：月別（月間推移タブ・複数年色分け）、年別（経年劣化診断）
+                       劣化テーブルの比較指標をTop10平均→中央値に変更
                        棒グラフスタイル統一（水平Xラベル・角丸・opacity）、不完全月フラグ（⚠斜線表示）
                        月別サマリー表を降順に変更
 -->
@@ -333,6 +334,14 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="scroll" id="sea-chart"></div>
   </div>
   <div class="sec">
+    <div class="sec-hd">
+      <div class="sec-title">月別日発電量 箱ひげ図</div>
+      <div style="font-size:.66rem;color:var(--text2)" id="box-legend"></div>
+    </div>
+    <div class="scroll" id="box-chart"></div>
+    <p style="font-size:.66rem;color:var(--text2);margin-top:6px">箱：25〜75パーセンタイル　線：中央値　ひげ：5〜95パーセンタイル　点：外れ値</p>
+  </div>
+  <div class="sec">
     <div class="sec-title" style="margin-bottom:10px">年別月次比較（発電量 kWh）</div>
     <div class="scroll" id="yoy-mon"></div>
     <p style="font-size:.66rem;color:var(--text2);margin-top:7px">複数年のデータが蓄積されると年別に色分けして表示されます。</p>
@@ -381,7 +390,9 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
       <div style="font-size:.66rem;color:var(--text2)">天候の影響があるため参考値です</div>
     </div>
     <div class="scroll" id="deg-table-wrap"></div>
-    <div class="scroll" style="margin-top:12px" id="deg-chart"></div>
+    <div class="sec-title" style="margin-top:14px;margin-bottom:8px;font-size:.68rem">年別日発電量 箱ひげ図（中央値・IQRで性能比較）</div>
+    <div class="scroll" id="deg-box-chart"></div>
+    <p style="font-size:.66rem;color:var(--text2);margin-top:6px">箱：25〜75パーセンタイル　線：中央値　ひげ：5〜95パーセンタイル　点：外れ値（発電量0日除く）</p>
   </div>
 </div>
 
@@ -788,6 +799,118 @@ function slotAvg(ym, m, dk){
 function moData(m){
   const cache = _ensureAgg();
   return cache.monthList.map(ym => [ym, cache.monthTotals[ym]?.[m] || 0]);
+}
+
+// 箱ひげ統計計算（発電量0日除外オプション付き）
+function boxStats(vals, excludeZero){
+  const sorted = [...vals].filter(v => excludeZero ? v > 0 : true).sort((a,b)=>a-b);
+  if(!sorted.length) return null;
+  const n = sorted.length;
+  const pct = p => {
+    const i = p/100*(n-1), lo=Math.floor(i), hi=Math.ceil(i);
+    return sorted[lo] + (sorted[hi]-sorted[lo])*(i-lo);
+  };
+  return {
+    n,
+    min:   sorted[0],
+    p5:    pct(5),
+    q1:    pct(25),
+    med:   pct(50),
+    q3:    pct(75),
+    p95:   pct(95),
+    max:   sorted[n-1],
+    mean:  sorted.reduce((s,v)=>s+v,0)/n,
+    // 外れ値：p5未満 or p95超
+    outliers: sorted.filter(v => v < pct(5) || v > pct(95)),
+  };
+}
+
+// 箱ひげ図を描画（汎用）
+// groups: [{label, color, stats}]
+function drawBoxPlot(el, groups, yLabel){
+  el.innerHTML = '';
+  if(!groups.length) return;
+
+  const validGroups = groups.filter(g=>g.stats);
+  if(!validGroups.length){ el.innerHTML = empty('データ不足'); return; }
+
+  const allVals = validGroups.flatMap(g=>[g.stats.p5, g.stats.p95, ...g.stats.outliers]);
+  const maxV = Math.max(...allVals) || 1;
+  const minV = 0;
+
+  const sp = window.innerWidth < 560;
+  const gW = sp ? Math.max(28, Math.floor((window.innerWidth-80)/validGroups.length)) : Math.max(44, Math.min(80, Math.floor(900/validGroups.length)));
+  const bW = Math.floor(gW * 0.5);
+  const mL=44, mT=12, mB=30, cH=180;
+  const W = mL + validGroups.length*gW + 16, H = cH+mT+mB;
+  const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
+
+  const scaleY = v => mT + cH - ((v-minV)/(maxV-minV))*cH;
+
+  // グリッド・Y軸
+  for(let i=0;i<=4;i++){
+    const v = maxV*i/4;
+    const y = scaleY(v);
+    svg.append('line').attr('x1',mL).attr('x2',W-8).attr('y1',y).attr('y2',y)
+      .attr('stroke',cv('--grid')).attr('stroke-width',1);
+    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end')
+      .attr('fill',cv('--text2')).attr('font-size',9)
+      .text(v>=10?Math.round(v):v.toFixed(1));
+  }
+
+  validGroups.forEach((g, i)=>{
+    const s = g.stats;
+    const cx = mL + i*gW + gW/2;
+    const x1 = cx - bW/2;
+    const col = g.color;
+
+    // ひげ（p5〜p95）
+    svg.append('line').attr('x1',cx).attr('x2',cx).attr('y1',scaleY(s.p95)).attr('y2',scaleY(s.p5))
+      .attr('stroke',col).attr('stroke-width',1.5).attr('stroke-dasharray','3,2').attr('opacity',.6);
+    // ひげ端キャップ
+    [s.p5, s.p95].forEach(v=>{
+      svg.append('line').attr('x1',cx-bW/4).attr('x2',cx+bW/4).attr('y1',scaleY(v)).attr('y2',scaleY(v))
+        .attr('stroke',col).attr('stroke-width',1.5).attr('opacity',.7);
+    });
+
+    // 箱（Q1〜Q3）
+    const boxY = scaleY(s.q3), boxH = scaleY(s.q1)-scaleY(s.q3);
+    svg.append('rect').attr('x',x1).attr('y',boxY).attr('width',bW).attr('height',Math.max(boxH,1))
+      .attr('fill',col).attr('opacity',.25).attr('rx',2).attr('stroke',col).attr('stroke-width',1.5);
+
+    // 中央値線
+    svg.append('line').attr('x1',x1).attr('x2',x1+bW).attr('y1',scaleY(s.med)).attr('y2',scaleY(s.med))
+      .attr('stroke',col).attr('stroke-width',2.5);
+
+    // 平均点（◆）
+    svg.append('text').attr('x',cx).attr('y',scaleY(s.mean)+4).attr('text-anchor','middle')
+      .attr('fill',col).attr('font-size',9).attr('opacity',.8).text('◆');
+
+    // 外れ値点
+    s.outliers.forEach(v=>{
+      svg.append('circle').attr('cx',cx).attr('cy',scaleY(v)).attr('r',2.5)
+        .attr('fill','none').attr('stroke',col).attr('stroke-width',1.2).attr('opacity',.7)
+        .on('mousemove',e=>showTip(e,`外れ値: <b>${v.toFixed(2)} kWh</b>`))
+        .on('mouseleave',hideTip);
+    });
+
+    // ホバー領域
+    svg.append('rect').attr('x',cx-gW/2).attr('y',mT).attr('width',gW).attr('height',cH)
+      .attr('fill','transparent')
+      .on('mousemove',e=>showTip(e,
+        `${g.label}<br>` +
+        `中央値: <b>${s.med.toFixed(2)} kWh</b><br>` +
+        `平均: ${s.mean.toFixed(2)} kWh<br>` +
+        `Q1〜Q3: ${s.q1.toFixed(2)}〜${s.q3.toFixed(2)} kWh<br>` +
+        `5〜95%ile: ${s.p5.toFixed(2)}〜${s.p95.toFixed(2)} kWh<br>` +
+        `N: ${s.n}日`
+      ))
+      .on('mouseleave',hideTip);
+
+    // X軸ラベル
+    svg.append('text').attr('x',cx).attr('y',mT+cH+16).attr('text-anchor','middle')
+      .attr('fill',cv('--text2')).attr('font-size',9).text(g.label);
+  });
 }
 
 function seaData(m){
@@ -1497,6 +1620,126 @@ function renderSeaChart(){
   });
 }
 
+// 月別箱ひげ（複数年を色分け重ね表示）
+function renderMonthlyBoxPlot(){
+  const el = document.getElementById('box-chart');
+  const legEl = document.getElementById('box-legend');
+  el.innerHTML = ''; legEl.innerHTML = '';
+  const yrs = years();
+  const ds = dates();
+  if(!ds.length){ el.innerHTML = empty(); return; }
+
+  const yCol = [cv('--gen'), cv('--sell'), cv('--buy'), cv('--con'), '#ef4444'];
+  const MOS = [1,2,3,4,5,6,7,8,9,10,11,12];
+  const allStats = [];
+
+  // 単年の場合：月ごとに1グループ
+  // 複数年の場合：月ごとに年別グループを並べる
+  const multiYear = yrs.length > 1;
+  const gGap = multiYear ? 8 : 12;
+
+  MOS.forEach(mo => {
+    yrs.forEach((yr, yi) => {
+      const ym = `${yr}-${String(mo).padStart(2,'0')}`;
+      const vals = moDates(ym).map(dk => daySum(dk, 'gen'));
+      const stats = boxStats(vals, true);
+      allStats.push({
+        mo, yr, yi,
+        label: multiYear ? `${mo}月\n${yr}` : `${mo}月`,
+        color: multiYear ? yCol[yi % yCol.length] : yCol[0],
+        stats,
+      });
+    });
+  });
+
+  const validStats = allStats.filter(g=>g.stats);
+  if(!validStats.length){ el.innerHTML = empty('データ不足'); return; }
+
+  const allVals = validStats.flatMap(g=>[g.stats.p5, g.stats.p95, ...g.stats.outliers]);
+  const maxV = Math.max(...allVals) || 1;
+
+  const sp = window.innerWidth < 560;
+  const perMo = yrs.length;
+  const bW = sp ? Math.max(8, Math.floor((window.innerWidth-80)/(12*perMo+12))-2) : Math.max(12, Math.min(24, Math.floor(900/(12*perMo+12))));
+  const innerGap = 2;
+  const moGap = sp ? 6 : 10;
+  const moW = perMo*(bW+innerGap) + moGap;
+  const mL=44, mT=12, mB=30, cH=200;
+  const W = mL + 12*moW + 8, H = cH+mT+mB;
+  const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
+
+  const scaleY = v => mT + cH - (v/maxV)*cH;
+
+  for(let i=0;i<=4;i++){
+    const v = maxV*i/4, y = scaleY(v);
+    svg.append('line').attr('x1',mL).attr('x2',W-8).attr('y1',y).attr('y2',y)
+      .attr('stroke',cv('--grid')).attr('stroke-width',1);
+    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end')
+      .attr('fill',cv('--text2')).attr('font-size',9)
+      .text(v>=10?Math.round(v):v.toFixed(1));
+  }
+
+  MOS.forEach((mo, mi) => {
+    const moX = mL + mi*moW;
+    // 月ラベル
+    svg.append('text').attr('x', moX + moW/2 - moGap/2).attr('y', mT+cH+16)
+      .attr('text-anchor','middle').attr('fill',cv('--text2')).attr('font-size',9).text(mo+'月');
+
+    yrs.forEach((yr, yi) => {
+      const g = allStats.find(a=>a.mo===mo && a.yr===yr);
+      if(!g?.stats) return;
+      const s = g.stats;
+      const col = multiYear ? yCol[yi%yCol.length] : yCol[0];
+      const cx = moX + yi*(bW+innerGap) + bW/2;
+      const x1 = cx - bW/2;
+
+      // ひげ
+      svg.append('line').attr('x1',cx).attr('x2',cx).attr('y1',scaleY(s.p95)).attr('y2',scaleY(s.p5))
+        .attr('stroke',col).attr('stroke-width',1.2).attr('stroke-dasharray','3,2').attr('opacity',.6);
+      [s.p5, s.p95].forEach(v=>{
+        svg.append('line').attr('x1',cx-bW/4).attr('x2',cx+bW/4).attr('y1',scaleY(v)).attr('y2',scaleY(v))
+          .attr('stroke',col).attr('stroke-width',1.2).attr('opacity',.7);
+      });
+
+      // 箱
+      const boxY = scaleY(s.q3), boxH = Math.max(scaleY(s.q1)-scaleY(s.q3),1);
+      svg.append('rect').attr('x',x1).attr('y',boxY).attr('width',bW).attr('height',boxH)
+        .attr('fill',col).attr('opacity',.25).attr('rx',1).attr('stroke',col).attr('stroke-width',1.2);
+
+      // 中央値
+      svg.append('line').attr('x1',x1).attr('x2',x1+bW).attr('y1',scaleY(s.med)).attr('y2',scaleY(s.med))
+        .attr('stroke',col).attr('stroke-width',2);
+
+      // 外れ値
+      s.outliers.forEach(v=>{
+        svg.append('circle').attr('cx',cx).attr('cy',scaleY(v)).attr('r',2)
+          .attr('fill','none').attr('stroke',col).attr('stroke-width',1).attr('opacity',.6);
+      });
+
+      // ホバー
+      svg.append('rect').attr('x',x1-1).attr('y',mT).attr('width',bW+2).attr('height',cH)
+        .attr('fill','transparent')
+        .on('mousemove',e=>showTip(e,
+          `${mo}月${multiYear?' '+yr:''}<br>` +
+          `中央値: <b>${s.med.toFixed(2)} kWh</b><br>` +
+          `平均: ${s.mean.toFixed(2)} kWh<br>` +
+          `Q1〜Q3: ${s.q1.toFixed(2)}〜${s.q3.toFixed(2)} kWh<br>` +
+          `5〜95%ile: ${s.p5.toFixed(2)}〜${s.p95.toFixed(2)} kWh<br>` +
+          `N: ${s.n}日`
+        ))
+        .on('mouseleave',hideTip);
+    });
+  });
+
+  // 凡例（複数年のみ）
+  if(multiYear){
+    legEl.innerHTML = yrs.map((yr,i)=>
+      `<span style="display:inline-flex;align-items:center;gap:4px;color:${yCol[i%yCol.length]};font-size:.68rem;font-weight:600">
+        <span style="display:inline-block;width:10px;height:10px;background:${yCol[i%yCol.length]};border-radius:2px;opacity:.7"></span>${yr}年
+      </span>`
+    ).join('');
+  }
+}
 function renderYoYMon(){
   const el = document.getElementById('yoy-mon');
   el.innerHTML='';
@@ -1863,7 +2106,7 @@ function _renderCumulChart(col){
 
 function _renderDegradation(yrs, col){
   const tblEl = document.getElementById('deg-table-wrap');
-  const chEl  = document.getElementById('deg-chart');
+  const chEl  = document.getElementById('deg-box-chart');
   tblEl.innerHTML = ''; chEl.innerHTML = '';
   if(!yrs.length){ tblEl.innerHTML = '<p style="font-size:.73rem;color:var(--text2);padding:8px">データが不足しています。</p>'; return; }
 
@@ -1873,25 +2116,28 @@ function _renderDegradation(yrs, col){
     const maxDay  = daySums[0] || 0;
     const top10   = daySums.slice(0,10);
     const top10avg= top10.length ? top10.reduce((s,v)=>s+v,0)/top10.length : 0;
-    return { yr, total, maxDay, top10avg, days:yrDates(yr).length };
+    const stats   = boxStats(yrDates(yr).map(dk=>daySum(dk,'gen')), true);
+    return { yr, total, maxDay, top10avg, days:yrDates(yr).length, stats };
   });
 
-  const base = yrStats[0]; // 比較基準は最古年（昇順の先頭）
-  const rows = [...yrStats].reverse().map((s)=>{ // 表示は降順
+  const base = yrStats[0];
+  const rows = [...yrStats].reverse().map((s)=>{
     const i = yrStats.indexOf(s);
     const totalRatio = i===0 ? 100 : (s.total/base.total*100);
     const maxRatio   = i===0 ? 100 : (s.maxDay/base.maxDay*100);
-    const top10Ratio = i===0 ? 100 : (s.top10avg/base.top10avg*100);
+    const medRatio   = i===0 ? 100 : (s.stats?.med && base.stats?.med ? s.stats.med/base.stats.med*100 : 0);
     const degColor   = i===0 ? '' : (totalRatio>=98?'#10b981':totalRatio>=94?'#f59e0b':'#ef4444');
     const deg        = i===0 ? '—' : `${(100-totalRatio).toFixed(1)}%`;
+    const medStr     = s.stats ? s.stats.med.toFixed(2) : '—';
+    const medRatioStr= i===0 ? '—' : (base.stats?.med ? medRatio.toFixed(1)+'%' : '—');
     return `<tr>
-      <td>${s.yr}年</td><td>${s.days}</td>
+      <td>${s.yr}</td><td>${s.days}</td>
       <td style="color:${col.gen}">${s.total.toFixed(0)}</td>
       <td style="color:var(--text2)">${i===0?'—':totalRatio.toFixed(1)+'%'}</td>
       <td style="color:${col.gen}">${s.maxDay.toFixed(2)}</td>
       <td style="color:var(--text2)">${i===0?'—':maxRatio.toFixed(1)+'%'}</td>
-      <td style="color:${col.gen}">${s.top10avg.toFixed(2)}</td>
-      <td style="color:var(--text2)">${i===0?'—':top10Ratio.toFixed(1)+'%'}</td>
+      <td style="color:${col.gen}">${medStr}</td>
+      <td style="color:var(--text2)">${medRatioStr}</td>
       <td>${i===0?'—':`<span class="deg-badge" style="background:${degColor}22;color:${degColor};border:1px solid ${degColor}44">${deg}</span>`}</td>
     </tr>`;
   });
@@ -1901,41 +2147,20 @@ function _renderDegradation(yrs, col){
       <th style="text-align:left">年</th><th>日数</th>
       <th>年間発電 kWh</th><th>対初年比</th>
       <th>最大発電日 kWh</th><th>対初年比</th>
-      <th>Top10平均 kWh</th><th>対初年比</th>
+      <th>中央値 kWh</th><th>対初年比</th>
       <th>推定劣化</th>
     </tr></thead>
     <tbody>${rows.join('')}</tbody>
   </table>`;
 
-  if(yrStats.length < 2) return;
-  const maxTop10 = Math.max(...yrStats.map(s=>s.top10avg)) || 1;
-  const sp = window.innerWidth < 560;
-  const bW = sp ? 40 : 60, gap = sp ? 12 : 20;
-  const mL=44, mT=10, mB=28, cH=120;
-  const ptW = bW+gap;
-  const W = mL + yrStats.length*ptW+8, H = cH+mT+mB;
-  const svg = d3.select(chEl).append('svg').attr('width',W).attr('height',H);
-  drawGridAndYAxis(svg, maxTop10, mL, mT, W, cH, 2);
-
-  const lineD = yrStats.map((s,i)=>{
-    const x = mL+i*ptW+bW/2, y = mT+cH-(s.top10avg/maxTop10)*cH;
-    return `${i===0?'M':'L'}${x},${y}`;
-  }).join(' ');
-  svg.append('path').attr('d',lineD).attr('fill','none').attr('stroke',col.gen).attr('stroke-width',2).attr('stroke-dasharray','4,3');
-
-  yrStats.forEach((s,i)=>{
-    const x = mL+i*ptW+bW/2, y = mT+cH-(s.top10avg/maxTop10)*cH;
-    const bh = (s.top10avg/maxTop10)*cH;
-    svg.append('rect').attr('x',mL+i*ptW).attr('y',mT+cH-bh).attr('width',bW).attr('height',bh)
-      .attr('fill',col.gen).attr('opacity',.2).attr('rx',2);
-    svg.append('circle').attr('cx',x).attr('cy',y).attr('r',4).attr('fill',col.gen)
-      .on('mousemove',e=>showTip(e,`${s.yr}年<br>Top10平均: <b>${s.top10avg.toFixed(2)} kWh</b>`))
-      .on('mouseleave',hideTip);
-    svg.append('text').attr('x',x).attr('y',mT+cH+16).attr('text-anchor','middle')
-      .attr('fill',cv('--text2')).attr('font-size',9).text(s.yr+'年');
-  });
-  svg.append('text').attr('x',mL).attr('y',mT-2).attr('fill',cv('--text2')).attr('font-size',9)
-    .text('Top10平均 日発電量（kWh）');
+  // 年別箱ひげ
+  const yCol = [cv('--gen'), cv('--sell'), cv('--buy'), cv('--con'), '#ef4444'];
+  const groups = [...yrStats].reverse().map((s,i)=>({
+    label: s.yr+'年',
+    color: yCol[i % yCol.length],
+    stats: s.stats,
+  }));
+  drawBoxPlot(chEl, groups, 'kWh');
 }
 
 // ================================================================
@@ -2000,7 +2225,7 @@ function renderAll(){
       renderMonKPI(); renderPeriodNav();
       requestAnimationFrame(()=>{
         renderMonChart(); renderSeaChart();
-        requestAnimationFrame(()=>{ renderYoYMon(); renderEffChart(); renderHistogram(); renderMonthlyTable(); });
+        requestAnimationFrame(()=>{ renderYoYMon(); renderEffChart(); renderHistogram(); renderMonthlyTable(); renderMonthlyBoxPlot(); });
       });
   }
   else if(curTab==='yearly') renderYearlyTab();
