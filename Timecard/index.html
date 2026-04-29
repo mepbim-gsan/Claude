@@ -1,7 +1,8 @@
 <!--
   @tool      タイムカード
-  @version   v06_2026-04-29.9
+  @version   v06_2026-04-29.10
   @changelog
+    v06_2026-04-29.10 - プリセットボタンを横スクロール化・上限撤廃・数の多い順に変更
     v06_2026-04-29.9 - JOB実績タブにカテゴリ別比率追加・年次タブに月別積み上げ棒グラフ＋年間円グラフ追加
     v06_2026-04-29.8 - WORK選択モーダルに命名規則から自動生成するプリセット絞り込みボタンを追加・●色をWORK単位に修正
     v06_2026-04-29.7 - WORK選択カードのメモ2行clamp修正・色管理をJOBNO単位→WORK単位に変更・編集モーダルから色設定削除
@@ -672,7 +673,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v06_2026-04-29.9</span>
+      <span style="font-size:11px;color:var(--text3);">v06_2026-04-29.10</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -1108,7 +1109,7 @@ label:first-child{margin-top:0;}
       <div class="modal-title">WORK選択</div>
       <div class="work-modal-search">
         <input type="search" id="work-modal-search" placeholder="WORK名 / JOBNOで検索">
-        <div id="work-modal-presets" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+        <div id="work-modal-presets" style="display:flex;flex-wrap:nowrap;gap:6px;margin-top:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;"></div>
       </div>
     </div>
     <div class="work-modal-scroll">
@@ -2756,20 +2757,21 @@ function renderWorkSelector(){
 }
 function renderWorkPresets(activePreset){
   const el=document.getElementById('work-modal-presets');if(!el)return;
-  // _の前を抽出してユニーク化・最大6件
-  const presets=[...new Set(
-    getActiveWorks()
-      .map(w=>{const m=w.name.match(/^([^_]+)_/);return m?m[1]:null;})
-      .filter(Boolean)
-  )].slice(0,6);
-  if(presets.length===0){el.innerHTML='';return;}
-  el.innerHTML=presets.map(p=>`<button type="button" class="work-preset-btn${p===activePreset?' active':''}" data-preset="${p}">${p}</button>`).join('');
+  // _の前を抽出・件数カウント・多い順ソート・制限なし
+  const countMap={};
+  getActiveWorks().forEach(w=>{
+    const m=w.name.match(/^([^_]+)_/);
+    if(m)countMap[m[1]]=(countMap[m[1]]||0)+1;
+  });
+  const presets=Object.entries(countMap).sort((a,b)=>b[1]-a[1]).map(([p])=>p);
+  if(presets.length===0){el.innerHTML='';el.style.cssText='';return;}
+  el.style.cssText='display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;margin-top:8px;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch;';
+  el.innerHTML=presets.map(p=>`<button type="button" class="work-preset-btn${p===activePreset?' active':''}" data-preset="${p}" style="flex-shrink:0;">${p}</button>`).join('');
   el.querySelectorAll('[data-preset]').forEach(btn=>{
     btn.addEventListener('click',()=>{
       const search=document.getElementById('work-modal-search');
       const p=btn.dataset.preset;
       if(btn.classList.contains('active')){
-        // 解除
         search.value='';
         renderWorkModalList('');
         renderWorkPresets(null);
