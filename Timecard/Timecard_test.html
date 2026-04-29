@@ -2,7 +2,7 @@
   @tool      タイムカード
   @version   v06_2026-04-29.8
   @changelog
-    v06_2026-04-29.8 - WORK選択モーダルに命名規則から自動生成するプリセット絞り込みボタンを追加
+    v06_2026-04-29.8 - WORK選択モーダルに命名規則から自動生成するプリセット絞り込みボタンを追加・●色をWORK単位に修正
     v06_2026-04-29.7 - WORK選択カードのメモ2行clamp修正・色管理をJOBNO単位→WORK単位に変更・編集モーダルから色設定削除
     v06_2026-04-29.6 - JOB内訳のWORK行にJOBNO→メモ表示切替・ツールチップにメモ追加・選択中WORKにメモ表示・ヒント文改行
     v06_2026-04-29.5 - WORKにmemoフィールド追加・編集モーダル/WORKリスト/WORK選択カードに表示
@@ -2720,7 +2720,7 @@ function renderWorkSelector(){
   const w=getWorkById(selectedWorkId);
   if(!btn||!nameEl||!jobEl)return;
   if(w){
-    if(dot)dot.style.background=getJobColor(w.jobNo);
+    if(dot)dot.style.background=getWorkColor(w.id);
     nameEl.textContent=`${getWorkIndex(w.id)}. ${w.name}`;
     jobEl.textContent=`${w.jobNo}`;
     if(memoEl){
@@ -2777,7 +2777,7 @@ function renderWorkModalList(query){
   const list=getActiveWorks().filter(w=>!q||w.name.toLowerCase().includes(q)||String(w.jobNo).toLowerCase().includes(q));
   if(list.length){
     el.innerHTML=list.map(w=>`<button type="button" class="work-modal-item${selectedWorkId===w.id?' selected':''}" data-work-select="${w.id}">
-      <span class="work-dot" style="background:${getJobColor(w.jobNo)}"></span>
+      <span class="work-dot" style="background:${getWorkColor(w.id)}"></span>
       <span style="min-width:0;overflow:hidden;"><span class="work-modal-item-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</span><span class="work-modal-item-job">${escapeHtml(w.jobNo)}</span>${w.memo?`<span style="font-size:11px;color:var(--text3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px;line-height:1.4;">${escapeHtml(w.memo)}</span>`:''}</span>
       <span class="work-modal-item-mark">${selectedWorkId===w.id?'選択中':'選択'}</span>
     </button>`).join('');
@@ -2794,7 +2794,10 @@ function renderWorkModalList(query){
         document.getElementById('btn-work-inline-confirm')?.addEventListener('click',()=>{
           const jobNo=document.getElementById('work-inline-jobno')?.value.trim()||'未定';
           const id='w'+Date.now().toString(36);
-          settings.workItems.push({id,name:qRaw,jobNo,color:getJobColor(jobNo),archived:false});
+          settings.workColors=settings.workColors||{};
+          const autoColor=WORK_COLORS[(settings.workItems.length)%WORK_COLORS.length];
+          settings.workColors[id]=autoColor;
+          settings.workItems.push({id,name:qRaw,jobNo,color:autoColor,archived:false});
           refreshJobColors();
           selectedWorkId=id;
           saveSettingsStorage();
@@ -2927,7 +2930,7 @@ function showJobBreakdown(jobNo){
       const w=getWorkById(wid);
       const name=escapeHtml(w?.name||wid);
       const memo=w?.memo?`<div class="job-detail-safe-sub">${escapeHtml(w.memo)}</div>`:'';
-      const color=w?getJobColor(w.jobNo):'#999';
+      const color=w?getWorkColor(w.id):'#999';
       return `<div class="job-detail-safe-row">
         <span class="work-dot" style="background:${color}"></span>
         <div>
@@ -2961,7 +2964,7 @@ function renderWorkList(){
   const active=(settings.workItems||[]).filter(w=>!w.archived);const archived=(settings.workItems||[]).filter(w=>w.archived);
   const rowHtml=(w,activeRow)=>`<div class="work-list-item ${activeRow?'':'work-archived'}" draggable="true" data-work-id="${w.id}">
     <div class="work-list-main">
-      <span class="work-dot" data-work-color style="background:${getJobColor(w.jobNo)}" title="JOBNO色を変更"></span>
+      <span class="work-dot" data-work-color style="background:${getWorkColor(w.id)}" title="色を変更"></span>
       <div class="work-list-text">
         <div class="work-list-title">
           <div class="work-list-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</div>
