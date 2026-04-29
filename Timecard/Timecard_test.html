@@ -1,7 +1,15 @@
 <!--
   @tool      タイムカード
-  @version   v07_2026-04-28
+  @version   v06_2026-04-29.8
   @changelog
+    v06_2026-04-29.8 - WORK選択モーダルに命名規則から自動生成するプリセット絞り込みボタンを追加
+    v06_2026-04-29.7 - WORK選択カードのメモ2行clamp修正・色管理をJOBNO単位→WORK単位に変更・編集モーダルから色設定削除
+    v06_2026-04-29.6 - JOB内訳のWORK行にJOBNO→メモ表示切替・ツールチップにメモ追加・選択中WORKにメモ表示・ヒント文改行
+    v06_2026-04-29.5 - WORKにmemoフィールド追加・編集モーダル/WORKリスト/WORK選択カードに表示
+    v06_2026-04-29.4 - WORK選択検索0件時のインライン追加をモーダル遷移→その場入力に変更
+    v06_2026-04-29.3 - WORK選択検索0件時にインライン追加ボタン表示・JOBNO省略可（"未定"自動セット）
+    v06_2026-04-29.2 - モーダルoverlay背景クリック/ESCで閉じる・WORKリスト編集PC幅2カラム化
+    v06_2026-04-29 - 退勤未入力時の法定超過見込み計算フォールバック追加・休憩スタンプボタンの時刻同期バグ修正
     v15_2026-04-28 - WORK選択カード化・右上閉じる・WORK管理表示整理
     v14_2026-04-28 - WORK選択モーダルのWORK名左寄せ表示を追加
     v07_2026-04-28 - WORK選択をスマホ向けモーダル化・出退勤/休憩ロックセルの記録除去・休憩開始中データ保持修正
@@ -571,7 +579,20 @@ label:first-child{margin-top:0;}
 }
 
 
-/* ── v17: WORKモーダル固定ヘッダー化 ── */
+/* ── v06: プリセット絞り込みボタン ── */
+.work-preset-btn{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,border-color .15s;}
+.work-preset-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+@media(min-width:768px){
+  #work-list,#work-archive-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  #work-list .work-archive-title,#work-archive-list .work-archive-title{grid-column:1/-1;}
+  .work-list-item{margin:0!important;}
+  .work-swipe-actions{display:flex!important;}
+  .work-manage-sheet{max-width:680px;margin:0 auto;}
+  #work-manage-modal{align-items:center;}
+  #work-manage-modal .modal-sheet{border-radius:20px;max-height:88dvh;}
+}
+
 #work-select-modal,
 #work-manage-modal{align-items:flex-end;}
 #work-select-modal .modal-close-x,
@@ -650,7 +671,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v07_2026-04-28</span>
+      <span style="font-size:11px;color:var(--text3);">v06_2026-04-29.8</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -882,11 +903,12 @@ label:first-child{margin-top:0;}
           <span style="min-width:0;">
             <span class="work-current-text" id="work-current-name">WORK未選択</span>
             <span class="work-current-sub" id="work-current-jobno">タップして選択</span>
+            <span id="work-current-memo" style="font-size:11px;color:var(--text3);display:none;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
           </span>
         </span>
         <span class="work-current-arrow">⌄</span>
       </button>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">WORKをタップで選択。1点目→2点目をタップすると範囲塗りできます。同じWORKで塗られている範囲は消去されます。</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.6;">WORKをタップで選択。1点目→2点目をタップすると範囲塗りできます。<br>同じWORKで塗られている範囲は消去されます。</div>
     </div>
 
     <div class="card">
@@ -1067,6 +1089,7 @@ label:first-child{margin-top:0;}
       <div class="modal-title">WORK選択</div>
       <div class="work-modal-search">
         <input type="search" id="work-modal-search" placeholder="WORK名 / JOBNOで検索">
+        <div id="work-modal-presets" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
       </div>
     </div>
     <div class="work-modal-scroll">
@@ -1089,7 +1112,7 @@ label:first-child{margin-top:0;}
       <div class="divider"></div>
       <div class="row">
         <div><label>WORK名</label><input type="text" id="new-work-name" placeholder="例：設備BIM支援"></div>
-        <div><label>JOBNO</label><input type="text" id="new-work-jobno" placeholder="例：A12345"></div>
+        <div><label>JOBNO <span style="font-size:10px;color:var(--text3);">（省略時：未定）</span></label><input type="text" id="new-work-jobno" placeholder="例：A12345"></div>
       </div>
       <input type="hidden" id="new-work-color" value="#4f8ef7">
       <button id="btn-add-work" class="btn btn-ghost btn-full mt-8">＋ WORK追加</button>
@@ -1103,10 +1126,9 @@ label:first-child{margin-top:0;}
     <div class="modal-handle"></div>
     <div class="modal-title">WORK編集</div>
     <label>WORK名</label><input type="text" id="edit-work-name" placeholder="WORK名">
-    <label>JOBNO</label><input type="text" id="edit-work-jobno" placeholder="JOBNO">
-    <label class="mt-8">色</label>
-    <input type="hidden" id="edit-work-color" value="#4f8ef7">
-    <div id="edit-work-color-palette" class="color-palette"></div>
+    <label>JOBNO <span style="font-size:10px;color:var(--text3);">（省略時：未定）</span></label><input type="text" id="edit-work-jobno" placeholder="JOBNO">
+    <label style="margin-top:8px;">メモ <span style="font-size:10px;color:var(--text3);">（任意・20文字まで表示）</span></label>
+    <input type="text" id="edit-work-memo" placeholder="例：Revit基盤整備作業" maxlength="40">
     <div class="row mt-12">
       <button class="btn btn-ghost btn-full" onclick="closeModal('work-edit-modal')">キャンセル</button>
       <button id="btn-save-work-edit" class="btn btn-primary btn-full">保存</button>
@@ -1290,6 +1312,16 @@ function updateStampButtons(){
   document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
   document.getElementById('stamp-out-time').textContent = outVal ? formatTime(parseTime(outVal)) : '--:--';
 
+  // 休憩開始ボタン：終了が空の行のうち最も遅い開始時刻を表示
+  const openBreaks = breakRows.filter(b => b && b.start && !b.end);
+  const latestBreakStart = openBreaks.reduce((latest, b) => {
+    const t = parseTime(b.start);
+    return (t !== null && (latest === null || t > latest)) ? t : latest;
+  }, null);
+  document.getElementById('stamp-break-start-time').textContent =
+    latestBreakStart !== null ? formatTime(latestBreakStart) : '--:--';
+  document.getElementById('stamp-break-start').classList.toggle('active', latestBreakStart !== null);
+
   // activeスタイル
   document.getElementById('stamp-in').classList.toggle('active', !!inVal);
   document.getElementById('stamp-out').classList.toggle('active', !!outVal);
@@ -1385,9 +1417,19 @@ function addBreakRow(start='',end=''){
 function updateDaySummary(live=false){
   const inVal  = document.getElementById('punch-in').value;
   let   outVal = document.getElementById('punch-out').value;
+  const ds     = document.getElementById('punch-date').value;
   const today  = toDateStr(new Date());
-  const isToday = document.getElementById('punch-date').value === today;
-  if(isToday && inVal && !outVal) outVal = nowHHMM();
+  const isToday = ds === today;
+  let   usingFallback = false;
+  if(inVal && !outVal){
+    if(isToday){
+      outVal = nowHHMM();
+    } else {
+      const sched = getSched(ds);
+      outVal = sched?.timeOut || settings.presets?.[0]?.timeOut || '1730';
+      usingFallback = true;
+    }
+  }
 
   // 休憩バリデーション: 勤務時間外の行を赤くして計算から除外
   const validBreaks = [];
@@ -1411,9 +1453,10 @@ function updateDaySummary(live=false){
   const wM=calcWorkMinutes(o);
   const bM=validBreaks.reduce((s,b)=>{const bs=parseTime(b.start),be=parseTime(b.end);if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=1440;return s+bd;}return s;},0);
   const stdM=(settings.stdHours||8)*60;
-  document.getElementById('today-work-hours').textContent=formatHours(wM)+'h';
+  const suffix = usingFallback ? '(見込)' : '';
+  document.getElementById('today-work-hours').textContent=formatHours(wM)+'h'+suffix;
   document.getElementById('today-break-hours').textContent=formatHours(bM)+'h';
-  document.getElementById('today-overtime').textContent=formatHours(Math.max(0,wM-stdM))+'h';
+  document.getElementById('today-overtime').textContent=formatHours(Math.max(0,wM-stdM))+'h'+suffix;
   updateStampButtons();
 }
 function sortBreakRows(){
@@ -2381,8 +2424,37 @@ function deleteScheduleRange(){
   }
   saveStorage();renderMonthTab();alert('予定を削除しました');
 }
-function openModal(id){document.getElementById(id).classList.add('open');}
-function closeModal(id){document.getElementById(id).classList.remove('open');}
+function openModal(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.add('open');
+  // overlay背景クリックで閉じる（work-select/work-manageのみ対象、確認モーダルは除外）
+  const noOverlayClose=['work-confirm-modal'];
+  if(!noOverlayClose.includes(id)){
+    el._overlayClose=e=>{if(e.target===el)closeModal(id);};
+    el.addEventListener('pointerdown',el._overlayClose);
+  }
+}
+function closeModal(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.remove('open');
+  if(el._overlayClose){el.removeEventListener('pointerdown',el._overlayClose);delete el._overlayClose;}
+}
+
+// ESCキーで最前面のモーダルを閉じる
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  // job-detail-safe-overlay（動的生成）を優先
+  const safeOverlay=document.querySelector('.job-detail-safe-overlay');
+  if(safeOverlay){safeOverlay.remove();return;}
+  // 通常モーダル：z-indexが最大のopenなものを閉じる
+  const openModals=[...document.querySelectorAll('.modal-overlay.open')];
+  if(openModals.length===0)return;
+  // work-confirm-modalはESCで閉じない
+  const closeable=openModals.filter(m=>m.id!=='work-confirm-modal');
+  if(closeable.length>0)closeModal(closeable[closeable.length-1].id);
+});
 
 
 // JOB実績
@@ -2394,30 +2466,24 @@ let workSummaryDay=null;
 let workRangeStart=null;
 let workTapState={down:false,startX:0,startY:0,moved:false,cell:null,pointerId:null,longPress:false,timer:null};
 function normalizeJobNo(jobNo){return String(jobNo||'').trim()||'NOJOB';}
-function getJobColor(jobNo){
-  const key=normalizeJobNo(jobNo);
-  settings.jobColors=settings.jobColors||{};
-  if(settings.jobColors[key])return settings.jobColors[key];
-  const jobs=[];
-  (settings.workItems||[]).forEach(w=>{const j=normalizeJobNo(w.jobNo);if(!jobs.includes(j))jobs.push(j);});
-  let idx=jobs.indexOf(key);
-  if(idx<0){jobs.push(key);idx=jobs.length-1;}
-  return WORK_COLORS[idx%WORK_COLORS.length];
+// WORK単位の色管理
+function getWorkColor(workId){
+  settings.workColors=settings.workColors||{};
+  if(settings.workColors[workId])return settings.workColors[workId];
+  const idx=(settings.workItems||[]).findIndex(w=>w.id===workId);
+  return WORK_COLORS[Math.max(0,idx)%WORK_COLORS.length];
 }
-function cycleJobColor(jobNo){
-  const key=normalizeJobNo(jobNo);
-  settings.jobColors=settings.jobColors||{};
-  const cur=getJobColor(key);
-  const idx=WORK_COLORS.findIndex(c=>c.toLowerCase()===String(cur).toLowerCase());
-  settings.jobColors[key]=WORK_COLORS[(idx+1+WORK_COLORS.length)%WORK_COLORS.length];
-  refreshJobColors();
-  saveSettingsStorage();
-  renderWorkTab();
+// 後方互換：jobNoまたはworkIdで色を取得
+function getJobColor(jobNoOrId){
+  const byId=(settings.workItems||[]).find(w=>w.id===jobNoOrId);
+  if(byId)return getWorkColor(byId.id);
+  const byJob=(settings.workItems||[]).find(w=>w.jobNo===jobNoOrId);
+  if(byJob)return getWorkColor(byJob.id);
+  return WORK_COLORS[0];
 }
-function setJobColor(jobNo,color){
-  const key=normalizeJobNo(jobNo);
-  settings.jobColors=settings.jobColors||{};
-  settings.jobColors[key]=color;
+function setWorkColor(workId,color){
+  settings.workColors=settings.workColors||{};
+  settings.workColors[workId]=color;
   refreshJobColors();
   saveSettingsStorage();
   renderWorkSelector();
@@ -2425,17 +2491,18 @@ function setJobColor(jobNo,color){
   renderWorkSummary();
   renderWorkList();
 }
-function openJobColorModal(jobNo){
-  const key=normalizeJobNo(jobNo);
-  const cur=getJobColor(key);
+function openJobColorModal(workId){
+  const w=getWorkById(workId);
+  if(!w)return;
+  const cur=getWorkColor(workId);
   const title=document.getElementById('work-confirm-title');
   const body=document.getElementById('work-confirm-body');
   const cancel=document.getElementById('btn-work-confirm-cancel');
   const ok=document.getElementById('btn-work-confirm-ok');
-  if(title)title.textContent=`JOB色変更：${key}`;
+  if(title)title.textContent=`色変更：${w.name}`;
   if(body){
-    body.innerHTML=`<div style="font-size:12px;color:var(--text2);line-height:1.6;">このJOBNOのWORKはすべて同じ色になります。</div><div class="job-color-palette">${WORK_COLORS.map(c=>`<button type="button" class="job-color-swatch${c.toLowerCase()===String(cur).toLowerCase()?' selected':''}" data-job-color="${c}" style="background:${c}" title="${c}"></button>`).join('')}</div>`;
-    body.querySelectorAll('[data-job-color]').forEach(btn=>btn.addEventListener('click',()=>{setJobColor(key,btn.dataset.jobColor);closeModal('work-confirm-modal');resetWorkConfirmButtons();}));
+    body.innerHTML=`<div class="job-color-palette">${WORK_COLORS.map(c=>`<button type="button" class="job-color-swatch${c.toLowerCase()===String(cur).toLowerCase()?' selected':''}" data-job-color="${c}" style="background:${c}" title="${c}"></button>`).join('')}</div>`;
+    body.querySelectorAll('[data-job-color]').forEach(btn=>btn.addEventListener('click',()=>{setWorkColor(workId,btn.dataset.jobColor);closeModal('work-confirm-modal');resetWorkConfirmButtons();}));
   }
   if(cancel)cancel.style.display='';
   if(ok){ok.textContent='閉じる';ok.className='btn btn-primary btn-full';}
@@ -2447,7 +2514,13 @@ function resetWorkConfirmButtons(){
   if(cancel)cancel.style.display='';
   if(ok){ok.textContent='実行';ok.className='btn btn-danger btn-full';}
 }
-function refreshJobColors(){(settings.workItems||[]).forEach(w=>{w.color=getJobColor(w.jobNo);});}
+function refreshJobColors(){
+  settings.workColors=settings.workColors||{};
+  (settings.workItems||[]).forEach((w,i)=>{
+    if(!settings.workColors[w.id])settings.workColors[w.id]=WORK_COLORS[i%WORK_COLORS.length];
+    w.color=settings.workColors[w.id];
+  });
+}
 function ensureWorkDefaults(){
   if(!settings.workItems || !Array.isArray(settings.workItems) || settings.workItems.length===0){
     settings.workItems=[{id:'w001',name:'共通作業',jobNo:'COMMON',color:'#4f8ef7',archived:false},{id:'w002',name:'社内対応',jobNo:'INTERNAL',color:'#3ecf8e',archived:false}];
@@ -2461,7 +2534,6 @@ function getActiveWorks(){ensureWorkDefaults();return(settings.workItems||[]).fi
 function getWorkById(id){return(settings.workItems||[]).find(w=>w.id===id);}
 function getWorkIndex(id){const idx=(settings.workItems||[]).findIndex(w=>w.id===id);return idx>=0?String(idx+1):'';}
 function getWorkLogMonth(y,m){const key=getMonthKey(y,m);if(!monthData[key])monthData[key]={days:{},schedules:{},workLogs:{}};if(!monthData[key].workLogs)monthData[key].workLogs={};return monthData[key].workLogs;}
-function getWorkColor(id){const w=getWorkById(id);return w?getJobColor(w.jobNo):'';}
 function getWorkNameLine(id){const w=getWorkById(id);return w?`${w.name}\n${w.jobNo}`:'';}
 function ensureWorkDayArray(logs,day){const dkey=String(+day);if(!logs[dkey])logs[dkey]=Array(96).fill('');return logs[dkey];}
 function updateWorkCellVisual(cell,workId){
@@ -2617,7 +2689,7 @@ function showWorkTooltip(cell,x,y){
   const tip=document.createElement('div');tip.className='work-tooltip';tip.id='work-tooltip';
   const day=cell.dataset.day,slot=+cell.dataset.slot;
   const h=Math.floor(slot/4),mm=(slot%4)*15;
-  tip.innerHTML=`<div style="font-weight:700">${escapeHtml(w.name)}</div><div class="sub">${escapeHtml(w.jobNo)}</div><div class="sub">${day}日 ${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}〜</div>`;
+  tip.innerHTML=`<div style="font-weight:700">${escapeHtml(w.name)}</div><div class="sub">${escapeHtml(w.jobNo)}</div>${w.memo?`<div class="sub">${escapeHtml(w.memo)}</div>`:''}<div class="sub">${day}日 ${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}〜</div>`;
   document.body.appendChild(tip);
   const rect=tip.getBoundingClientRect();
   const left=Math.max(8,Math.min(window.innerWidth-rect.width-8,x+10));
@@ -2644,21 +2716,56 @@ function renderWorkSelector(){
   const dot=document.getElementById('work-current-dot');
   const nameEl=document.getElementById('work-current-name');
   const jobEl=document.getElementById('work-current-jobno');
+  const memoEl=document.getElementById('work-current-memo');
   const w=getWorkById(selectedWorkId);
   if(!btn||!nameEl||!jobEl)return;
   if(w){
     if(dot)dot.style.background=getJobColor(w.jobNo);
     nameEl.textContent=`${getWorkIndex(w.id)}. ${w.name}`;
     jobEl.textContent=`${w.jobNo}`;
+    if(memoEl){
+      const memo=w.memo||'';
+      memoEl.textContent=memo.length>20?memo.slice(0,20)+'…':memo;
+      memoEl.style.display=memo?'block':'none';
+    }
   }else{
     if(dot)dot.style.background='transparent';
     nameEl.textContent='WORK未選択';
     jobEl.textContent='タップして選択';
+    if(memoEl)memoEl.style.display='none';
   }
+}
+function renderWorkPresets(activePreset){
+  const el=document.getElementById('work-modal-presets');if(!el)return;
+  // _の前を抽出してユニーク化・最大6件
+  const presets=[...new Set(
+    getActiveWorks()
+      .map(w=>{const m=w.name.match(/^([^_]+)_/);return m?m[1]:null;})
+      .filter(Boolean)
+  )].slice(0,6);
+  if(presets.length===0){el.innerHTML='';return;}
+  el.innerHTML=presets.map(p=>`<button type="button" class="work-preset-btn${p===activePreset?' active':''}" data-preset="${p}">${p}</button>`).join('');
+  el.querySelectorAll('[data-preset]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const search=document.getElementById('work-modal-search');
+      const p=btn.dataset.preset;
+      if(btn.classList.contains('active')){
+        // 解除
+        search.value='';
+        renderWorkModalList('');
+        renderWorkPresets(null);
+      }else{
+        search.value=p;
+        renderWorkModalList(p);
+        renderWorkPresets(p);
+      }
+    });
+  });
 }
 function openWorkSelectModal(){
   const search=document.getElementById('work-modal-search');
   if(search)search.value='';
+  renderWorkPresets(null);
   renderWorkModalList('');
   openModal('work-select-modal');
   setTimeout(()=>search?.focus(),120);
@@ -2666,12 +2773,40 @@ function openWorkSelectModal(){
 function renderWorkModalList(query){
   const el=document.getElementById('work-modal-list');if(!el)return;
   const q=String(query||'').trim().toLowerCase();
+  const qRaw=String(query||'').trim();
   const list=getActiveWorks().filter(w=>!q||w.name.toLowerCase().includes(q)||String(w.jobNo).toLowerCase().includes(q));
-  el.innerHTML=list.length?list.map(w=>`<button type="button" class="work-modal-item${selectedWorkId===w.id?' selected':''}" data-work-select="${w.id}">
-    <span class="work-dot" style="background:${getJobColor(w.jobNo)}"></span>
-    <span style="min-width:0;"><span class="work-modal-item-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</span><span class="work-modal-item-job">${escapeHtml(w.jobNo)}</span></span>
-    <span class="work-modal-item-mark">${selectedWorkId===w.id?'選択中':'選択'}</span>
-  </button>`).join(''):'<div style="font-size:13px;color:var(--text2);padding:12px;">該当するWORKがありません</div>';
+  if(list.length){
+    el.innerHTML=list.map(w=>`<button type="button" class="work-modal-item${selectedWorkId===w.id?' selected':''}" data-work-select="${w.id}">
+      <span class="work-dot" style="background:${getJobColor(w.jobNo)}"></span>
+      <span style="min-width:0;overflow:hidden;"><span class="work-modal-item-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</span><span class="work-modal-item-job">${escapeHtml(w.jobNo)}</span>${w.memo?`<span style="font-size:11px;color:var(--text3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px;line-height:1.4;">${escapeHtml(w.memo)}</span>`:''}</span>
+      <span class="work-modal-item-mark">${selectedWorkId===w.id?'選択中':'選択'}</span>
+    </button>`).join('');
+  } else {
+    el.innerHTML=`<div style="font-size:13px;color:var(--text2);padding:12px 4px;">${qRaw?'該当するWORKがありません':'有効なWORKがありません'}</div>`
+      +(qRaw?`<div id="work-inline-add" style="background:var(--bg3);border:1px dashed var(--accent);border-radius:12px;padding:14px 12px;margin-top:4px;">
+        <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:10px;">＋ "${escapeHtml(qRaw)}" をWORKに追加</div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">JOBNO <span style="color:var(--text3);">（省略時：未定）</span></label>
+        <input type="text" id="work-inline-jobno" placeholder="例：A12345" style="margin-bottom:10px;">
+        <button type="button" id="btn-work-inline-confirm" class="btn btn-primary btn-full">追加する</button>
+      </div>`:'');
+    if(qRaw){
+      setTimeout(()=>{
+        document.getElementById('btn-work-inline-confirm')?.addEventListener('click',()=>{
+          const jobNo=document.getElementById('work-inline-jobno')?.value.trim()||'未定';
+          const id='w'+Date.now().toString(36);
+          settings.workItems.push({id,name:qRaw,jobNo,color:getJobColor(jobNo),archived:false});
+          refreshJobColors();
+          selectedWorkId=id;
+          saveSettingsStorage();
+          clearWorkRangeStart();
+          renderWorkTab();
+          closeModal('work-select-modal');
+          renderWorkSelector();
+          updateWorkRangeStatus();
+        });
+      },0);
+    }
+  }
   el.querySelectorAll('[data-work-select]').forEach(btn=>btn.addEventListener('click',()=>{
     selectedWorkId=btn.dataset.workSelect;
     clearWorkRangeStart();
@@ -2791,13 +2926,13 @@ function showJobBreakdown(jobNo){
     const rows=Object.entries(data.works).sort((a,b)=>b[1]-a[1]).map(([wid,mins])=>{
       const w=getWorkById(wid);
       const name=escapeHtml(w?.name||wid);
-      const job=escapeHtml(w?.jobNo||jobNo);
+      const memo=w?.memo?`<div class="job-detail-safe-sub">${escapeHtml(w.memo)}</div>`:'';
       const color=w?getJobColor(w.jobNo):'#999';
       return `<div class="job-detail-safe-row">
         <span class="work-dot" style="background:${color}"></span>
         <div>
           <div class="job-detail-safe-name">${name}</div>
-          <div class="job-detail-safe-sub">${job}</div>
+          ${memo}
         </div>
         <div class="job-detail-safe-hours">${formatHours(mins)}h</div>
       </div>`;
@@ -2832,6 +2967,7 @@ function renderWorkList(){
           <div class="work-list-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</div>
           <div class="work-list-job">${escapeHtml(w.jobNo)}</div>
         </div>
+        ${w.memo?`<div style="font-size:11px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(w.memo)}</div>`:''}
       </div>
     </div>
     <div class="work-swipe-actions">
@@ -2850,7 +2986,7 @@ function renderWorkList(){
       if(lastTapId===id && now-lastTapAt<430){openWorkEditModal(id);lastTapId=null;lastTapAt=0;}
       else{lastTapId=id;lastTapAt=now;}
     });
-    row.querySelector('[data-work-color]')?.addEventListener('click',e=>{e.stopPropagation();const w=getWorkById(id);if(w)openJobColorModal(w.jobNo);});
+    row.querySelector('[data-work-color]')?.addEventListener('click',e=>{e.stopPropagation();openJobColorModal(id);});
     row.querySelector('[data-work-archive]')?.addEventListener('click',e=>{e.stopPropagation();toggleWorkArchive(id);});
     row.querySelector('[data-work-delete]')?.addEventListener('click',e=>{e.stopPropagation();confirmDeleteWork(id);});
     row.addEventListener('dragstart',e=>{dragId=id;row.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
@@ -2877,9 +3013,26 @@ function confirmDeleteWork(id){const w=getWorkById(id);if(!w)return;showWorkConf
 function showWorkConfirm(title,body,onOk){pendingWorkConfirm=onOk;document.getElementById('work-confirm-title').textContent=title;document.getElementById('work-confirm-body').textContent=body;openModal('work-confirm-modal');}
 function renderColorPalette(containerId,inputId,value){const el=document.getElementById(containerId);const input=document.getElementById(inputId);if(!el||!input)return;input.value=value||input.value||WORK_COLORS[0];el.innerHTML=WORK_COLORS.map(c=>`<button type="button" class="color-swatch${c.toLowerCase()===input.value.toLowerCase()?' selected':''}" data-color="${c}" style="background:${c}" title="${c}"></button>`).join('');el.querySelectorAll('[data-color]').forEach(btn=>btn.addEventListener('click',()=>{input.value=btn.dataset.color;renderColorPalette(containerId,inputId,input.value);}));}
 function renderAddWorkPalette(){renderColorPalette('new-work-color-palette','new-work-color',document.getElementById('new-work-color')?.value||WORK_COLORS[0]);}
-function openWorkEditModal(id){const w=getWorkById(id);if(!w)return;editingWorkId=id;document.getElementById('edit-work-name').value=w.name;document.getElementById('edit-work-jobno').value=w.jobNo;renderColorPalette('edit-work-color-palette','edit-work-color',w.color);openModal('work-edit-modal');}
-function saveWorkEdit(){const w=getWorkById(editingWorkId);if(!w)return;const name=document.getElementById('edit-work-name').value.trim();const jobNo=document.getElementById('edit-work-jobno').value.trim();const color=document.getElementById('edit-work-color').value||WORK_COLORS[0];if(!name||!jobNo){alert('WORK名とJOBNOを入力してください');return;}w.name=name;w.jobNo=jobNo;w.color=getJobColor(jobNo);refreshJobColors();saveSettingsStorage();closeModal('work-edit-modal');renderWorkTab();}
-function addWorkItem(){const name=document.getElementById('new-work-name').value.trim();const jobNo=document.getElementById('new-work-jobno').value.trim();const color=document.getElementById('new-work-color').value||WORK_COLORS[0];if(!name||!jobNo){alert('WORK名とJOBNOを入力してください');return;}const id='w'+Date.now().toString(36);settings.workItems.push({id,name,jobNo,color:getJobColor(jobNo),archived:false});refreshJobColors();selectedWorkId=id;saveSettingsStorage();document.getElementById('new-work-name').value='';document.getElementById('new-work-jobno').value='';document.getElementById('new-work-color').value=WORK_COLORS[(settings.workItems.length)%WORK_COLORS.length];clearWorkRangeStart();renderWorkTab();}
+function openWorkEditModal(id){const w=getWorkById(id);if(!w)return;editingWorkId=id;document.getElementById('edit-work-name').value=w.name;document.getElementById('edit-work-jobno').value=w.jobNo;document.getElementById('edit-work-memo').value=w.memo||'';openModal('work-edit-modal');}
+function saveWorkEdit(){const w=getWorkById(editingWorkId);if(!w)return;const name=document.getElementById('edit-work-name').value.trim();const jobNo=document.getElementById('edit-work-jobno').value.trim()||'未定';const memo=document.getElementById('edit-work-memo').value.trim();if(!name){alert('WORK名を入力してください');return;}w.name=name;w.jobNo=jobNo;w.memo=memo;saveSettingsStorage();closeModal('work-edit-modal');renderWorkTab();}
+function addWorkItem(){
+  const name=document.getElementById('new-work-name').value.trim();
+  const jobNo=document.getElementById('new-work-jobno').value.trim()||'未定';
+  if(!name){alert('WORK名を入力してください');return;}
+  const id='w'+Date.now().toString(36);
+  settings.workColors=settings.workColors||{};
+  const autoColor=WORK_COLORS[(settings.workItems.length)%WORK_COLORS.length];
+  settings.workColors[id]=autoColor;
+  settings.workItems.push({id,name,jobNo,color:autoColor,archived:false});
+  refreshJobColors();
+  selectedWorkId=id;
+  saveSettingsStorage();
+  document.getElementById('new-work-name').value='';
+  document.getElementById('new-work-jobno').value='';
+  document.getElementById('new-work-color').value=WORK_COLORS[(settings.workItems.length)%WORK_COLORS.length];
+  clearWorkRangeStart();
+  renderWorkTab();
+}
 window.addEventListener('pointerdown',e=>{if(!e.target.closest?.('.work-cell'))hideWorkTooltip();});
 // ANNUAL
 function renderAnnualTab(){
@@ -3038,7 +3191,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
   document.getElementById('work-current-button')?.addEventListener('click',openWorkSelectModal);
   document.getElementById('btn-open-work-manage')?.addEventListener('click',()=>{renderWorkList();openModal('work-manage-modal');});
-  document.getElementById('work-modal-search')?.addEventListener('input',e=>renderWorkModalList(e.target.value));
+  document.getElementById('work-modal-search')?.addEventListener('input',e=>{
+    renderWorkModalList(e.target.value);
+    // 直接入力時はプリセット選択解除
+    renderWorkPresets(null);
+  });
   document.getElementById('btn-work-select-close')?.addEventListener('click',()=>closeModal('work-select-modal'));
   document.getElementById('btn-work-manage-close')?.addEventListener('click',()=>closeModal('work-manage-modal'));
   document.getElementById('btn-add-work').addEventListener('click',addWorkItem);
