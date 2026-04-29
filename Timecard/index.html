@@ -1,8 +1,27 @@
 <!--
   @tool      タイムカード
-  @version   v05_2026-04-26.3
+  @version   v06_2026-04-29.9
   @changelog
-    v05_2026-04-26.3 - 未ログイン編集時のみdirtyフラグで上書き確認（毎回ダイアログ出る問題を修正）
+    v06_2026-04-29.9 - JOB実績タブにカテゴリ別比率追加・年次タブに月別積み上げ棒グラフ＋年間円グラフ追加
+    v06_2026-04-29.8 - WORK選択モーダルに命名規則から自動生成するプリセット絞り込みボタンを追加・●色をWORK単位に修正
+    v06_2026-04-29.7 - WORK選択カードのメモ2行clamp修正・色管理をJOBNO単位→WORK単位に変更・編集モーダルから色設定削除
+    v06_2026-04-29.6 - JOB内訳のWORK行にJOBNO→メモ表示切替・ツールチップにメモ追加・選択中WORKにメモ表示・ヒント文改行
+    v06_2026-04-29.5 - WORKにmemoフィールド追加・編集モーダル/WORKリスト/WORK選択カードに表示
+    v06_2026-04-29.4 - WORK選択検索0件時のインライン追加をモーダル遷移→その場入力に変更
+    v06_2026-04-29.3 - WORK選択検索0件時にインライン追加ボタン表示・JOBNO省略可（"未定"自動セット）
+    v06_2026-04-29.2 - モーダルoverlay背景クリック/ESCで閉じる・WORKリスト編集PC幅2カラム化
+    v06_2026-04-29 - 退勤未入力時の法定超過見込み計算フォールバック追加・休憩スタンプボタンの時刻同期バグ修正
+    v15_2026-04-28 - WORK選択カード化・右上閉じる・WORK管理表示整理
+    v14_2026-04-28 - WORK選択モーダルのWORK名左寄せ表示を追加
+    v07_2026-04-28 - WORK選択をスマホ向けモーダル化・出退勤/休憩ロックセルの記録除去・休憩開始中データ保持修正
+    v17_2026-04-28 - WORK選択/編集モーダルの右上×と検索欄をスクロール外に固定
+    v16_2026-04-28 - WORK選択/編集モーダルの右上×を画面固定化
+    v06_2026-04-27.5 - JOB実績を2点タップ範囲塗り方式へ変更・長押しWORK詳細表示対応
+    v06_2026-04-27.5 - JOB実績スマホスクロール誤塗り防止・長押し連続塗り/消し対応
+    v11_2026-04-28 - JOB内訳を完全独立オーバーレイ化・フリーズ対策、集計行表記を内訳へ変更
+    v10_2026-04-28 - JOBNO内訳表示を専用モーダル化・フリーズ対策
+    v09_2026-04-28 - WORK管理モーダル化・JOB色自動管理・下側時間見出し追加
+    v06_2026-04-27.5 - 未ログイン編集時のみdirtyフラグで上書き確認（毎回ダイアログ出る問題を修正）
     v05_2026-04-26.2 - 初回ログイン時キャッシュアップロード・再ログイン時クラウド優先・ログアウト時キャッシュクリア＋authScreen再表示
     v05_2026-04-26 - 起動時ログイン画面追加（configあり:authScreen / configなし:setupScreen）
     v04_2026-04-15.4 - 移動平均線がnull（土日等）で途切れる問題を修正
@@ -396,6 +415,229 @@ label:first-child{margin-top:0;}
 .stamp-btn:disabled{opacity:.35;cursor:not-allowed;}
 .live-badge{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:4px;animation:pulse 1.5s infinite;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+/* ── JOB実績記録 ── */
+.work-toolbar{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:thin;}
+.work-chip{display:flex;align-items:center;gap:6px;flex-shrink:0;padding:8px 12px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;user-select:none;}
+.work-chip.selected{border-color:var(--accent);color:var(--accent);background:rgba(79,142,247,.12);}
+.work-dot{width:10px;height:10px;border-radius:50%;display:inline-block;border:1px solid rgba(255,255,255,.28);flex-shrink:0;}
+.work-grid-wrap{overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:10px;background:var(--bg2);max-height:62dvh;touch-action:pan-x pan-y;overscroll-behavior:contain;}
+.work-grid{display:grid;grid-template-columns:48px repeat(96,22px);width:max-content;font-size:10px;user-select:none;-webkit-user-select:none;}
+.work-head,.work-day-label,.work-cell{height:34px;border-right:1px solid rgba(255,255,255,.045);border-bottom:1px solid rgba(255,255,255,.055);}
+.work-head{height:24px;position:sticky;top:0;z-index:3;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:9px;}
+[data-theme="light"] .work-head,[data-theme="light"] .work-day-label,[data-theme="light"] .work-cell{border-right-color:rgba(0,0,0,.055);border-bottom-color:rgba(0,0,0,.055);}
+.work-corner{position:sticky;left:0;top:0;z-index:5;}
+.work-day-label{position:sticky;left:0;z-index:2;background:var(--bg3);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;}
+.work-day-label.sun{color:var(--danger)}.work-day-label.sat{color:var(--accent)}.work-day-label.hol{color:var(--warn)}
+.work-cell{background:transparent;cursor:pointer;min-width:22px;touch-action:pan-x pan-y;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:rgba(255,255,255,.82);text-shadow:0 1px 2px rgba(0,0,0,.35);overflow:hidden;}
+.work-cell:hover{outline:1px solid var(--accent);outline-offset:-1px;}
+.work-cell.range-start{outline:2px solid var(--warn);outline-offset:-2px;box-shadow:inset 0 0 0 999px rgba(245,166,35,.10);}
+.work-range-status{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5;}
+.work-range-status b{color:var(--warn);}
+.work-tooltip{position:fixed;z-index:500;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:12px;line-height:1.5;max-width:240px;pointer-events:none;}
+.work-tooltip .sub{color:var(--text2);font-size:11px;}
+.work-cell.hour-border{border-left:1px solid rgba(255,255,255,.18);}
+.work-cell.focus-hour{background:rgba(79,142,247,.025);}
+[data-theme="light"] .work-cell.hour-border{border-left-color:rgba(0,0,0,.18);}
+[data-theme="light"] .work-cell.focus-hour{background:rgba(37,99,235,.025);}
+.work-cell.today-row,.work-day-label.today-row{box-shadow:inset 0 0 0 999px rgba(79,142,247,.06);}
+.work-cell.selected-day,.work-day-label.selected-day{box-shadow:inset 0 0 0 999px rgba(245,166,35,.08);}
+.work-grid-hint{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;}
+.work-summary-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:12px;color:var(--text2);}
+.work-summary-clear{width:auto;height:26px;padding:0 8px;font-size:11px;}
+.work-summary-row{display:grid;grid-template-columns:1fr 64px 72px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.work-summary-row:last-child{border-bottom:none;}
+.work-summary-job{color:var(--text2);font-size:11px;text-align:right;}
+.work-list-item{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.work-list-item:last-child{border-bottom:none;}
+.work-actions{display:flex;gap:5px;align-items:center;justify-content:flex-end;flex-wrap:wrap;}
+.work-mini-btn{width:30px;height:30px;padding:0;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-weight:700;cursor:pointer;}
+.work-mini-btn:hover{color:var(--accent);border-color:var(--accent);}
+.color-palette{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:6px;}
+.color-swatch{height:28px;border-radius:8px;border:2px solid transparent;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);}
+.color-swatch.selected{border-color:var(--text);box-shadow:0 0 0 2px var(--accent);}
+.work-archive-title{font-size:11px;color:var(--text3);letter-spacing:.08em;font-weight:700;margin:12px 0 4px;}
+.work-archived{opacity:.65;}
+.work-confirm-body{font-size:13px;color:var(--text2);line-height:1.6;white-space:pre-line;margin-bottom:12px;}
+
+/* ── JOB実績 v7: スマホWORK選択・ロック制御 ── */
+.work-selector-card{position:sticky;top:0;z-index:80;box-shadow:0 8px 18px rgba(0,0,0,.18);}
+.work-current-button{width:100%;display:flex;align-items:center;gap:10px;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:14px 12px;font-size:15px;font-weight:700;cursor:pointer;text-align:left;}
+.work-current-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1;}
+.work-current-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.work-current-sub{font-size:11px;color:var(--text3);font-weight:600;margin-top:2px;}
+.work-current-arrow{font-size:18px;color:var(--text2);flex-shrink:0;}
+.work-modal-search{position:sticky;top:0;background:var(--bg2);padding-bottom:10px;z-index:2;}
+.work-modal-list{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+.work-modal-item{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:14px 12px;min-height:56px;cursor:pointer;}
+.work-modal-item.selected{border-color:var(--accent);background:rgba(79,142,247,.14);}
+.work-modal-item-name{font-size:15px;font-weight:700;color:var(--text);}
+.work-modal-item-job{font-size:12px;color:var(--text2);margin-top:2px;}
+.work-modal-item-mark{font-size:12px;color:var(--accent);font-weight:700;}
+.work-cell.locked-off{background:rgba(90,95,122,.20)!important;color:transparent!important;text-shadow:none;cursor:not-allowed;}
+.work-cell.locked-break{background:rgba(90,95,122,.58)!important;color:transparent!important;text-shadow:none;cursor:not-allowed;}
+.work-cell.locked-off:hover,.work-cell.locked-break:hover{outline:none;}
+.work-lock-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--text2);margin-top:8px;align-items:center;}
+.work-legend-box{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:4px;}
+.work-summary-row.clickable{cursor:pointer;border-radius:8px;padding-left:6px;padding-right:6px;}
+.work-summary-row.clickable:hover{background:rgba(79,142,247,.10);}
+.work-summary-detail{font-size:11px;color:var(--text3);text-align:right;}
+
+/* ── JOB実績 v8: WORK管理モーダル・下側時間見出し ── */
+.work-selector-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
+.work-edit-link{background:transparent;border:none;color:var(--accent);font-size:12px;font-weight:700;padding:4px 2px;cursor:pointer;white-space:nowrap;}
+.work-bottom-head{position:sticky;bottom:0;z-index:3;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:9px;height:24px;border-right:1px solid rgba(255,255,255,.045);border-top:1px solid var(--border);}
+.work-bottom-corner{position:sticky;left:0;bottom:0;z-index:5;}
+.work-manage-sheet{max-height:92dvh;}
+.work-list-item{touch-action:pan-y;position:relative;overflow:hidden;border-radius:10px;padding-left:8px;padding-right:8px;}
+.work-list-item.dragging{opacity:.45;}
+.work-list-main{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:center;min-height:44px;}
+.work-list-main .work-dot{cursor:pointer;}
+.work-swipe-actions{display:none;gap:6px;justify-content:flex-end;margin-top:6px;}
+.work-list-item.show-actions .work-swipe-actions{display:flex;}
+.work-action-archive{border-color:var(--warn);color:var(--warn);}
+.work-action-delete{border-color:var(--danger);color:var(--danger);}
+
+
+/* ── JOB実績 v9: WORK管理表示改善 ── */
+.work-list-item{display:block!important;background:var(--bg2);border:1px solid var(--border);border-radius:12px;margin:8px 0;padding:10px 10px!important;overflow:hidden;}
+.work-list-main{display:grid!important;grid-template-columns:34px minmax(0,1fr)!important;gap:10px!important;align-items:center;width:100%;}
+.work-list-main .work-dot{width:18px;height:18px;justify-self:center;cursor:pointer;border:2px solid rgba(255,255,255,.3);}
+.work-list-text{min-width:0;line-height:1.35;}
+.work-list-title{display:flex;align-items:center;gap:8px;min-width:0;}
+.work-list-name{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.work-list-job{display:inline-flex;align-items:center;max-width:44%;padding:2px 7px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;}
+.work-list-sub{font-size:10px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.work-swipe-actions{border-top:1px solid var(--border);padding-top:8px;margin-top:8px;}
+.job-color-palette{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px;}
+.job-color-swatch{height:34px;border-radius:10px;border:2px solid transparent;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);}
+.job-color-swatch.selected{border-color:var(--text);box-shadow:0 0 0 2px var(--accent);}
+
+
+/* ── JOB実績 v10: JOB内訳専用モーダル ── */
+.job-breakdown-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.job-breakdown-row{display:grid;grid-template-columns:14px 1fr auto;gap:8px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg3);}
+.job-breakdown-name{font-size:13px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.job-breakdown-sub{font-size:11px;color:var(--text3);margin-top:2px;}
+.job-breakdown-hours{font-size:14px;font-weight:800;color:var(--accent);text-align:right;white-space:nowrap;}
+.job-breakdown-total{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--text2);margin-bottom:8px;}
+.job-breakdown-total b{font-size:20px;color:var(--accent);}
+
+
+/* ── JOB実績 v11: 安全な内訳オーバーレイ（既存モーダルと分離） ── */
+.job-detail-safe-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.62);display:flex;align-items:flex-end;justify-content:center;}
+.job-detail-safe-sheet{width:100%;max-height:86dvh;overflow:auto;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 16px 28px;box-shadow:0 -12px 28px rgba(0,0,0,.38);}
+.job-detail-safe-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px;}
+.job-detail-safe-title{font-size:17px;font-weight:800;margin-bottom:10px;}
+.job-detail-safe-total{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--text2);margin-bottom:10px;}
+.job-detail-safe-total b{font-size:22px;color:var(--accent);}
+.job-detail-safe-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 14px;}
+.job-detail-safe-row{display:grid;grid-template-columns:16px 1fr auto;gap:9px;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:11px 10px;}
+.job-detail-safe-name{font-size:14px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.job-detail-safe-sub{font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.job-detail-safe-hours{font-size:15px;font-weight:850;color:var(--accent);white-space:nowrap;text-align:right;}
+
+
+/* ── v15: WORK選択カード化・右上閉じる ── */
+.modal-sheet{position:relative;}
+.modal-close-x{position:fixed;right:12px;top:calc(env(safe-area-inset-top, 0px) + 12px);width:40px;height:40px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:22px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:260;box-shadow:0 4px 16px rgba(0,0,0,.28);}
+.modal-close-x:hover{color:var(--text);border-color:var(--accent);}
+.work-modal-list{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(138px,1fr))!important;gap:8px!important;margin-top:8px!important;}
+.work-modal-item{position:relative!important;display:grid!important;grid-template-columns:18px minmax(0,1fr)!important;gap:8px!important;align-items:center!important;min-height:66px!important;padding:12px 10px!important;border-radius:14px!important;text-align:left!important;}
+.work-modal-item .work-dot{width:14px;height:14px;align-self:start;margin-top:2px;}
+.work-modal-item-name{font-size:13px!important;line-height:1.25!important;white-space:normal!important;display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden!important;}
+.work-modal-item-job{font-size:11px!important;margin-top:4px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.work-modal-item-mark{position:absolute;right:7px;top:6px;font-size:10px!important;background:rgba(79,142,247,.16);border:1px solid rgba(79,142,247,.35);border-radius:999px;padding:1px 5px;}
+.work-modal-item:not(.selected) .work-modal-item-mark{display:none;}
+.work-manage-sheet .modal-title,.work-select-sheet .modal-title{padding-right:42px;}
+.work-list-sub{display:none!important;}
+.work-list-name{font-size:15px;}
+.work-list-job{max-width:38%;}
+
+/* ── v14: WORK選択 左寄せ調整 ── */
+.work-modal-item{
+  text-align:left!important;
+  justify-items:stretch!important;
+}
+.work-modal-item > span:nth-child(2){
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-start!important;
+  text-align:left!important;
+  min-width:0!important;
+}
+.work-modal-item-name,
+.work-modal-item-job{
+  display:block!important;
+  width:100%!important;
+  text-align:left!important;
+}
+.work-current-button,
+.work-current-main,
+.work-current-text,
+.work-current-sub{
+  text-align:left!important;
+}
+
+
+/* ── v06: プリセット絞り込みボタン ── */
+.work-preset-btn{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,border-color .15s;}
+.work-preset-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+@media(min-width:768px){
+  #work-list,#work-archive-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  #work-list .work-archive-title,#work-archive-list .work-archive-title{grid-column:1/-1;}
+  .work-list-item{margin:0!important;}
+  .work-swipe-actions{display:flex!important;}
+  .work-manage-sheet{max-width:680px;margin:0 auto;}
+  #work-manage-modal{align-items:center;}
+  #work-manage-modal .modal-sheet{border-radius:20px;max-height:88dvh;}
+}
+
+#work-select-modal,
+#work-manage-modal{align-items:flex-end;}
+#work-select-modal .modal-close-x,
+#work-manage-modal .modal-close-x{
+  position:fixed!important;
+  right:12px!important;
+  top:calc(env(safe-area-inset-top, 0px) + 12px)!important;
+  z-index:420!important;
+}
+.work-select-sheet,
+.work-manage-sheet{
+  display:flex!important;
+  flex-direction:column!important;
+  max-height:92dvh!important;
+  overflow:hidden!important;
+  padding:0!important;
+}
+.work-modal-fixed-head{
+  flex:0 0 auto;
+  background:var(--bg2);
+  padding:16px 16px 10px;
+  border-radius:20px 20px 0 0;
+  border-bottom:1px solid var(--border);
+  position:relative;
+  z-index:3;
+}
+.work-modal-fixed-head .modal-title{margin-bottom:10px;padding-right:46px;}
+.work-modal-scroll{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:12px 16px 32px;
+}
+.work-select-sheet .work-modal-search{
+  position:static!important;
+  top:auto!important;
+  padding-bottom:0!important;
+  background:transparent!important;
+  z-index:auto!important;
+}
+.work-select-sheet .work-modal-list{margin-top:0!important;}
+.work-manage-sheet .divider{margin:12px 0;}
+
 </style>
 </head>
 <body>
@@ -430,7 +672,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v05_2026-04-26.3</span>
+      <span style="font-size:11px;color:var(--text3);">v06_2026-04-29.9</span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -639,6 +881,62 @@ label:first-child{margin-top:0;}
     </div>
   </div>
 
+
+  <!-- JOB実績 -->
+  <div id="page-work" class="page">
+    <div class="page-header">
+      <div class="page-title">JOB実績</div>
+      <div class="month-nav">
+        <button id="btn-work-month-prev">‹</button>
+        <div class="month-label" id="work-month-label"></div>
+        <button id="btn-work-month-next">›</button>
+      </div>
+    </div>
+
+    <div class="card work-selector-card">
+      <div class="work-selector-title">
+        <div class="card-title" style="margin-bottom:0;">WORK選択</div>
+        <button type="button" id="btn-open-work-manage" class="work-edit-link">WORKリスト編集</button>
+      </div>
+      <button type="button" id="work-current-button" class="work-current-button">
+        <span class="work-current-main">
+          <span class="work-dot" id="work-current-dot"></span>
+          <span style="min-width:0;">
+            <span class="work-current-text" id="work-current-name">WORK未選択</span>
+            <span class="work-current-sub" id="work-current-jobno">タップして選択</span>
+            <span id="work-current-memo" style="font-size:11px;color:var(--text3);display:none;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+          </span>
+        </span>
+        <span class="work-current-arrow">⌄</span>
+      </button>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.6;">WORKをタップで選択。1点目→2点目をタップすると範囲塗りできます。<br>同じWORKで塗られている範囲は消去されます。</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">15分グリッド</div>
+      <div class="work-grid-hint">スマホ対応：ドラッグ塗りは使わず、2点タップで範囲塗りします。スクロール中は塗りません。セル長押しでWORK詳細を表示します。日付をタップすると日別集計に切り替わります。</div>
+      <div class="work-lock-legend">
+        <span><span class="work-legend-box" style="background:rgba(90,95,122,.20)"></span>勤務外</span>
+        <span><span class="work-legend-box" style="background:rgba(90,95,122,.58)"></span>休憩</span>
+      </div>
+      <div class="work-range-status" id="work-range-status">開始セルをタップしてください</div>
+      <div class="work-grid-wrap" id="work-grid-wrap">
+        <div class="work-grid" id="work-grid"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">JOBNO別集計</div>
+      <div id="work-summary"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">カテゴリ別集計</div>
+      <div id="work-summary-category"></div>
+    </div>
+
+  </div>
+
   <!-- 年間 -->
   <div id="page-annual" class="page">
     <div class="page-header">
@@ -674,6 +972,19 @@ label:first-child{margin-top:0;}
           </tr></tfoot>
         </table>
       </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div class="card-title" style="margin-bottom:0;">JOB実績推移</div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="btn-annual-job-mode-jobno" class="btn btn-sm btn-primary" style="font-size:11px;">JOBNO</button>
+          <button type="button" id="btn-annual-job-mode-cat" class="btn btn-sm btn-ghost" style="font-size:11px;">カテゴリ</button>
+        </div>
+      </div>
+      <div style="position:relative;height:220px;"><canvas id="annual-job-bar-chart"></canvas></div>
+      <div style="margin-top:20px;position:relative;height:220px;"><canvas id="annual-job-pie-chart"></canvas></div>
+      <div id="annual-job-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:11px;"></div>
     </div>
     <button id="btn-export-excel" class="btn btn-success btn-full mt-8">📊 Excelで出力</button>
   </div>
@@ -747,7 +1058,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v05_2026-04-26.3</div>
+    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v07_2026-04-28</div>
   </div>
 
 </div>
@@ -759,6 +1070,10 @@ label:first-child{margin-top:0;}
   </button>
   <button class="nav-btn" data-page="month">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>月次
+  </button>
+
+  <button class="nav-btn" data-page="work">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>JOB
   </button>
   <button class="nav-btn" data-page="annual">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>年間
@@ -784,6 +1099,85 @@ label:first-child{margin-top:0;}
   </div>
 </div>
 
+<!-- WORK SELECT MODAL -->
+<div class="modal-overlay" id="work-select-modal">
+  <button type="button" class="modal-close-x" id="btn-work-select-close" aria-label="閉じる">×</button>
+  <div class="modal-sheet work-select-sheet">
+    <div class="work-modal-fixed-head">
+      <div class="modal-handle"></div>
+      <div class="modal-title">WORK選択</div>
+      <div class="work-modal-search">
+        <input type="search" id="work-modal-search" placeholder="WORK名 / JOBNOで検索">
+        <div id="work-modal-presets" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+      </div>
+    </div>
+    <div class="work-modal-scroll">
+      <div id="work-modal-list" class="work-modal-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- WORK MANAGE MODAL -->
+<div class="modal-overlay" id="work-manage-modal">
+  <button type="button" class="modal-close-x" id="btn-work-manage-close" aria-label="閉じる">×</button>
+  <div class="modal-sheet work-manage-sheet">
+    <div class="work-modal-fixed-head">
+      <div class="modal-handle"></div>
+      <div class="modal-title">WORKリスト編集</div>
+    </div>
+    <div class="work-modal-scroll">
+      <div id="work-list"></div>
+      <div id="work-archive-list"></div>
+      <div class="divider"></div>
+      <div class="row">
+        <div><label>WORK名</label><input type="text" id="new-work-name" placeholder="例：設備BIM支援"></div>
+        <div><label>JOBNO <span style="font-size:10px;color:var(--text3);">（省略時：未定）</span></label><input type="text" id="new-work-jobno" placeholder="例：A12345"></div>
+      </div>
+      <input type="hidden" id="new-work-color" value="#4f8ef7">
+      <button id="btn-add-work" class="btn btn-ghost btn-full mt-8">＋ WORK追加</button>
+    </div>
+  </div>
+</div>
+
+<!-- WORK EDIT MODAL -->
+<div class="modal-overlay" id="work-edit-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">WORK編集</div>
+    <label>WORK名</label><input type="text" id="edit-work-name" placeholder="WORK名">
+    <label>JOBNO <span style="font-size:10px;color:var(--text3);">（省略時：未定）</span></label><input type="text" id="edit-work-jobno" placeholder="JOBNO">
+    <label style="margin-top:8px;">メモ <span style="font-size:10px;color:var(--text3);">（任意・20文字まで表示）</span></label>
+    <input type="text" id="edit-work-memo" placeholder="例：Revit基盤整備作業" maxlength="40">
+    <div class="row mt-12">
+      <button class="btn btn-ghost btn-full" onclick="closeModal('work-edit-modal')">キャンセル</button>
+      <button id="btn-save-work-edit" class="btn btn-primary btn-full">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- WORK CONFIRM MODAL -->
+<div class="modal-overlay" id="work-confirm-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="work-confirm-title">確認</div>
+    <div class="work-confirm-body" id="work-confirm-body"></div>
+    <div class="row mt-8">
+      <button class="btn btn-ghost btn-full" id="btn-work-confirm-cancel">キャンセル</button>
+      <button class="btn btn-danger btn-full" id="btn-work-confirm-ok">実行</button>
+    </div>
+  </div>
+</div>
+
+<!-- JOB BREAKDOWN MODAL -->
+<div class="modal-overlay" id="job-breakdown-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="job-breakdown-title">JOB内訳</div>
+    <div id="job-breakdown-content"></div>
+    <button class="btn btn-primary btn-full mt-12" id="btn-job-breakdown-close">閉じる</button>
+  </div>
+</div>
+
 <script>
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
@@ -791,7 +1185,7 @@ const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
 const DEFAULT_WORK_IN   = '0830';
 const DEFAULT_WORK_OUT  = '1730';
 const DEFAULT_WORK_LABEL = '08:30〜17:30（デフォルト）';
-let monthData={}, settings={stdHours:8,coreStart:'1000',coreEnd:'1500',presets:[{name:'通常',timeIn:'0900',timeOut:'1800'},{name:'早出',timeIn:'0800',timeOut:'1700'}],breakPresets:[{start:'1200',end:'1300'}],holidays:[]};
+let monthData={}, settings={stdHours:8,coreStart:'1000',coreEnd:'1500',presets:[{name:'通常',timeIn:'0900',timeOut:'1800'},{name:'早出',timeIn:'0800',timeOut:'1700'}],breakPresets:[{start:'1200',end:'1300'}],holidays:[],workItems:[{id:'w001',name:'共通作業',jobNo:'COMMON',color:'#4f8ef7'},{id:'w002',name:'社内対応',jobNo:'INTERNAL',color:'#3ecf8e'}]};
 let currentMonth=new Date(), currentYear=new Date().getFullYear();
 let selectedLeave='normal', breakRows=[], dayModalDate=null, currentChart=null, modalBreakRows=[];
 
@@ -812,7 +1206,7 @@ function normalizeMonthDataKeys(){
   // キー正規化: "01"→"1" の不一致を修正
   for(const key of Object.keys(monthData)){
     const md=monthData[key];
-    for(const section of['days','schedules']){
+    for(const section of['days','schedules','workLogs']){
       if(!md[section])continue;
       const normalized={};
       for(const [k,v] of Object.entries(md[section])){
@@ -840,6 +1234,7 @@ window._applyRemoteState = function(data) {
   initScheduleDefaults(y, m);
   if(document.getElementById('page-month').classList.contains('active')) renderMonthTab();
   if(document.getElementById('page-annual').classList.contains('active')) renderAnnualTab();
+  if(document.getElementById('page-work').classList.contains('active')) renderWorkTab();
   if(document.getElementById('page-settings').classList.contains('active')) renderSettingsUI();
 };
 function saveStorage(){
@@ -936,6 +1331,16 @@ function updateStampButtons(){
   document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
   document.getElementById('stamp-out-time').textContent = outVal ? formatTime(parseTime(outVal)) : '--:--';
 
+  // 休憩開始ボタン：終了が空の行のうち最も遅い開始時刻を表示
+  const openBreaks = breakRows.filter(b => b && b.start && !b.end);
+  const latestBreakStart = openBreaks.reduce((latest, b) => {
+    const t = parseTime(b.start);
+    return (t !== null && (latest === null || t > latest)) ? t : latest;
+  }, null);
+  document.getElementById('stamp-break-start-time').textContent =
+    latestBreakStart !== null ? formatTime(latestBreakStart) : '--:--';
+  document.getElementById('stamp-break-start').classList.toggle('active', latestBreakStart !== null);
+
   // activeスタイル
   document.getElementById('stamp-in').classList.toggle('active', !!inVal);
   document.getElementById('stamp-out').classList.toggle('active', !!outVal);
@@ -1031,9 +1436,19 @@ function addBreakRow(start='',end=''){
 function updateDaySummary(live=false){
   const inVal  = document.getElementById('punch-in').value;
   let   outVal = document.getElementById('punch-out').value;
+  const ds     = document.getElementById('punch-date').value;
   const today  = toDateStr(new Date());
-  const isToday = document.getElementById('punch-date').value === today;
-  if(isToday && inVal && !outVal) outVal = nowHHMM();
+  const isToday = ds === today;
+  let   usingFallback = false;
+  if(inVal && !outVal){
+    if(isToday){
+      outVal = nowHHMM();
+    } else {
+      const sched = getSched(ds);
+      outVal = sched?.timeOut || settings.presets?.[0]?.timeOut || '1730';
+      usingFallback = true;
+    }
+  }
 
   // 休憩バリデーション: 勤務時間外の行を赤くして計算から除外
   const validBreaks = [];
@@ -1057,9 +1472,10 @@ function updateDaySummary(live=false){
   const wM=calcWorkMinutes(o);
   const bM=validBreaks.reduce((s,b)=>{const bs=parseTime(b.start),be=parseTime(b.end);if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=1440;return s+bd;}return s;},0);
   const stdM=(settings.stdHours||8)*60;
-  document.getElementById('today-work-hours').textContent=formatHours(wM)+'h';
+  const suffix = usingFallback ? '(見込)' : '';
+  document.getElementById('today-work-hours').textContent=formatHours(wM)+'h'+suffix;
   document.getElementById('today-break-hours').textContent=formatHours(bM)+'h';
-  document.getElementById('today-overtime').textContent=formatHours(Math.max(0,wM-stdM))+'h';
+  document.getElementById('today-overtime').textContent=formatHours(Math.max(0,wM-stdM))+'h'+suffix;
   updateStampButtons();
 }
 function sortBreakRows(){
@@ -1105,11 +1521,16 @@ function savePunchDay(){
   if(!ds)return;
   const inVal=document.getElementById('punch-in').value.trim();
   const outVal=document.getElementById('punch-out').value.trim();
-  const validBreaks=breakRows.filter(Boolean).filter(b=>isBreakValid(b,inVal,outVal)&&b.start&&b.end);
+  // 休憩開始中（startあり/endなし）も「休憩中の状態」として保持する
+  const validBreaks=breakRows
+    .filter(Boolean)
+    .filter(b=>b.start)
+    .filter(b=>!b.end||isBreakValid(b,inVal,outVal));
   setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks});
   saveStorage();
   const[y,m]=ds.split('-').map(Number);
   if(getMonthKey(y,m)===getMonthKey(currentMonth.getFullYear(),currentMonth.getMonth()+1))renderMonthTab();
+  if(document.getElementById('page-work')?.classList.contains('active')) renderWorkTab();
   alert('保存しました');
 }
 
@@ -2022,10 +2443,779 @@ function deleteScheduleRange(){
   }
   saveStorage();renderMonthTab();alert('予定を削除しました');
 }
-function openModal(id){document.getElementById(id).classList.add('open');}
-function closeModal(id){document.getElementById(id).classList.remove('open');}
+function openModal(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.add('open');
+  // overlay背景クリックで閉じる（work-select/work-manageのみ対象、確認モーダルは除外）
+  const noOverlayClose=['work-confirm-modal'];
+  if(!noOverlayClose.includes(id)){
+    el._overlayClose=e=>{if(e.target===el)closeModal(id);};
+    el.addEventListener('pointerdown',el._overlayClose);
+  }
+}
+function closeModal(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.remove('open');
+  if(el._overlayClose){el.removeEventListener('pointerdown',el._overlayClose);delete el._overlayClose;}
+}
 
+// ESCキーで最前面のモーダルを閉じる
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  // job-detail-safe-overlay（動的生成）を優先
+  const safeOverlay=document.querySelector('.job-detail-safe-overlay');
+  if(safeOverlay){safeOverlay.remove();return;}
+  // 通常モーダル：z-indexが最大のopenなものを閉じる
+  const openModals=[...document.querySelectorAll('.modal-overlay.open')];
+  if(openModals.length===0)return;
+  // work-confirm-modalはESCで閉じない
+  const closeable=openModals.filter(m=>m.id!=='work-confirm-modal');
+  if(closeable.length>0)closeModal(closeable[closeable.length-1].id);
+});
+
+
+// JOB実績
+const WORK_COLORS=['#4f8ef7','#3ecf8e','#f5a623','#e05252','#9b7ede','#5ac8fa','#34c759','#ff9f0a','#7aa2f7','#7dcfff','#73daca','#bb9af7','#e0af68','#f7768e','#a3be8c','#88c0d0','#81a1c1','#b48ead','#d08770','#ebcb8b','#8fbcbb','#c4a7e7','#ea9a97','#90b99f'];
+let selectedWorkId='w001';
+let editingWorkId=null;
+let pendingWorkConfirm=null;
+let workSummaryDay=null;
+let workRangeStart=null;
+let workTapState={down:false,startX:0,startY:0,moved:false,cell:null,pointerId:null,longPress:false,timer:null};
+function normalizeJobNo(jobNo){return String(jobNo||'').trim()||'NOJOB';}
+// WORK単位の色管理
+function getWorkColor(workId){
+  settings.workColors=settings.workColors||{};
+  if(settings.workColors[workId])return settings.workColors[workId];
+  const idx=(settings.workItems||[]).findIndex(w=>w.id===workId);
+  return WORK_COLORS[Math.max(0,idx)%WORK_COLORS.length];
+}
+// 後方互換：jobNoまたはworkIdで色を取得
+function getJobColor(jobNoOrId){
+  const byId=(settings.workItems||[]).find(w=>w.id===jobNoOrId);
+  if(byId)return getWorkColor(byId.id);
+  const byJob=(settings.workItems||[]).find(w=>w.jobNo===jobNoOrId);
+  if(byJob)return getWorkColor(byJob.id);
+  return WORK_COLORS[0];
+}
+function setWorkColor(workId,color){
+  settings.workColors=settings.workColors||{};
+  settings.workColors[workId]=color;
+  refreshJobColors();
+  saveSettingsStorage();
+  renderWorkSelector();
+  renderWorkGrid();
+  renderWorkSummary();
+  renderWorkList();
+}
+function openJobColorModal(workId){
+  const w=getWorkById(workId);
+  if(!w)return;
+  const cur=getWorkColor(workId);
+  const title=document.getElementById('work-confirm-title');
+  const body=document.getElementById('work-confirm-body');
+  const cancel=document.getElementById('btn-work-confirm-cancel');
+  const ok=document.getElementById('btn-work-confirm-ok');
+  if(title)title.textContent=`色変更：${w.name}`;
+  if(body){
+    body.innerHTML=`<div class="job-color-palette">${WORK_COLORS.map(c=>`<button type="button" class="job-color-swatch${c.toLowerCase()===String(cur).toLowerCase()?' selected':''}" data-job-color="${c}" style="background:${c}" title="${c}"></button>`).join('')}</div>`;
+    body.querySelectorAll('[data-job-color]').forEach(btn=>btn.addEventListener('click',()=>{setWorkColor(workId,btn.dataset.jobColor);closeModal('work-confirm-modal');resetWorkConfirmButtons();}));
+  }
+  if(cancel)cancel.style.display='';
+  if(ok){ok.textContent='閉じる';ok.className='btn btn-primary btn-full';}
+  pendingWorkConfirm=()=>resetWorkConfirmButtons();
+  openModal('work-confirm-modal');
+}
+function resetWorkConfirmButtons(){
+  const cancel=document.getElementById('btn-work-confirm-cancel');const ok=document.getElementById('btn-work-confirm-ok');
+  if(cancel)cancel.style.display='';
+  if(ok){ok.textContent='実行';ok.className='btn btn-danger btn-full';}
+}
+function refreshJobColors(){
+  settings.workColors=settings.workColors||{};
+  (settings.workItems||[]).forEach((w,i)=>{
+    if(!settings.workColors[w.id])settings.workColors[w.id]=WORK_COLORS[i%WORK_COLORS.length];
+    w.color=settings.workColors[w.id];
+  });
+}
+function ensureWorkDefaults(){
+  if(!settings.workItems || !Array.isArray(settings.workItems) || settings.workItems.length===0){
+    settings.workItems=[{id:'w001',name:'共通作業',jobNo:'COMMON',color:'#4f8ef7',archived:false},{id:'w002',name:'社内対応',jobNo:'INTERNAL',color:'#3ecf8e',archived:false}];
+  }
+  settings.workItems.forEach((w,i)=>{if(w.archived===undefined)w.archived=false;if(!w.color)w.color=WORK_COLORS[i%WORK_COLORS.length];});
+  refreshJobColors();
+  const active=settings.workItems.filter(w=>!w.archived);
+  if(!active.some(w=>w.id===selectedWorkId))selectedWorkId=active[0]?.id||'';
+}
+function getActiveWorks(){ensureWorkDefaults();return(settings.workItems||[]).filter(w=>!w.archived);}
+function getWorkById(id){return(settings.workItems||[]).find(w=>w.id===id);}
+function getWorkIndex(id){const idx=(settings.workItems||[]).findIndex(w=>w.id===id);return idx>=0?String(idx+1):'';}
+function getWorkLogMonth(y,m){const key=getMonthKey(y,m);if(!monthData[key])monthData[key]={days:{},schedules:{},workLogs:{}};if(!monthData[key].workLogs)monthData[key].workLogs={};return monthData[key].workLogs;}
+function getWorkNameLine(id){const w=getWorkById(id);return w?`${w.name}\n${w.jobNo}`:'';}
+function ensureWorkDayArray(logs,day){const dkey=String(+day);if(!logs[dkey])logs[dkey]=Array(96).fill('');return logs[dkey];}
+function updateWorkCellVisual(cell,workId){
+  const wid=workId||'';
+  cell.dataset.workId=wid;
+  cell.style.background=wid?getWorkColor(wid):'';
+  cell.textContent=wid?getWorkIndex(wid):'';
+  cell.title=wid?getWorkNameLine(wid):'';
+}
+function setWorkSummaryDay(day){workSummaryDay=day?+day:null;renderWorkGrid();renderWorkSummary();}
+function clearWorkRangeStart(){workRangeStart=null;document.querySelectorAll('.work-cell.range-start').forEach(c=>c.classList.remove('range-start'));updateWorkRangeStatus();}
+function updateWorkRangeStatus(){
+  const el=document.getElementById('work-range-status');if(!el)return;
+  const w=getWorkById(selectedWorkId);
+  const name=w?escapeHtml(w.name):'WORK未選択';
+  if(workRangeStart){
+    const h=Math.floor(workRangeStart.slot/4), mm=(workRangeStart.slot%4)*15;
+    el.innerHTML=`<b>${workRangeStart.day}日 ${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}</b> を開始点に選択中。終了セルをタップしてください。`;
+  }else{
+    el.innerHTML=`選択中：<b>${name}</b>。開始セルをタップしてください。`;
+  }
+}
+
+function getCellLockState(ds,slot){
+  const dayData=getDay(ds);
+  if(!dayData?.timeIn) return 'off';
+
+  const inM=parseTime(dayData.timeIn);
+  let outM=dayData.timeOut ? parseTime(dayData.timeOut) : 1440; // 退勤未入力なら当日24:00まで入力可
+  if(inM===null||outM===null)return 'off';
+  if(dayData.timeOut && outM<=inM)outM+=1440;
+
+  const start=slot*15,end=start+15;
+
+  // 勤務時間の半分以上にかかるセルだけ入力可
+  const workOverlap=Math.min(end,outM)-Math.max(start,inM);
+  if(workOverlap<7.5)return 'off';
+
+  // 休憩は半分以上かかるセルをロック
+  // 休憩終了が未入力の場合は、休憩開始から24:00までを休憩扱いにする
+  for(const b of(dayData.breaks||[])){
+    const bs0=parseTime(b.start);
+    if(bs0===null)continue;
+    const beParsed=b.end ? parseTime(b.end) : null;
+    let bs=bs0,be=(beParsed===null ? 1440 : beParsed);
+    if(be<=bs)be+=1440;
+    if(bs<inM){bs+=1440;be+=1440;}
+    const overlap=Math.min(end,be)-Math.max(start,bs);
+    if(overlap>=7.5)return 'break';
+  }
+  return '';
+}
+function isWorkCellLocked(ds,slot){return !!getCellLockState(ds,slot);}
+function showWorkToast(msg){
+  const toast=document.createElement('div');toast.textContent=msg;
+  toast.style.cssText='position:fixed;bottom:78px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:12px;font-size:12px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap;';
+  document.body.appendChild(toast);setTimeout(()=>toast.remove(),1800);
+}
+function purgeLockedWorkLogs(y,m,save=false){
+  const logs=getWorkLogMonth(y,m);let changed=false;
+  for(const [dkey,arr] of Object.entries(logs)){
+    if(!Array.isArray(arr))continue;
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
+    for(let s=0;s<arr.length;s++){
+      if(arr[s] && isWorkCellLocked(ds,s)){arr[s]='';changed=true;}
+    }
+  }
+  if(changed&&save)saveStorage();
+  return changed;
+}
+function updateWorkCellsForDay(day, slots){
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+  const logs=getWorkLogMonth(y,m);
+  const arr=logs[String(+day)]||[];
+  const ds=`${y}-${String(m).padStart(2,'0')}-${String(+day).padStart(2,'0')}`;
+  const targetSlots=Array.isArray(slots)?slots:Array.from({length:96},(_,i)=>i);
+  for(const s of targetSlots){
+    const cell=document.querySelector(`.work-cell[data-day="${+day}"][data-slot="${s}"]`);
+    if(!cell)continue;
+    const lockState=getCellLockState(ds,s);
+    if(lockState){
+      if(arr[s])arr[s]='';
+      cell.classList.add(lockState==='break'?'locked-break':'locked-off');
+      cell.dataset.locked=lockState;
+      updateWorkCellVisual(cell,'');
+      cell.title=lockState==='break'?'休憩時間':'勤務時間外';
+    }else{
+      cell.classList.remove('locked-break','locked-off');
+      delete cell.dataset.locked;
+      updateWorkCellVisual(cell,arr[s]||'');
+    }
+    cell.classList.remove('range-start');
+  }
+}
+function applyWorkRange(day,fromSlot,toSlot){
+  if(!selectedWorkId)return;
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+  const logs=getWorkLogMonth(y,m);
+  const arr=ensureWorkDayArray(logs,day);
+  const from=Math.min(+fromSlot,+toSlot),to=Math.max(+fromSlot,+toSlot);
+  const ds=`${y}-${String(m).padStart(2,'0')}-${String(+day).padStart(2,'0')}`;
+  const slots=[];
+  const touched=[];
+  for(let s=from;s<=to;s++){
+    touched.push(s);
+    if(!isWorkCellLocked(ds,s))slots.push(s);
+    else if(arr[s])arr[s]='';
+  }
+  if(slots.length===0){
+    showWorkToast('勤務外または休憩時間のため塗れません');
+    clearWorkRangeStart();
+    updateWorkCellsForDay(day,touched);
+    saveStorage();
+    renderWorkSummary();
+    return;
+  }
+  let allSame=true;
+  for(const s of slots){if(arr[s]!==selectedWorkId){allSame=false;break;}}
+  const next=allSame?'':selectedWorkId;
+  for(const s of slots)arr[s]=next;
+  workSummaryDay=+day;
+  saveStorage();
+  clearWorkRangeStart();
+  updateWorkCellsForDay(day,touched);
+  renderWorkSummary();
+}
+function handleWorkCellTap(cell){
+  if(!cell||!cell.classList?.contains('work-cell')||!selectedWorkId)return;
+  const day=+cell.dataset.day,slot=+cell.dataset.slot;
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+  const ds=`${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  if(isWorkCellLocked(ds,slot)){showWorkToast(getCellLockState(ds,slot)==='break'?'休憩時間は塗れません':'勤務時間外は塗れません');return;}
+  if(!workRangeStart){
+    workRangeStart={day,slot};
+    document.querySelectorAll('.work-cell.range-start').forEach(c=>c.classList.remove('range-start'));
+    cell.classList.add('range-start');
+    updateWorkRangeStatus();
+    return;
+  }
+  if(workRangeStart.day!==day){
+    workRangeStart={day,slot};
+    document.querySelectorAll('.work-cell.range-start').forEach(c=>c.classList.remove('range-start'));
+    cell.classList.add('range-start');
+    updateWorkRangeStatus();
+    return;
+  }
+  applyWorkRange(day,workRangeStart.slot,slot);
+}
+function showWorkTooltip(cell,x,y){
+  hideWorkTooltip();
+  const wid=cell?.dataset?.workId||'';if(!wid)return;
+  const w=getWorkById(wid);if(!w)return;
+  const tip=document.createElement('div');tip.className='work-tooltip';tip.id='work-tooltip';
+  const day=cell.dataset.day,slot=+cell.dataset.slot;
+  const h=Math.floor(slot/4),mm=(slot%4)*15;
+  tip.innerHTML=`<div style="font-weight:700">${escapeHtml(w.name)}</div><div class="sub">${escapeHtml(w.jobNo)}</div>${w.memo?`<div class="sub">${escapeHtml(w.memo)}</div>`:''}<div class="sub">${day}日 ${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}〜</div>`;
+  document.body.appendChild(tip);
+  const rect=tip.getBoundingClientRect();
+  const left=Math.max(8,Math.min(window.innerWidth-rect.width-8,x+10));
+  const top=Math.max(8,Math.min(window.innerHeight-rect.height-8,y-rect.height-10));
+  tip.style.left=left+'px';tip.style.top=top+'px';
+  setTimeout(hideWorkTooltip,2200);
+}
+function hideWorkTooltip(){document.getElementById('work-tooltip')?.remove();}
+function resetWorkTapState(){if(workTapState.timer)clearTimeout(workTapState.timer);workTapState={down:false,startX:0,startY:0,moved:false,cell:null,pointerId:null,longPress:false,timer:null};}
+function renderWorkTab(){
+  ensureWorkDefaults();
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+  document.getElementById('work-month-label').textContent=`${y}/${String(m).padStart(2,'0')}`;
+  purgeLockedWorkLogs(y,m,true);
+  renderWorkSelector();
+  renderWorkGrid();
+  renderWorkSummary();
+  renderWorkList();
+  renderAddWorkPalette();
+  updateWorkRangeStatus();
+}
+function renderWorkSelector(){
+  const btn=document.getElementById('work-current-button');
+  const dot=document.getElementById('work-current-dot');
+  const nameEl=document.getElementById('work-current-name');
+  const jobEl=document.getElementById('work-current-jobno');
+  const memoEl=document.getElementById('work-current-memo');
+  const w=getWorkById(selectedWorkId);
+  if(!btn||!nameEl||!jobEl)return;
+  if(w){
+    if(dot)dot.style.background=getWorkColor(w.id);
+    nameEl.textContent=`${getWorkIndex(w.id)}. ${w.name}`;
+    jobEl.textContent=`${w.jobNo}`;
+    if(memoEl){
+      const memo=w.memo||'';
+      memoEl.textContent=memo.length>20?memo.slice(0,20)+'…':memo;
+      memoEl.style.display=memo?'block':'none';
+    }
+  }else{
+    if(dot)dot.style.background='transparent';
+    nameEl.textContent='WORK未選択';
+    jobEl.textContent='タップして選択';
+    if(memoEl)memoEl.style.display='none';
+  }
+}
+function renderWorkPresets(activePreset){
+  const el=document.getElementById('work-modal-presets');if(!el)return;
+  // _の前を抽出してユニーク化・最大6件
+  const presets=[...new Set(
+    getActiveWorks()
+      .map(w=>{const m=w.name.match(/^([^_]+)_/);return m?m[1]:null;})
+      .filter(Boolean)
+  )].slice(0,6);
+  if(presets.length===0){el.innerHTML='';return;}
+  el.innerHTML=presets.map(p=>`<button type="button" class="work-preset-btn${p===activePreset?' active':''}" data-preset="${p}">${p}</button>`).join('');
+  el.querySelectorAll('[data-preset]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const search=document.getElementById('work-modal-search');
+      const p=btn.dataset.preset;
+      if(btn.classList.contains('active')){
+        // 解除
+        search.value='';
+        renderWorkModalList('');
+        renderWorkPresets(null);
+      }else{
+        search.value=p;
+        renderWorkModalList(p);
+        renderWorkPresets(p);
+      }
+    });
+  });
+}
+function openWorkSelectModal(){
+  const search=document.getElementById('work-modal-search');
+  if(search)search.value='';
+  renderWorkPresets(null);
+  renderWorkModalList('');
+  openModal('work-select-modal');
+  setTimeout(()=>search?.focus(),120);
+}
+function renderWorkModalList(query){
+  const el=document.getElementById('work-modal-list');if(!el)return;
+  const q=String(query||'').trim().toLowerCase();
+  const qRaw=String(query||'').trim();
+  const list=getActiveWorks().filter(w=>!q||w.name.toLowerCase().includes(q)||String(w.jobNo).toLowerCase().includes(q));
+  if(list.length){
+    el.innerHTML=list.map(w=>`<button type="button" class="work-modal-item${selectedWorkId===w.id?' selected':''}" data-work-select="${w.id}">
+      <span class="work-dot" style="background:${getWorkColor(w.id)}"></span>
+      <span style="min-width:0;overflow:hidden;"><span class="work-modal-item-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</span><span class="work-modal-item-job">${escapeHtml(w.jobNo)}</span>${w.memo?`<span style="font-size:11px;color:var(--text3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px;line-height:1.4;">${escapeHtml(w.memo)}</span>`:''}</span>
+      <span class="work-modal-item-mark">${selectedWorkId===w.id?'選択中':'選択'}</span>
+    </button>`).join('');
+  } else {
+    el.innerHTML=`<div style="font-size:13px;color:var(--text2);padding:12px 4px;">${qRaw?'該当するWORKがありません':'有効なWORKがありません'}</div>`
+      +(qRaw?`<div id="work-inline-add" style="background:var(--bg3);border:1px dashed var(--accent);border-radius:12px;padding:14px 12px;margin-top:4px;">
+        <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:10px;">＋ "${escapeHtml(qRaw)}" をWORKに追加</div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">JOBNO <span style="color:var(--text3);">（省略時：未定）</span></label>
+        <input type="text" id="work-inline-jobno" placeholder="例：A12345" style="margin-bottom:10px;">
+        <button type="button" id="btn-work-inline-confirm" class="btn btn-primary btn-full">追加する</button>
+      </div>`:'');
+    if(qRaw){
+      setTimeout(()=>{
+        document.getElementById('btn-work-inline-confirm')?.addEventListener('click',()=>{
+          const jobNo=document.getElementById('work-inline-jobno')?.value.trim()||'未定';
+          const id='w'+Date.now().toString(36);
+          settings.workColors=settings.workColors||{};
+          const autoColor=WORK_COLORS[(settings.workItems.length)%WORK_COLORS.length];
+          settings.workColors[id]=autoColor;
+          settings.workItems.push({id,name:qRaw,jobNo,color:autoColor,archived:false});
+          refreshJobColors();
+          selectedWorkId=id;
+          saveSettingsStorage();
+          clearWorkRangeStart();
+          renderWorkTab();
+          closeModal('work-select-modal');
+          renderWorkSelector();
+          updateWorkRangeStatus();
+        });
+      },0);
+    }
+  }
+  el.querySelectorAll('[data-work-select]').forEach(btn=>btn.addEventListener('click',()=>{
+    selectedWorkId=btn.dataset.workSelect;
+    clearWorkRangeStart();
+    closeModal('work-select-modal');
+    renderWorkSelector();
+    updateWorkRangeStatus();
+  }));
+}
+function renderWorkGrid(){
+  const grid=document.getElementById('work-grid');const wrap=document.getElementById('work-grid-wrap');if(!grid)return;
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;const dim=new Date(y,m,0).getDate();const logs=getWorkLogMonth(y,m);const today=toDateStr(new Date());
+  grid.innerHTML='';
+  const corner=document.createElement('div');corner.className='work-head work-corner';corner.textContent='日';grid.appendChild(corner);
+  for(let s=0;s<96;s++){const h=Math.floor(s/4);const head=document.createElement('div');head.className='work-head';head.textContent=s%4===0?String(h):'';grid.appendChild(head);}
+  let purged=false;
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const dow=new Date(ds+'T00:00:00').getDay();
+    const label=document.createElement('div');
+    label.className='work-day-label '+(dow===0?'sun':dow===6?'sat':isHoliday(ds)?'hol':'')+(ds===today?' today-row':'')+(workSummaryDay===d?' selected-day':'');
+    label.textContent=String(d).padStart(2,'0');label.addEventListener('click',()=>setWorkSummaryDay(workSummaryDay===d?null:d));grid.appendChild(label);
+    const arr=logs[String(d)]||[];
+    for(let s=0;s<96;s++){
+      const cell=document.createElement('div');const hour=Math.floor(s/4);
+      cell.className='work-cell'+(s%4===0?' hour-border':'')+(hour>=8&&hour<18?' focus-hour':'')+(ds===today?' today-row':'')+(workSummaryDay===d?' selected-day':'');
+      cell.dataset.day=d;cell.dataset.slot=s;
+      const lockState=getCellLockState(ds,s);
+      if(lockState){
+        cell.classList.add(lockState==='break'?'locked-break':'locked-off');
+        cell.dataset.locked=lockState;
+        cell.title=lockState==='break'?'休憩時間':'勤務時間外';
+        if(arr[s]){arr[s]='';purged=true;}
+      }
+      const wid=lockState?'':(arr[s]||'');updateWorkCellVisual(cell,wid);
+      if(lockState)cell.title=lockState==='break'?'休憩時間':'勤務時間外';
+      if(workRangeStart&&workRangeStart.day===d&&workRangeStart.slot===s)cell.classList.add('range-start');
+      cell.addEventListener('pointerdown',e=>{
+        if(e.button!==undefined&&e.button!==0)return;
+        hideWorkTooltip();resetWorkTapState();
+        workTapState={down:true,startX:e.clientX,startY:e.clientY,moved:false,cell,pointerId:e.pointerId,longPress:false,timer:null};
+        workTapState.timer=setTimeout(()=>{workTapState.longPress=true;showWorkTooltip(cell,e.clientX,e.clientY);},560);
+      });
+      cell.addEventListener('pointermove',e=>{
+        if(!workTapState.down||workTapState.pointerId!==e.pointerId)return;
+        const dx=Math.abs(e.clientX-workTapState.startX),dy=Math.abs(e.clientY-workTapState.startY);
+        if(dx>10||dy>10){workTapState.moved=true;if(workTapState.timer)clearTimeout(workTapState.timer);}
+      });
+      cell.addEventListener('pointerup',e=>{
+        if(!workTapState.down||workTapState.pointerId!==e.pointerId)return;
+        if(workTapState.timer)clearTimeout(workTapState.timer);
+        if(!workTapState.moved&&!workTapState.longPress){handleWorkCellTap(cell);}
+        resetWorkTapState();
+      });
+      cell.addEventListener('pointercancel',resetWorkTapState);
+      grid.appendChild(cell);
+    }
+  }
+  const bottomCorner=document.createElement('div');bottomCorner.className='work-bottom-head work-bottom-corner';bottomCorner.textContent='時';grid.appendChild(bottomCorner);
+  for(let s=0;s<96;s++){const h=Math.floor(s/4);const head=document.createElement('div');head.className='work-bottom-head';head.textContent=s%4===0?String(h):'';grid.appendChild(head);}
+  if(purged)saveStorage();
+  requestAnimationFrame(()=>{if(wrap&&!wrap.dataset.workScrolled){wrap.scrollLeft=8*4*22;wrap.dataset.workScrolled='1';}});
+}
+function getWorkSummaryData(){
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;const logs=getWorkLogMonth(y,m);const byJob={};
+  const targetDays=workSummaryDay?[String(workSummaryDay)]:Object.keys(logs);
+  for(const dkey of targetDays){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
+    const arr=logs[dkey]||[];
+    (arr||[]).forEach((wid,slot)=>{
+      if(!wid)return;
+      if(isWorkCellLocked(ds,slot))return;
+      const w=getWorkById(wid);if(!w)return;
+      const job=w.jobNo||'NOJOB';
+      if(!byJob[job])byJob[job]={total:0,works:{}};
+      byJob[job].total+=15;
+      byJob[job].works[w.id]=(byJob[job].works[w.id]||0)+15;
+    });
+  }
+  return byJob;
+}
+// WORK名の_前をカテゴリとして集計
+function getWorkCategoryData(y, m){
+  const logs=getWorkLogMonth(y||currentMonth.getFullYear(), m||currentMonth.getMonth()+1);
+  const byCat={};
+  const allDays=Object.keys(logs);
+  for(const dkey of allDays){
+    const yy=y||currentMonth.getFullYear(), mm=m||currentMonth.getMonth()+1;
+    const ds=`${yy}-${String(mm).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
+    const arr=logs[dkey]||[];
+    arr.forEach((wid,slot)=>{
+      if(!wid)return;
+      if(isWorkCellLocked(ds,slot))return;
+      const w=getWorkById(wid);if(!w)return;
+      const match=w.name.match(/^([^_]+)_/);
+      const cat=match?match[1]:'その他';
+      if(!byCat[cat])byCat[cat]={total:0,color:getWorkColor(w.id)};
+      byCat[cat].total+=15;
+      // 最初にヒットしたWORKの色をカテゴリ代表色に
+    });
+  }
+  return byCat;
+}
+function renderWorkSummaryCategory(){
+  const el=document.getElementById('work-summary-category');if(!el)return;
+  const byCat=getWorkCategoryData();
+  const cats=Object.entries(byCat).sort((a,b)=>b[1].total-a[1].total);
+  if(cats.length===0){el.innerHTML='<div style="font-size:13px;color:var(--text2);">未入力です</div>';return;}
+  const total=cats.reduce((s,[,d])=>s+d.total,0);
+  el.innerHTML=cats.map(([cat,data])=>{
+    const pct=total>0?Math.round(data.total/total*100):0;
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+        <span style="font-weight:700;">${escapeHtml(cat)}</span>
+        <span style="color:var(--accent);font-weight:700;">${formatHours(data.total)}h <span style="color:var(--text2);font-weight:400;">${pct}%</span></span>
+      </div>
+      <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:4px;transition:width .4s;"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderWorkSummary(){
+  const el=document.getElementById('work-summary');
+  if(!el)return;
+  const byJob=getWorkSummaryData();
+  const jobs=Object.entries(byJob).sort((a,b)=>b[1].total-a[1].total);
+  const scope=workSummaryDay?`${workSummaryDay}日`:'月間';
+  const head=`<div class="work-summary-head"><span>集計範囲：<b>${scope}</b></span>${workSummaryDay?'<button class="work-mini-btn work-summary-clear" id="btn-work-summary-month">月間に戻す</button>':''}</div>`;
+  if(jobs.length===0){
+    el.innerHTML=head+'<div style="font-size:13px;color:var(--text2);">未入力です</div>';
+    document.getElementById('btn-work-summary-month')?.addEventListener('click',()=>setWorkSummaryDay(null));
+    renderWorkSummaryCategory();
+    return;
+  }
+  const total=jobs.reduce((s,[,d])=>s+d.total,0);
+  el.innerHTML=head+jobs.map(([job,data])=>{
+    const pct=total>0?Math.round(data.total/total*100):0;
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px;" class="clickable" role="button" tabindex="0" data-job-detail="${escapeHtml(job)}">
+        <span style="font-weight:700;">${escapeHtml(job)}</span>
+        <span style="color:var(--accent);font-weight:700;">${formatHours(data.total)}h <span style="color:var(--text2);font-weight:400;">${pct}%</span></span>
+      </div>
+      <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:4px;transition:width .4s;"></div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('btn-work-summary-month')?.addEventListener('click',()=>setWorkSummaryDay(null));
+  el.querySelectorAll('[data-job-detail]').forEach(row=>{
+    const open=()=>showJobBreakdown(row.dataset.jobDetail);
+    row.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open();});
+    row.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+  });
+  renderWorkSummaryCategory();
+}
+function showJobBreakdown(jobNo){
+  // v11: 既存のmodal-overlayを使わず、内訳専用の完全独立オーバーレイを生成する。
+  // 透明オーバーレイだけ残って操作不能になる問題を避けるため。
+  try{
+    document.querySelectorAll('.job-detail-safe-overlay').forEach(el=>el.remove());
+    // 万一、旧JOB内訳モーダルが開きっぱなしなら閉じておく
+    document.getElementById('job-breakdown-modal')?.classList.remove('open');
+
+    const byJob=getWorkSummaryData();
+    const data=byJob[jobNo];
+    if(!data){showWorkToast('内訳がありません');return;}
+
+    const overlay=document.createElement('div');
+    overlay.className='job-detail-safe-overlay';
+    overlay.setAttribute('role','dialog');
+    overlay.setAttribute('aria-modal','true');
+
+    const rows=Object.entries(data.works).sort((a,b)=>b[1]-a[1]).map(([wid,mins])=>{
+      const w=getWorkById(wid);
+      const name=escapeHtml(w?.name||wid);
+      const memo=w?.memo?`<div class="job-detail-safe-sub">${escapeHtml(w.memo)}</div>`:'';
+      const color=w?getWorkColor(w.id):'#999';
+      return `<div class="job-detail-safe-row">
+        <span class="work-dot" style="background:${color}"></span>
+        <div>
+          <div class="job-detail-safe-name">${name}</div>
+          ${memo}
+        </div>
+        <div class="job-detail-safe-hours">${formatHours(mins)}h</div>
+      </div>`;
+    }).join('');
+
+    overlay.innerHTML=`<div class="job-detail-safe-sheet">
+      <div class="job-detail-safe-handle"></div>
+      <div class="job-detail-safe-title">${escapeHtml(jobNo)} 内訳</div>
+      <div class="job-detail-safe-total"><span>合計</span><b>${formatHours(data.total)}h</b></div>
+      <div class="job-detail-safe-list">${rows}</div>
+      <button type="button" class="btn btn-primary btn-full" data-close-job-detail>閉じる</button>
+    </div>`;
+
+    const close=()=>overlay.remove();
+    overlay.addEventListener('click',e=>{ if(e.target===overlay) close(); });
+    overlay.querySelector('[data-close-job-detail]').addEventListener('click',close);
+    document.body.appendChild(overlay);
+  }catch(err){
+    console.error('showJobBreakdown error:',err);
+    alert(`${jobNo} 内訳を表示できませんでした。`);
+  }
+}
+function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function renderWorkList(){
+  const el=document.getElementById('work-list');const archiveEl=document.getElementById('work-archive-list');if(!el)return;ensureWorkDefaults();
+  const active=(settings.workItems||[]).filter(w=>!w.archived);const archived=(settings.workItems||[]).filter(w=>w.archived);
+  const rowHtml=(w,activeRow)=>`<div class="work-list-item ${activeRow?'':'work-archived'}" draggable="true" data-work-id="${w.id}">
+    <div class="work-list-main">
+      <span class="work-dot" data-work-color style="background:${getWorkColor(w.id)}" title="色を変更"></span>
+      <div class="work-list-text">
+        <div class="work-list-title">
+          <div class="work-list-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</div>
+          <div class="work-list-job">${escapeHtml(w.jobNo)}</div>
+        </div>
+        ${w.memo?`<div style="font-size:11px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(w.memo)}</div>`:''}
+      </div>
+    </div>
+    <div class="work-swipe-actions">
+      <button class="btn btn-ghost btn-sm work-action-archive" data-work-archive>${activeRow?'アーカイブ':'戻す'}</button>
+      <button class="btn btn-ghost btn-sm work-action-delete" data-work-delete>削除</button>
+    </div>
+  </div>`;
+  el.innerHTML=active.length?active.map(w=>rowHtml(w,true)).join(''):'<div style="font-size:13px;color:var(--text2);padding:8px 0;">有効なWORKがありません</div>';
+  if(archiveEl)archiveEl.innerHTML=archived.length?`<div class="work-archive-title">ARCHIVE</div>${archived.map(w=>rowHtml(w,false)).join('')}`:'';
+  let dragId=null;let startX=0;let lastTapId=null;let lastTapAt=0;
+  document.querySelectorAll('[data-work-id]').forEach(row=>{
+    const id=row.dataset.workId;
+    row.addEventListener('click',e=>{
+      if(e.target.closest('button')||e.target.closest('[data-work-color]'))return;
+      const now=Date.now();
+      if(lastTapId===id && now-lastTapAt<430){openWorkEditModal(id);lastTapId=null;lastTapAt=0;}
+      else{lastTapId=id;lastTapAt=now;}
+    });
+    row.querySelector('[data-work-color]')?.addEventListener('click',e=>{e.stopPropagation();openJobColorModal(id);});
+    row.querySelector('[data-work-archive]')?.addEventListener('click',e=>{e.stopPropagation();toggleWorkArchive(id);});
+    row.querySelector('[data-work-delete]')?.addEventListener('click',e=>{e.stopPropagation();confirmDeleteWork(id);});
+    row.addEventListener('dragstart',e=>{dragId=id;row.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+    row.addEventListener('dragend',()=>{row.classList.remove('dragging');dragId=null;});
+    row.addEventListener('dragover',e=>{e.preventDefault();});
+    row.addEventListener('drop',e=>{e.preventDefault();if(dragId&&dragId!==id)moveWorkBefore(dragId,id);});
+    row.addEventListener('touchstart',e=>{startX=e.touches[0].clientX;},{passive:true});
+    row.addEventListener('touchend',e=>{const dx=(e.changedTouches[0].clientX-startX);if(Math.abs(dx)>56){row.classList.toggle('show-actions');}}, {passive:true});
+  });
+}
+function moveWorkBefore(fromId,toId){
+  const arr=settings.workItems;
+  const from=arr.findIndex(w=>w.id===fromId);
+  const to=arr.findIndex(w=>w.id===toId);
+  if(from<0||to<0||from===to)return;
+  const [item]=arr.splice(from,1);
+  const insertAt=arr.findIndex(w=>w.id===toId);
+  arr.splice(insertAt,0,item);
+  saveSettingsStorage();renderWorkTab();
+}
+function moveWork(id,delta){const arr=settings.workItems;const activeIdxs=arr.map((w,i)=>!w.archived?i:null).filter(i=>i!==null);const pos=activeIdxs.indexOf(arr.findIndex(w=>w.id===id));if(pos<0)return;const newPos=pos+delta;if(newPos<0||newPos>=activeIdxs.length)return;const i=activeIdxs[pos],j=activeIdxs[newPos];[arr[i],arr[j]]=[arr[j],arr[i]];saveSettingsStorage();renderWorkTab();}
+function toggleWorkArchive(id){const w=getWorkById(id);if(!w)return;w.archived=!w.archived;if(w.archived&&selectedWorkId===id){selectedWorkId=getActiveWorks().find(x=>x.id!==id)?.id||'';clearWorkRangeStart();}saveSettingsStorage();renderWorkTab();}
+function confirmDeleteWork(id){const w=getWorkById(id);if(!w)return;showWorkConfirm('WORK削除',`${w.name} を削除します。\n既に塗ったセルは空になります。`,()=>{const delId=w.id;settings.workItems=settings.workItems.filter(x=>x.id!==delId);for(const md of Object.values(monthData)){if(!md.workLogs)continue;for(const arr of Object.values(md.workLogs)){if(Array.isArray(arr))for(let i=0;i<arr.length;i++)if(arr[i]===delId)arr[i]='';}}ensureWorkDefaults();saveSettingsStorage();saveStorage();clearWorkRangeStart();renderWorkTab();});}
+function showWorkConfirm(title,body,onOk){pendingWorkConfirm=onOk;document.getElementById('work-confirm-title').textContent=title;document.getElementById('work-confirm-body').textContent=body;openModal('work-confirm-modal');}
+function renderColorPalette(containerId,inputId,value){const el=document.getElementById(containerId);const input=document.getElementById(inputId);if(!el||!input)return;input.value=value||input.value||WORK_COLORS[0];el.innerHTML=WORK_COLORS.map(c=>`<button type="button" class="color-swatch${c.toLowerCase()===input.value.toLowerCase()?' selected':''}" data-color="${c}" style="background:${c}" title="${c}"></button>`).join('');el.querySelectorAll('[data-color]').forEach(btn=>btn.addEventListener('click',()=>{input.value=btn.dataset.color;renderColorPalette(containerId,inputId,input.value);}));}
+function renderAddWorkPalette(){renderColorPalette('new-work-color-palette','new-work-color',document.getElementById('new-work-color')?.value||WORK_COLORS[0]);}
+function openWorkEditModal(id){const w=getWorkById(id);if(!w)return;editingWorkId=id;document.getElementById('edit-work-name').value=w.name;document.getElementById('edit-work-jobno').value=w.jobNo;document.getElementById('edit-work-memo').value=w.memo||'';openModal('work-edit-modal');}
+function saveWorkEdit(){const w=getWorkById(editingWorkId);if(!w)return;const name=document.getElementById('edit-work-name').value.trim();const jobNo=document.getElementById('edit-work-jobno').value.trim()||'未定';const memo=document.getElementById('edit-work-memo').value.trim();if(!name){alert('WORK名を入力してください');return;}w.name=name;w.jobNo=jobNo;w.memo=memo;saveSettingsStorage();closeModal('work-edit-modal');renderWorkTab();}
+function addWorkItem(){
+  const name=document.getElementById('new-work-name').value.trim();
+  const jobNo=document.getElementById('new-work-jobno').value.trim()||'未定';
+  if(!name){alert('WORK名を入力してください');return;}
+  const id='w'+Date.now().toString(36);
+  settings.workColors=settings.workColors||{};
+  const autoColor=WORK_COLORS[(settings.workItems.length)%WORK_COLORS.length];
+  settings.workColors[id]=autoColor;
+  settings.workItems.push({id,name,jobNo,color:autoColor,archived:false});
+  refreshJobColors();
+  selectedWorkId=id;
+  saveSettingsStorage();
+  document.getElementById('new-work-name').value='';
+  document.getElementById('new-work-jobno').value='';
+  document.getElementById('new-work-color').value=WORK_COLORS[(settings.workItems.length)%WORK_COLORS.length];
+  clearWorkRangeStart();
+  renderWorkTab();
+}
+window.addEventListener('pointerdown',e=>{if(!e.target.closest?.('.work-cell'))hideWorkTooltip();});
 // ANNUAL
+let annualJobChartMode='jobno'; // 'jobno' or 'category'
+let annualBarChart=null, annualPieChart=null;
+
+function getAnnualJobData(mode){
+  const months=[];
+  const keySet=new Set();
+  for(let mon=1;mon<=12;mon++){
+    const data={};
+    const y=currentYear, m=mon;
+    const key=getMonthKey(y,m);
+    const logs=(monthData[key]||{}).workLogs||{};
+    for(const dkey of Object.keys(logs)){
+      const ds=`${y}-${String(m).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
+      const arr=logs[dkey]||[];
+      arr.forEach((wid,slot)=>{
+        if(!wid)return;
+        if(isWorkCellLocked(ds,slot))return;
+        const w=getWorkById(wid);if(!w)return;
+        let label;
+        if(mode==='category'){
+          const match=w.name.match(/^([^_]+)_/);
+          label=match?match[1]:'その他';
+        } else {
+          label=w.jobNo||'NOJOB';
+        }
+        data[label]=(data[label]||0)+15;
+        keySet.add(label);
+      });
+    }
+    months.push(data);
+  }
+  return {months, labels:[...keySet].sort()};
+}
+
+function renderAnnualJobCharts(){
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  const textColor=isDark?'rgba(255,255,255,.7)':'rgba(0,0,0,.6)';
+  const gridColor=isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)';
+
+  const {months,labels}=getAnnualJobData(annualJobChartMode);
+  const monthLabels=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+  // 色割当
+  const palette=WORK_COLORS;
+  const colorMap={};
+  labels.forEach((l,i)=>colorMap[l]=palette[i%palette.length]);
+
+  // 積み上げ棒グラフ
+  const barCtx=document.getElementById('annual-job-bar-chart')?.getContext('2d');
+  if(barCtx){
+    if(annualBarChart)annualBarChart.destroy();
+    annualBarChart=new Chart(barCtx,{
+      type:'bar',
+      data:{
+        labels:monthLabels,
+        datasets:labels.map(l=>({
+          label:l,
+          data:months.map(m=>parseFloat(((m[l]||0)/60).toFixed(1))),
+          backgroundColor:colorMap[l],
+          stack:'s'
+        }))
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}h`}}},
+        scales:{
+          x:{stacked:true,ticks:{color:textColor},grid:{color:gridColor}},
+          y:{stacked:true,ticks:{color:textColor,callback:v=>v+'h'},grid:{color:gridColor}}
+        }
+      }
+    });
+  }
+
+  // 年間合計の円グラフ
+  const totalMap={};
+  months.forEach(m=>Object.entries(m).forEach(([l,v])=>totalMap[l]=(totalMap[l]||0)+v));
+  const pieLabels=Object.keys(totalMap).sort((a,b)=>totalMap[b]-totalMap[a]);
+  const pieCtx=document.getElementById('annual-job-pie-chart')?.getContext('2d');
+  if(pieCtx){
+    if(annualPieChart)annualPieChart.destroy();
+    annualPieChart=new Chart(pieCtx,{
+      type:'doughnut',
+      data:{
+        labels:pieLabels,
+        datasets:[{data:pieLabels.map(l=>parseFloat(((totalMap[l]||0)/60).toFixed(1))),backgroundColor:pieLabels.map(l=>colorMap[l]),borderWidth:2}]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed}h`}}}
+      }
+    });
+  }
+
+  // 凡例
+  const legendEl=document.getElementById('annual-job-legend');
+  if(legendEl){
+    const total=Object.values(totalMap).reduce((s,v)=>s+v,0);
+    legendEl.innerHTML=pieLabels.map(l=>{
+      const pct=total>0?Math.round((totalMap[l]||0)/total*100):0;
+      return `<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:${colorMap[l]};display:inline-block;flex-shrink:0;"></span>${escapeHtml(l)} ${pct}%</span>`;
+    }).join('');
+  }
+}
+
 function renderAnnualTab(){
   document.getElementById('year-label').textContent=`${currentYear}年`;
   const cm=new Date().getMonth()+1,cy=new Date().getFullYear();
@@ -2067,6 +3257,7 @@ function renderAnnualTab(){
   document.getElementById('at-lot').textContent=formatHours(tHol);
   document.getElementById('at-paid').textContent=tPaid;
   document.getElementById('at-comp').textContent=tComp;
+  renderAnnualJobCharts();
 }
 
 // EXCEL
@@ -2083,6 +3274,7 @@ function renderHolidayList(){const yr=document.getElementById('holiday-year-filt
 // INIT
 document.addEventListener('DOMContentLoaded',()=>{
   loadStorage();
+  ensureWorkDefaults();
   if(!settings.holidays||settings.holidays.length===0){settings.holidays=[...DEFAULT_HOLIDAYS];saveSettingsStorage();}
   applyTheme(localStorage.getItem(THEME_KEY)||'dark');
   document.querySelectorAll('.nav-btn[data-page]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -2091,6 +3283,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
     document.getElementById(`page-${n}`).classList.add('active');
     btn.classList.add('active');
+    if(n==='work')renderWorkTab();
     if(n==='month'){
       const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
       initScheduleDefaults(y,m);
@@ -2169,6 +3362,30 @@ document.addEventListener('DOMContentLoaded',()=>{
     sortBreakRows(); // 終了確定後に昇順ソート
     autoSavePunch();
   });
+  
+  document.getElementById('btn-work-month-prev').addEventListener('click',()=>{
+    currentMonth=new Date(currentMonth.getFullYear(),currentMonth.getMonth()-1,1);
+    renderWorkTab();
+  });
+  document.getElementById('btn-work-month-next').addEventListener('click',()=>{
+    currentMonth=new Date(currentMonth.getFullYear(),currentMonth.getMonth()+1,1);
+    renderWorkTab();
+  });
+  document.getElementById('work-current-button')?.addEventListener('click',openWorkSelectModal);
+  document.getElementById('btn-open-work-manage')?.addEventListener('click',()=>{renderWorkList();openModal('work-manage-modal');});
+  document.getElementById('work-modal-search')?.addEventListener('input',e=>{
+    renderWorkModalList(e.target.value);
+    // 直接入力時はプリセット選択解除
+    renderWorkPresets(null);
+  });
+  document.getElementById('btn-work-select-close')?.addEventListener('click',()=>closeModal('work-select-modal'));
+  document.getElementById('btn-work-manage-close')?.addEventListener('click',()=>closeModal('work-manage-modal'));
+  document.getElementById('btn-add-work').addEventListener('click',addWorkItem);
+  document.getElementById('btn-save-work-edit').addEventListener('click',saveWorkEdit);
+  document.getElementById('btn-work-confirm-cancel').addEventListener('click',()=>{pendingWorkConfirm=null;closeModal('work-confirm-modal');});
+  document.getElementById('btn-work-confirm-ok').addEventListener('click',()=>{const fn=pendingWorkConfirm;pendingWorkConfirm=null;closeModal('work-confirm-modal');if(fn)fn();else resetWorkConfirmButtons();});
+  document.getElementById('btn-job-breakdown-close')?.addEventListener('click',()=>closeModal('job-breakdown-modal'));
+
   document.getElementById('btn-month-prev').addEventListener('click',()=>{
     currentMonth=new Date(currentMonth.getFullYear(),currentMonth.getMonth()-1,1);
     const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
@@ -2225,6 +3442,18 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
   document.getElementById('btn-year-prev').addEventListener('click',()=>{currentYear--;renderAnnualTab();});
   document.getElementById('btn-year-next').addEventListener('click',()=>{currentYear++;renderAnnualTab();});
+  document.getElementById('btn-annual-job-mode-jobno')?.addEventListener('click',()=>{
+    annualJobChartMode='jobno';
+    document.getElementById('btn-annual-job-mode-jobno').className='btn btn-sm btn-primary';
+    document.getElementById('btn-annual-job-mode-cat').className='btn btn-sm btn-ghost';
+    renderAnnualJobCharts();
+  });
+  document.getElementById('btn-annual-job-mode-cat')?.addEventListener('click',()=>{
+    annualJobChartMode='category';
+    document.getElementById('btn-annual-job-mode-jobno').className='btn btn-sm btn-ghost';
+    document.getElementById('btn-annual-job-mode-cat').className='btn btn-sm btn-primary';
+    renderAnnualJobCharts();
+  });
   document.getElementById('btn-export-excel').addEventListener('click',exportExcel);
   document.getElementById('btn-save-work-settings').addEventListener('click',()=>{settings.stdHours=parseFloat(document.getElementById('std-hours').value)||8;settings.coreStart=document.getElementById('core-start').value;settings.coreEnd=document.getElementById('core-end').value;saveSettingsStorage();alert('保存しました');});
   document.getElementById('btn-add-preset').addEventListener('click',()=>{const n=document.getElementById('new-preset-name').value.trim(),i=document.getElementById('new-preset-in').value.trim(),o=document.getElementById('new-preset-out').value.trim();if(!n||!i||!o)return;settings.presets.push({name:n,timeIn:i,timeOut:o});saveSettingsStorage();renderPresetList();renderPresetButtons();document.getElementById('new-preset-name').value='';document.getElementById('new-preset-in').value='';document.getElementById('new-preset-out').value='';});
