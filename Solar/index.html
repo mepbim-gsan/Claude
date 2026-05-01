@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-05-01
+  @version   v06_2026-05-01.2
   @changelog
     v01_2026-04-26 - 初版
     v02_2026-04-26 - ライト/ダークモード、月次ダッシュボード、PC/SP対応
@@ -21,6 +21,7 @@
                        月別サマリー表を降順に変更
     v06_2026-05-01 - タブをheaderと一緒にstickyで固定（ResizeObserverでtopを動的同期）
                      日次分析の発電量/売電量/買電量/消費量ボタンを時間帯別平均セクションに移動
+    v06_2026-05-01.2 - 箱ひげ図凡例を3行に改行（箱 / 線・ひげ / 点）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -341,7 +342,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
       <div style="font-size:.66rem;color:var(--text2)" id="box-legend"></div>
     </div>
     <div class="scroll" id="box-chart"></div>
-    <p style="font-size:.66rem;color:var(--text2);margin-top:6px">箱：25〜75パーセンタイル　線：中央値　ひげ：5〜95パーセンタイル　点：外れ値</p>
+    <p style="font-size:.66rem;color:var(--text2);margin-top:6px;line-height:1.8">箱：25〜75パーセンタイル<br>線：中央値　ひげ：5〜95パーセンタイル<br>点：外れ値</p>
   </div>
   <div class="sec">
     <div class="sec-title" style="margin-bottom:10px">年別月次比較（発電量 kWh）</div>
@@ -394,7 +395,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="scroll" id="deg-table-wrap"></div>
     <div class="sec-title" style="margin-top:14px;margin-bottom:8px;font-size:.68rem">年別日発電量 箱ひげ図（中央値・IQRで性能比較）</div>
     <div class="scroll" id="deg-box-chart"></div>
-    <p style="font-size:.66rem;color:var(--text2);margin-top:6px">箱：25〜75パーセンタイル　線：中央値　ひげ：5〜95パーセンタイル　点：外れ値（発電量0日除く）</p>
+    <p style="font-size:.66rem;color:var(--text2);margin-top:6px;line-height:1.8">箱：25〜75パーセンタイル<br>線：中央値　ひげ：5〜95パーセンタイル<br>点：外れ値（発電量0日除く）</p>
   </div>
 </div>
 
@@ -2339,7 +2340,8 @@ function _syncTabTop(){
   if(h && tabs) tabs.style.top = h.offsetHeight + 'px';
 }
 _syncTabTop();
-new ResizeObserver(_syncTabTop).observe(document.querySelector('header'));
+const _hdrEl = document.querySelector('header');
+if(_hdrEl) new ResizeObserver(_syncTabTop).observe(_hdrEl);
 
 window.addEventListener('resize',()=>{
   clearTimeout(_resizeTimer);
