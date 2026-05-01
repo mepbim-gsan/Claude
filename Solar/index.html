@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v05_2026-04-27.5
+  @version   v06_2026-05-01
   @changelog
     v01_2026-04-26 - 初版
     v02_2026-04-26 - ライト/ダークモード、月次ダッシュボード、PC/SP対応
@@ -19,6 +19,8 @@
                        劣化テーブルの比較指標をTop10平均→中央値に変更
                        棒グラフスタイル統一（水平Xラベル・角丸・opacity）、不完全月フラグ（⚠斜線表示）
                        月別サマリー表を降順に変更
+    v06_2026-05-01 - タブをheaderと一緒にstickyで固定（ResizeObserverでtopを動的同期）
+                     日次分析の発電量/売電量/買電量/消費量ボタンを時間帯別平均セクションに移動
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -59,7 +61,7 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
 .granularity-badge.g30{border-color:var(--gen);color:var(--gen);background:var(--gen-bg);}
 .granularity-badge.g60{border-color:var(--buy);color:var(--buy);background:var(--buy-bg);}
 
-.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto;padding:0 6px;}
+.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto;padding:0 6px;position:sticky;top:0;z-index:99;}
 .tab-btn{padding:9px 16px;font-size:.75rem;font-weight:500;color:var(--text2);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;white-space:nowrap;font-family:inherit;transition:color .15s,border-color .15s;}
 .tab-btn:hover{color:var(--text);}
 .tab-btn.active{color:var(--gen);border-bottom-color:var(--gen);}
@@ -258,12 +260,6 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
         <div class="mlabel" id="mlabel">—</div>
         <button id="mnext">▶</button>
       </div>
-      <div class="mtg" id="heat-mtg">
-        <button class="mbtn m-gen" data-m="gen">発電量</button>
-        <button class="mbtn" data-m="sell">売電量</button>
-        <button class="mbtn" data-m="buy">買電量</button>
-        <button class="mbtn" data-m="con">消費量</button>
-      </div>
     </div>
     <div class="kpi-row" id="heat-kpi"></div>
     <div class="kpi-row" id="heat-kpi2"></div>
@@ -272,6 +268,12 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="sec-hd">
       <div id="bar-title-area">
         <div class="sec-title" id="bar-title">時間帯別平均（kWh）</div>
+        <div class="mtg" id="heat-mtg" style="margin-top:6px;">
+          <button class="mbtn m-gen" data-m="gen">発電量</button>
+          <button class="mbtn" data-m="sell">売電量</button>
+          <button class="mbtn" data-m="buy">買電量</button>
+          <button class="mbtn" data-m="con">消費量</button>
+        </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <div class="dnav" id="dnav">
@@ -2331,9 +2333,18 @@ document.getElementById('modal-ok').addEventListener('click', async ()=>{
   flash('データを消去しました');
 });
 
+function _syncTabTop(){
+  const h = document.querySelector('header');
+  const tabs = document.querySelector('.tabs');
+  if(h && tabs) tabs.style.top = h.offsetHeight + 'px';
+}
+_syncTabTop();
+new ResizeObserver(_syncTabTop).observe(document.querySelector('header'));
+
 window.addEventListener('resize',()=>{
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(()=>{
+    _syncTabTop();
     if(curTab==='heat') renderHeatTab();
     else if(curTab==='monthly') renderAll();
     else if(curTab==='yearly') renderYearlyTab();
