@@ -722,7 +722,7 @@ function _renderServiceSection(svc, fy) {
   const tableMonths = [...months].reverse();
   let tableRows = '';
   // 合計用集計
-  let sumCur = null, sumPrev = null, sumDiffTotal = null;
+  let sumCur = null, sumPrev = null, sumDiffTotal = null, bothCount = 0;
 
   tableMonths.forEach(m => {
     const [y,mo] = m.split('-');
@@ -737,7 +737,7 @@ function _renderServiceSection(svc, fy) {
     if (metric !== 'unit') {
       if (curVal  != null) sumCur  = (sumCur  || 0) + curVal;
       if (prevVal != null) sumPrev = (sumPrev || 0) + prevVal;
-      if (diff    != null) sumDiffTotal = Math.round(((sumDiffTotal || 0) + diff) * 10) / 10;
+      if (diff    != null) { sumDiffTotal = Math.round(((sumDiffTotal || 0) + diff) * 10) / 10; bothCount++; }
     } else {
       // 単価は差分のみ合計
       if (diff != null) sumCur = (sumCur || 0) + diff;
@@ -785,8 +785,8 @@ function _renderServiceSection(svc, fy) {
       const dVal = metric === 'amount'
         ? sign + '¥' + Math.abs(Math.round(sumDiffTotal)).toLocaleString()
         : sign + Math.abs(Math.round(sumDiffTotal)).toLocaleString();
-      // 増減率は今年合計・前年合計から算出
-      const sumRate = (sumCur !== null && sumPrev !== null && sumPrev !== 0)
+      // 増減率は12ヶ月両方揃っている場合のみ
+      const sumRate = (bothCount === 12 && sumCur !== null && sumPrev !== null && sumPrev !== 0)
         ? Math.round((sumCur / sumPrev - 1) * 1000) / 10 : null;
       const rVal = sumRate !== null ? ` (${sumRate > 0 ? '+' : ''}${sumRate}%)` : '';
       diffSumStr = `<span class="${cls}">${dVal}${rVal}</span>`;
