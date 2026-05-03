@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-05-03.14
+  @version   v06_2026-05-03.18
   @changelog
     v01_2026-04-26 - 初版
     v02_2026-04-26 - ライト/ダークモード、月次ダッシュボード、PC/SP対応
@@ -41,7 +41,11 @@
     v06_2026-05-03.11 - 棒グラフ書式統一
     v06_2026-05-03.12 - 日別サマリー表tfoot列数バグ修正
     v06_2026-05-03.13 - expectedSlots/getDaySlotCount/isDayIncomplete関数欠落バグ修正
-    v06_2026-05-03.14 - 月次箱ひげ凡例位置修正（mT拡大・凡例をSVG上部に固定）（スロット数列の空セル追加）（薄fill+枠線・消費量の自家消費線を白破線）（今日は除外）（棒幅細め・凡例左上・前年凡例追加）、年次初期値を最新年に修正（ひげ破線縦1本＋両端横線・箱opacity.25・外れ値空円）（自家消費量・自家消費率追加、合計行追加、不完全行スタイル統一）（日単位・選択月の月のみ表示）、月次・年次自家消費切り替えボタン追加
+    v06_2026-05-03.14 - 月次箱ひげ凡例位置修正
+    v06_2026-05-03.15 - 日次ヘッダー1行化
+    v06_2026-05-03.16 - 時間帯別平均: 丸一日データが揃っていない日を除外
+    v06_2026-05-03.17 - 月次日別棒グラフ: X軸を月の実日数（28〜31日）で固定
+    v06_2026-05-03.18 - 月次自家消費分析グラフ: X軸を月の実日数で固定（月ナビ・日ナビ・ピーク）、「月平均に戻す」→「平均」（mT拡大・凡例をSVG上部に固定）（スロット数列の空セル追加）（薄fill+枠線・消費量の自家消費線を白破線）（今日は除外）（棒幅細め・凡例左上・前年凡例追加）、年次初期値を最新年に修正（ひげ破線縦1本＋両端横線・箱opacity.25・外れ値空円）（自家消費量・自家消費率追加、合計行追加、不完全行スタイル統一）（日単位・選択月の月のみ表示）、月次・年次自家消費切り替えボタン追加
                       年次棒グラフに前年グレー折れ線追加、年次ナビ方向修正（古←◀ ▶→新→全期間）
                       月次：日別棒グラフを選択月のみに変更、消費量に自家消費線、自家消費分析（日単位）追加、月別日次箱ひげ追加
                       年次：自家消費分析（月単位）追加、月別棒グラフ消費量に自家消費線、年別月合計箱ひげ追加、ナビ初期値を最新年に変更
@@ -106,6 +110,7 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
 .mbtn.m-con{border-color:var(--con);color:var(--con);background:var(--con-bg);}
 
 .mnav{display:flex;align-items:center;gap:8px;}
+.heat-nav-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .mnav button{border:1px solid var(--border);background:var(--bg3);color:var(--text);padding:3px 9px;cursor:pointer;font-family:inherit;border-radius:4px;transition:all .15s;font-size:.75rem;}
 .mnav button:hover:not(:disabled){border-color:var(--gen);color:var(--gen);}
 .mnav button:disabled{opacity:.3;cursor:default;}
@@ -142,7 +147,7 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 
   .tab-content{padding:10px 10px;}
   .sec{padding:12px 10px;margin-bottom:10px;}
   .sec-hd{align-items:flex-start;}
-  .dnav{width:100%;justify-content:flex-end;}
+  .heat-nav-row{flex-wrap:wrap;}
   .peak-row{width:100%;justify-content:flex-end;}
   .day-kpi-row{grid-template-columns:repeat(2,1fr);}
   .day-summary{margin-bottom:10px;}
@@ -280,21 +285,19 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 <!-- 日次タブ -->
 <div class="tab-content active" id="tab-heat">
   <div class="sec">
-    <div class="sec-hd" style="flex-wrap:wrap;gap:8px;">
+    <div class="heat-nav-row">
       <div class="mnav">
         <button id="mprev">◀</button>
         <div class="mlabel" id="mlabel">—</div>
         <button id="mnext">▶</button>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <div class="dnav" id="dnav">
-          <button id="d-avg" class="btn" style="font-size:.68rem;padding:3px 9px;">月平均に戻す</button>
-          <button id="dprev">◀</button>
-          <div class="dlabel" id="dlabel">—</div>
-          <button id="dnext">▶</button>
-        </div>
-        <div class="peak-row" id="peak-row"></div>
+      <div class="dnav" id="dnav">
+        <button id="d-avg" class="btn" style="font-size:.68rem;padding:3px 8px;">平均</button>
+        <button id="dprev">◀</button>
+        <div class="dlabel" id="dlabel">—</div>
+        <button id="dnext">▶</button>
       </div>
+      <div class="peak-row" id="peak-row"></div>
     </div>
     <div id="heat-kpi-label" style="font-size:.72rem;font-weight:700;color:var(--text2);margin:6px 0 4px;display:none;"></div>
     <div class="kpi-row" id="heat-kpi"></div>
@@ -914,9 +917,13 @@ function slotAvg(ym, m, dk){
     result = sl.map(slot => D[`${dk}_${slot}`]?.[m] || 0);
   } else {
     const ds = moDates(ym);
+    const exp = expectedSlots();
+    // 丸一日データが揃っている日のみ平均に含める
+    const fullDs = exp > 0 ? ds.filter(d => getDaySlotCount(d) === exp) : ds;
+    const targets = fullDs.length ? fullDs : ds; // フォールバック
     result = sl.map(slot => {
       let sum=0, cnt=0;
-      for(const d of ds){ sum += D[`${d}_${slot}`]?.[m]||0; cnt++; }
+      for(const d of targets){ sum += D[`${d}_${slot}`]?.[m]||0; cnt++; }
       return cnt ? sum/cnt : 0;
     });
   }
@@ -2638,26 +2645,30 @@ function renderMonSelfChart(mode){
   const buyColor  = col.buy;
   const sellColor = col.sell;
 
-  const vals = ds.map(dk=>({
-    dk,
-    buy:  daySum(dk,'buy'),
-    sell: daySum(dk,'sell'),
-    con:  daySum(dk,'con'),
-    self: Math.max(daySum(dk,'con')-daySum(dk,'buy'),0),
+  const dkMap = new Map(ds.map(dk=>{
+    return [dk, {
+      buy:  daySum(dk,'buy'),
+      sell: daySum(dk,'sell'),
+      con:  daySum(dk,'con'),
+      self: Math.max(daySum(dk,'con')-daySum(dk,'buy'),0),
+    }];
   }));
 
-  const maxPos = Math.max(...vals.map(v=>v.self+v.buy), 0.01);
-  const maxNeg = Math.max(...vals.map(v=>v.sell), 0.01);
+  const allVals = [...dkMap.values()];
+  const maxPos = Math.max(...allVals.map(v=>v.self+v.buy), 0.01);
+  const maxNeg = Math.max(...allVals.map(v=>v.sell), 0.01);
   const maxAbs = Math.max(maxPos, maxNeg);
 
-  const n = ds.length;
+  // X軸を月の実日数で固定
+  const daysInMonth = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
   const contW = el.parentElement.clientWidth || window.innerWidth;
-  const sp = contW<560;
-  const bW = sp ? Math.max(5,Math.floor((contW-58)/n)-2) : Math.max(10,Math.floor((contW-58)/n)-3);
-  const gap = 2;
+  const availW = contW-44-8;
+  const moW = Math.floor(availW/daysInMonth);
+  const gap = Math.max(1, Math.floor(moW*0.18));
+  const bW = Math.max(4, moW-gap);
   const mL=44, mT=10, mB=24, cH_pos=110, cH_neg=50;
   const zeroY = mT+cH_pos;
-  const W = Math.max(contW-4, mL+n*(bW+gap)+6), H=mT+cH_pos+cH_neg+mB;
+  const W=contW, H=mT+cH_pos+cH_neg+mB;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
   // 0ライン
@@ -2677,8 +2688,16 @@ function renderMonSelfChart(mode){
   svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',negY).attr('y2',negY).attr('stroke',cv('--grid')).attr('stroke-width',1);
   svg.append('text').attr('x',mL-5).attr('y',negY+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text('-'+negV);
 
-  vals.forEach(({dk,buy,sell,self},i)=>{
-    const x=mL+i*(bW+gap);
+  Array.from({length:daysInMonth},(_,i)=>i+1).forEach(dayNum=>{
+    const dk=ym+'-'+String(dayNum).padStart(2,'0');
+    const x=mL+(dayNum-1)*moW;
+    // X軸ラベル
+    if(dayNum===1||dayNum%5===0||dayNum===daysInMonth)
+      svg.append('text').attr('x',x+moW/2).attr('y',H-6).attr('text-anchor','middle')
+        .attr('fill',cv('--text2')).attr('font-size',8).text(dayNum+'日');
+    const v=dkMap.get(dk);
+    if(!v) return;
+    const {buy,sell,self}=v;
     if(mode==='self'){
       const selfH=(self/maxAbs)*cH_pos,buyH=(buy/maxAbs)*cH_pos,totalH=selfH+buyH;
       if(selfH>0) svg.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
@@ -2692,7 +2711,6 @@ function renderMonSelfChart(mode){
           .attr('fill',sellColor).attr('opacity',.8).attr('rx',1)
           .on('mousemove',e=>showTip(e,dk+'<br>売電: <b>-'+sell.toFixed(2)+' kWh</b>')).on('mouseleave',hideTip); }
     } else {
-      // 発電量モード: 自家消費+売電を+側
       const selfH=(self/maxAbs)*cH_pos,selH=(sell/maxAbs)*cH_pos,totalH=selfH+selH;
       if(selfH>0) svg.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
         .attr('fill',selfColor).attr('opacity',.8).attr('rx',1)
@@ -2701,10 +2719,6 @@ function renderMonSelfChart(mode){
         .attr('fill',sellColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,dk+'<br>売電: <b>'+sell.toFixed(2)+' kWh</b>')).on('mouseleave',hideTip);
     }
-    const d=+dk.slice(8);
-    if(d===1||d%5===0||i===vals.length-1)
-      svg.append('text').attr('x',x+bW/2).attr('y',H-6).attr('text-anchor','middle')
-        .attr('fill',cv('--text2')).attr('font-size',8).text(d+'日');
   });
   // 凡例
   if(mode==='self'){
@@ -2978,21 +2992,33 @@ function renderDayBarChart(){
   const ds = moDates(ym);
   if(!ds.length){ el.innerHTML=empty(); return; }
   const col = colors();
+  // 月の最大日数（28〜31）を取得してX軸を固定
+  const daysInMonth = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
   const vals = ds.map(dk=>daySum(dk,dayBarMet));
   const selfVals = ds.map(dk=>Math.max(daySum(dk,'con')-daySum(dk,'buy'),0));
   const maxV = Math.max(...vals,0.01);
-  const n = ds.length;
   const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
-  const sp = contW<560;
   const availW = contW-44-8;
-  const gap = Math.floor(availW*0.08/n);
-  const bW = Math.max(sp?8:12, Math.floor((availW-gap*(n-1))/n));
+  const moW = Math.floor(availW/daysInMonth);
+  const gap = Math.max(1, Math.floor(moW*0.18));
+  const bW = Math.max(4, moW-gap);
   const mL=44, mT=10, mB=28, cH=160;
   const W=contW, H=cH+mT+mB;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
   drawGridAndYAxis(svg, maxV, mL, mT, W, cH, 2);
-  ds.forEach((dk,i)=>{
-    const v=vals[i], bh=(v/maxV)*cH, x=mL+i*(bW+gap);
+  // dsはデータがある日のみ→日付→列インデックスのマップ
+  const dkMap = new Map(ds.map(dk=>[dk,true]));
+  Array.from({length:daysInMonth},(_,i)=>i+1).forEach(dayNum=>{
+    const dk=ym+'-'+String(dayNum).padStart(2,'0');
+    const i=dayNum-1;
+    const x=mL+i*moW;
+    // X軸ラベル（1日・5の倍数・末日）
+    if(dayNum===1||dayNum%5===0||dayNum===daysInMonth)
+      svg.append('text').attr('x',x+moW/2).attr('y',mT+cH+16).attr('text-anchor','middle')
+        .attr('fill',cv('--text2')).attr('font-size',9).text(dayNum+'日');
+    if(!dkMap.has(dk)) return; // データなし列はスキップ
+    const di=ds.indexOf(dk);
+    const v=vals[di], bh=(v/maxV)*cH;
     svg.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',Math.max(bh,0))
       .attr('fill',col[dayBarMet]).attr('fill-opacity',.3)
       .attr('stroke',col[dayBarMet]).attr('stroke-width',1.5).attr('stroke-opacity',.9)
@@ -3000,15 +3026,11 @@ function renderDayBarChart(){
       .on('mousemove',e=>showTip(e,dk+'<br>'+ML[dayBarMet]+': <b>'+v.toFixed(2)+' kWh</b>'))
       .on('mouseleave',hideTip);
     // 消費量: 自家消費量を白破線で表示
-    if(dayBarMet==='con' && selfVals[i]>0){
-      const sy=mT+cH-(selfVals[i]/maxV)*cH;
+    if(dayBarMet==='con' && selfVals[di]>0){
+      const sy=mT+cH-(selfVals[di]/maxV)*cH;
       svg.append('line').attr('x1',x).attr('x2',x+bW).attr('y1',sy).attr('y2',sy)
         .attr('stroke','#ffffff').attr('stroke-width',1.5).attr('stroke-dasharray','3,2').attr('opacity',.85);
     }
-    const d=+dk.slice(8);
-    if(d===1||d%5===0||i===ds.length-1)
-      svg.append('text').attr('x',x+bW/2).attr('y',mT+cH+16).attr('text-anchor','middle')
-        .attr('fill',cv('--text2')).attr('font-size',9).text(d+'日');
   });
 }
 
