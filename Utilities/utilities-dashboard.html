@@ -722,7 +722,7 @@ function _renderServiceSection(svc, fy) {
   const tableMonths = [...months].reverse();
   let tableRows = '';
   // 合計用集計
-  let sumCur = null, sumPrev = null;
+  let sumCur = null, sumPrev = null, sumDiffTotal = null;
 
   tableMonths.forEach(m => {
     const [y,mo] = m.split('-');
@@ -737,6 +737,7 @@ function _renderServiceSection(svc, fy) {
     if (metric !== 'unit') {
       if (curVal  != null) sumCur  = (sumCur  || 0) + curVal;
       if (prevVal != null) sumPrev = (sumPrev || 0) + prevVal;
+      if (diff    != null) sumDiffTotal = Math.round(((sumDiffTotal || 0) + diff) * 10) / 10;
     } else {
       // 単価は差分のみ合計
       if (diff != null) sumCur = (sumCur || 0) + diff;
@@ -773,22 +774,20 @@ function _renderServiceSection(svc, fy) {
   // 合計行
   let totalRow = '';
   if (metric !== 'unit' && (sumCur !== null || sumPrev !== null)) {
-    const sumDiff = (sumCur !== null && sumPrev !== null)
-      ? Math.round((sumCur - sumPrev) * 10) / 10 : null;
-    const sumRate = (sumCur !== null && sumPrev !== null && sumPrev !== 0)
-      ? Math.round((sumCur / sumPrev - 1) * 1000) / 10 : null;
-
     const fmtSum = v => {
       if (v == null) return '<span class="no-data">—</span>';
       return metric === 'amount' ? '¥' + Math.round(v).toLocaleString() : Math.round(v).toLocaleString();
     };
     let diffSumStr = '<span class="no-data">—</span>';
-    if (sumDiff !== null) {
-      const cls  = sumDiff > 0 ? 'diff-up' : sumDiff < 0 ? 'diff-down' : '';
-      const sign = sumDiff >= 0 ? '+' : '';
+    if (sumDiffTotal !== null) {
+      const cls  = sumDiffTotal > 0 ? 'diff-up' : sumDiffTotal < 0 ? 'diff-down' : '';
+      const sign = sumDiffTotal >= 0 ? '+' : '';
       const dVal = metric === 'amount'
-        ? sign + '¥' + Math.abs(Math.round(sumDiff)).toLocaleString()
-        : sign + Math.abs(Math.round(sumDiff));
+        ? sign + '¥' + Math.abs(Math.round(sumDiffTotal)).toLocaleString()
+        : sign + Math.abs(Math.round(sumDiffTotal)).toLocaleString();
+      // 増減率は今年合計・前年合計から算出
+      const sumRate = (sumCur !== null && sumPrev !== null && sumPrev !== 0)
+        ? Math.round((sumCur / sumPrev - 1) * 1000) / 10 : null;
       const rVal = sumRate !== null ? ` (${sumRate > 0 ? '+' : ''}${sumRate}%)` : '';
       diffSumStr = `<span class="${cls}">${dVal}${rVal}</span>`;
     }
