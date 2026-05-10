@@ -231,16 +231,53 @@ window._renderFirebaseConfigUI = function() {
   const cfg = loadConfig();
   if (cfg) {
     section.innerHTML =
-      '<div style="font-size:13px;color:var(--success);margin-bottom:8px;">✅ Firebase config 設定済み</div>' +
-      '<div style="font-size:11px;color:var(--text2);margin-bottom:12px;">projectId: ' + (cfg.projectId || '—') + '</div>' +
-      '<button class="btn btn-ghost btn-sm" onclick="window._clearConfigFromUI()">🗑 configを削除して再設定</button>' +
-      '<div id="firebase-config-msg" style="font-size:12px;margin-top:8px;"></div>';
+      '<div style="display:flex;flex-direction:column;gap:10px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:700;color:var(--success);">✅ Firebase config 設定済み</div>' +
+            '<div style="font-size:11px;color:var(--text2);margin-top:2px;">Project: ' + (cfg.projectId || '不明') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+          '<button class="btn btn-ghost btn-sm" id="btn-fb-copy">📋 コピー</button>' +
+          '<button class="btn btn-ghost btn-sm" id="btn-fb-edit">✏️ 編集</button>' +
+          '<button class="btn btn-ghost btn-sm" id="btn-fb-delete" style="color:var(--danger);">🗑 削除</button>' +
+        '</div>' +
+        '<div id="firebase-config-msg" style="font-size:12px;min-height:1.2em;"></div>' +
+        '<div id="firebase-edit-area" style="display:none;flex-direction:column;gap:8px;">' +
+          '<textarea id="firebase-config-input" style="width:100%;height:140px;font-size:12px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg3);color:var(--text);resize:vertical;box-sizing:border-box;"></textarea>' +
+          '<button class="btn btn-primary btn-full" id="btn-fb-save">💾 保存して再接続</button>' +
+        '</div>' +
+      '</div>';
+    document.getElementById('btn-fb-copy').addEventListener('click', () => {
+      const msg = document.getElementById('firebase-config-msg');
+      navigator.clipboard.writeText(JSON.stringify(cfg, null, 2)).then(() => {
+        msg.textContent = '✅ クリップボードにコピーしました';
+        msg.style.color = 'var(--success)';
+        setTimeout(() => { msg.textContent = ''; }, 2000);
+      }).catch(() => {
+        msg.textContent = '❌ コピーに失敗しました';
+        msg.style.color = 'var(--danger)';
+      });
+    });
+    document.getElementById('btn-fb-edit').addEventListener('click', () => {
+      const area = document.getElementById('firebase-edit-area');
+      const open = area.style.display === 'none';
+      area.style.display = open ? 'flex' : 'none';
+      document.getElementById('btn-fb-edit').textContent = open ? '✕ キャンセル' : '✏️ 編集';
+      if (open) document.getElementById('firebase-config-input').value = JSON.stringify(cfg, null, 2);
+    });
+    document.getElementById('btn-fb-delete').addEventListener('click', () => window._clearConfigFromUI());
+    document.getElementById('btn-fb-save').addEventListener('click', () => window._applyConfigFromUI());
   } else {
     section.innerHTML =
-      '<div style="font-size:13px;color:var(--text2);margin-bottom:10px;">Firebase configを設定してください</div>' +
-      '<textarea id="firebase-config-input" style="width:100%;height:120px;font-size:12px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg3);color:var(--text);resize:vertical" placeholder="Firebase configをここに貼り付け"></textarea>' +
-      '<button class="btn btn-primary btn-full mt-8" onclick="window._applyConfigFromUI()">保存して接続</button>' +
-      '<div id="firebase-config-msg" style="font-size:12px;margin-top:8px;"></div>';
+      '<div style="display:flex;flex-direction:column;gap:10px;">' +
+        '<div style="font-size:13px;color:var(--text2);">Firebase configを設定してください</div>' +
+        '<textarea id="firebase-config-input" style="width:100%;height:120px;font-size:12px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg3);color:var(--text);resize:vertical;box-sizing:border-box;" placeholder="Firebase configをここに貼り付け"></textarea>' +
+        '<button class="btn btn-primary btn-full" id="btn-fb-save">💾 保存して接続</button>' +
+        '<div id="firebase-config-msg" style="font-size:12px;min-height:1.2em;"></div>' +
+      '</div>';
+    document.getElementById('btn-fb-save').addEventListener('click', () => window._applyConfigFromUI());
   }
 };
 
@@ -264,6 +301,13 @@ window._applyConfigFromUI = function() {
     msg.textContent = '❌ Firebase初期化に失敗しました。';
     msg.style.color = 'var(--danger)';
   }
+};
+
+window._clearConfigFromUI = function() {
+  window._clearFirebaseConfig();
+  const msg = document.getElementById('firebase-config-msg');
+  if (msg) { msg.textContent = '🗑 configを削除しました。リロードします…'; msg.style.color = 'var(--text2)'; }
+  setTimeout(() => location.reload(), 1200);
 };
 
 window._startWithoutLogin = function() {
@@ -445,7 +489,7 @@ label:first-child{margin-top:0;}
 .work-cell.selected-day,.work-day-label.selected-day{box-shadow:inset 0 0 0 999px rgba(245,166,35,.08);}
 .work-grid-hint{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;}
 .work-summary-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:12px;color:var(--text2);}
-.work-summary-clear{width:auto;height:26px;padding:0 8px;font-size:11px;}
+.work-summary-clear{width:auto;height:26px;padding:0 8px;font-size:11px;flex-shrink:0;white-space:nowrap;}
 .work-summary-row{display:grid;grid-template-columns:1fr 64px 72px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
 .work-summary-row:last-child{border-bottom:none;}
 .work-summary-job{color:var(--text2);font-size:11px;text-align:right;}
@@ -2911,13 +2955,13 @@ function getWorkSummaryData(){
   return byJob;
 }
 // WORK名の_前をカテゴリとして集計
-function getWorkCategoryData(y, m){
-  const logs=getWorkLogMonth(y||currentMonth.getFullYear(), m||currentMonth.getMonth()+1);
+function getWorkCategoryData(){
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+  const logs=getWorkLogMonth(y,m);
   const byCat={};
-  const allDays=Object.keys(logs);
-  for(const dkey of allDays){
-    const yy=y||currentMonth.getFullYear(), mm=m||currentMonth.getMonth()+1;
-    const ds=`${yy}-${String(mm).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
+  const targetDays=workSummaryDay?[String(workSummaryDay)]:Object.keys(logs);
+  for(const dkey of targetDays){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
     const arr=logs[dkey]||[];
     arr.forEach((wid,slot)=>{
       if(!wid)return;
@@ -2925,9 +2969,9 @@ function getWorkCategoryData(y, m){
       const w=getWorkById(wid);if(!w)return;
       const match=w.name.match(/^([^_]+)_/);
       const cat=match?match[1]:'その他';
-      if(!byCat[cat])byCat[cat]={total:0,color:getWorkColor(w.id)};
+      if(!byCat[cat])byCat[cat]={total:0,color:getWorkColor(w.id),works:{}};
       byCat[cat].total+=15;
-      // 最初にヒットしたWORKの色をカテゴリ代表色に
+      byCat[cat].works[w.id]=(byCat[cat].works[w.id]||0)+15;
     });
   }
   return byCat;
@@ -2941,7 +2985,7 @@ function renderWorkSummaryCategory(){
   el.innerHTML=cats.map(([cat,data])=>{
     const pct=total>0?Math.round(data.total/total*100):0;
     return `<div style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px;" class="clickable" role="button" tabindex="0" data-cat-detail="${escapeHtml(cat)}">
         <span style="font-weight:700;">${escapeHtml(cat)}</span>
         <span style="color:var(--accent);font-weight:700;">${formatHours(data.total)}h <span style="color:var(--text2);font-weight:400;">${pct}%</span></span>
       </div>
@@ -2950,17 +2994,26 @@ function renderWorkSummaryCategory(){
       </div>
     </div>`;
   }).join('');
+  el.querySelectorAll('[data-cat-detail]').forEach(row=>{
+    const open=()=>showCategoryBreakdown(row.dataset.catDetail);
+    row.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open();});
+    row.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+  });
 }
 function renderWorkSummary(){
   const el=document.getElementById('work-summary');
   if(!el)return;
   const byJob=getWorkSummaryData();
   const jobs=Object.entries(byJob).sort((a,b)=>b[1].total-a[1].total);
-  const scope=workSummaryDay?`${workSummaryDay}日`:'月間';
-  const head=`<div class="work-summary-head"><span>集計範囲：<b>${scope}</b></span>${workSummaryDay?'<button class="work-mini-btn work-summary-clear" id="btn-work-summary-month">月間に戻す</button>':''}</div>`;
+  const dim=new Date(currentMonth.getFullYear(),currentMonth.getMonth()+1,0).getDate();
+  const head=workSummaryDay
+    ?`<div class="work-summary-head"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">集計範囲：<b>${workSummaryDay}日</b></span><div style="display:flex;gap:4px;align-items:center;flex-shrink:0;"><button class="work-mini-btn" id="btn-sum-day-prev"${workSummaryDay<=1?' disabled':''} aria-label="前日">‹</button><button class="work-mini-btn" id="btn-sum-day-next"${workSummaryDay>=dim?' disabled':''} aria-label="翌日">›</button><button class="work-mini-btn work-summary-clear" id="btn-work-summary-month">月間</button></div></div>`
+    :`<div class="work-summary-head"><span>集計範囲：<b>月間</b></span></div>`;
   if(jobs.length===0){
     el.innerHTML=head+'<div style="font-size:13px;color:var(--text2);">未入力です</div>';
     document.getElementById('btn-work-summary-month')?.addEventListener('click',()=>setWorkSummaryDay(null));
+    document.getElementById('btn-sum-day-prev')?.addEventListener('click',()=>setWorkSummaryDay(workSummaryDay-1));
+    document.getElementById('btn-sum-day-next')?.addEventListener('click',()=>setWorkSummaryDay(workSummaryDay+1));
     renderWorkSummaryCategory();
     return;
   }
@@ -2978,6 +3031,8 @@ function renderWorkSummary(){
     </div>`;
   }).join('');
   document.getElementById('btn-work-summary-month')?.addEventListener('click',()=>setWorkSummaryDay(null));
+  document.getElementById('btn-sum-day-prev')?.addEventListener('click',()=>setWorkSummaryDay(workSummaryDay-1));
+  document.getElementById('btn-sum-day-next')?.addEventListener('click',()=>setWorkSummaryDay(workSummaryDay+1));
   el.querySelectorAll('[data-job-detail]').forEach(row=>{
     const open=()=>showJobBreakdown(row.dataset.jobDetail);
     row.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open();});
@@ -3032,6 +3087,46 @@ function showJobBreakdown(jobNo){
   }catch(err){
     console.error('showJobBreakdown error:',err);
     alert(`${jobNo} 内訳を表示できませんでした。`);
+  }
+}
+function showCategoryBreakdown(cat){
+  try{
+    document.querySelectorAll('.job-detail-safe-overlay').forEach(el=>el.remove());
+    const byCat=getWorkCategoryData();
+    const data=byCat[cat];
+    if(!data){showWorkToast('内訳がありません');return;}
+    const overlay=document.createElement('div');
+    overlay.className='job-detail-safe-overlay';
+    overlay.setAttribute('role','dialog');
+    overlay.setAttribute('aria-modal','true');
+    const rows=Object.entries(data.works).sort((a,b)=>b[1]-a[1]).map(([wid,mins])=>{
+      const w=getWorkById(wid);
+      const name=escapeHtml(w?.name||wid);
+      const memo=w?.memo?`<div class="job-detail-safe-sub">${escapeHtml(w.memo)}</div>`:'';
+      const color=w?getWorkColor(w.id):'#999';
+      return `<div class="job-detail-safe-row">
+        <span class="work-dot" style="background:${color}"></span>
+        <div>
+          <div class="job-detail-safe-name">${name}</div>
+          ${memo}
+        </div>
+        <div class="job-detail-safe-hours">${formatHours(mins)}h</div>
+      </div>`;
+    }).join('');
+    overlay.innerHTML=`<div class="job-detail-safe-sheet">
+      <div class="job-detail-safe-handle"></div>
+      <div class="job-detail-safe-title">${escapeHtml(cat)} 内訳</div>
+      <div class="job-detail-safe-total"><span>合計</span><b>${formatHours(data.total)}h</b></div>
+      <div class="job-detail-safe-list">${rows}</div>
+      <button type="button" class="btn btn-primary btn-full" data-close-job-detail>閉じる</button>
+    </div>`;
+    const close=()=>overlay.remove();
+    overlay.addEventListener('click',e=>{ if(e.target===overlay) close(); });
+    overlay.querySelector('[data-close-job-detail]').addEventListener('click',close);
+    document.body.appendChild(overlay);
+  }catch(err){
+    console.error('showCategoryBreakdown error:',err);
+    alert(`${cat} 内訳を表示できませんでした。`);
   }
 }
 function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
