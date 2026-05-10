@@ -839,6 +839,10 @@ textarea.fi{resize:vertical;min-height:76px;line-height:1.6}
         </div>
 
       </div>
+      <div class="ssec">
+        <div class="sttl">Firebase設定</div>
+        <div id="firebase-config-section"></div>
+      </div>
       </div><!-- /page-scroll -->
     </div>
   </div>
@@ -2109,8 +2113,67 @@ function renderSettings(){
     addSettingSwipe(cWrap);
     cel.appendChild(cWrap);
   });
+
+  renderFirebaseConfigSection();
 }
 
+function renderFirebaseConfigSection(){
+  const el = G('firebase-config-section');
+  if(!el) return;
+  const raw = localStorage.getItem(CONFIG_KEY);
+  const cfg = raw ? JSON.parse(raw) : null;
+
+  if(cfg && cfg.apiKey){
+    el.innerHTML = `
+      <div style="padding:14px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:1rem">✅</span>
+          <div>
+            <div style="font-size:.88rem;font-weight:700;color:var(--tx)">Firebase config 設定済み</div>
+            <div style="font-size:.75rem;color:var(--mt);margin-top:2px">Project: ${cfg.projectId||'不明'}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="bsm" id="btn-fb-copy">📋 configをコピー</button>
+          <button class="bsm" id="btn-fb-edit">✏️ configを編集</button>
+          <button class="bdanger" id="btn-fb-delete">🗑 削除して再設定</button>
+        </div>
+        <div id="firebase-config-msg" style="font-size:.82rem;min-height:1.2em"></div>
+        <div id="firebase-edit-area" style="display:none;flex-direction:column;gap:8px">
+          <textarea id="firebase-config-input" class="fi" rows="8" style="font-size:.75rem;font-family:monospace;resize:vertical" placeholder="firebaseConfigを貼り付けてください"></textarea>
+          <button class="bpri" id="btn-fb-save">💾 保存して再接続</button>
+        </div>
+      </div>`;
+    G('btn-fb-copy').addEventListener('click', ()=>{
+      const msg = G('firebase-config-msg');
+      navigator.clipboard.writeText(JSON.stringify(cfg, null, 2)).then(()=>{
+        msg.textContent='✅ クリップボードにコピーしました'; msg.style.color='var(--gn)';
+        setTimeout(()=>{ msg.textContent=''; }, 2000);
+      }).catch(()=>{
+        msg.textContent='❌ コピーに失敗しました'; msg.style.color='var(--red)';
+      });
+    });
+    G('btn-fb-edit').addEventListener('click', ()=>{
+      const area = G('firebase-edit-area');
+      const open = area.style.display === 'none';
+      area.style.display = open ? 'flex' : 'none';
+      G('btn-fb-edit').textContent = open ? '✕ キャンセル' : '✏️ configを編集';
+      if(open) G('firebase-config-input').value = JSON.stringify(cfg, null, 2);
+    });
+    G('btn-fb-delete').addEventListener('click', ()=>window._clearConfigFromUI());
+    G('btn-fb-save').addEventListener('click', ()=>window._applyConfigFromUI());
+  } else {
+    el.innerHTML = `
+      <div style="padding:14px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:.85rem;color:var(--sub)">Firebase configが設定されていません</div>
+        <textarea id="firebase-config-input" class="fi" rows="6" style="font-size:.75rem;font-family:monospace;resize:vertical"
+          placeholder='firebaseConfigを貼り付けてください&#10;&#10;{&#10;  "apiKey": "AIza...",&#10;  ...&#10;}'></textarea>
+        <button class="bpri" id="btn-fb-save">💾 保存して接続</button>
+        <div id="firebase-config-msg" style="font-size:.82rem;min-height:1.2em"></div>
+      </div>`;
+    G('btn-fb-save').addEventListener('click', ()=>window._applyConfigFromUI());
+  }
+}
 
 // ══════════════════════════════════════════
 //  COLOR PRESETS
