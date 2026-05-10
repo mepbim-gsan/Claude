@@ -2120,7 +2120,7 @@ function renderSettings(){
 function renderFirebaseConfigSection(){
   const el = G('firebase-config-section');
   if(!el) return;
-  const raw = localStorage.getItem(CONFIG_KEY);
+  const raw = localStorage.getItem('couple-tasks-firebase-config-v1');
   const cfg = raw ? JSON.parse(raw) : null;
 
   if(cfg && cfg.apiKey){
