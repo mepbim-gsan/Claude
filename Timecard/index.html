@@ -71,6 +71,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { getFirestore, doc, setDoc, getDoc, onSnapshot }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
+const APP_VERSION  = 'v06_2026-05-11.1';
 const CONFIG_KEY = 'firebase-config-v1';
 const FIRESTORE_DOC = 'timecard-main';
 
@@ -718,7 +719,7 @@ label:first-child{margin-top:0;}
   <div id="page-punch" class="page active">
     <div class="page-header">
       <div><div class="page-title">打刻</div><div id="today-date" style="font-size:12px;color:var(--text2)"></div></div>
-      <span style="font-size:11px;color:var(--text3);">v06_2026-04-29.10</span>
+      <span class="app-ver" style="font-size:11px;color:var(--text3);"></span>
     </div>
     <!-- 認証バー -->
     <div id="auth-bar" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;gap:8px;">
@@ -1104,7 +1105,7 @@ label:first-child{margin-top:0;}
       <div class="card-title">Firebase</div>
       <div id="firebase-config-section"></div>
     </div>
-    <div style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;">v07_2026-04-28</div>
+    <div class="app-ver" style="text-align:center;font-size:11px;color:var(--text3);padding:8px 0 4px;"></div>
   </div>
 
 </div>
@@ -3371,6 +3372,7 @@ function renderHolidayList(){const yr=document.getElementById('holiday-year-filt
 
 // INIT
 document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('.app-ver').forEach(el=>el.textContent=APP_VERSION);
   loadStorage();
   ensureWorkDefaults();
   if(!settings.holidays||settings.holidays.length===0){settings.holidays=[...DEFAULT_HOLIDAYS];saveSettingsStorage();}
