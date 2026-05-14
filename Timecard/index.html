@@ -1,7 +1,9 @@
 <!--
   @tool      タイムカード
-  @version   v06_2026-05-11.1
+  @version   v06_2026-05-15.2
   @changelog
+    v06_2026-05-15.2 - 年間タブJOB円グラフに割合5%以上のセグメントへ%ラベル表示
+    v06_2026-05-15.1 - 年間タブJOB実績推移の月別棒グラフをクリックで月別円グラフに切り替え対応（再クリックで年間合計に戻る）
     v06_2026-05-11.1 - JOBNO別集計に日付前後ナビ(‹/›)追加・「月間に戻す」ボタンはみ出し修正・カテゴリ別集計タップで詳細展開対応・Firebase設定UIにコピー/編集/削除機能追加
     v06_2026-04-29.10 - プリセットボタンを横スクロール化・上限撤廃・数の多い順に変更
     v06_2026-04-29.9 - JOB実績タブにカテゴリ別比率追加・年次タブに月別積み上げ棒グラフ＋年間円グラフ追加
@@ -1029,7 +1031,8 @@ label:first-child{margin-top:0;}
         </div>
       </div>
       <div style="position:relative;height:220px;"><canvas id="annual-job-bar-chart"></canvas></div>
-      <div style="margin-top:20px;position:relative;height:220px;"><canvas id="annual-job-pie-chart"></canvas></div>
+      <div id="annual-pie-title" style="text-align:center;font-size:12px;margin-top:20px;margin-bottom:4px;color:var(--text-muted);">年間合計</div>
+      <div style="position:relative;height:220px;"><canvas id="annual-job-pie-chart"></canvas></div>
       <div id="annual-job-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:11px;"></div>
     </div>
     <button id="btn-export-excel" class="btn btn-success btn-full mt-8">📊 Excelで出力</button>
@@ -3212,7 +3215,8 @@ function addWorkItem(){
 window.addEventListener('pointerdown',e=>{if(!e.target.closest?.('.work-cell'))hideWorkTooltip();});
 // ANNUAL
 let annualJobChartMode='jobno'; // 'jobno' or 'category'
-let annualBarChart=null, annualPieChart=null;
+let annualBarChart=null, annualPieChart=null, annualSelectedMonth=null;
+let _annualChartData=null;
 
 function getAnnualJobData(mode){
   const months=[];
@@ -3245,6 +3249,73 @@ function getAnnualJobData(mode){
   return {months, labels:[...keySet].sort()};
 }
 
+function _renderAnnualPie(){
+  if(!_annualChartData)return;
+  const {months,colorMap,monthLabels}=_annualChartData;
+  const titleEl=document.getElementById('annual-pie-title');
+  let srcMap;
+  if(annualSelectedMonth!==null){
+    srcMap=months[annualSelectedMonth];
+    if(titleEl)titleEl.textContent=monthLabels[annualSelectedMonth];
+  } else {
+    srcMap={};
+    months.forEach(m=>Object.entries(m).forEach(([l,v])=>srcMap[l]=(srcMap[l]||0)+v));
+    if(titleEl)titleEl.textContent='年間合計';
+  }
+  const pieLabels=Object.keys(srcMap).filter(l=>srcMap[l]>0).sort((a,b)=>srcMap[b]-srcMap[a]);
+  const pieCtx=document.getElementById('annual-job-pie-chart')?.getContext('2d');
+  if(pieCtx){
+    if(annualPieChart)annualPieChart.destroy();
+    annualPieChart=new Chart(pieCtx,{
+      type:'doughnut',
+      plugins:[{
+        id:'pieLabels',
+        afterDatasetsDraw(chart){
+          const {ctx}=chart;
+          chart.data.datasets.forEach((dataset,di)=>{
+            const meta=chart.getDatasetMeta(di);
+            const total=dataset.data.reduce((a,b)=>a+b,0);
+            meta.data.forEach((arc,i)=>{
+              const val=dataset.data[i];
+              const pct=total>0?val/total*100:0;
+              if(pct<5)return;
+              const mid=(arc.startAngle+arc.endAngle)/2;
+              const r=(arc.innerRadius+arc.outerRadius)/2;
+              const x=arc.x+Math.cos(mid)*r;
+              const y=arc.y+Math.sin(mid)*r;
+              ctx.save();
+              ctx.fillStyle='#fff';
+              ctx.font='bold 11px sans-serif';
+              ctx.textAlign='center';
+              ctx.textBaseline='middle';
+              ctx.shadowColor='rgba(0,0,0,.5)';
+              ctx.shadowBlur=3;
+              ctx.fillText(`${Math.round(pct)}%`,x,y);
+              ctx.restore();
+            });
+          });
+        }
+      }],
+      data:{
+        labels:pieLabels,
+        datasets:[{data:pieLabels.map(l=>parseFloat(((srcMap[l]||0)/60).toFixed(1))),backgroundColor:pieLabels.map(l=>colorMap[l]),borderWidth:2}]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed}h`}}}
+      }
+    });
+  }
+  const legendEl=document.getElementById('annual-job-legend');
+  if(legendEl){
+    const total=Object.values(srcMap).reduce((s,v)=>s+v,0);
+    legendEl.innerHTML=pieLabels.map(l=>{
+      const pct=total>0?Math.round((srcMap[l]||0)/total*100):0;
+      return `<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:${colorMap[l]};display:inline-block;flex-shrink:0;"></span>${escapeHtml(l)} ${pct}%</span>`;
+    }).join('');
+  }
+}
+
 function renderAnnualJobCharts(){
   const isDark=document.documentElement.getAttribute('data-theme')==='dark';
   const textColor=isDark?'rgba(255,255,255,.7)':'rgba(0,0,0,.6)';
@@ -3257,6 +3328,9 @@ function renderAnnualJobCharts(){
   const palette=WORK_COLORS;
   const colorMap={};
   labels.forEach((l,i)=>colorMap[l]=palette[i%palette.length]);
+
+  annualSelectedMonth=null;
+  _annualChartData={months,colorMap,monthLabels};
 
   // 積み上げ棒グラフ
   const barCtx=document.getElementById('annual-job-bar-chart')?.getContext('2d');
@@ -3275,44 +3349,28 @@ function renderAnnualJobCharts(){
       },
       options:{
         responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}h`}}},
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}h`}}
+        },
         scales:{
           x:{stacked:true,ticks:{color:textColor},grid:{color:gridColor}},
           y:{stacked:true,ticks:{color:textColor,callback:v=>v+'h'},grid:{color:gridColor}}
+        },
+        onClick:(e,elements)=>{
+          if(elements.length>0){
+            const idx=elements[0].index;
+            annualSelectedMonth=(annualSelectedMonth===idx)?null:idx;
+          } else {
+            annualSelectedMonth=null;
+          }
+          _renderAnnualPie();
         }
       }
     });
   }
 
-  // 年間合計の円グラフ
-  const totalMap={};
-  months.forEach(m=>Object.entries(m).forEach(([l,v])=>totalMap[l]=(totalMap[l]||0)+v));
-  const pieLabels=Object.keys(totalMap).sort((a,b)=>totalMap[b]-totalMap[a]);
-  const pieCtx=document.getElementById('annual-job-pie-chart')?.getContext('2d');
-  if(pieCtx){
-    if(annualPieChart)annualPieChart.destroy();
-    annualPieChart=new Chart(pieCtx,{
-      type:'doughnut',
-      data:{
-        labels:pieLabels,
-        datasets:[{data:pieLabels.map(l=>parseFloat(((totalMap[l]||0)/60).toFixed(1))),backgroundColor:pieLabels.map(l=>colorMap[l]),borderWidth:2}]
-      },
-      options:{
-        responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed}h`}}}
-      }
-    });
-  }
-
-  // 凡例
-  const legendEl=document.getElementById('annual-job-legend');
-  if(legendEl){
-    const total=Object.values(totalMap).reduce((s,v)=>s+v,0);
-    legendEl.innerHTML=pieLabels.map(l=>{
-      const pct=total>0?Math.round((totalMap[l]||0)/total*100):0;
-      return `<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:${colorMap[l]};display:inline-block;flex-shrink:0;"></span>${escapeHtml(l)} ${pct}%</span>`;
-    }).join('');
-  }
+  _renderAnnualPie();
 }
 
 function renderAnnualTab(){
