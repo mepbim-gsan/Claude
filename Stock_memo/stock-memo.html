@@ -205,6 +205,7 @@ if (savedConfig) {
     if (row)  row.style.display = 'flex';
     if (info) info.textContent = 'Firebase未設定';
     if (btn)  { btn.textContent = '設定'; btn.onclick = () => openSettings(); }
+    if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
   });
 }
 </script>
