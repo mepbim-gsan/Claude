@@ -154,7 +154,11 @@ window._renderFirebaseConfigUI = function() {
     section.innerHTML =
       '<div style="font-size:13px;color:var(--accent);margin-bottom:8px;">✅ Firebase config 設定済み</div>' +
       '<div style="font-size:11px;color:var(--text-sub);margin-bottom:12px;">projectId: ' + (cfg.projectId || '—') + '</div>' +
-      '<button class="btn-icon" onclick="window._clearConfigFromUI()">🗑 configを削除して再設定</button>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn-icon" onclick="window._copyConfigFromUI()">📋 コピー</button>' +
+        '<button class="btn-icon" onclick="window._editConfigFromUI()">✏️ 編集</button>' +
+        '<button class="btn-icon" style="color:var(--danger);border-color:var(--danger-border)" onclick="window._clearConfigFromUI()">🗑 削除</button>' +
+      '</div>' +
       '<div id="firebase-config-msg" style="font-size:12px;margin-top:8px;"></div>';
   } else {
     section.innerHTML =
@@ -192,6 +196,33 @@ window._clearConfigFromUI = function() {
   const msg = document.getElementById('firebase-config-msg');
   if (msg) { msg.textContent = '🗑 configを削除しました。ページをリロードします…'; msg.style.color = 'var(--text-sub)'; }
   setTimeout(() => location.reload(), 1200);
+};
+
+window._copyConfigFromUI = function() {
+  const cfg = loadConfig();
+  if (!cfg) return;
+  const msg = document.getElementById('firebase-config-msg');
+  try {
+    navigator.clipboard.writeText(JSON.stringify(cfg, null, 2));
+    if (msg) { msg.textContent = '📋 クリップボードにコピーしました'; msg.style.color = 'var(--accent)'; }
+  } catch(e) {
+    if (msg) { msg.textContent = '❌ コピーに失敗しました'; msg.style.color = 'var(--danger)'; }
+  }
+};
+
+window._editConfigFromUI = function() {
+  const cfg = loadConfig();
+  const section = document.getElementById('firebase-config-section');
+  if (!section) return;
+  section.innerHTML =
+    '<div style="font-size:13px;color:var(--text-sub);margin-bottom:10px;">Firebase configを編集</div>' +
+    '<textarea id="firebase-config-input" style="width:100%;height:120px;font-size:12px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--surface);color:var(--text);resize:vertical">' +
+    (cfg ? JSON.stringify(cfg, null, 2) : '') + '</textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;">' +
+      '<button class="btn-save" style="flex:1" onclick="window._applyConfigFromUI()">保存して接続</button>' +
+      '<button class="btn-cancel" style="flex:none;padding:10px 14px" onclick="window._renderFirebaseConfigUI()">キャンセル</button>' +
+    '</div>' +
+    '<div id="firebase-config-msg" style="font-size:12px;margin-top:8px;"></div>';
 };
 
 const savedConfig = loadConfig();
