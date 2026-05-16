@@ -154,12 +154,12 @@ window._renderFirebaseConfigUI = function() {
     section.innerHTML =
       '<div style="font-size:13px;color:var(--accent);margin-bottom:8px;">✅ Firebase config 設定済み</div>' +
       '<div style="font-size:11px;color:var(--text-sub);margin-bottom:12px;">projectId: ' + (cfg.projectId || '—') + '</div>' +
-      '<button class="btn-icon" onclick="window._clearConfigFromUI()">🗑️ configを削除して再設定</button>' +
+      '<button class="btn-icon" onclick="window._clearConfigFromUI()">🗑 configを削除して再設定</button>' +
       '<div id="firebase-config-msg" style="font-size:12px;margin-top:8px;"></div>';
   } else {
     section.innerHTML =
       '<div style="font-size:13px;color:var(--text-sub);margin-bottom:10px;">Firebase configを設定してください</div>' +
-      '<textarea id="firebase-config-input" style="width:100%;height:120px;font-size:12px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg);color:var(--text);resize:vertical" placeholder="Firebase configをここに貼り付け"></textarea>' +
+      '<textarea id="firebase-config-input" style="width:100%;height:120px;font-size:12px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--surface);color:var(--text);resize:vertical" placeholder="Firebase configをここに貼り付け"></textarea>' +
       '<button class="btn-save" style="width:100%;margin-top:8px" onclick="window._applyConfigFromUI()">保存して接続</button>' +
       '<div id="firebase-config-msg" style="font-size:12px;margin-top:8px;"></div>';
   }
@@ -172,22 +172,25 @@ window._applyConfigFromUI = function() {
   const cfg = window._parseFirebaseConfig(ta.value);
   if (!cfg || !cfg.apiKey) {
     msg.textContent = '❌ 解析できませんでした。形式を確認してください。';
+    msg.style.color = 'var(--danger)';
     return;
   }
   window._saveFirebaseConfig(cfg);
   const ok = initFirebase(cfg);
   if (ok) {
     msg.textContent = '✅ 保存しました。ページをリロードします…';
+    msg.style.color = 'var(--accent)';
     setTimeout(() => location.reload(), 1200);
   } else {
     msg.textContent = '❌ Firebase初期化に失敗しました。';
+    msg.style.color = 'var(--danger)';
   }
 };
 
 window._clearConfigFromUI = function() {
   window._clearFirebaseConfig();
   const msg = document.getElementById('firebase-config-msg');
-  if (msg) { msg.textContent = '🗑️ configを削除しました。ページをリロードします…'; }
+  if (msg) { msg.textContent = '🗑 configを削除しました。ページをリロードします…'; msg.style.color = 'var(--text-sub)'; }
   setTimeout(() => location.reload(), 1200);
 };
 
@@ -202,6 +205,7 @@ if (savedConfig) {
     if (row)  row.style.display = 'flex';
     if (info) info.textContent = 'Firebase未設定';
     if (btn)  { btn.textContent = '設定'; btn.onclick = () => openSettings(); }
+    if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
   });
 }
 </script>
