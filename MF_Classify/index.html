@@ -496,7 +496,12 @@
         </div>
         <div class="form-group">
           <label>モデル</label>
-          <input type="text" id="claude-model" placeholder="claude-sonnet-4-5-20250514">
+          <select id="claude-model">
+            <option value="claude-sonnet-4-5-20250514">claude-sonnet-4-5-20250514（推奨）</option>
+            <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+            <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001（軽量・高速）</option>
+            <option value="claude-opus-4-7">claude-opus-4-7（最高性能）</option>
+          </select>
         </div>
         <button class="btn btn-primary btn-sm" onclick="saveClaudeSettings()">保存</button>
       </div>
@@ -508,16 +513,7 @@
           Firebase Console → プロジェクト設定 → ウェブアプリ →「CDN」タブの
           <code>firebaseConfig</code> をそのまま貼り付けてください。
         </p>
-        <div class="form-group">
-          <label>Firebase Config</label>
-          <textarea id="fb-config-input" rows="8"
-            style="font-family: monospace; font-size: 12px;"
-            placeholder='{&#10;  "apiKey": "AIzaSy...",&#10;  "authDomain": "your-app.firebaseapp.com",&#10;  "projectId": "your-project-id",&#10;  "storageBucket": "your-app.appspot.com",&#10;  "messagingSenderId": "000000000000",&#10;  "appId": "1:000:web:xxx"&#10;}'></textarea>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <button class="btn btn-primary btn-sm" onclick="saveFirebaseSettings()">設定を保存して接続</button>
-          <span id="fb-config-msg" class="config-msg"></span>
-        </div>
+        <div id="firebase-config-section">読み込み中…</div>
       </div>
 
       <!-- Data Sync -->
@@ -885,7 +881,10 @@ async function sendChat() {
     if (state.chatHistory.length > 20) state.chatHistory = state.chatHistory.slice(-20);
   } catch(e) {
     loadingEl.remove();
-    addChatBubble('error', e.message);
+    const errMsg = e.message === 'Failed to fetch'
+      ? 'APIに接続できません（CORS）。\nGitHub Pages または localhost から開いてください。'
+      : e.message;
+    addChatBubble('error', errMsg);
   } finally {
     sendBtn.disabled = false;
     input.focus();
@@ -1092,11 +1091,7 @@ function loadSettingsToForm() {
   if (key)   document.getElementById('claude-api-key').value = key;
   document.getElementById('claude-model').value = model || DEFAULT_MODEL;
 
-  // Firebase configをtextareaに復元
-  const fb = Storage.get(LS.FIREBASE);
-  if (fb) {
-    document.getElementById('fb-config-input').value = JSON.stringify(fb, null, 2);
-  }
+  renderFirebaseConfigUI();
 }
 
 function saveClaudeSettings() {
@@ -1108,31 +1103,78 @@ function saveClaudeSettings() {
   showToast('Claude設定を保存しました', 'success');
 }
 
-async function saveFirebaseSettings() {
-  const text   = document.getElementById('fb-config-input').value;
-  const config = parseFirebaseConfig(text);
-  const msg    = document.getElementById('fb-config-msg');
+// ── Firebase Config UI ──────────────────────────────────────────
+function renderFirebaseConfigUI(editMode = false) {
+  const section = document.getElementById('firebase-config-section');
+  if (!section) return;
+  const cfg = Storage.get(LS.FIREBASE);
 
+  if (cfg && !editMode) {
+    section.innerHTML =
+      `<div style="color:var(--primary);font-weight:600;margin-bottom:4px;">✅ Firebase config 設定済み</div>` +
+      `<div class="hint" style="margin-bottom:12px;">projectId: ${escapeHtml(cfg.projectId || '—')}</div>` +
+      `<div class="btn-group">` +
+        `<button class="btn btn-outline btn-sm" onclick="copyFirebaseConfig()">📋 コピー</button>` +
+        `<button class="btn btn-outline btn-sm" onclick="renderFirebaseConfigUI(true)">✏️ 編集</button>` +
+        `<button class="btn btn-danger btn-sm" onclick="deleteFirebaseConfig()">🗑 削除</button>` +
+      `</div>` +
+      `<div id="fb-config-msg" class="config-msg"></div>`;
+  } else {
+    const existing = cfg ? escapeHtml(JSON.stringify(cfg, null, 2)) : '';
+    section.innerHTML =
+      `<div class="form-group">` +
+        `<label>Firebase Config</label>` +
+        `<textarea id="fb-config-input" rows="8" style="font-family:monospace;font-size:12px;" ` +
+          `placeholder='{"apiKey":"AIzaSy...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'` +
+        `>${existing}</textarea>` +
+      `</div>` +
+      `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">` +
+        `<button class="btn btn-primary btn-sm" onclick="saveFirebaseSettings()">設定を保存して接続</button>` +
+        (cfg ? `<button class="btn btn-sm" style="background:#f3f4f6;border:1.5px solid var(--border);" onclick="renderFirebaseConfigUI(false)">キャンセル</button>` : '') +
+        `<span id="fb-config-msg" class="config-msg"></span>` +
+      `</div>`;
+  }
+}
+
+async function copyFirebaseConfig() {
+  const cfg = Storage.get(LS.FIREBASE);
+  if (!cfg) return;
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(cfg, null, 2));
+    showToast('Configをコピーしました', 'success');
+  } catch { showToast('コピーに失敗しました', 'error'); }
+}
+
+function deleteFirebaseConfig() {
+  if (!confirm('Firebase設定を削除しますか？')) return;
+  Storage.remove(LS.FIREBASE);
+  state.firebaseReady = false;
+  state.currentUser = null;
+  updateAuthUI();
+  renderFirebaseConfigUI();
+  showToast('Firebase設定を削除しました', 'success');
+}
+
+async function saveFirebaseSettings() {
+  const ta  = document.getElementById('fb-config-input');
+  const msg = document.getElementById('fb-config-msg');
+  if (!ta) return;
+
+  const config = parseFirebaseConfig(ta.value);
   if (!config || !config.apiKey || !config.projectId) {
-    msg.textContent  = '❌ 解析失敗。JSON形式か確認してください';
-    msg.style.color  = 'var(--expense)';
+    if (msg) { msg.textContent = '❌ 解析失敗。JSON形式か確認してください'; msg.style.color = 'var(--expense)'; }
     showToast('Firebase設定の解析に失敗しました', 'error');
     return;
   }
 
   Storage.set(LS.FIREBASE, config);
-  // textareaをJSONに整形して表示
-  document.getElementById('fb-config-input').value = JSON.stringify(config, null, 2);
-
   try {
     await FB.init(config);
     document.getElementById('firebase-notice').classList.add('hidden');
-    msg.textContent = '✅ 接続しました';
-    msg.style.color = 'var(--primary)';
     showToast('Firebase接続しました', 'success');
+    renderFirebaseConfigUI();
   } catch(e) {
-    msg.textContent = '❌ ' + e.message;
-    msg.style.color = 'var(--expense)';
+    if (msg) { msg.textContent = '❌ ' + e.message; msg.style.color = 'var(--expense)'; }
     showToast('Firebase初期化エラー: ' + e.message, 'error');
   }
 }
