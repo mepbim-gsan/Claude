@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>MF 分類アシスタント</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <style>
+    :root {
+      --primary: #00b389;
+      --primary-dark: #009970;
+      --primary-light: #e6f7f3;
+      --bg: #f0f4f8;
+      --card: #ffffff;
+      --text: #1a2332;
+      --text-secondary: #6b7280;
+      --border: #e5e7eb;
+      --expense: #ef4444;
+      --expense-bg: #fef2f2;
+      --income: #10b981;
+      --income-bg: #ecfdf5;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN',
+        'Hiragino Sans', Meiryo, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── Header ── */
+    #app-header {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+
+    .logo { font-size: 16px; font-weight: 700; color: var(--primary); }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #auth-status {
+      font-size: 12px;
+      color: var(--text-secondary);
+      max-width: 130px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── Tabs ── */
+    .tab-bar {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      padding: 0 8px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 12px 8px;
+      border: none;
+      background: none;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* ── Layout ── */
+    .tab-content {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+
+    .btn-outline {
+      background: white;
+      color: var(--primary);
+      border: 1.5px solid var(--primary);
+    }
+    .btn-outline:hover:not(:disabled) { background: var(--primary-light); }
+
+    .btn-danger {
+      background: #fee2e2;
+      color: var(--expense);
+      border: 1.5px solid #fca5a5;
+    }
+    .btn-danger:hover:not(:disabled) { background: #fecaca; }
+
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+    .btn-icon {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      font-size: 14px;
+      opacity: 0.7;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    .btn-icon:hover { opacity: 1; background: var(--bg); }
+
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Chat ── */
+    .chat-messages {
+      min-height: 300px;
+      max-height: calc(100vh - 280px);
+      overflow-y: auto;
+      padding: 8px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
+    }
+
+    .chat-welcome {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--text-secondary);
+    }
+
+    .chat-welcome .icon { font-size: 48px; margin-bottom: 12px; }
+
+    .message { display: flex; max-width: 86%; }
+    .message-user { align-self: flex-end; flex-direction: row-reverse; }
+    .message-ai   { align-self: flex-start; }
+
+    .message-bubble {
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+
+    .message-user .message-bubble {
+      background: var(--primary);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message-ai .message-bubble {
+      background: white;
+      border-bottom-left-radius: 4px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .message-ai .message-bubble strong { color: var(--primary-dark); }
+
+    .chat-input-area {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      align-items: flex-end;
+      background: white;
+      border-radius: var(--radius);
+      padding: 10px;
+      box-shadow: var(--shadow);
+      border: 1.5px solid var(--border);
+      transition: border-color 0.15s;
+    }
+
+    .chat-input-area:focus-within { border-color: var(--primary); }
+
+    #chat-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      max-height: 120px;
+      background: transparent;
+    }
+
+    /* ── Category Management ── */
+    .manage-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 3px;
+      background: var(--border);
+      padding: 3px;
+      border-radius: 8px;
+    }
+
+    .filter-btn {
+      padding: 4px 12px;
+      border: none;
+      background: none;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all 0.15s;
+    }
+
+    .filter-btn.active {
+      background: white;
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: var(--shadow);
+    }
+
+    .category-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .accordion-item {
+      background: white;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .accordion-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .accordion-header:hover { background: #fafafa; }
+
+    .cat-info { display: flex; align-items: center; gap: 8px; flex: 1; }
+
+    .type-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .type-badge.expense { background: var(--expense-bg); color: var(--expense); }
+    .type-badge.income  { background: var(--income-bg);  color: var(--income);  }
+
+    .cat-name  { font-weight: 600; font-size: 14px; }
+    .sub-count { font-size: 11px; color: var(--text-secondary); }
+
+    .cat-actions { display: flex; align-items: center; gap: 4px; }
+
+    .accordion-arrow {
+      font-size: 10px;
+      color: var(--text-secondary);
+      transition: transform 0.2s;
+      margin-left: 4px;
+    }
+
+    .accordion-item.open .accordion-arrow { transform: rotate(90deg); }
+
+    .accordion-body {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 8px 14px 12px;
+    }
+
+    .accordion-item.open .accordion-body { display: block; }
+
+    .subcategory-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+
+    .subcategory-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+    }
+
+    .sub-name { font-size: 13px; }
+    .sub-actions { display: flex; gap: 2px; }
+
+    /* ── Settings ── */
+    .settings-section {
+      background: white;
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .settings-section h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+
+    .form-group { margin-bottom: 12px; }
+
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus { border-color: var(--primary); }
+
+    .input-with-toggle { display: flex; gap: 6px; margin-bottom: 6px; }
+    .input-with-toggle input { flex: 1; margin-bottom: 0; }
+
+    .toggle-btn {
+      padding: 8px 10px;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .hint { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+
+    .code-block {
+      background: #1e2937;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-overlay.hidden { display: none; }
+
+    .modal {
+      background: white;
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header h3 { font-size: 16px; font-weight: 700; }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--text-secondary);
+    }
+
+    .modal-body { padding: 16px; }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a2332;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 24px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 2000;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .toast.hidden { display: none; }
+    .toast.success { background: var(--primary); }
+    .toast.error   { background: var(--expense); }
+
+    /* ── Misc ── */
+    .empty-state {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--text-secondary);
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .spinner.dark {
+      border: 2px solid rgba(0,0,0,0.15);
+      border-top-color: var(--primary);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .notice {
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .notice-warn {
+      background: #fffbeb;
+      border: 1px solid #fbbf24;
+      color: #92400e;
+    }
+
+    .notice-info {
+      background: var(--primary-light);
+      border: 1px solid #6ee7d0;
+      color: #065f46;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 480px) {
+      .tab-content { padding: 12px; }
+      .logo { font-size: 14px; }
+      #auth-status { display: none; }
+      .tab-btn { font-size: 12px; padding: 10px 4px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header id="app-header">
+    <div class="header-left">
+      <span class="logo">💴 MF分類アシスタント</span>
+    </div>
+    <div class="header-right">
+      <span id="auth-status">未接続</span>
+      <button id="auth-btn" class="btn btn-outline btn-sm" onclick="handleAuth()">ログイン</button>
+    </div>
+  </header>
+
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="chat">💬 分類チャット</button>
+    <button class="tab-btn" data-tab="manage">📂 分類管理</button>
+    <button class="tab-btn" data-tab="settings">⚙️ 設定</button>
+  </nav>
+
+  <main class="tab-content">
+
+    <!-- ── Chat Tab ── -->
+    <div id="tab-chat" class="tab-panel active">
+      <div id="chat-notice" class="notice notice-warn hidden">
+        Claude APIキーが未設定です。⚙️ 設定タブで入力してください。
+      </div>
+      <div id="chat-messages" class="chat-messages">
+        <div class="chat-welcome">
+          <div class="icon">💬</div>
+          <p>支出・収入の内容を入力すると<br>MoneyForwardの分類を提案します</p>
+        </div>
+      </div>
+      <div class="chat-input-area">
+        <textarea id="chat-input" placeholder="例：スーパーで食料品を購入した" rows="2"
+          onkeydown="handleChatKeydown(event)"></textarea>
+        <button id="chat-send" class="btn btn-primary" onclick="sendChat()">送信</button>
+      </div>
+    </div>
+
+    <!-- ── Manage Tab ── -->
+    <div id="tab-manage" class="tab-panel">
+      <div class="manage-toolbar">
+        <button class="btn btn-primary btn-sm" onclick="openAddCategoryModal()">＋ 大分類を追加</button>
+        <div class="filter-tabs">
+          <button class="filter-btn active" data-filter="all"     onclick="setFilter('all',this)">すべて</button>
+          <button class="filter-btn"         data-filter="expense" onclick="setFilter('expense',this)">支出</button>
+          <button class="filter-btn"         data-filter="income"  onclick="setFilter('income',this)">収入</button>
+        </div>
+      </div>
+      <div id="category-list" class="category-list"></div>
+    </div>
+
+    <!-- ── Settings Tab ── -->
+    <div id="tab-settings" class="tab-panel">
+
+      <div id="firebase-notice" class="notice notice-warn hidden">
+        Firebase設定を入力してGoogleログインすると、家族間でデータを共有できます。
+      </div>
+
+      <!-- Claude -->
+      <div class="settings-section">
+        <h3>🤖 Claude API設定</h3>
+        <div class="form-group">
+          <label>APIキー</label>
+          <div class="input-with-toggle">
+            <input type="password" id="claude-api-key" placeholder="sk-ant-...">
+            <button class="toggle-btn" onclick="toggleVisibility('claude-api-key')" title="表示切替">👁</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>モデル</label>
+          <input type="text" id="claude-model" placeholder="claude-sonnet-4-5-20250514">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveClaudeSettings()">保存</button>
+      </div>
+
+      <!-- Firebase -->
+      <div class="settings-section">
+        <h3>🔥 Firebase設定</h3>
+        <p class="hint">Firebase Console → プロジェクト設定 → ウェブアプリの設定をコピーして入力してください。</p>
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="text" id="fb-api-key" placeholder="AIzaSy...">
+        </div>
+        <div class="form-group">
+          <label>Auth Domain</label>
+          <input type="text" id="fb-auth-domain" placeholder="your-app.firebaseapp.com">
+        </div>
+        <div class="form-group">
+          <label>Project ID</label>
+          <input type="text" id="fb-project-id" placeholder="your-project-id">
+        </div>
+        <div class="form-group">
+          <label>Storage Bucket</label>
+          <input type="text" id="fb-storage-bucket" placeholder="your-app.appspot.com">
+        </div>
+        <div class="form-group">
+          <label>Messaging Sender ID</label>
+          <input type="text" id="fb-messaging-sender-id" placeholder="000000000000">
+        </div>
+        <div class="form-group">
+          <label>App ID</label>
+          <input type="text" id="fb-app-id" placeholder="1:000:web:xxx">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveFirebaseSettings()">設定を保存して接続</button>
+      </div>
+
+      <!-- Data Sync -->
+      <div class="settings-section">
+        <h3>🔄 データ管理</h3>
+        <p class="hint">Googleログイン後にFirebaseと同期できます。</p>
+        <div class="btn-group">
+          <button class="btn btn-outline btn-sm" onclick="pullFromFirebase(true)">↓ Firebaseから取得</button>
+          <button class="btn btn-outline btn-sm" onclick="pushToFirebase()">↑ Firebaseへ保存</button>
+        </div>
+        <div style="margin-top: 10px;">
+          <button class="btn btn-danger btn-sm" onclick="resetLocalData()">ローカルデータをリセット</button>
+        </div>
+        <p class="hint" style="margin-top: 8px;" id="last-sync-time"></p>
+      </div>
+
+      <!-- Firestore Rules -->
+      <div class="settings-section">
+        <h3>🔐 Firestoreセキュリティルール</h3>
+        <p class="hint">Firebase Console → Firestore → ルール で以下を設定してください：</p>
+        <pre class="code-block">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /categories/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}</pre>
+      </div>
+
+    </div><!-- /tab-settings -->
+  </main>
+</div>
+
+<!-- ── Modal ── -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title"></h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">キャンセル</button>
+      <button class="btn btn-primary" id="modal-confirm-btn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast" class="toast hidden"></div>
+
+<script>
+// ================================================================
+// INITIAL DATA  (MoneyForward 標準分類)
+// ================================================================
+const DEFAULT_MODEL = 'claude-sonnet-4-5-20250514';
+
+const INITIAL_CATEGORIES = [
+  // ── 支出 ──
+  { id:'cat_food',    type:'expense', name:'食費',        order:1,
+    subcategories:[{id:'s001',name:'食料品',order:1},{id:'s002',name:'外食',order:2},{id:'s003',name:'カフェ・喫茶店',order:3},{id:'s004',name:'その他食費',order:4}] },
+  { id:'cat_daily',   type:'expense', name:'日用品',       order:2,
+    subcategories:[{id:'s005',name:'日用品',order:1},{id:'s006',name:'ドラッグストア',order:2},{id:'s007',name:'その他日用品',order:3}] },
+  { id:'cat_hobby',   type:'expense', name:'趣味・娯楽',   order:3,
+    subcategories:[{id:'s008',name:'趣味',order:1},{id:'s009',name:'娯楽',order:2},{id:'s010',name:'旅行',order:3},{id:'s011',name:'その他趣味・娯楽',order:4}] },
+  { id:'cat_social',  type:'expense', name:'交際費',       order:4,
+    subcategories:[{id:'s012',name:'交際費',order:1},{id:'s013',name:'贈答品',order:2},{id:'s014',name:'その他交際費',order:3}] },
+  { id:'cat_transit', type:'expense', name:'交通費',       order:5,
+    subcategories:[{id:'s015',name:'電車・バス',order:1},{id:'s016',name:'タクシー',order:2},{id:'s017',name:'駐車場',order:3},{id:'s018',name:'ガソリン',order:4},{id:'s019',name:'その他交通費',order:5}] },
+  { id:'cat_fashion', type:'expense', name:'衣服・美容',   order:6,
+    subcategories:[{id:'s020',name:'衣服',order:1},{id:'s021',name:'美容院・理髪店',order:2},{id:'s022',name:'コスメ・ケア用品',order:3},{id:'s023',name:'その他衣服・美容',order:4}] },
+  { id:'cat_health',  type:'expense', name:'健康・医療',   order:7,
+    subcategories:[{id:'s024',name:'医療費',order:1},{id:'s025',name:'薬',order:2},{id:'s026',name:'フィットネス',order:3},{id:'s027',name:'その他健康・医療',order:4}] },
+  { id:'cat_car',     type:'expense', name:'自動車',       order:8,
+    subcategories:[{id:'s028',name:'自動車保険',order:1},{id:'s029',name:'車検・整備',order:2},{id:'s030',name:'その他自動車',order:3}] },
+  { id:'cat_edu',     type:'expense', name:'教養・教育',   order:9,
+    subcategories:[{id:'s031',name:'書籍',order:1},{id:'s032',name:'新聞・雑誌',order:2},{id:'s033',name:'セミナー・講座',order:3},{id:'s034',name:'その他教養・教育',order:4}] },
+  { id:'cat_child',   type:'expense', name:'子育て・教育', order:10,
+    subcategories:[{id:'s035',name:'学校・塾・習い事',order:1},{id:'s036',name:'保育所・幼稚園',order:2},{id:'s037',name:'子供用品',order:3},{id:'s038',name:'その他子育て',order:4}] },
+  { id:'cat_house',   type:'expense', name:'住宅',         order:11,
+    subcategories:[{id:'s039',name:'家賃・住宅ローン',order:1},{id:'s040',name:'管理費・修繕費',order:2},{id:'s041',name:'家具・インテリア',order:3},{id:'s042',name:'その他住宅',order:4}] },
+  { id:'cat_util',    type:'expense', name:'水道・光熱費', order:12,
+    subcategories:[{id:'s043',name:'電気代',order:1},{id:'s044',name:'ガス代',order:2},{id:'s045',name:'水道代',order:3},{id:'s046',name:'その他水道・光熱費',order:4}] },
+  { id:'cat_comm',    type:'expense', name:'通信費',       order:13,
+    subcategories:[{id:'s047',name:'携帯電話',order:1},{id:'s048',name:'インターネット',order:2},{id:'s049',name:'放送受信料',order:3},{id:'s050',name:'その他通信費',order:4}] },
+  { id:'cat_insure',  type:'expense', name:'保険',         order:14,
+    subcategories:[{id:'s051',name:'生命保険',order:1},{id:'s052',name:'医療保険',order:2},{id:'s053',name:'その他保険',order:3}] },
+  { id:'cat_tax',     type:'expense', name:'税・社会保険', order:15,
+    subcategories:[{id:'s054',name:'所得税',order:1},{id:'s055',name:'住民税',order:2},{id:'s056',name:'社会保険料',order:3},{id:'s057',name:'その他税',order:4}] },
+  { id:'cat_cash',    type:'expense', name:'現金・カード', order:16,
+    subcategories:[{id:'s058',name:'ATM手数料',order:1},{id:'s059',name:'その他現金・カード',order:2}] },
+  { id:'cat_special', type:'expense', name:'特別な支出',   order:17,
+    subcategories:[{id:'s060',name:'冠婚葬祭',order:1},{id:'s061',name:'引越し',order:2},{id:'s062',name:'その他特別支出',order:3}] },
+  { id:'cat_etc_ex',  type:'expense', name:'その他',       order:18,
+    subcategories:[{id:'s063',name:'その他',order:1}] },
+  // ── 収入 ──
+  { id:'cat_salary',  type:'income',  name:'給与・賞与',   order:1,
+    subcategories:[{id:'s064',name:'給与',order:1},{id:'s065',name:'賞与',order:2},{id:'s066',name:'その他給与',order:3}] },
+  { id:'cat_biz',     type:'income',  name:'事業・副業',   order:2,
+    subcategories:[{id:'s067',name:'事業収入',order:1},{id:'s068',name:'副業収入',order:2},{id:'s069',name:'フリーランス',order:3},{id:'s070',name:'その他事業',order:4}] },
+  { id:'cat_wind',    type:'income',  name:'一時所得',     order:3,
+    subcategories:[{id:'s071',name:'売却益',order:1},{id:'s072',name:'還付金',order:2},{id:'s073',name:'保険金',order:3},{id:'s074',name:'その他一時所得',order:4}] },
+  { id:'cat_invest',  type:'income',  name:'投資・運用',   order:4,
+    subcategories:[{id:'s075',name:'配当金',order:1},{id:'s076',name:'利息',order:2},{id:'s077',name:'売却益',order:3},{id:'s078',name:'その他投資',order:4}] },
+  { id:'cat_pension', type:'income',  name:'年金・補助',   order:5,
+    subcategories:[{id:'s079',name:'年金',order:1},{id:'s080',name:'児童手当',order:2},{id:'s081',name:'各種補助金',order:3},{id:'s082',name:'その他年金・補助',order:4}] },
+  { id:'cat_etc_in',  type:'income',  name:'その他収入',   order:6,
+    subcategories:[{id:'s083',name:'その他収入',order:1}] },
+];
+
+// ================================================================
+// STATE
+// ================================================================
+const state = {
+  categories:  [],
+  chatHistory: [],
+  currentUser: null,
+  filterType:  'all',
+  firebaseReady: false,
+  modalAction: null,
+};
+
+// ================================================================
+// UTILS
+// ================================================================
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = String(str ?? '');
+  return d.innerHTML;
+}
+
+function formatAiText(text) {
+  return escapeHtml(text)
+    .replace(/(第[12]候補[\s\S]*?)(?=第[12]候補|$)/g, '<div class="ai-candidate">$1</div>')
+    .replace(/(大分類|中分類|理由)：/g, '<strong>$1：</strong>')
+    .replace(/\n/g, '<br>');
+}
+
+// ================================================================
+// STORAGE
+// ================================================================
+const LS = {
+  CLAUDE_KEY:   'claudeApiKey',
+  CLAUDE_MODEL: 'claudeModel',
+  FIREBASE:     'firebase',
+  CATEGORIES:   'categoriesCache',
+  CACHE_AT:     'cacheUpdatedAt',
+};
+
+const Storage = {
+  get(key)      { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } },
+  set(key, val) { localStorage.setItem(key, JSON.stringify(val)); },
+  remove(key)   { localStorage.removeItem(key); },
+  clearCache()  { [LS.CATEGORIES, LS.CACHE_AT].forEach(k => localStorage.removeItem(k)); },
+};
+
+// ================================================================
+// FIREBASE
+// ================================================================
+let fbDb = null, fbAuth = null;
+
+const FB = {
+  async init(config) {
+    if (firebase.apps.length > 0) {
+      await firebase.app().delete();
+      fbDb = null; fbAuth = null;
+    }
+    firebase.initializeApp(config);
+    fbDb   = firebase.firestore();
+    fbAuth = firebase.auth();
+    state.firebaseReady = true;
+
+    // Offline persistence (best-effort)
+    fbDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+    fbAuth.onAuthStateChanged(user => {
+      state.currentUser = user;
+      updateAuthUI();
+      if (user) pullFromFirebase(false);
+    });
+  },
+
+  async signIn() {
+    if (!fbAuth) throw new Error('Firebase未設定');
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await fbAuth.signInWithPopup(provider);
+  },
+
+  async signOut() {
+    if (!fbAuth) return;
+    await fbAuth.signOut();
+  },
+
+  async loadAll() {
+    const snap = await fbDb.collection('categories').get();
+    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  },
+
+  async saveAll(categories) {
+    const batch = fbDb.batch();
+    const now   = firebase.firestore.FieldValue.serverTimestamp();
+
+    // Upsert all
+    categories.forEach(cat => {
+      const { id, ...data } = cat;
+      data.updatedAt = now;
+      if (!data.createdAt) data.createdAt = now;
+      batch.set(fbDb.collection('categories').doc(id), data);
+    });
+
+    // Delete removed docs
+    const snap = await fbDb.collection('categories').get();
+    const ids  = new Set(categories.map(c => c.id));
+    snap.docs.forEach(doc => { if (!ids.has(doc.id)) batch.delete(doc.ref); });
+
+    await batch.commit();
+  },
+};
+
+// ================================================================
+// CLAUDE API
+// ================================================================
+async function callClaude(userMessage) {
+  const apiKey = Storage.get(LS.CLAUDE_KEY);
+  if (!apiKey) throw new Error('Claude APIキーが設定されていません（⚙️ 設定タブで入力）');
+
+  const model    = Storage.get(LS.CLAUDE_MODEL) || DEFAULT_MODEL;
+  const messages = [
+    ...state.chatHistory.map(h => ({ role: h.role, content: h.content })),
+    { role: 'user', content: userMessage },
+  ];
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-calls': 'true',
+    },
+    body: JSON.stringify({ model, max_tokens: 1024, system: buildSystemPrompt(), messages }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `APIエラー (${res.status})`);
+  }
+
+  const data = await res.json();
+  return data.content[0].text;
+}
+
+function buildSystemPrompt() {
+  const lines = [
+    'あなたはMoneyForwardの家計簿分類アシスタントです。',
+    'ユーザーが入力した支出・収入の内容に対して、以下の分類リストから最適な大分類と中分類を提案してください。',
+    '',
+    '【分類リスト】',
+  ];
+
+  const expenses = state.categories.filter(c => c.type === 'expense').sort((a,b) => a.order - b.order);
+  const incomes  = state.categories.filter(c => c.type === 'income' ).sort((a,b) => a.order - b.order);
+
+  if (expenses.length) {
+    lines.push('■ 支出');
+    expenses.forEach(c => {
+      const subs = [...c.subcategories].sort((a,b) => a.order - b.order).map(s => s.name).join('、');
+      lines.push(`  ${c.name}：${subs}`);
+    });
+  }
+  if (incomes.length) {
+    lines.push('■ 収入');
+    incomes.forEach(c => {
+      const subs = [...c.subcategories].sort((a,b) => a.order - b.order).map(s => s.name).join('、');
+      lines.push(`  ${c.name}：${subs}`);
+    });
+  }
+
+  lines.push('', '回答形式：', '- 大分類：〇〇', '- 中分類：〇〇', '- 理由：〇〇（1〜2文）', '',
+    '複数候補がある場合は第2候補も提示してください。');
+
+  return lines.join('\n');
+}
+
+// ================================================================
+// CATEGORY DATA
+// ================================================================
+function loadCategoriesFromCache() {
+  const cached = Storage.get(LS.CATEGORIES);
+  if (Array.isArray(cached) && cached.length > 0) {
+    state.categories = cached;
+    renderCategories();
+    const at = Storage.get(LS.CACHE_AT);
+    if (at) document.getElementById('last-sync-time').textContent =
+      `最終同期: ${new Date(at).toLocaleString('ja-JP')}`;
+    return true;
+  }
+  return false;
+}
+
+function saveCategoriesCache() {
+  Storage.set(LS.CATEGORIES, state.categories);
+  const now = new Date().toISOString();
+  Storage.set(LS.CACHE_AT, now);
+  document.getElementById('last-sync-time').textContent =
+    `最終同期: ${new Date(now).toLocaleString('ja-JP')}`;
+}
+
+function initDefaultCategories() {
+  state.categories = JSON.parse(JSON.stringify(INITIAL_CATEGORIES));
+  saveCategoriesCache();
+  renderCategories();
+}
+
+// ================================================================
+// CHAT UI
+// ================================================================
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  addChatBubble('user', msg);
+
+  const loadingEl = addLoadingBubble();
+  const sendBtn   = document.getElementById('chat-send');
+  sendBtn.disabled = true;
+
+  try {
+    const reply = await callClaude(msg);
+    loadingEl.remove();
+    addChatBubble('assistant', reply);
+    state.chatHistory.push({ role: 'user', content: msg });
+    state.chatHistory.push({ role: 'assistant', content: reply });
+    // Keep last 20 turns
+    if (state.chatHistory.length > 20) state.chatHistory = state.chatHistory.slice(-20);
+  } catch(e) {
+    loadingEl.remove();
+    addChatBubble('error', e.message);
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+function addChatBubble(role, content) {
+  const msgs    = document.getElementById('chat-messages');
+  const welcome = msgs.querySelector('.chat-welcome');
+  if (welcome) welcome.remove();
+
+  const wrap   = document.createElement('div');
+  const bubble = document.createElement('div');
+  bubble.className = 'message-bubble';
+
+  if (role === 'user') {
+    wrap.className  = 'message message-user';
+    bubble.textContent = content;
+  } else if (role === 'assistant') {
+    wrap.className  = 'message message-ai';
+    bubble.innerHTML = formatAiText(content);
+  } else {
+    wrap.className  = 'message message-ai';
+    bubble.style.color = 'var(--expense)';
+    bubble.textContent = '⚠️ ' + content;
+  }
+
+  wrap.appendChild(bubble);
+  msgs.appendChild(wrap);
+  msgs.scrollTop = msgs.scrollHeight;
+  return wrap;
+}
+
+function addLoadingBubble() {
+  const msgs   = document.getElementById('chat-messages');
+  const wrap   = document.createElement('div');
+  const bubble = document.createElement('div');
+  wrap.className   = 'message message-ai';
+  bubble.className = 'message-bubble';
+  bubble.innerHTML = '<span class="spinner dark"></span> 考え中...';
+  bubble.style.color = 'var(--text-secondary)';
+  wrap.appendChild(bubble);
+  msgs.appendChild(wrap);
+  msgs.scrollTop = msgs.scrollHeight;
+  return wrap;
+}
+
+function handleChatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
+}
+
+// ================================================================
+// CATEGORY UI
+// ================================================================
+function setFilter(type, btn) {
+  state.filterType = type;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCategories();
+}
+
+function renderCategories() {
+  const list = document.getElementById('category-list');
+  let cats   = state.filterType === 'all'
+    ? state.categories
+    : state.categories.filter(c => c.type === state.filterType);
+  cats = [...cats].sort((a,b) => a.order - b.order);
+
+  if (cats.length === 0) {
+    list.innerHTML = '<div class="empty-state">分類がありません</div>';
+    return;
+  }
+
+  list.innerHTML = cats.map(cat => {
+    const typeLabel = cat.type === 'expense' ? '支出' : '収入';
+    const typeClass = cat.type === 'expense' ? 'expense' : 'income';
+
+    const subsHtml = [...cat.subcategories].sort((a,b) => a.order - b.order).map(sub => `
+      <div class="subcategory-item">
+        <span class="sub-name">${escapeHtml(sub.name)}</span>
+        <div class="sub-actions">
+          <button class="btn-icon" title="編集" onclick="openEditSubModal('${cat.id}','${sub.id}')">✏️</button>
+          <button class="btn-icon" title="削除" onclick="deleteSubcategory('${cat.id}','${sub.id}')">✕</button>
+        </div>
+      </div>`).join('');
+
+    return `
+      <div class="accordion-item" data-id="${cat.id}">
+        <div class="accordion-header" onclick="toggleAccordion(this)">
+          <div class="cat-info">
+            <span class="type-badge ${typeClass}">${typeLabel}</span>
+            <span class="cat-name">${escapeHtml(cat.name)}</span>
+            <span class="sub-count">${cat.subcategories.length}件</span>
+          </div>
+          <div class="cat-actions" onclick="event.stopPropagation()">
+            <button class="btn-icon" title="編集" onclick="openEditCatModal('${cat.id}')">✏️</button>
+            <button class="btn-icon" title="削除" onclick="deleteCategoryById('${cat.id}')">🗑️</button>
+            <span class="accordion-arrow">▶</span>
+          </div>
+        </div>
+        <div class="accordion-body">
+          <div class="subcategory-list">${subsHtml}</div>
+          <button class="btn btn-sm btn-outline" onclick="openAddSubModal('${cat.id}')">＋ 中分類を追加</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleAccordion(header) {
+  header.closest('.accordion-item').classList.toggle('open');
+}
+
+// ================================================================
+// CATEGORY MODALS
+// ================================================================
+function openAddCategoryModal() {
+  openModal('大分類を追加', `
+    <div class="form-group">
+      <label>名前</label>
+      <input type="text" id="m-cat-name" placeholder="大分類名">
+    </div>
+    <div class="form-group">
+      <label>種別</label>
+      <select id="m-cat-type">
+        <option value="expense">支出</option>
+        <option value="income">収入</option>
+      </select>
+    </div>`);
+
+  state.modalAction = () => {
+    const name = document.getElementById('m-cat-name').value.trim();
+    const type = document.getElementById('m-cat-type').value;
+    if (!name) { showToast('名前を入力してください', 'error'); return false; }
+    const sameType = state.categories.filter(c => c.type === type);
+    state.categories.push({
+      id: generateId(), type, name, order: sameType.length
+        ? Math.max(...sameType.map(c => c.order)) + 1 : 1,
+      subcategories: [],
+    });
+    saveCategoriesCache(); renderCategories();
+    return true;
+  };
+}
+
+function openEditCatModal(catId) {
+  const cat = state.categories.find(c => c.id === catId);
+  if (!cat) return;
+  openModal('大分類を編集', `
+    <div class="form-group">
+      <label>名前</label>
+      <input type="text" id="m-cat-name" value="${escapeHtml(cat.name)}">
+    </div>
+    <div class="form-group">
+      <label>種別</label>
+      <select id="m-cat-type">
+        <option value="expense" ${cat.type==='expense'?'selected':''}>支出</option>
+        <option value="income"  ${cat.type==='income' ?'selected':''}>収入</option>
+      </select>
+    </div>`);
+
+  state.modalAction = () => {
+    const name = document.getElementById('m-cat-name').value.trim();
+    if (!name) { showToast('名前を入力してください', 'error'); return false; }
+    cat.name = name;
+    cat.type = document.getElementById('m-cat-type').value;
+    saveCategoriesCache(); renderCategories();
+    return true;
+  };
+}
+
+function deleteCategoryById(catId) {
+  const cat = state.categories.find(c => c.id === catId);
+  if (!cat || !confirm(`「${cat.name}」と中分類をすべて削除しますか？`)) return;
+  state.categories = state.categories.filter(c => c.id !== catId);
+  saveCategoriesCache(); renderCategories();
+  showToast('削除しました', 'success');
+}
+
+function openAddSubModal(catId) {
+  openModal('中分類を追加', `
+    <div class="form-group">
+      <label>名前</label>
+      <input type="text" id="m-sub-name" placeholder="中分類名">
+    </div>`);
+
+  state.modalAction = () => {
+    const name = document.getElementById('m-sub-name').value.trim();
+    if (!name) { showToast('名前を入力してください', 'error'); return false; }
+    const cat = state.categories.find(c => c.id === catId);
+    if (!cat) return false;
+    const maxOrd = cat.subcategories.length
+      ? Math.max(...cat.subcategories.map(s => s.order)) : 0;
+    cat.subcategories.push({ id: generateId(), name, order: maxOrd + 1 });
+    saveCategoriesCache(); renderCategories();
+    return true;
+  };
+}
+
+function openEditSubModal(catId, subId) {
+  const cat = state.categories.find(c => c.id === catId);
+  const sub = cat?.subcategories.find(s => s.id === subId);
+  if (!sub) return;
+  openModal('中分類を編集', `
+    <div class="form-group">
+      <label>名前</label>
+      <input type="text" id="m-sub-name" value="${escapeHtml(sub.name)}">
+    </div>`);
+
+  state.modalAction = () => {
+    const name = document.getElementById('m-sub-name').value.trim();
+    if (!name) { showToast('名前を入力してください', 'error'); return false; }
+    sub.name = name;
+    saveCategoriesCache(); renderCategories();
+    return true;
+  };
+}
+
+function deleteSubcategory(catId, subId) {
+  const cat = state.categories.find(c => c.id === catId);
+  const sub = cat?.subcategories.find(s => s.id === subId);
+  if (!sub || !confirm(`「${sub.name}」を削除しますか？`)) return;
+  cat.subcategories = cat.subcategories.filter(s => s.id !== subId);
+  saveCategoriesCache(); renderCategories();
+  showToast('削除しました', 'success');
+}
+
+// ================================================================
+// MODAL
+// ================================================================
+function openModal(title, bodyHtml) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML    = bodyHtml;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  setTimeout(() => {
+    const first = document.querySelector('#modal-body input, #modal-body select');
+    if (first) { first.focus(); if (first.select) first.select(); }
+  }, 50);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+  state.modalAction = null;
+}
+
+document.getElementById('modal-confirm-btn').addEventListener('click', () => {
+  if (state.modalAction && state.modalAction() !== false) {
+    closeModal();
+    showToast('保存しました', 'success');
+  }
+});
+
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// ================================================================
+// SETTINGS
+// ================================================================
+function loadSettingsToForm() {
+  const key   = Storage.get(LS.CLAUDE_KEY);
+  const model = Storage.get(LS.CLAUDE_MODEL);
+  if (key)   document.getElementById('claude-api-key').value  = key;
+  if (model) document.getElementById('claude-model').value    = model;
+  else       document.getElementById('claude-model').value    = DEFAULT_MODEL;
+
+  const fb = Storage.get(LS.FIREBASE);
+  if (fb) {
+    document.getElementById('fb-api-key').value             = fb.apiKey            || '';
+    document.getElementById('fb-auth-domain').value         = fb.authDomain        || '';
+    document.getElementById('fb-project-id').value          = fb.projectId         || '';
+    document.getElementById('fb-storage-bucket').value      = fb.storageBucket     || '';
+    document.getElementById('fb-messaging-sender-id').value = fb.messagingSenderId || '';
+    document.getElementById('fb-app-id').value              = fb.appId             || '';
+  }
+}
+
+function saveClaudeSettings() {
+  const key   = document.getElementById('claude-api-key').value.trim();
+  const model = document.getElementById('claude-model').value.trim();
+  if (key)   Storage.set(LS.CLAUDE_KEY, key);
+  if (model) Storage.set(LS.CLAUDE_MODEL, model);
+  document.getElementById('chat-notice').classList.add('hidden');
+  showToast('Claude設定を保存しました', 'success');
+}
+
+async function saveFirebaseSettings() {
+  const config = {
+    apiKey:            document.getElementById('fb-api-key').value.trim(),
+    authDomain:        document.getElementById('fb-auth-domain').value.trim(),
+    projectId:         document.getElementById('fb-project-id').value.trim(),
+    storageBucket:     document.getElementById('fb-storage-bucket').value.trim(),
+    messagingSenderId: document.getElementById('fb-messaging-sender-id').value.trim(),
+    appId:             document.getElementById('fb-app-id').value.trim(),
+  };
+  if (!config.apiKey || !config.projectId) {
+    showToast('API KeyとProject IDは必須です', 'error'); return;
+  }
+  Storage.set(LS.FIREBASE, config);
+  try {
+    await FB.init(config);
+    document.getElementById('firebase-notice').classList.add('hidden');
+    showToast('Firebase接続しました', 'success');
+  } catch(e) {
+    showToast('Firebase初期化エラー: ' + e.message, 'error');
+  }
+}
+
+function toggleVisibility(id) {
+  const el = document.getElementById(id);
+  el.type  = el.type === 'password' ? 'text' : 'password';
+}
+
+// ================================================================
+// SYNC
+// ================================================================
+async function pullFromFirebase(showMsg = true) {
+  if (!state.firebaseReady || !state.currentUser) {
+    if (showMsg) showToast('Googleログインが必要です', 'error');
+    return;
+  }
+  try {
+    const cats = await FB.loadAll();
+    if (cats.length > 0) {
+      state.categories = cats;
+      saveCategoriesCache(); renderCategories();
+      if (showMsg) showToast('Firebaseから取得しました', 'success');
+    } else if (showMsg) {
+      showToast('Firestoreにデータがありません。Firebaseへ保存を実行してください。', 'error');
+    }
+  } catch(e) {
+    if (showMsg) showToast('取得エラー: ' + e.message, 'error');
+  }
+}
+
+async function pushToFirebase() {
+  if (!state.firebaseReady || !state.currentUser) {
+    showToast('Googleログインが必要です', 'error'); return;
+  }
+  try {
+    await FB.saveAll(state.categories);
+    saveCategoriesCache();
+    showToast('Firebaseへ保存しました', 'success');
+  } catch(e) {
+    showToast('保存エラー: ' + e.message, 'error');
+  }
+}
+
+function resetLocalData() {
+  if (!confirm('ローカルキャッシュをリセットしますか？\n（Firebase設定・APIキーは保持されます）')) return;
+  Storage.clearCache();
+  state.categories  = [];
+  state.chatHistory = [];
+  initDefaultCategories();
+  showToast('リセットしました', 'success');
+}
+
+// ================================================================
+// AUTH UI
+// ================================================================
+function updateAuthUI() {
+  const status = document.getElementById('auth-status');
+  const btn    = document.getElementById('auth-btn');
+  if (state.currentUser) {
+    status.textContent = state.currentUser.displayName || state.currentUser.email || 'ログイン中';
+    btn.textContent    = 'ログアウト';
+    btn.className      = 'btn btn-outline btn-sm';
+  } else {
+    status.textContent = state.firebaseReady ? '未ログイン' : '未接続';
+    btn.textContent    = 'Googleログイン';
+    btn.className      = 'btn btn-primary btn-sm';
+  }
+}
+
+async function handleAuth() {
+  if (!state.firebaseReady) {
+    showToast('先に⚙️設定でFirebaseを設定してください', 'error');
+    document.querySelector('[data-tab="settings"]').click();
+    return;
+  }
+  if (state.currentUser) {
+    try { await FB.signOut(); showToast('ログアウトしました', 'success'); }
+    catch(e) { showToast('エラー: ' + e.message, 'error'); }
+  } else {
+    try { await FB.signIn(); }
+    catch(e) {
+      const msg = e.code === 'auth/popup-blocked'       ? 'ポップアップがブロックされました。許可してください。'
+                : e.code === 'auth/unauthorized-domain' ? 'このドメインはFirebaseで未承認です。localhostで起動してください。'
+                : e.message;
+      showToast('ログインエラー: ' + msg, 'error');
+    }
+  }
+}
+
+// ================================================================
+// TOAST
+// ================================================================
+let toastTimer = null;
+function showToast(msg, type = '') {
+  const toast    = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className   = 'toast' + (type ? ' ' + type : '');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.add('hidden'), 3000);
+}
+
+// ================================================================
+// TABS
+// ================================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ================================================================
+// INIT
+// ================================================================
+function init() {
+  loadSettingsToForm();
+
+  if (!loadCategoriesFromCache()) {
+    initDefaultCategories();
+  }
+
+  if (!Storage.get(LS.CLAUDE_KEY)) {
+    document.getElementById('chat-notice').classList.remove('hidden');
+  }
+
+  const fbConfig = Storage.get(LS.FIREBASE);
+  if (fbConfig?.apiKey) {
+    FB.init(fbConfig).catch(e => {
+      console.error('Firebase init:', e);
+    });
+    document.getElementById('firebase-notice').classList.add('hidden');
+  } else {
+    document.getElementById('firebase-notice').classList.remove('hidden');
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  const chatInput = document.getElementById('chat-input');
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  });
+}
+
+init();
+</script>
+</body>
+</html>
