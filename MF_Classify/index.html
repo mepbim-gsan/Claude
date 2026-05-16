@@ -56,11 +56,7 @@
 
     .logo { font-size: 16px; font-weight: 700; color: var(--primary); }
 
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    .header-right { display: flex; align-items: center; gap: 8px; }
 
     #auth-status {
       font-size: 12px;
@@ -99,12 +95,7 @@
     }
 
     /* ── Layout ── */
-    .tab-content {
-      max-width: 640px;
-      margin: 0 auto;
-      padding: 16px;
-    }
-
+    .tab-content { max-width: 640px; margin: 0 auto; padding: 16px; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
@@ -124,24 +115,12 @@
     }
 
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
     .btn-primary { background: var(--primary); color: white; }
     .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
-
-    .btn-outline {
-      background: white;
-      color: var(--primary);
-      border: 1.5px solid var(--primary);
-    }
+    .btn-outline { background: white; color: var(--primary); border: 1.5px solid var(--primary); }
     .btn-outline:hover:not(:disabled) { background: var(--primary-light); }
-
-    .btn-danger {
-      background: #fee2e2;
-      color: var(--expense);
-      border: 1.5px solid #fca5a5;
-    }
+    .btn-danger { background: #fee2e2; color: var(--expense); border: 1.5px solid #fca5a5; }
     .btn-danger:hover:not(:disabled) { background: #fecaca; }
-
     .btn-sm { padding: 5px 12px; font-size: 12px; }
 
     .btn-icon {
@@ -155,7 +134,6 @@
       transition: opacity 0.15s, background 0.15s;
     }
     .btn-icon:hover { opacity: 1; background: var(--bg); }
-
     .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
 
     /* ── Chat ── */
@@ -170,12 +148,7 @@
       scroll-behavior: smooth;
     }
 
-    .chat-welcome {
-      text-align: center;
-      padding: 40px 16px;
-      color: var(--text-secondary);
-    }
-
+    .chat-welcome { text-align: center; padding: 40px 16px; color: var(--text-secondary); }
     .chat-welcome .icon { font-size: 48px; margin-bottom: 12px; }
 
     .message { display: flex; max-width: 86%; }
@@ -191,9 +164,7 @@
     }
 
     .message-user .message-bubble {
-      background: var(--primary);
-      color: white;
-      border-bottom-right-radius: 4px;
+      background: var(--primary); color: white; border-bottom-right-radius: 4px;
     }
 
     .message-ai .message-bubble {
@@ -221,22 +192,16 @@
     .chat-input-area:focus-within { border-color: var(--primary); }
 
     #chat-input {
-      flex: 1;
-      border: none;
-      outline: none;
-      resize: none;
-      font-family: inherit;
-      font-size: 14px;
-      line-height: 1.5;
-      max-height: 120px;
-      background: transparent;
+      flex: 1; border: none; outline: none; resize: none;
+      font-family: inherit; font-size: 14px; line-height: 1.5;
+      max-height: 120px; background: transparent;
     }
 
     /* ── Category Management ── */
     .manage-toolbar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
       margin-bottom: 12px;
       flex-wrap: wrap;
       gap: 8px;
@@ -262,10 +227,7 @@
     }
 
     .filter-btn.active {
-      background: white;
-      color: var(--text);
-      font-weight: 600;
-      box-shadow: var(--shadow);
+      background: white; color: var(--text); font-weight: 600; box-shadow: var(--shadow);
     }
 
     .category-list { display: flex; flex-direction: column; gap: 8px; }
@@ -287,30 +249,22 @@
     }
 
     .accordion-header:hover { background: #fafafa; }
-
     .cat-info { display: flex; align-items: center; gap: 8px; flex: 1; }
 
     .type-badge {
-      font-size: 10px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      flex-shrink: 0;
+      font-size: 10px; font-weight: 700; padding: 2px 6px;
+      border-radius: 4px; flex-shrink: 0;
     }
 
     .type-badge.expense { background: var(--expense-bg); color: var(--expense); }
     .type-badge.income  { background: var(--income-bg);  color: var(--income);  }
-
     .cat-name  { font-weight: 600; font-size: 14px; }
     .sub-count { font-size: 11px; color: var(--text-secondary); }
-
     .cat-actions { display: flex; align-items: center; gap: 4px; }
 
     .accordion-arrow {
-      font-size: 10px;
-      color: var(--text-secondary);
-      transition: transform 0.2s;
-      margin-left: 4px;
+      font-size: 10px; color: var(--text-secondary);
+      transition: transform 0.2s; margin-left: 4px;
     }
 
     .accordion-item.open .accordion-arrow { transform: rotate(90deg); }
@@ -347,126 +301,96 @@
     }
 
     .settings-section h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
-
     .form-group { margin-bottom: 12px; }
 
     .form-group label {
       display: block;
-      font-size: 11px;
-      font-weight: 700;
+      font-size: 11px; font-weight: 700;
       color: var(--text-secondary);
       margin-bottom: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      text-transform: uppercase; letter-spacing: 0.5px;
     }
 
     .form-group input,
-    .form-group select {
+    .form-group select,
+    .form-group textarea {
       width: 100%;
       padding: 8px 12px;
       border: 1.5px solid var(--border);
       border-radius: var(--radius-sm);
-      font-size: 14px;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.15s;
+      font-size: 14px; font-family: inherit;
+      outline: none; transition: border-color 0.15s;
     }
 
     .form-group input:focus,
-    .form-group select:focus { border-color: var(--primary); }
+    .form-group select:focus,
+    .form-group textarea:focus { border-color: var(--primary); }
+
+    .form-group textarea { resize: vertical; }
 
     .input-with-toggle { display: flex; gap: 6px; margin-bottom: 6px; }
-    .input-with-toggle input { flex: 1; margin-bottom: 0; }
+    .input-with-toggle input { flex: 1; }
 
     .toggle-btn {
       padding: 8px 10px;
-      background: var(--bg);
-      border: 1.5px solid var(--border);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-size: 14px;
+      background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); cursor: pointer; font-size: 14px;
     }
 
-    .hint { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+    .hint { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.5; }
+    .hint code { background: #f0f4f8; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+
+    .config-msg { font-size: 12px; min-height: 18px; margin-top: 6px; }
 
     .code-block {
-      background: #1e2937;
-      color: #e2e8f0;
-      padding: 12px;
-      border-radius: var(--radius-sm);
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      line-height: 1.6;
-      overflow-x: auto;
-      white-space: pre;
+      background: #1e2937; color: #e2e8f0;
+      padding: 12px; border-radius: var(--radius-sm);
+      font-family: 'Courier New', monospace; font-size: 12px;
+      line-height: 1.6; overflow-x: auto; white-space: pre;
     }
 
     /* ── Modal ── */
     .modal-overlay {
-      position: fixed;
-      inset: 0;
+      position: fixed; inset: 0;
       background: rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
+      z-index: 1000; display: flex;
+      align-items: center; justify-content: center; padding: 16px;
     }
 
     .modal-overlay.hidden { display: none; }
 
     .modal {
-      background: white;
-      border-radius: var(--radius);
-      width: 100%;
-      max-width: 400px;
+      background: white; border-radius: var(--radius);
+      width: 100%; max-width: 400px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.2);
     }
 
     .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px;
-      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px; border-bottom: 1px solid var(--border);
     }
 
     .modal-header h3 { font-size: 16px; font-weight: 700; }
 
     .modal-close {
-      background: none;
-      border: none;
-      font-size: 18px;
-      cursor: pointer;
-      padding: 4px;
-      color: var(--text-secondary);
+      background: none; border: none; font-size: 18px;
+      cursor: pointer; padding: 4px; color: var(--text-secondary);
     }
 
     .modal-body { padding: 16px; }
 
     .modal-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding: 12px 16px;
-      border-top: 1px solid var(--border);
+      display: flex; justify-content: flex-end; gap: 8px;
+      padding: 12px 16px; border-top: 1px solid var(--border);
     }
 
     /* ── Toast ── */
     .toast {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #1a2332;
-      color: white;
-      padding: 10px 20px;
-      border-radius: 24px;
-      font-size: 13px;
-      font-weight: 500;
-      z-index: 2000;
-      white-space: nowrap;
-      pointer-events: none;
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1a2332; color: white;
+      padding: 10px 20px; border-radius: 24px;
+      font-size: 13px; font-weight: 500; z-index: 2000;
+      white-space: nowrap; pointer-events: none;
     }
 
     .toast.hidden { display: none; }
@@ -474,48 +398,24 @@
     .toast.error   { background: var(--expense); }
 
     /* ── Misc ── */
-    .empty-state {
-      text-align: center;
-      padding: 40px 16px;
-      color: var(--text-secondary);
-    }
+    .empty-state { text-align: center; padding: 40px 16px; color: var(--text-secondary); }
 
     .spinner {
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      display: inline-block;
-      vertical-align: middle;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+      display: inline-block; vertical-align: middle;
     }
 
     .spinner.dark {
-      border: 2px solid rgba(0,0,0,0.15);
-      border-top-color: var(--primary);
+      border: 2px solid rgba(0,0,0,0.15); border-top-color: var(--primary);
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .notice {
-      padding: 10px 14px;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      margin-bottom: 12px;
-    }
-
-    .notice-warn {
-      background: #fffbeb;
-      border: 1px solid #fbbf24;
-      color: #92400e;
-    }
-
-    .notice-info {
-      background: var(--primary-light);
-      border: 1px solid #6ee7d0;
-      color: #065f46;
-    }
+    .notice { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 12px; }
+    .notice-warn { background: #fffbeb; border: 1px solid #fbbf24; color: #92400e; }
+    .notice-info { background: var(--primary-light); border: 1px solid #6ee7d0; color: #065f46; }
 
     /* ── Responsive ── */
     @media (max-width: 480px) {
@@ -568,7 +468,6 @@
     <!-- ── Manage Tab ── -->
     <div id="tab-manage" class="tab-panel">
       <div class="manage-toolbar">
-        <button class="btn btn-primary btn-sm" onclick="openAddCategoryModal()">＋ 大分類を追加</button>
         <div class="filter-tabs">
           <button class="filter-btn active" data-filter="all"     onclick="setFilter('all',this)">すべて</button>
           <button class="filter-btn"         data-filter="expense" onclick="setFilter('expense',this)">支出</button>
@@ -605,32 +504,20 @@
       <!-- Firebase -->
       <div class="settings-section">
         <h3>🔥 Firebase設定</h3>
-        <p class="hint">Firebase Console → プロジェクト設定 → ウェブアプリの設定をコピーして入力してください。</p>
+        <p class="hint">
+          Firebase Console → プロジェクト設定 → ウェブアプリ →「CDN」タブの
+          <code>firebaseConfig</code> をそのまま貼り付けてください。
+        </p>
         <div class="form-group">
-          <label>API Key</label>
-          <input type="text" id="fb-api-key" placeholder="AIzaSy...">
+          <label>Firebase Config</label>
+          <textarea id="fb-config-input" rows="8"
+            style="font-family: monospace; font-size: 12px;"
+            placeholder='{&#10;  "apiKey": "AIzaSy...",&#10;  "authDomain": "your-app.firebaseapp.com",&#10;  "projectId": "your-project-id",&#10;  "storageBucket": "your-app.appspot.com",&#10;  "messagingSenderId": "000000000000",&#10;  "appId": "1:000:web:xxx"&#10;}'></textarea>
         </div>
-        <div class="form-group">
-          <label>Auth Domain</label>
-          <input type="text" id="fb-auth-domain" placeholder="your-app.firebaseapp.com">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button class="btn btn-primary btn-sm" onclick="saveFirebaseSettings()">設定を保存して接続</button>
+          <span id="fb-config-msg" class="config-msg"></span>
         </div>
-        <div class="form-group">
-          <label>Project ID</label>
-          <input type="text" id="fb-project-id" placeholder="your-project-id">
-        </div>
-        <div class="form-group">
-          <label>Storage Bucket</label>
-          <input type="text" id="fb-storage-bucket" placeholder="your-app.appspot.com">
-        </div>
-        <div class="form-group">
-          <label>Messaging Sender ID</label>
-          <input type="text" id="fb-messaging-sender-id" placeholder="000000000000">
-        </div>
-        <div class="form-group">
-          <label>App ID</label>
-          <input type="text" id="fb-app-id" placeholder="1:000:web:xxx">
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="saveFirebaseSettings()">設定を保存して接続</button>
       </div>
 
       <!-- Data Sync -->
@@ -686,60 +573,65 @@ service cloud.firestore {
 <script>
 // ================================================================
 // INITIAL DATA  (MoneyForward 標準分類)
+// isDefault:true の中分類は編集・削除不可
 // ================================================================
 const DEFAULT_MODEL = 'claude-sonnet-4-5-20250514';
+
+function defSub(id, name, order) {
+  return { id, name, order, isDefault: true };
+}
 
 const INITIAL_CATEGORIES = [
   // ── 支出 ──
   { id:'cat_food',    type:'expense', name:'食費',        order:1,
-    subcategories:[{id:'s001',name:'食料品',order:1},{id:'s002',name:'外食',order:2},{id:'s003',name:'カフェ・喫茶店',order:3},{id:'s004',name:'その他食費',order:4}] },
+    subcategories:[defSub('s001','食料品',1),defSub('s002','外食',2),defSub('s003','カフェ・喫茶店',3),defSub('s004','その他食費',4)] },
   { id:'cat_daily',   type:'expense', name:'日用品',       order:2,
-    subcategories:[{id:'s005',name:'日用品',order:1},{id:'s006',name:'ドラッグストア',order:2},{id:'s007',name:'その他日用品',order:3}] },
+    subcategories:[defSub('s005','日用品',1),defSub('s006','ドラッグストア',2),defSub('s007','その他日用品',3)] },
   { id:'cat_hobby',   type:'expense', name:'趣味・娯楽',   order:3,
-    subcategories:[{id:'s008',name:'趣味',order:1},{id:'s009',name:'娯楽',order:2},{id:'s010',name:'旅行',order:3},{id:'s011',name:'その他趣味・娯楽',order:4}] },
+    subcategories:[defSub('s008','趣味',1),defSub('s009','娯楽',2),defSub('s010','旅行',3),defSub('s011','その他趣味・娯楽',4)] },
   { id:'cat_social',  type:'expense', name:'交際費',       order:4,
-    subcategories:[{id:'s012',name:'交際費',order:1},{id:'s013',name:'贈答品',order:2},{id:'s014',name:'その他交際費',order:3}] },
+    subcategories:[defSub('s012','交際費',1),defSub('s013','贈答品',2),defSub('s014','その他交際費',3)] },
   { id:'cat_transit', type:'expense', name:'交通費',       order:5,
-    subcategories:[{id:'s015',name:'電車・バス',order:1},{id:'s016',name:'タクシー',order:2},{id:'s017',name:'駐車場',order:3},{id:'s018',name:'ガソリン',order:4},{id:'s019',name:'その他交通費',order:5}] },
+    subcategories:[defSub('s015','電車・バス',1),defSub('s016','タクシー',2),defSub('s017','駐車場',3),defSub('s018','ガソリン',4),defSub('s019','その他交通費',5)] },
   { id:'cat_fashion', type:'expense', name:'衣服・美容',   order:6,
-    subcategories:[{id:'s020',name:'衣服',order:1},{id:'s021',name:'美容院・理髪店',order:2},{id:'s022',name:'コスメ・ケア用品',order:3},{id:'s023',name:'その他衣服・美容',order:4}] },
+    subcategories:[defSub('s020','衣服',1),defSub('s021','美容院・理髪店',2),defSub('s022','コスメ・ケア用品',3),defSub('s023','その他衣服・美容',4)] },
   { id:'cat_health',  type:'expense', name:'健康・医療',   order:7,
-    subcategories:[{id:'s024',name:'医療費',order:1},{id:'s025',name:'薬',order:2},{id:'s026',name:'フィットネス',order:3},{id:'s027',name:'その他健康・医療',order:4}] },
+    subcategories:[defSub('s024','医療費',1),defSub('s025','薬',2),defSub('s026','フィットネス',3),defSub('s027','その他健康・医療',4)] },
   { id:'cat_car',     type:'expense', name:'自動車',       order:8,
-    subcategories:[{id:'s028',name:'自動車保険',order:1},{id:'s029',name:'車検・整備',order:2},{id:'s030',name:'その他自動車',order:3}] },
+    subcategories:[defSub('s028','自動車保険',1),defSub('s029','車検・整備',2),defSub('s030','その他自動車',3)] },
   { id:'cat_edu',     type:'expense', name:'教養・教育',   order:9,
-    subcategories:[{id:'s031',name:'書籍',order:1},{id:'s032',name:'新聞・雑誌',order:2},{id:'s033',name:'セミナー・講座',order:3},{id:'s034',name:'その他教養・教育',order:4}] },
+    subcategories:[defSub('s031','書籍',1),defSub('s032','新聞・雑誌',2),defSub('s033','セミナー・講座',3),defSub('s034','その他教養・教育',4)] },
   { id:'cat_child',   type:'expense', name:'子育て・教育', order:10,
-    subcategories:[{id:'s035',name:'学校・塾・習い事',order:1},{id:'s036',name:'保育所・幼稚園',order:2},{id:'s037',name:'子供用品',order:3},{id:'s038',name:'その他子育て',order:4}] },
+    subcategories:[defSub('s035','学校・塾・習い事',1),defSub('s036','保育所・幼稚園',2),defSub('s037','子供用品',3),defSub('s038','その他子育て',4)] },
   { id:'cat_house',   type:'expense', name:'住宅',         order:11,
-    subcategories:[{id:'s039',name:'家賃・住宅ローン',order:1},{id:'s040',name:'管理費・修繕費',order:2},{id:'s041',name:'家具・インテリア',order:3},{id:'s042',name:'その他住宅',order:4}] },
+    subcategories:[defSub('s039','家賃・住宅ローン',1),defSub('s040','管理費・修繕費',2),defSub('s041','家具・インテリア',3),defSub('s042','その他住宅',4)] },
   { id:'cat_util',    type:'expense', name:'水道・光熱費', order:12,
-    subcategories:[{id:'s043',name:'電気代',order:1},{id:'s044',name:'ガス代',order:2},{id:'s045',name:'水道代',order:3},{id:'s046',name:'その他水道・光熱費',order:4}] },
+    subcategories:[defSub('s043','電気代',1),defSub('s044','ガス代',2),defSub('s045','水道代',3),defSub('s046','その他水道・光熱費',4)] },
   { id:'cat_comm',    type:'expense', name:'通信費',       order:13,
-    subcategories:[{id:'s047',name:'携帯電話',order:1},{id:'s048',name:'インターネット',order:2},{id:'s049',name:'放送受信料',order:3},{id:'s050',name:'その他通信費',order:4}] },
+    subcategories:[defSub('s047','携帯電話',1),defSub('s048','インターネット',2),defSub('s049','放送受信料',3),defSub('s050','その他通信費',4)] },
   { id:'cat_insure',  type:'expense', name:'保険',         order:14,
-    subcategories:[{id:'s051',name:'生命保険',order:1},{id:'s052',name:'医療保険',order:2},{id:'s053',name:'その他保険',order:3}] },
+    subcategories:[defSub('s051','生命保険',1),defSub('s052','医療保険',2),defSub('s053','その他保険',3)] },
   { id:'cat_tax',     type:'expense', name:'税・社会保険', order:15,
-    subcategories:[{id:'s054',name:'所得税',order:1},{id:'s055',name:'住民税',order:2},{id:'s056',name:'社会保険料',order:3},{id:'s057',name:'その他税',order:4}] },
+    subcategories:[defSub('s054','所得税',1),defSub('s055','住民税',2),defSub('s056','社会保険料',3),defSub('s057','その他税',4)] },
   { id:'cat_cash',    type:'expense', name:'現金・カード', order:16,
-    subcategories:[{id:'s058',name:'ATM手数料',order:1},{id:'s059',name:'その他現金・カード',order:2}] },
+    subcategories:[defSub('s058','ATM手数料',1),defSub('s059','その他現金・カード',2)] },
   { id:'cat_special', type:'expense', name:'特別な支出',   order:17,
-    subcategories:[{id:'s060',name:'冠婚葬祭',order:1},{id:'s061',name:'引越し',order:2},{id:'s062',name:'その他特別支出',order:3}] },
+    subcategories:[defSub('s060','冠婚葬祭',1),defSub('s061','引越し',2),defSub('s062','その他特別支出',3)] },
   { id:'cat_etc_ex',  type:'expense', name:'その他',       order:18,
-    subcategories:[{id:'s063',name:'その他',order:1}] },
+    subcategories:[defSub('s063','その他',1)] },
   // ── 収入 ──
   { id:'cat_salary',  type:'income',  name:'給与・賞与',   order:1,
-    subcategories:[{id:'s064',name:'給与',order:1},{id:'s065',name:'賞与',order:2},{id:'s066',name:'その他給与',order:3}] },
+    subcategories:[defSub('s064','給与',1),defSub('s065','賞与',2),defSub('s066','その他給与',3)] },
   { id:'cat_biz',     type:'income',  name:'事業・副業',   order:2,
-    subcategories:[{id:'s067',name:'事業収入',order:1},{id:'s068',name:'副業収入',order:2},{id:'s069',name:'フリーランス',order:3},{id:'s070',name:'その他事業',order:4}] },
+    subcategories:[defSub('s067','事業収入',1),defSub('s068','副業収入',2),defSub('s069','フリーランス',3),defSub('s070','その他事業',4)] },
   { id:'cat_wind',    type:'income',  name:'一時所得',     order:3,
-    subcategories:[{id:'s071',name:'売却益',order:1},{id:'s072',name:'還付金',order:2},{id:'s073',name:'保険金',order:3},{id:'s074',name:'その他一時所得',order:4}] },
+    subcategories:[defSub('s071','売却益',1),defSub('s072','還付金',2),defSub('s073','保険金',3),defSub('s074','その他一時所得',4)] },
   { id:'cat_invest',  type:'income',  name:'投資・運用',   order:4,
-    subcategories:[{id:'s075',name:'配当金',order:1},{id:'s076',name:'利息',order:2},{id:'s077',name:'売却益',order:3},{id:'s078',name:'その他投資',order:4}] },
+    subcategories:[defSub('s075','配当金',1),defSub('s076','利息',2),defSub('s077','売却益',3),defSub('s078','その他投資',4)] },
   { id:'cat_pension', type:'income',  name:'年金・補助',   order:5,
-    subcategories:[{id:'s079',name:'年金',order:1},{id:'s080',name:'児童手当',order:2},{id:'s081',name:'各種補助金',order:3},{id:'s082',name:'その他年金・補助',order:4}] },
+    subcategories:[defSub('s079','年金',1),defSub('s080','児童手当',2),defSub('s081','各種補助金',3),defSub('s082','その他年金・補助',4)] },
   { id:'cat_etc_in',  type:'income',  name:'その他収入',   order:6,
-    subcategories:[{id:'s083',name:'その他収入',order:1}] },
+    subcategories:[defSub('s083','その他収入',1)] },
 ];
 
 // ================================================================
@@ -769,20 +661,41 @@ function escapeHtml(str) {
 
 function formatAiText(text) {
   return escapeHtml(text)
-    .replace(/(第[12]候補[\s\S]*?)(?=第[12]候補|$)/g, '<div class="ai-candidate">$1</div>')
     .replace(/(大分類|中分類|理由)：/g, '<strong>$1：</strong>')
     .replace(/\n/g, '<br>');
+}
+
+// Firebase Configのテキストをパース（JSON形式・SDK形式の両方に対応）
+function parseFirebaseConfig(text) {
+  if (!text || !text.trim()) return null;
+  // そのままJSONとして試みる
+  try { return JSON.parse(text.trim()); } catch {}
+  // Firebase SDK形式 (const firebaseConfig = {...}) を試みる
+  try {
+    let s = text
+      .replace(/\/\/.*$/gm, '')
+      .replace(/const\s+\w+\s*=\s*/g, '')
+      .replace(/;?\s*$/, '')
+      .trim();
+    const m = s.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const jsonStr = m[0]
+      .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":')
+      .replace(/'/g, '"');
+    return JSON.parse(jsonStr);
+  } catch {}
+  return null;
 }
 
 // ================================================================
 // STORAGE
 // ================================================================
 const LS = {
-  CLAUDE_KEY:   'claudeApiKey',
-  CLAUDE_MODEL: 'claudeModel',
-  FIREBASE:     'firebase',
-  CATEGORIES:   'categoriesCache',
-  CACHE_AT:     'cacheUpdatedAt',
+  CLAUDE_KEY:   'mf-claudeApiKey',
+  CLAUDE_MODEL: 'mf-claudeModel',
+  FIREBASE:     'mf-firebase',
+  CATEGORIES:   'mf-categoriesCache',
+  CACHE_AT:     'mf-cacheUpdatedAt',
 };
 
 const Storage = {
@@ -808,7 +721,6 @@ const FB = {
     fbAuth = firebase.auth();
     state.firebaseReady = true;
 
-    // Offline persistence (best-effort)
     fbDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
 
     fbAuth.onAuthStateChanged(user => {
@@ -838,7 +750,6 @@ const FB = {
     const batch = fbDb.batch();
     const now   = firebase.firestore.FieldValue.serverTimestamp();
 
-    // Upsert all
     categories.forEach(cat => {
       const { id, ...data } = cat;
       data.updatedAt = now;
@@ -846,7 +757,6 @@ const FB = {
       batch.set(fbDb.collection('categories').doc(id), data);
     });
 
-    // Delete removed docs
     const snap = await fbDb.collection('categories').get();
     const ids  = new Set(categories.map(c => c.id));
     snap.docs.forEach(doc => { if (!ids.has(doc.id)) batch.delete(doc.ref); });
@@ -972,7 +882,6 @@ async function sendChat() {
     addChatBubble('assistant', reply);
     state.chatHistory.push({ role: 'user', content: msg });
     state.chatHistory.push({ role: 'assistant', content: reply });
-    // Keep last 20 turns
     if (state.chatHistory.length > 20) state.chatHistory = state.chatHistory.slice(-20);
   } catch(e) {
     loadingEl.remove();
@@ -993,15 +902,15 @@ function addChatBubble(role, content) {
   bubble.className = 'message-bubble';
 
   if (role === 'user') {
-    wrap.className  = 'message message-user';
+    wrap.className     = 'message message-user';
     bubble.textContent = content;
   } else if (role === 'assistant') {
-    wrap.className  = 'message message-ai';
+    wrap.className   = 'message message-ai';
     bubble.innerHTML = formatAiText(content);
   } else {
-    wrap.className  = 'message message-ai';
-    bubble.style.color = 'var(--expense)';
-    bubble.textContent = '⚠️ ' + content;
+    wrap.className         = 'message message-ai';
+    bubble.style.color     = 'var(--expense)';
+    bubble.textContent     = '⚠️ ' + content;
   }
 
   wrap.appendChild(bubble);
@@ -1014,9 +923,9 @@ function addLoadingBubble() {
   const msgs   = document.getElementById('chat-messages');
   const wrap   = document.createElement('div');
   const bubble = document.createElement('div');
-  wrap.className   = 'message message-ai';
-  bubble.className = 'message-bubble';
-  bubble.innerHTML = '<span class="spinner dark"></span> 考え中...';
+  wrap.className     = 'message message-ai';
+  bubble.className   = 'message-bubble';
+  bubble.innerHTML   = '<span class="spinner dark"></span> 考え中...';
   bubble.style.color = 'var(--text-secondary)';
   wrap.appendChild(bubble);
   msgs.appendChild(wrap);
@@ -1025,10 +934,7 @@ function addLoadingBubble() {
 }
 
 function handleChatKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendChat();
-  }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
 
 // ================================================================
@@ -1057,14 +963,19 @@ function renderCategories() {
     const typeLabel = cat.type === 'expense' ? '支出' : '収入';
     const typeClass = cat.type === 'expense' ? 'expense' : 'income';
 
-    const subsHtml = [...cat.subcategories].sort((a,b) => a.order - b.order).map(sub => `
-      <div class="subcategory-item">
-        <span class="sub-name">${escapeHtml(sub.name)}</span>
+    const subsHtml = [...cat.subcategories].sort((a,b) => a.order - b.order).map(sub => {
+      // デフォルト中分類は編集・削除不可
+      const actions = sub.isDefault ? '' : `
         <div class="sub-actions">
           <button class="btn-icon" title="編集" onclick="openEditSubModal('${cat.id}','${sub.id}')">✏️</button>
           <button class="btn-icon" title="削除" onclick="deleteSubcategory('${cat.id}','${sub.id}')">✕</button>
-        </div>
-      </div>`).join('');
+        </div>`;
+      return `
+        <div class="subcategory-item">
+          <span class="sub-name">${escapeHtml(sub.name)}</span>
+          ${actions}
+        </div>`;
+    }).join('');
 
     return `
       <div class="accordion-item" data-id="${cat.id}">
@@ -1074,9 +985,7 @@ function renderCategories() {
             <span class="cat-name">${escapeHtml(cat.name)}</span>
             <span class="sub-count">${cat.subcategories.length}件</span>
           </div>
-          <div class="cat-actions" onclick="event.stopPropagation()">
-            <button class="btn-icon" title="編集" onclick="openEditCatModal('${cat.id}')">✏️</button>
-            <button class="btn-icon" title="削除" onclick="deleteCategoryById('${cat.id}')">🗑️</button>
+          <div class="cat-actions">
             <span class="accordion-arrow">▶</span>
           </div>
         </div>
@@ -1093,71 +1002,8 @@ function toggleAccordion(header) {
 }
 
 // ================================================================
-// CATEGORY MODALS
+// SUBCATEGORY MODALS  (中分類の追加・編集のみ)
 // ================================================================
-function openAddCategoryModal() {
-  openModal('大分類を追加', `
-    <div class="form-group">
-      <label>名前</label>
-      <input type="text" id="m-cat-name" placeholder="大分類名">
-    </div>
-    <div class="form-group">
-      <label>種別</label>
-      <select id="m-cat-type">
-        <option value="expense">支出</option>
-        <option value="income">収入</option>
-      </select>
-    </div>`);
-
-  state.modalAction = () => {
-    const name = document.getElementById('m-cat-name').value.trim();
-    const type = document.getElementById('m-cat-type').value;
-    if (!name) { showToast('名前を入力してください', 'error'); return false; }
-    const sameType = state.categories.filter(c => c.type === type);
-    state.categories.push({
-      id: generateId(), type, name, order: sameType.length
-        ? Math.max(...sameType.map(c => c.order)) + 1 : 1,
-      subcategories: [],
-    });
-    saveCategoriesCache(); renderCategories();
-    return true;
-  };
-}
-
-function openEditCatModal(catId) {
-  const cat = state.categories.find(c => c.id === catId);
-  if (!cat) return;
-  openModal('大分類を編集', `
-    <div class="form-group">
-      <label>名前</label>
-      <input type="text" id="m-cat-name" value="${escapeHtml(cat.name)}">
-    </div>
-    <div class="form-group">
-      <label>種別</label>
-      <select id="m-cat-type">
-        <option value="expense" ${cat.type==='expense'?'selected':''}>支出</option>
-        <option value="income"  ${cat.type==='income' ?'selected':''}>収入</option>
-      </select>
-    </div>`);
-
-  state.modalAction = () => {
-    const name = document.getElementById('m-cat-name').value.trim();
-    if (!name) { showToast('名前を入力してください', 'error'); return false; }
-    cat.name = name;
-    cat.type = document.getElementById('m-cat-type').value;
-    saveCategoriesCache(); renderCategories();
-    return true;
-  };
-}
-
-function deleteCategoryById(catId) {
-  const cat = state.categories.find(c => c.id === catId);
-  if (!cat || !confirm(`「${cat.name}」と中分類をすべて削除しますか？`)) return;
-  state.categories = state.categories.filter(c => c.id !== catId);
-  saveCategoriesCache(); renderCategories();
-  showToast('削除しました', 'success');
-}
-
 function openAddSubModal(catId) {
   openModal('中分類を追加', `
     <div class="form-group">
@@ -1172,6 +1018,7 @@ function openAddSubModal(catId) {
     if (!cat) return false;
     const maxOrd = cat.subcategories.length
       ? Math.max(...cat.subcategories.map(s => s.order)) : 0;
+    // isDefault は付けない（ユーザー追加なので編集・削除可）
     cat.subcategories.push({ id: generateId(), name, order: maxOrd + 1 });
     saveCategoriesCache(); renderCategories();
     return true;
@@ -1181,7 +1028,7 @@ function openAddSubModal(catId) {
 function openEditSubModal(catId, subId) {
   const cat = state.categories.find(c => c.id === catId);
   const sub = cat?.subcategories.find(s => s.id === subId);
-  if (!sub) return;
+  if (!sub || sub.isDefault) return;
   openModal('中分類を編集', `
     <div class="form-group">
       <label>名前</label>
@@ -1200,7 +1047,8 @@ function openEditSubModal(catId, subId) {
 function deleteSubcategory(catId, subId) {
   const cat = state.categories.find(c => c.id === catId);
   const sub = cat?.subcategories.find(s => s.id === subId);
-  if (!sub || !confirm(`「${sub.name}」を削除しますか？`)) return;
+  if (!sub || sub.isDefault) return;
+  if (!confirm(`「${sub.name}」を削除しますか？`)) return;
   cat.subcategories = cat.subcategories.filter(s => s.id !== subId);
   saveCategoriesCache(); renderCategories();
   showToast('削除しました', 'success');
@@ -1241,18 +1089,13 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 function loadSettingsToForm() {
   const key   = Storage.get(LS.CLAUDE_KEY);
   const model = Storage.get(LS.CLAUDE_MODEL);
-  if (key)   document.getElementById('claude-api-key').value  = key;
-  if (model) document.getElementById('claude-model').value    = model;
-  else       document.getElementById('claude-model').value    = DEFAULT_MODEL;
+  if (key)   document.getElementById('claude-api-key').value = key;
+  document.getElementById('claude-model').value = model || DEFAULT_MODEL;
 
+  // Firebase configをtextareaに復元
   const fb = Storage.get(LS.FIREBASE);
   if (fb) {
-    document.getElementById('fb-api-key').value             = fb.apiKey            || '';
-    document.getElementById('fb-auth-domain').value         = fb.authDomain        || '';
-    document.getElementById('fb-project-id').value          = fb.projectId         || '';
-    document.getElementById('fb-storage-bucket').value      = fb.storageBucket     || '';
-    document.getElementById('fb-messaging-sender-id').value = fb.messagingSenderId || '';
-    document.getElementById('fb-app-id').value              = fb.appId             || '';
+    document.getElementById('fb-config-input').value = JSON.stringify(fb, null, 2);
   }
 }
 
@@ -1266,23 +1109,30 @@ function saveClaudeSettings() {
 }
 
 async function saveFirebaseSettings() {
-  const config = {
-    apiKey:            document.getElementById('fb-api-key').value.trim(),
-    authDomain:        document.getElementById('fb-auth-domain').value.trim(),
-    projectId:         document.getElementById('fb-project-id').value.trim(),
-    storageBucket:     document.getElementById('fb-storage-bucket').value.trim(),
-    messagingSenderId: document.getElementById('fb-messaging-sender-id').value.trim(),
-    appId:             document.getElementById('fb-app-id').value.trim(),
-  };
-  if (!config.apiKey || !config.projectId) {
-    showToast('API KeyとProject IDは必須です', 'error'); return;
+  const text   = document.getElementById('fb-config-input').value;
+  const config = parseFirebaseConfig(text);
+  const msg    = document.getElementById('fb-config-msg');
+
+  if (!config || !config.apiKey || !config.projectId) {
+    msg.textContent  = '❌ 解析失敗。JSON形式か確認してください';
+    msg.style.color  = 'var(--expense)';
+    showToast('Firebase設定の解析に失敗しました', 'error');
+    return;
   }
+
   Storage.set(LS.FIREBASE, config);
+  // textareaをJSONに整形して表示
+  document.getElementById('fb-config-input').value = JSON.stringify(config, null, 2);
+
   try {
     await FB.init(config);
     document.getElementById('firebase-notice').classList.add('hidden');
+    msg.textContent = '✅ 接続しました';
+    msg.style.color = 'var(--primary)';
     showToast('Firebase接続しました', 'success');
   } catch(e) {
+    msg.textContent = '❌ ' + e.message;
+    msg.style.color = 'var(--expense)';
     showToast('Firebase初期化エラー: ' + e.message, 'error');
   }
 }
@@ -1307,7 +1157,7 @@ async function pullFromFirebase(showMsg = true) {
       saveCategoriesCache(); renderCategories();
       if (showMsg) showToast('Firebaseから取得しました', 'success');
     } else if (showMsg) {
-      showToast('Firestoreにデータがありません。Firebaseへ保存を実行してください。', 'error');
+      showToast('Firestoreにデータがありません。「↑ Firebaseへ保存」を実行してください', 'error');
     }
   } catch(e) {
     if (showMsg) showToast('取得エラー: ' + e.message, 'error');
@@ -1365,9 +1215,11 @@ async function handleAuth() {
   } else {
     try { await FB.signIn(); }
     catch(e) {
-      const msg = e.code === 'auth/popup-blocked'       ? 'ポップアップがブロックされました。許可してください。'
-                : e.code === 'auth/unauthorized-domain' ? 'このドメインはFirebaseで未承認です。localhostで起動してください。'
-                : e.message;
+      const msg = e.code === 'auth/popup-blocked'
+        ? 'ポップアップがブロックされました。許可してください。'
+        : e.code === 'auth/unauthorized-domain'
+        ? 'このドメインはFirebaseで未承認です。localhostで起動してください。'
+        : e.message;
       showToast('ログインエラー: ' + msg, 'error');
     }
   }
@@ -1413,17 +1265,13 @@ function init() {
 
   const fbConfig = Storage.get(LS.FIREBASE);
   if (fbConfig?.apiKey) {
-    FB.init(fbConfig).catch(e => {
-      console.error('Firebase init:', e);
-    });
     document.getElementById('firebase-notice').classList.add('hidden');
+    FB.init(fbConfig).catch(e => console.error('Firebase init:', e));
   } else {
     document.getElementById('firebase-notice').classList.remove('hidden');
   }
 
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeModal();
-  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
   const chatInput = document.getElementById('chat-input');
   chatInput.addEventListener('input', () => {
