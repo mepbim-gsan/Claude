@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    bat_monitor の実装部。bat_monitor.bat から呼び出される。直接実行しないこと。
+    Monitor helper for bat_monitor.bat. Do not run directly.
 #>
 param(
     [string]$SkipInternal = 'YES',
@@ -12,23 +12,18 @@ param(
 )
 
 $skipInternal = $SkipInternal -eq 'YES'
-$primaryIdx   = $PrimaryMon - 1   # 0-based
+$primaryIdx   = $PrimaryMon - 1
 $settings = @(
     @{ Width=$Mon1W; Height=$Mon1H; Refresh=$Mon1R; Scale=$Mon1S },
     @{ Width=$Mon2W; Height=$Mon2H; Refresh=$Mon2R; Scale=$Mon2S }
 )
 
-# ============================================================
-#  Win32 API 定義
-# ============================================================
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 public class DisplayHelper {
-
-    // ---- P/Invoke ----
 
     [DllImport("user32.dll", CharSet=CharSet.Ansi)]
     public static extern bool EnumDisplayDevices(
@@ -42,7 +37,6 @@ public class DisplayHelper {
     public static extern int ApplyDisplaySettings(
         string deviceName, ref DEVMODE dm, IntPtr hwnd, uint flags, IntPtr lp);
 
-    // null デバイス名・null DEVMODE でコミット用
     [DllImport("user32.dll", EntryPoint="ChangeDisplaySettingsExA")]
     public static extern int CommitDisplaySettings(
         string deviceName, IntPtr dm, IntPtr hwnd, uint flags, IntPtr lp);
@@ -67,14 +61,12 @@ public class DisplayHelper {
     public static extern int DisplayConfigGetDeviceInfo(
         ref DISPLAYCONFIG_SOURCE_DEVICE_NAME request);
 
-    // ---- 定数 ----
-
     public const uint DISPLAY_DEVICE_ACTIVE = 0x00000001;
     public const uint QDC_ONLY_ACTIVE_PATHS = 0x00000002;
     public const uint DCDI_GET_SOURCE_NAME  = 1;
     public const uint DCDI_GET_TARGET_NAME  = 2;
     public const uint OUTPUT_TECH_INTERNAL  = 0x80000000;
-    public const uint OUTPUT_TECH_DP_EMBED  = 11;   // eDP
+    public const uint OUTPUT_TECH_DP_EMBED  = 11;
     public const uint DM_POSITION      = 0x00000020;
     public const uint DM_PELSWIDTH     = 0x00080000;
     public const uint DM_PELSHEIGHT    = 0x00100000;
@@ -82,8 +74,6 @@ public class DisplayHelper {
     public const uint CDS_UPDATEREG    = 0x00000001;
     public const uint CDS_NORESET      = 0x10000000;
     public const uint CDS_SET_PRIMARY  = 0x00000010;
-
-    // ---- 構造体 ----
 
     [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
     public struct DISPLAY_DEVICE {
@@ -164,7 +154,6 @@ public class DisplayHelper {
         public POINTL position;
     }
 
-    // DISPLAYCONFIG_TARGET_MODE (48 bytes) と SOURCE_MODE (20 bytes) の union
     [StructLayout(LayoutKind.Explicit, Size=48)]
     public struct DISPLAYCONFIG_MODE_INFO_UNION {
         [FieldOffset(0)] public DISPLAYCONFIG_TARGET_MODE targetMode;
@@ -201,9 +190,6 @@ public class DisplayHelper {
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string viewGdiDeviceName;
     }
 
-    // ---- メソッド ----
-
-    /// <summary>アクティブなディスプレイの GDI デバイス名一覧を返す</summary>
     public static string[] GetActiveDeviceNames() {
         var names = new List<string>();
         uint i = 0;
@@ -219,46 +205,37 @@ public class DisplayHelper {
         return names.ToArray();
     }
 
-    /// <summary>QueryDisplayConfig で内蔵ディスプレイの GDI 名を取得する</summary>
     public static HashSet<string> GetInternalGdiNames() {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         uint numPaths = 0, numModes = 0;
         if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, out numPaths, out numModes) != 0)
             return result;
-
         var paths = new DISPLAYCONFIG_PATH_INFO[numPaths];
         var modes = new DISPLAYCONFIG_MODE_INFO[numModes];
         uint topology = 0;
         if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, ref numPaths, paths, ref numModes, modes, out topology) != 0)
             return result;
-
         foreach (var path in paths) {
-            // 出力技術を取得して内蔵か判定
             var tn = new DISPLAYCONFIG_TARGET_DEVICE_NAME();
-            tn.header.type       = DCDI_GET_TARGET_NAME;
-            tn.header.size       = (uint)Marshal.SizeOf(tn);
-            tn.header.adapterId  = path.targetInfo.adapterId;
-            tn.header.id         = path.targetInfo.id;
+            tn.header.type      = DCDI_GET_TARGET_NAME;
+            tn.header.size      = (uint)Marshal.SizeOf(tn);
+            tn.header.adapterId = path.targetInfo.adapterId;
+            tn.header.id        = path.targetInfo.id;
             if (DisplayConfigGetDeviceInfo(ref tn) != 0) continue;
-
             bool isInternal = (tn.outputTechnology == OUTPUT_TECH_INTERNAL)
                            || (tn.outputTechnology == OUTPUT_TECH_DP_EMBED);
             if (!isInternal) continue;
-
-            // GDI デバイス名を取得
             var sn = new DISPLAYCONFIG_SOURCE_DEVICE_NAME();
             sn.header.type      = DCDI_GET_SOURCE_NAME;
             sn.header.size      = (uint)Marshal.SizeOf(sn);
             sn.header.adapterId = path.sourceInfo.adapterId;
             sn.header.id        = path.sourceInfo.id;
             if (DisplayConfigGetDeviceInfo(ref sn) != 0) continue;
-
             result.Add(sn.viewGdiDeviceName.TrimEnd());
         }
         return result;
     }
 
-    /// <summary>解像度・位置・プライマリを一括設定（CDS_NORESET で保留）</summary>
     public static string ApplySettings(
             string deviceName, int x, int y, int w, int h, int refresh, bool isPrimary) {
         var dm = new DEVMODE();
@@ -277,44 +254,37 @@ public class DisplayHelper {
         return r == 0 ? "OK" : ("ERR:" + r);
     }
 
-    /// <summary>保留中の設定を一括コミットする</summary>
     public static void Commit() {
         CommitDisplaySettings(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
     }
 }
 '@
 
-# ============================================================
-#  1. アクティブなディスプレイを列挙
-# ============================================================
+# 1. Enumerate active displays
 $allDevices = [DisplayHelper]::GetActiveDeviceNames()
-Write-Host "  アクティブディスプレイ ($($allDevices.Count) 台):"
+Write-Host "  Active displays: $($allDevices.Count)"
 foreach ($d in $allDevices) { Write-Host "    $d" }
 
-# ============================================================
-#  2. 内蔵ディスプレイを識別・除外
-# ============================================================
+# 2. Identify and filter internal display
 $internalSet = [DisplayHelper]::GetInternalGdiNames()
-Write-Host "  内蔵ディスプレイ検出: $($internalSet.Count) 台 $(if($internalSet.Count -gt 0){'(' + ($internalSet -join ', ') + ')'})"
+Write-Host "  Internal displays detected: $($internalSet.Count)"
 
 if ($skipInternal) {
     $extDevices = @($allDevices | Where-Object { -not $internalSet.Contains($_) })
-    Write-Host "  内蔵を除外 → 外部モニター $($extDevices.Count) 台を使用"
+    Write-Host "  Using external monitors only: $($extDevices.Count)"
 } else {
     $extDevices = @($allDevices)
-    Write-Host "  全ディスプレイを使用 ($($extDevices.Count) 台)"
+    Write-Host "  Using all displays: $($extDevices.Count)"
 }
 
 if ($extDevices.Count -lt 1) {
-    Write-Host "  [エラー] 対象ディスプレイが見つかりません"
+    Write-Host "  ERROR: No target display found"
     exit 1
 }
 
-# ============================================================
-#  3. 配置位置を計算
-#     LAYOUT=1-2: MON1=左(x=0), MON2=右(x=MON1.Width)
-#     LAYOUT=2-1: MON2=左(x=0), MON1=右(x=MON2.Width)
-# ============================================================
+# 3. Calculate positions
+#    LAYOUT=1-2: MON1=left(x=0), MON2=right(x=MON1.Width)
+#    LAYOUT=2-1: MON2=left(x=0), MON1=right(x=MON2.Width)
 if ($Layout -eq '1-2') {
     $positions = @(
         @{ X = 0;                  Y = 0 },
@@ -327,45 +297,36 @@ if ($Layout -eq '1-2') {
     )
 }
 
-# ============================================================
-#  4. 解像度・位置・プライマリを適用
-# ============================================================
-Write-Host "  解像度・位置・メインモニターを適用中..."
+# 4. Apply resolution, position, primary
+Write-Host "  Applying settings..."
 $applyCount = [Math]::Min($extDevices.Count, $MonCount)
 for ($i = 0; $i -lt $applyCount; $i++) {
     $s   = $settings[$i]
     $p   = $positions[$i]
     $pri = ($i -eq $primaryIdx)
-    $tag = if ($pri) { '[メイン]' } else { '        ' }
+    $tag = if ($pri) { '[PRIMARY]' } else { '         ' }
     $r   = [DisplayHelper]::ApplySettings(
                $extDevices[$i], $p.X, $p.Y, $s.Width, $s.Height, $s.Refresh, $pri)
-    Write-Host "    MON$($i+1) $tag $($extDevices[$i]) : $($s.Width)x$($s.Height) @$($s.Refresh)Hz  位置($($p.X),$($p.Y))  $r"
+    Write-Host "    MON$($i+1) $tag $($extDevices[$i]) : $($s.Width)x$($s.Height) @$($s.Refresh)Hz pos=($($p.X),$($p.Y)) -> $r"
 }
-
 [DisplayHelper]::Commit()
-Write-Host "  表示設定をコミットしました"
+Write-Host "  Display settings committed"
 
-# ============================================================
-#  5. DPI スケールをレジストリに書き込み
-# ============================================================
-Write-Host "  DPI スケールをレジストリに書き込み中..."
+# 5. DPI scale via registry
+Write-Host "  Writing DPI scale to registry..."
 $regBase = 'HKCU:\Control Panel\Desktop\PerMonitorSettings'
-
 for ($j = 0; $j -lt $applyCount; $j++) {
     $dd = New-Object DisplayHelper+DISPLAY_DEVICE
     $dd.cb = [Runtime.InteropServices.Marshal]::SizeOf($dd)
     [DisplayHelper]::EnumDisplayDevices($extDevices[$j], 0, [ref]$dd, 0) | Out-Null
-
-    # DeviceID の末尾部分をキー名として使用
     $monId = $dd.DeviceID -replace '.*\\', '' -replace '#', '_'
     if (-not $monId) {
-        Write-Host "    MON$($j+1): DeviceID 取得失敗 → DPI スキップ"
+        Write-Host "    MON$($j+1): DeviceID not found, DPI skipped"
         continue
     }
-
     $key = Join-Path $regBase $monId
     if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
     Set-ItemProperty -Path $key -Name 'DpiValue' -Value $settings[$j].Scale -Type DWord -Force
-    Write-Host "    MON$($j+1): DpiValue=$($settings[$j].Scale)  ($key)"
+    Write-Host "    MON$($j+1): DpiValue=$($settings[$j].Scale) -> $key"
 }
-Write-Host "  DPI 設定完了（反映にはサインアウトが必要です）"
+Write-Host "  DPI settings written (sign out required to apply)"
