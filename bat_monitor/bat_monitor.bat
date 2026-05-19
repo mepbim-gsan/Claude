@@ -12,7 +12,6 @@ setlocal EnableDelayedExpansion
 ::  モニター番号について:
 ::    ノートPCの内蔵画面は SKIP_INTERNAL=YES で自動除外される。
 ::    MON1 / MON2 は「外部モニターの 1 台目 / 2 台目」を指す。
-::    外部モニターの列挙順は Windows の検出順（通常は左側が先）。
 ::
 ::  LAYOUT について:
 ::    1-2  →  MON1 が左、MON2 が右
@@ -70,7 +69,6 @@ if %DETECTED% LSS 2 (
 echo.
 echo [1/3] 表示モードを「拡張」に切り替えています...
 DisplaySwitch.exe /extend
-timeout /t 2 /nobreak > nul
 echo     完了
 
 :: --- [2/3] 解像度・配置・メインモニター設定 ---
