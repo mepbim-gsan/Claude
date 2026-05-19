@@ -260,29 +260,38 @@ public class DisplayHelper {
 }
 '@
 
-# 1. Enumerate active displays
-$allDevices = [DisplayHelper]::GetActiveDeviceNames()
-Write-Host "  Active displays: $($allDevices.Count)"
-foreach ($d in $allDevices) { Write-Host "    $d" }
-
-# 2. Identify and filter internal display
-$internalSet = [DisplayHelper]::GetInternalGdiNames()
-Write-Host "  Internal displays detected: $($internalSet.Count)"
-
-if ($skipInternal) {
-    $extDevices = @($allDevices | Where-Object { -not $internalSet.Contains($_) })
-    Write-Host "  Using external monitors only: $($extDevices.Count)"
-} else {
-    $extDevices = @($allDevices)
-    Write-Host "  Using all displays: $($extDevices.Count)"
+# Helper: get external device list
+function Get-ExternalDevices {
+    $all      = [DisplayHelper]::GetActiveDeviceNames()
+    $internal = [DisplayHelper]::GetInternalGdiNames()
+    if ($skipInternal) {
+        return @($all | Where-Object { -not $internal.Contains($_) })
+    } else {
+        return @($all)
+    }
 }
 
-if ($extDevices.Count -lt 1) {
-    Write-Host "  ERROR: No target display found"
-    exit 1
+# 1. Wait until expected number of external monitors are active (max 20 sec)
+Write-Host "  Waiting for $MonCount external monitor(s)..."
+$maxWait = 20
+$waited  = 0
+$extDevices = @()
+while ($true) {
+    $extDevices = Get-ExternalDevices
+    if ($extDevices.Count -ge $MonCount) { break }
+    if ($waited -ge $maxWait) {
+        Write-Host "  WARNING: Timeout. Expected $MonCount, found $($extDevices.Count) external monitor(s)."
+        if ($extDevices.Count -eq 0) { exit 1 }
+        break
+    }
+    Write-Host "  Found $($extDevices.Count)/$MonCount - retrying in 1s... ($waited/$maxWait)"
+    Start-Sleep -Seconds 1
+    $waited++
 }
+Write-Host "  Detected $($extDevices.Count) external monitor(s):"
+foreach ($d in $extDevices) { Write-Host "    $d" }
 
-# 3. Calculate positions
+# 2. Calculate positions
 #    LAYOUT=1-2: MON1=left(x=0), MON2=right(x=MON1.Width)
 #    LAYOUT=2-1: MON2=left(x=0), MON1=right(x=MON2.Width)
 if ($Layout -eq '1-2') {
@@ -297,7 +306,7 @@ if ($Layout -eq '1-2') {
     )
 }
 
-# 4. Apply resolution, position, primary
+# 3. Apply resolution, position, primary
 Write-Host "  Applying settings..."
 $applyCount = [Math]::Min($extDevices.Count, $MonCount)
 for ($i = 0; $i -lt $applyCount; $i++) {
@@ -312,7 +321,7 @@ for ($i = 0; $i -lt $applyCount; $i++) {
 [DisplayHelper]::Commit()
 Write-Host "  Display settings committed"
 
-# 5. DPI scale via registry
+# 4. DPI scale via registry
 Write-Host "  Writing DPI scale to registry..."
 $regBase = 'HKCU:\Control Panel\Desktop\PerMonitorSettings'
 for ($j = 0; $j -lt $applyCount; $j++) {
