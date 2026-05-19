@@ -6,34 +6,43 @@ setlocal EnableDelayedExpansion
 ::  [設定欄] ここだけ書き換えて使用する
 ::
 ::  使い方:
-::    このファイルをコピーして home.bat / office.bat 等の名前で保存し、
+::    このファイルをコピーして home.bat / office.bat などの名前で保存し、
 ::    それぞれの環境に合わせて下記の値を書き換える。
 ::
 ::  モニター番号について:
-::    Windows の「ディスプレイの設定」で表示される番号順に対応する。
-::    （プライマリモニターが 1 番）
+::    ノートPCの内蔵画面は SKIP_INTERNAL=YES で自動除外される。
+::    MON1 / MON2 は「外部モニターの 1 台目 / 2 台目」を指す。
+::    外部モニターの列挙順は Windows の検出順（通常は左側が先）。
+::
+::  LAYOUT について:
+::    1-2  →  MON1 が左、MON2 が右
+::    2-1  →  MON2 が左、MON1 が右
+::
+::  PRIMARY_MON について:
+::    メインモニターにする外部モニター番号（1 または 2）
 ::
 ::  倍率（SCALE）の目安:
-::    100% → 96
-::    125% → 120
-::    150% → 144
-::    175% → 168
-::    200% → 192
+::    100% → 96   125% → 120   150% → 144
+::    175% → 168  200% → 192
 :: ================================================================
 
-:: --- モニター 1（プライマリ） ---
+set SKIP_INTERNAL=YES
+set PRIMARY_MON=1
+set LAYOUT=1-2
+
+:: --- 外部モニター 1 ---
 set MON1_WIDTH=1920
 set MON1_HEIGHT=1080
 set MON1_REFRESH=60
 set MON1_SCALE=96
 
-:: --- モニター 2（セカンダリ） ---
+:: --- 外部モニター 2 ---
 set MON2_WIDTH=2560
 set MON2_HEIGHT=1440
 set MON2_REFRESH=60
 set MON2_SCALE=120
 
-:: 接続モニター数（1 or 2）
+:: 使用する外部モニター数（1 or 2）
 set MONITOR_COUNT=2
 
 :: ================================================================
@@ -44,9 +53,9 @@ echo  bat_monitor - マルチモニター設定スクリプト
 echo ============================================
 echo.
 
-:: --- 現在の接続モニター数を確認 ---
-for /f "usebackq" %%n in (`powershell -NoProfile -Command "(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBasicDisplayParams | Where-Object {$_.Active -eq $true}).Count"`) do set DETECTED=%n
-echo 検出されたモニター数: %DETECTED% 台
+:: --- 接続モニター数を確認 ---
+for /f "usebackq" %%n in (`powershell -NoProfile -Command "(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBasicDisplayParams ^| Where-Object {$_.Active -eq $true}).Count"`) do set DETECTED=%%n
+echo 検出されたアクティブモニター数: %DETECTED% 台
 
 if %DETECTED% LSS 2 (
     echo.
@@ -57,154 +66,40 @@ if %DETECTED% LSS 2 (
     exit /b 1
 )
 
-:: --- 拡張モードへ切り替え ---
+:: --- [1/3] 拡張モードへ切り替え ---
 echo.
 echo [1/3] 表示モードを「拡張」に切り替えています...
 DisplaySwitch.exe /extend
 timeout /t 2 /nobreak > nul
 echo     完了
 
-:: --- 解像度を設定（PowerShell + Win32 API） ---
+:: --- [2/3] 解像度・配置・メインモニター設定 ---
 echo.
-echo [2/3] 解像度を設定しています...
-echo     モニター 1: %MON1_WIDTH%x%MON1_HEIGHT% @%MON1_REFRESH%Hz
-echo     モニター 2: %MON2_WIDTH%x%MON2_HEIGHT% @%MON2_REFRESH%Hz
+echo [2/3] 解像度・配置・メインモニターを設定しています...
+echo     SKIP_INTERNAL = %SKIP_INTERNAL%
+echo     PRIMARY_MON   = %PRIMARY_MON%
+echo     LAYOUT        = %LAYOUT%
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
+set "PSHELPER=%~dp0_monitor_helper.ps1"
 
-public class DisplayHelper {
-    [DllImport(\"user32.dll\", CharSet = CharSet.Ansi)]
-    public static extern int EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE dm);
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PSHELPER%" ^
+    -SkipInternal "%SKIP_INTERNAL%" ^
+    -PrimaryMon %PRIMARY_MON% ^
+    -Layout "%LAYOUT%" ^
+    -Mon1W %MON1_WIDTH% -Mon1H %MON1_HEIGHT% -Mon1R %MON1_REFRESH% -Mon1S %MON1_SCALE% ^
+    -Mon2W %MON2_WIDTH% -Mon2H %MON2_HEIGHT% -Mon2R %MON2_REFRESH% -Mon2S %MON2_SCALE% ^
+    -MonCount %MONITOR_COUNT%
 
-    [DllImport(\"user32.dll\", CharSet = CharSet.Ansi)]
-    public static extern int ChangeDisplaySettingsEx(string deviceName, ref DEVMODE dm, IntPtr hwnd, uint dwFlags, IntPtr lParam);
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [エラー] PowerShell スクリプトが失敗しました。
+    echo          管理者権限で実行するか、README を確認してください。
+    echo.
+    pause
+    exit /b %ERRORLEVEL%
+)
 
-    [DllImport(\"user32.dll\", CharSet = CharSet.Ansi)]
-    public static extern bool EnumDisplayDevices(string lpDevice, uint iDevNum, ref DISPLAY_DEVICE lpDisplayDevice, uint dwFlags);
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    public struct DEVMODE {
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
-        public ushort dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
-        public uint dmFields;
-        public int dmPositionX, dmPositionY;
-        public uint dmDisplayOrientation, dmDisplayFixedOutput;
-        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
-        public ushort dmLogPixels;
-        public uint dmBitsPerPel, dmPelsWidth, dmPelsHeight;
-        public uint dmDisplayFlags, dmDisplayFrequency;
-        public uint dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    public struct DISPLAY_DEVICE {
-        public uint cb;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
-        public uint StateFlags;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
-    }
-
-    public const uint DM_PELSWIDTH    = 0x00080000;
-    public const uint DM_PELSHEIGHT   = 0x00100000;
-    public const uint DM_DISPLAYFREQUENCY = 0x00400000;
-    public const uint CDS_UPDATEREGISTRY  = 0x00000001;
-    public const uint DISPLAY_DEVICE_ACTIVE = 0x00000001;
-
-    public static string SetResolution(string deviceName, int width, int height, int refresh) {
-        DEVMODE dm = new DEVMODE();
-        dm.dmSize = (ushort)Marshal.SizeOf(dm);
-        if (EnumDisplaySettings(deviceName, -1, ref dm) == 0)
-            return \"ERR: EnumDisplaySettings failed for \" + deviceName;
-        dm.dmPelsWidth       = (uint)width;
-        dm.dmPelsHeight      = (uint)height;
-        dm.dmDisplayFrequency = (uint)refresh;
-        dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
-        int result = ChangeDisplaySettingsEx(deviceName, ref dm, IntPtr.Zero, CDS_UPDATEREGISTRY, IntPtr.Zero);
-        return result == 0 ? \"OK\" : \"ERR: ChangeDisplaySettingsEx returned \" + result;
-    }
-
-    public static string[] GetActiveDeviceNames() {
-        var names = new System.Collections.Generic.List<string>();
-        uint i = 0;
-        DISPLAY_DEVICE dd = new DISPLAY_DEVICE();
-        dd.cb = (uint)Marshal.SizeOf(dd);
-        while (EnumDisplayDevices(null, i, ref dd, 0)) {
-            if ((dd.StateFlags & DISPLAY_DEVICE_ACTIVE) != 0)
-                names.Add(dd.DeviceName);
-            i++;
-            dd = new DISPLAY_DEVICE();
-            dd.cb = (uint)Marshal.SizeOf(dd);
-        }
-        return names.ToArray();
-    }
-}
-'@
-    $devices = [DisplayHelper]::GetActiveDeviceNames();
-    $settings = @(
-        @{ Width=%MON1_WIDTH%; Height=%MON1_HEIGHT%; Refresh=%MON1_REFRESH% },
-        @{ Width=%MON2_WIDTH%; Height=%MON2_HEIGHT%; Refresh=%MON2_REFRESH% }
-    );
-    for ($i = 0; $i -lt [Math]::Min($devices.Count, $settings.Count); $i++) {
-        $s = $settings[$i];
-        $r = [DisplayHelper]::SetResolution($devices[$i], $s.Width, $s.Height, $s.Refresh);
-        Write-Host ('    DISPLAY' + ($i+1) + ' (' + $devices[$i] + '): ' + $r);
-    }"
-
-echo     完了
-
-:: --- DPI スケールをレジストリに設定 ---
-echo.
-echo [3/3] DPI スケールを設定しています...
-echo     モニター 1: %MON1_SCALE% （倍率 %MON1_SCALE%%%）
-echo     モニター 2: %MON2_SCALE% （倍率 %MON2_SCALE%%%）
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$devices = @();
-    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public class DevEnum {
-    [DllImport(\"user32.dll\", CharSet = CharSet.Ansi)]
-    public static extern bool EnumDisplayDevices(string lp, uint i, ref DD dd, uint f);
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    public struct DD {
-        public uint cb;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)]  public string DeviceName;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=128)] public string DeviceString;
-        public uint StateFlags;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=128)] public string DeviceID;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=128)] public string DeviceKey;
-    }
-    public const uint ACTIVE = 1;
-}
-'@
-    $dd = New-Object DevEnum+DD; $dd.cb = [System.Runtime.InteropServices.Marshal]::SizeOf($dd);
-    $i = 0;
-    while ([DevEnum]::EnumDisplayDevices($null, $i, [ref]$dd, 0)) {
-        if ($dd.StateFlags -band [DevEnum]::ACTIVE) { $devices += $dd.DeviceName }
-        $i++; $dd = New-Object DevEnum+DD; $dd.cb = [System.Runtime.InteropServices.Marshal]::SizeOf($dd);
-    }
-    $scales = @(%MON1_SCALE%, %MON2_SCALE%);
-    $regBase = 'HKCU:\Control Panel\Desktop\PerMonitorSettings';
-    for ($j = 0; $j -lt [Math]::Min($devices.Count, $scales.Count); $j++) {
-        $devName = $devices[$j] -replace '\\\\', '';
-        $devSub  = New-Object DevEnum+DD; $devSub.cb = [System.Runtime.InteropServices.Marshal]::SizeOf($devSub);
-        [DevEnum]::EnumDisplayDevices($devices[$j], 0, [ref]$devSub, 0) | Out-Null;
-        $id = $devSub.DeviceID -replace '.*\\', '' -replace '#', '_';
-        $key = Join-Path $regBase $id;
-        if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
-        Set-ItemProperty -Path $key -Name 'DpiValue' -Value $scales[$j] -Type DWord -Force;
-        Write-Host ('    DISPLAY' + ($j+1) + ': DpiValue=' + $scales[$j] + ' -> ' + $key);
-    }"
-
-echo     完了
-
+:: --- 完了メッセージ ---
 echo.
 echo ============================================
 echo  設定完了
