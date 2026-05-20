@@ -1,8 +1,11 @@
 name: Copy to OneDrive
 
 on:
-  repository_dispatch:
-    types: [copy-to-onedrive]
+  push:
+    paths:
+      - '.github/triggers/copy-request.json'
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       source_path:
@@ -14,7 +17,7 @@ on:
         required: true
         type: string
       tool_name:
-        description: 'ツール名 → フォルダ名のベース ({name}_YYYYMMDD)'
+        description: 'ツール名 (フォルダ名: {name}_YYYYMMDD)'
         required: true
         type: string
 
@@ -23,6 +26,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Load trigger parameters
+        id: params
+        run: |
+          if [ -f .github/triggers/copy-request.json ]; then
+            echo "source_path=$(jq -r .source_path .github/triggers/copy-request.json)" >> $GITHUB_OUTPUT
+            echo "onedrive_parent=$(jq -r .onedrive_parent .github/triggers/copy-request.json)" >> $GITHUB_OUTPUT
+            echo "tool_name=$(jq -r .tool_name .github/triggers/copy-request.json)" >> $GITHUB_OUTPUT
+          else
+            echo "source_path=${{ inputs.source_path }}" >> $GITHUB_OUTPUT
+            echo "onedrive_parent=${{ inputs.onedrive_parent }}" >> $GITHUB_OUTPUT
+            echo "tool_name=${{ inputs.tool_name }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,7 +52,7 @@ jobs:
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ONEDRIVE_REFRESH_TOKEN: ${{ secrets.ONEDRIVE_REFRESH_TOKEN }}
-          SOURCE_PATH: ${{ github.event.client_payload.source_path || inputs.source_path }}
-          ONEDRIVE_PARENT: ${{ github.event.client_payload.onedrive_parent || inputs.onedrive_parent }}
-          TOOL_NAME: ${{ github.event.client_payload.tool_name || inputs.tool_name }}
+          SOURCE_PATH: ${{ steps.params.outputs.source_path }}
+          ONEDRIVE_PARENT: ${{ steps.params.outputs.onedrive_parent }}
+          TOOL_NAME: ${{ steps.params.outputs.tool_name }}
         run: python .github/scripts/copy_to_onedrive.py
