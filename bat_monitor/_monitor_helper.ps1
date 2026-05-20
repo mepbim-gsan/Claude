@@ -8,10 +8,12 @@ param(
     [string]$Layout       = '1-2',
     [int]   $Mon1W = 1920, [int]$Mon1H = 1080, [int]$Mon1R = 60, [int]$Mon1S = 96,
     [int]   $Mon2W = 2560, [int]$Mon2H = 1440, [int]$Mon2R = 60, [int]$Mon2S = 120,
-    [int]   $MonCount = 2
+    [int]   $MonCount = 2,
+    [string]$LidOpen = 'NO'
 )
 
 $skipInternal = $SkipInternal -eq 'YES'
+$lidOpen      = $LidOpen -eq 'YES'
 $primaryIdx   = $PrimaryMon - 1
 $settings = @(
     @{ Width=$Mon1W; Height=$Mon1H; Refresh=$Mon1R; Scale=$Mon1S },
@@ -242,12 +244,15 @@ public class DisplayHelper {
         dm.dmSize = (ushort)Marshal.SizeOf(dm);
         if (EnumDisplaySettings(deviceName, -1, ref dm) == 0)
             return "ERR: EnumDisplaySettings failed";
-        dm.dmPositionX        = x;
-        dm.dmPositionY        = y;
-        dm.dmPelsWidth        = (uint)w;
-        dm.dmPelsHeight       = (uint)h;
-        dm.dmDisplayFrequency = (uint)refresh;
-        dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT | DM_FREQ;
+        dm.dmPositionX = x;
+        dm.dmPositionY = y;
+        dm.dmFields    = DM_POSITION;
+        if (w > 0 && h > 0) {
+            dm.dmPelsWidth        = (uint)w;
+            dm.dmPelsHeight       = (uint)h;
+            dm.dmDisplayFrequency = (uint)refresh;
+            dm.dmFields |= DM_PELSWIDTH | DM_PELSHEIGHT | DM_FREQ;
+        }
         uint flags = CDS_UPDATEREG | CDS_NORESET;
         if (isPrimary) flags |= CDS_SET_PRIMARY;
         int r = ApplyDisplaySettings(deviceName, ref dm, IntPtr.Zero, flags, IntPtr.Zero);
@@ -320,6 +325,25 @@ for ($i = 0; $i -lt $applyCount; $i++) {
 }
 [DisplayHelper]::Commit()
 Write-Host "  Display settings committed"
+
+# 3.5. Internal display placement (lid-open mode)
+if ($lidOpen) {
+    Write-Host "  Lid is open - placing internal display below MON2..."
+    $allDev      = [DisplayHelper]::GetActiveDeviceNames()
+    $internalSet = [DisplayHelper]::GetInternalGdiNames()
+    $intDevs     = @($allDev | Where-Object { $internalSet.Contains($_) })
+    if ($intDevs.Count -eq 0) {
+        Write-Host "  WARNING: No internal display found, skipping."
+    } else {
+        $intDev = $intDevs[0]
+        $intX   = $positions[1].X
+        $intY   = $positions[1].Y + $settings[1].Height
+        $r      = [DisplayHelper]::ApplySettings($intDev, $intX, $intY, 0, 0, 0, $false)
+        Write-Host "    INTERNAL $intDev : pos=($intX,$intY) resolution=unchanged -> $r"
+        [DisplayHelper]::Commit()
+        Write-Host "  Internal display placement committed"
+    }
+}
 
 # 4. DPI scale via registry
 Write-Host "  Writing DPI scale to registry..."
