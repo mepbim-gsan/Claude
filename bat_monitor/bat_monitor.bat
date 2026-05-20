@@ -56,6 +56,21 @@ echo.
 for /f "usebackq" %%n in (`powershell -NoProfile -Command "(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBasicDisplayParams ^| Where-Object {$_.Active -eq $true}).Count"`) do set DETECTED=%%n
 echo 検出されたアクティブモニター数: %DETECTED% 台
 
+:: --- 蓋開閉検出 ---
+set /a LID_THRESHOLD=%MONITOR_COUNT%+1
+if %DETECTED% EQU %MONITOR_COUNT% (
+    set LID_OPEN=NO
+    echo 蓋の状態: 閉じている（LID_OPEN=NO）
+) else (
+    if %DETECTED% EQU %LID_THRESHOLD% (
+        set LID_OPEN=YES
+        echo 蓋の状態: 開いている（LID_OPEN=YES）
+    ) else (
+        set LID_OPEN=NO
+        echo 蓋の状態: 判定不能 -> LID_OPEN=NO
+    )
+)
+
 if %DETECTED% LSS 2 (
     echo.
     echo [警告] モニターが 1 台しか検出されていません。
@@ -86,7 +101,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%PSHELPER%" ^
     -Layout "%LAYOUT%" ^
     -Mon1W %MON1_WIDTH% -Mon1H %MON1_HEIGHT% -Mon1R %MON1_REFRESH% -Mon1S %MON1_SCALE% ^
     -Mon2W %MON2_WIDTH% -Mon2H %MON2_HEIGHT% -Mon2R %MON2_REFRESH% -Mon2S %MON2_SCALE% ^
-    -MonCount %MONITOR_COUNT%
+    -MonCount %MONITOR_COUNT% ^
+    -LidOpen "%LID_OPEN%"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
