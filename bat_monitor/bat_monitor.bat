@@ -2,51 +2,51 @@
 chcp 65001 > nul
 setlocal EnableDelayedExpansion
 
-:: ================================================================
-::  [Settings] Edit only this section
-::
-::  Usage:
-::    Copy this file as home.bat / office.bat etc. and
-::    configure the values below for each environment.
-::
-::  Monitor numbers:
-::    Internal display is excluded when SKIP_INTERNAL=YES.
-::    MON1 / MON2 refer to external monitor 1 and 2.
-::
-::  LAYOUT:
-::    1-2    ->  MON1 left, MON2 right
-::    2-1    ->  MON2 left, MON1 right
-::    1-L-2  ->  MON1 left, Laptop center, MON2 right  (lid open only)
-::    2-L-1  ->  MON2 left, Laptop center, MON1 right  (lid open only)
-::
-::  PRIMARY_MON:
-::    External monitor number to set as primary (1 or 2)
-::
-::  SCALE values (拡大/縮小):
-::    100% -> 96   125% -> 120   150% -> 144
-::    175% -> 168  200% -> 192
-:: ================================================================
+REM ================================================================
+REM  [Settings] Edit only this section
+REM
+REM  Usage:
+REM    Copy this file as home.bat / office.bat etc. and
+REM    configure the values below for each environment.
+REM
+REM  Monitor numbers:
+REM    Internal display is excluded when SKIP_INTERNAL=YES.
+REM    MON1 / MON2 refer to external monitor 1 and 2.
+REM
+REM  LAYOUT:
+REM    1-2    ->  MON1 left, MON2 right
+REM    2-1    ->  MON2 left, MON1 right
+REM    1-L-2  ->  MON1 left, Laptop center, MON2 right  (lid open only)
+REM    2-L-1  ->  MON2 left, Laptop center, MON1 right  (lid open only)
+REM
+REM  PRIMARY_MON:
+REM    External monitor number to set as primary (1 or 2)
+REM
+REM  SCALE values (DPI percentage):
+REM    100% -> 96   125% -> 120   150% -> 144
+REM    175% -> 168  200% -> 192
+REM ================================================================
 
 set SKIP_INTERNAL=YES
 set PRIMARY_MON=1
 set LAYOUT=1-2
 
-:: --- External Monitor 1 ---
+REM --- External Monitor 1 ---
 set MON1_WIDTH=1920
 set MON1_HEIGHT=1080
 set MON1_REFRESH=60
 set MON1_SCALE=96
 
-:: --- External Monitor 2 ---
+REM --- External Monitor 2 ---
 set MON2_WIDTH=2560
 set MON2_HEIGHT=1440
 set MON2_REFRESH=60
 set MON2_SCALE=120
 
-:: Number of external monitors (1 or 2)
+REM Number of external monitors (1 or 2)
 set MONITOR_COUNT=2
 
-:: ================================================================
+REM ================================================================
 
 echo.
 echo ============================================
@@ -54,22 +54,22 @@ echo  bat_monitor
 echo ============================================
 echo.
 
-:: --- Check active monitor count ---
+REM --- Check active monitor count ---
 for /f "usebackq" %%n in (`powershell -NoProfile -Command "(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBasicDisplayParams ^| Where-Object {$_.Active -eq $true}).Count"`) do set DETECTED=%%n
 echo Active monitors detected: %DETECTED%
 
-:: --- Lid open/close detection ---
+REM --- Lid open/close detection ---
 set /a LID_THRESHOLD=%MONITOR_COUNT%+1
 if %DETECTED% EQU %MONITOR_COUNT% (
     set LID_OPEN=NO
-    echo Lid: closed (LID_OPEN=NO)
+    echo Lid: closed (LID_OPEN=NO^)
 ) else (
     if %DETECTED% EQU %LID_THRESHOLD% (
         set LID_OPEN=YES
-        echo Lid: open (LID_OPEN=YES)
+        echo Lid: open (LID_OPEN=YES^)
     ) else (
         set LID_OPEN=NO
-        echo Lid: unknown -> LID_OPEN=NO
+        echo Lid: unknown -^> LID_OPEN=NO
     )
 )
 
@@ -82,13 +82,13 @@ if %DETECTED% LSS 2 (
     exit /b 1
 )
 
-:: --- [1/3] Switch to Extend mode ---
+REM --- [1/3] Switch to Extend mode ---
 echo.
 echo [1/3] Switching to Extend mode...
 DisplaySwitch.exe /extend
 echo     Done
 
-:: --- [2/3] Resolution / position / primary ---
+REM --- [2/3] Resolution / position / primary ---
 echo.
 echo [2/3] Applying resolution, position, primary...
 echo     SKIP_INTERNAL = %SKIP_INTERNAL%
@@ -115,7 +115,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-:: --- Done ---
+REM --- Done ---
 echo.
 echo ============================================
 echo  Done.
