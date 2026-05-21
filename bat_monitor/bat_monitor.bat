@@ -3,94 +3,94 @@ chcp 65001 > nul
 setlocal EnableDelayedExpansion
 
 :: ================================================================
-::  [設定欄] ここだけ書き換えて使用する
+::  [Settings] Edit only this section
 ::
-::  使い方:
-::    このファイルをコピーして home.bat / office.bat などの名前で保存し、
-::    それぞれの環境に合わせて下記の値を書き換える。
+::  Usage:
+::    Copy this file as home.bat / office.bat etc. and
+::    configure the values below for each environment.
 ::
-::  モニター番号について:
-::    ノートPCの内蔵画面は SKIP_INTERNAL=YES で自動除外される。
-::    MON1 / MON2 は「外部モニターの 1 台目 / 2 台目」を指す。
+::  Monitor numbers:
+::    Internal display is excluded when SKIP_INTERNAL=YES.
+::    MON1 / MON2 refer to external monitor 1 and 2.
 ::
-::  LAYOUT について:
-::    1-2    →  MON1 が左、MON2 が右
-::    2-1    →  MON2 が左、MON1 が右
-::    1-L-2  →  MON1 が左、内蔵ディスプレイが中央、MON2 が右（蓋が開いている時のみ）
-::    2-L-1  →  MON2 が左、内蔵ディスプレイが中央、MON1 が右（蓋が開いている時のみ）
+::  LAYOUT:
+::    1-2    ->  MON1 left, MON2 right
+::    2-1    ->  MON2 left, MON1 right
+::    1-L-2  ->  MON1 left, Laptop center, MON2 right  (lid open only)
+::    2-L-1  ->  MON2 left, Laptop center, MON1 right  (lid open only)
 ::
-::  PRIMARY_MON について:
-::    メインモニターにする外部モニター番号（1 または 2）
+::  PRIMARY_MON:
+::    External monitor number to set as primary (1 or 2)
 ::
-::  倍率（SCALE）の目安:
-::    100% → 96   125% → 120   150% → 144
-::    175% → 168  200% → 192
+::  SCALE values (拡大/縮小):
+::    100% -> 96   125% -> 120   150% -> 144
+::    175% -> 168  200% -> 192
 :: ================================================================
 
 set SKIP_INTERNAL=YES
 set PRIMARY_MON=1
 set LAYOUT=1-2
 
-:: --- 外部モニター 1 ---
+:: --- External Monitor 1 ---
 set MON1_WIDTH=1920
 set MON1_HEIGHT=1080
 set MON1_REFRESH=60
 set MON1_SCALE=96
 
-:: --- 外部モニター 2 ---
+:: --- External Monitor 2 ---
 set MON2_WIDTH=2560
 set MON2_HEIGHT=1440
 set MON2_REFRESH=60
 set MON2_SCALE=120
 
-:: 使用する外部モニター数（1 or 2）
+:: Number of external monitors (1 or 2)
 set MONITOR_COUNT=2
 
 :: ================================================================
 
 echo.
 echo ============================================
-echo  bat_monitor - マルチモニター設定スクリプト
+echo  bat_monitor
 echo ============================================
 echo.
 
-:: --- 接続モニター数を確認 ---
+:: --- Check active monitor count ---
 for /f "usebackq" %%n in (`powershell -NoProfile -Command "(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBasicDisplayParams ^| Where-Object {$_.Active -eq $true}).Count"`) do set DETECTED=%%n
-echo 検出されたアクティブモニター数: %DETECTED% 台
+echo Active monitors detected: %DETECTED%
 
-:: --- 蓋開閉検出 ---
+:: --- Lid open/close detection ---
 set /a LID_THRESHOLD=%MONITOR_COUNT%+1
 if %DETECTED% EQU %MONITOR_COUNT% (
     set LID_OPEN=NO
-    echo 蓋の状態: 閉じている（LID_OPEN=NO）
+    echo Lid: closed (LID_OPEN=NO)
 ) else (
     if %DETECTED% EQU %LID_THRESHOLD% (
         set LID_OPEN=YES
-        echo 蓋の状態: 開いている（LID_OPEN=YES）
+        echo Lid: open (LID_OPEN=YES)
     ) else (
         set LID_OPEN=NO
-        echo 蓋の状態: 判定不能 -> LID_OPEN=NO
+        echo Lid: unknown -> LID_OPEN=NO
     )
 )
 
 if %DETECTED% LSS 2 (
     echo.
-    echo [警告] モニターが 1 台しか検出されていません。
-    echo        外部モニターを接続してから再実行してください。
+    echo [WARNING] Only 1 monitor detected.
+    echo           Connect external monitors and try again.
     echo.
     pause
     exit /b 1
 )
 
-:: --- [1/3] 拡張モードへ切り替え ---
+:: --- [1/3] Switch to Extend mode ---
 echo.
-echo [1/3] 表示モードを「拡張」に切り替えています...
+echo [1/3] Switching to Extend mode...
 DisplaySwitch.exe /extend
-echo     完了
+echo     Done
 
-:: --- [2/3] 解像度・配置・メインモニター設定 ---
+:: --- [2/3] Resolution / position / primary ---
 echo.
-echo [2/3] 解像度・配置・メインモニターを設定しています...
+echo [2/3] Applying resolution, position, primary...
 echo     SKIP_INTERNAL = %SKIP_INTERNAL%
 echo     PRIMARY_MON   = %PRIMARY_MON%
 echo     LAYOUT        = %LAYOUT%
@@ -108,20 +108,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%PSHELPER%" ^
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [エラー] PowerShell スクリプトが失敗しました。
-    echo          管理者権限で実行するか、README を確認してください。
+    echo [ERROR] PowerShell script failed.
+    echo         Run as administrator or check README.
     echo.
     pause
     exit /b %ERRORLEVEL%
 )
 
-:: --- 完了メッセージ ---
+:: --- Done ---
 echo.
 echo ============================================
-echo  設定完了
-echo.
-echo  ※ DPI スケール: 即時反映を試みています。
-echo    反映されない場合はサインアウト後に再サインインしてください。
+echo  Done.
+echo  Note: DPI scale is applied immediately.
+echo  If not reflected, sign out and back in.
 echo ============================================
 echo.
 pause
