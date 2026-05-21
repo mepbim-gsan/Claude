@@ -63,6 +63,11 @@ public class DisplayHelper {
     public static extern int DisplayConfigGetDeviceInfo(
         ref DISPLAYCONFIG_SOURCE_DEVICE_NAME request);
 
+    [DllImport("user32.dll", CharSet=CharSet.Auto)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam,
+        uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+
     public const uint DISPLAY_DEVICE_ACTIVE = 0x00000001;
     public const uint QDC_ONLY_ACTIVE_PATHS = 0x00000002;
     public const uint DCDI_GET_SOURCE_NAME  = 1;
@@ -76,6 +81,9 @@ public class DisplayHelper {
     public const uint CDS_UPDATEREG    = 0x00000001;
     public const uint CDS_NORESET      = 0x10000000;
     public const uint CDS_SET_PRIMARY  = 0x00000010;
+    public const uint WM_SETTINGCHANGE = 0x001A;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+    public const uint DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE = 1;
 
     [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
     public struct DISPLAY_DEVICE {
@@ -238,6 +246,36 @@ public class DisplayHelper {
         return result;
     }
 
+    public static int[] GetInternalResolution() {
+        uint numPaths = 0, numModes = 0;
+        if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, out numPaths, out numModes) != 0)
+            return new int[] { 0, 0 };
+        var paths = new DISPLAYCONFIG_PATH_INFO[numPaths];
+        var modes = new DISPLAYCONFIG_MODE_INFO[numModes];
+        uint topology = 0;
+        if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, ref numPaths, paths, ref numModes, modes, out topology) != 0)
+            return new int[] { 0, 0 };
+        foreach (var path in paths) {
+            var tn = new DISPLAYCONFIG_TARGET_DEVICE_NAME();
+            tn.header.type      = DCDI_GET_TARGET_NAME;
+            tn.header.size      = (uint)Marshal.SizeOf(tn);
+            tn.header.adapterId = path.targetInfo.adapterId;
+            tn.header.id        = path.targetInfo.id;
+            if (DisplayConfigGetDeviceInfo(ref tn) != 0) continue;
+            bool isInternal = (tn.outputTechnology == OUTPUT_TECH_INTERNAL)
+                           || (tn.outputTechnology == OUTPUT_TECH_DP_EMBED);
+            if (!isInternal) continue;
+            uint modeIdx = path.sourceInfo.modeInfoIdx;
+            if (modeIdx == uint.MaxValue || modeIdx >= numModes) continue;
+            if (modes[modeIdx].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE) continue;
+            return new int[] {
+                (int)modes[modeIdx].modeInfo.sourceMode.width,
+                (int)modes[modeIdx].modeInfo.sourceMode.height
+            };
+        }
+        return new int[] { 0, 0 };
+    }
+
     public static string ApplySettings(
             string deviceName, int x, int y, int w, int h, int refresh, bool isPrimary) {
         var dm = new DEVMODE();
@@ -261,6 +299,14 @@ public class DisplayHelper {
 
     public static void Commit() {
         CommitDisplaySettings(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+    }
+
+    public static void BroadcastSettingChange() {
+        UIntPtr result;
+        SendMessageTimeout(
+            new IntPtr(unchecked((int)0xFFFF)),
+            WM_SETTINGCHANGE, UIntPtr.Zero, "Environment",
+            SMTO_ABORTIFHUNG, 5000, out result);
     }
 }
 '@
@@ -297,18 +343,69 @@ Write-Host "  Detected $($extDevices.Count) external monitor(s):"
 foreach ($d in $extDevices) { Write-Host "    $d" }
 
 # 2. Calculate positions
-#    LAYOUT=1-2: MON1=left(x=0), MON2=right(x=MON1.Width)
-#    LAYOUT=2-1: MON2=left(x=0), MON1=right(x=MON2.Width)
-if ($Layout -eq '1-2') {
-    $positions = @(
-        @{ X = 0;                  Y = 0 },
-        @{ X = $settings[0].Width; Y = 0 }
-    )
-} else {
-    $positions = @(
-        @{ X = $settings[1].Width; Y = 0 },
-        @{ X = 0;                  Y = 0 }
-    )
+#    1-2    : MON1=left,   MON2=right
+#    2-1    : MON2=left,   MON1=right
+#    1-L-2  : MON1=left,   Laptop=center, MON2=right  (lid open only)
+#    2-L-1  : MON2=left,   Laptop=center, MON1=right  (lid open only)
+$laptopX = $null
+$laptopY = $null
+$intW    = 0
+
+if ($Layout -eq '1-L-2' -or $Layout -eq '2-L-1') {
+    if (-not $lidOpen) {
+        Write-Host "  WARNING: Layout '$Layout' requires lid to be open. Falling back."
+        $Layout = if ($Layout -eq '1-L-2') { '1-2' } else { '2-1' }
+    } else {
+        $intRes = [DisplayHelper]::GetInternalResolution()
+        $intW   = $intRes[0]
+        $intH   = $intRes[1]
+        if ($intW -eq 0) {
+            Write-Host "  WARNING: Could not detect internal display resolution. Falling back."
+            $Layout = if ($Layout -eq '1-L-2') { '1-2' } else { '2-1' }
+        } else {
+            Write-Host "  Internal display detected: ${intW}x${intH}"
+        }
+    }
+}
+
+switch ($Layout) {
+    '1-2' {
+        $positions = @(
+            @{ X = 0;                  Y = 0 },
+            @{ X = $settings[0].Width; Y = 0 }
+        )
+    }
+    '2-1' {
+        $positions = @(
+            @{ X = $settings[1].Width; Y = 0 },
+            @{ X = 0;                  Y = 0 }
+        )
+    }
+    '1-L-2' {
+        # MON1 | Laptop | MON2
+        $laptopX = $settings[0].Width
+        $laptopY = 0
+        $positions = @(
+            @{ X = 0;                             Y = 0 },
+            @{ X = $settings[0].Width + $intW;    Y = 0 }
+        )
+    }
+    '2-L-1' {
+        # MON2 | Laptop | MON1
+        $laptopX = $settings[1].Width
+        $laptopY = 0
+        $positions = @(
+            @{ X = $settings[1].Width + $intW;    Y = 0 },
+            @{ X = 0;                             Y = 0 }
+        )
+    }
+    default {
+        Write-Host "  WARNING: Unknown layout '$Layout'. Using 1-2."
+        $positions = @(
+            @{ X = 0;                  Y = 0 },
+            @{ X = $settings[0].Width; Y = 0 }
+        )
+    }
 }
 
 # 3. Apply resolution, position, primary
@@ -326,9 +423,9 @@ for ($i = 0; $i -lt $applyCount; $i++) {
 [DisplayHelper]::Commit()
 Write-Host "  Display settings committed"
 
-# 3.5. Internal display placement (lid-open mode)
+# 3.5. Internal display placement
 if ($lidOpen) {
-    Write-Host "  Lid is open - placing internal display below MON2..."
+    Write-Host "  Lid is open - placing internal display..."
     $allDev      = [DisplayHelper]::GetActiveDeviceNames()
     $internalSet = [DisplayHelper]::GetInternalGdiNames()
     $intDevs     = @($allDev | Where-Object { $internalSet.Contains($_) })
@@ -336,16 +433,23 @@ if ($lidOpen) {
         Write-Host "  WARNING: No internal display found, skipping."
     } else {
         $intDev = $intDevs[0]
-        $intX   = $positions[1].X
-        $intY   = $positions[1].Y + $settings[1].Height
-        $r      = [DisplayHelper]::ApplySettings($intDev, $intX, $intY, 0, 0, 0, $false)
+        if ($null -ne $laptopX) {
+            $intX = $laptopX
+            $intY = $laptopY
+            Write-Host "    Position: between external monitors"
+        } else {
+            $intX = $positions[1].X
+            $intY = $positions[1].Y + $settings[1].Height
+            Write-Host "    Position: below MON2"
+        }
+        $r = [DisplayHelper]::ApplySettings($intDev, $intX, $intY, 0, 0, 0, $false)
         Write-Host "    INTERNAL $intDev : pos=($intX,$intY) resolution=unchanged -> $r"
         [DisplayHelper]::Commit()
         Write-Host "  Internal display placement committed"
     }
 }
 
-# 4. DPI scale via registry
+# 4. DPI scale via registry + WM_SETTINGCHANGE broadcast
 Write-Host "  Writing DPI scale to registry..."
 $regBase = 'HKCU:\Control Panel\Desktop\PerMonitorSettings'
 for ($j = 0; $j -lt $applyCount; $j++) {
@@ -362,4 +466,6 @@ for ($j = 0; $j -lt $applyCount; $j++) {
     Set-ItemProperty -Path $key -Name 'DpiValue' -Value $settings[$j].Scale -Type DWord -Force
     Write-Host "    MON$($j+1): DpiValue=$($settings[$j].Scale) -> $key"
 }
-Write-Host "  DPI settings written (sign out required to apply)"
+Write-Host "  Broadcasting WM_SETTINGCHANGE..."
+[DisplayHelper]::BroadcastSettingChange()
+Write-Host "  DPI settings applied"
