@@ -276,8 +276,9 @@ public class DisplayHelper {
         return new int[] { 0, 0 };
     }
 
+    // Phase 1: apply position/resolution with CDS_NORESET (do not commit yet)
     public static string ApplySettings(
-            string deviceName, int x, int y, int w, int h, int refresh, bool isPrimary) {
+            string deviceName, int x, int y, int w, int h, int refresh) {
         var dm = new DEVMODE();
         dm.dmSize = (ushort)Marshal.SizeOf(dm);
         if (EnumDisplaySettings(deviceName, -1, ref dm) == 0)
@@ -291,9 +292,23 @@ public class DisplayHelper {
             dm.dmDisplayFrequency = (uint)refresh;
             dm.dmFields |= DM_PELSWIDTH | DM_PELSHEIGHT | DM_FREQ;
         }
-        uint flags = CDS_UPDATEREG | CDS_NORESET;
-        if (isPrimary) flags |= CDS_SET_PRIMARY;
-        int r = ApplyDisplaySettings(deviceName, ref dm, IntPtr.Zero, flags, IntPtr.Zero);
+        int r = ApplyDisplaySettings(deviceName, ref dm, IntPtr.Zero,
+                    CDS_UPDATEREG | CDS_NORESET, IntPtr.Zero);
+        return r == 0 ? "OK" : ("ERR:" + r);
+    }
+
+    // Phase 2: set primary after positions are committed
+    // CDS_SET_PRIMARY must NOT be combined with CDS_NORESET to avoid ERR:-1
+    public static string SetPrimary(string deviceName) {
+        var dm = new DEVMODE();
+        dm.dmSize = (ushort)Marshal.SizeOf(dm);
+        if (EnumDisplaySettings(deviceName, -1, ref dm) == 0)
+            return "ERR: EnumDisplaySettings failed";
+        dm.dmPositionX = 0;
+        dm.dmPositionY = 0;
+        dm.dmFields = DM_POSITION;
+        int r = ApplyDisplaySettings(deviceName, ref dm, IntPtr.Zero,
+                    CDS_UPDATEREG | CDS_SET_PRIMARY, IntPtr.Zero);
         return r == 0 ? "OK" : ("ERR:" + r);
     }
 
@@ -408,7 +423,7 @@ switch ($Layout) {
     }
 }
 
-# 3. Apply resolution, position, primary
+# 3. Apply resolution and position (Phase 1: CDS_NORESET, no primary flag yet)
 Write-Host "  Applying settings..."
 $applyCount = [Math]::Min($extDevices.Count, $MonCount)
 for ($i = 0; $i -lt $applyCount; $i++) {
@@ -417,11 +432,19 @@ for ($i = 0; $i -lt $applyCount; $i++) {
     $pri = ($i -eq $primaryIdx)
     $tag = if ($pri) { '[PRIMARY]' } else { '         ' }
     $r   = [DisplayHelper]::ApplySettings(
-               $extDevices[$i], $p.X, $p.Y, $s.Width, $s.Height, $s.Refresh, $pri)
+               $extDevices[$i], $p.X, $p.Y, $s.Width, $s.Height, $s.Refresh)
     Write-Host "    MON$($i+1) $tag $($extDevices[$i]) : $($s.Width)x$($s.Height) @$($s.Refresh)Hz pos=($($p.X),$($p.Y)) -> $r"
 }
 [DisplayHelper]::Commit()
 Write-Host "  Display settings committed"
+
+# Phase 2: set primary monitor separately
+# CDS_SET_PRIMARY + CDS_NORESET causes ERR:-1 on some configurations.
+# Applying SET_PRIMARY after committing positions avoids the conflict.
+if ($primaryIdx -lt $applyCount) {
+    $pr = [DisplayHelper]::SetPrimary($extDevices[$primaryIdx])
+    Write-Host "  Set primary: $($extDevices[$primaryIdx]) -> $pr"
+}
 
 # 3.5. Internal display placement
 if ($lidOpen) {
@@ -442,7 +465,7 @@ if ($lidOpen) {
             $intY = $positions[1].Y + $settings[1].Height
             Write-Host "    Position: below MON2"
         }
-        $r = [DisplayHelper]::ApplySettings($intDev, $intX, $intY, 0, 0, 0, $false)
+        $r = [DisplayHelper]::ApplySettings($intDev, $intX, $intY, 0, 0, 0)
         Write-Host "    INTERNAL $intDev : pos=($intX,$intY) resolution=unchanged -> $r"
         [DisplayHelper]::Commit()
         Write-Host "  Internal display placement committed"

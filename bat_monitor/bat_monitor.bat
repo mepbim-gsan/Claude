@@ -55,7 +55,7 @@ echo ============================================
 echo.
 
 REM --- Check active monitor count ---
-for /f "usebackq" %%n in (`powershell -NoProfile -Command "(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBasicDisplayParams ^| Where-Object {$_.Active -eq $true}).Count"`) do set DETECTED=%%n
+for /f "usebackq" %%n in (`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::AllScreens.Count"`) do set DETECTED=%%n
 echo Active monitors detected: %DETECTED%
 
 REM --- Lid open/close detection ---
