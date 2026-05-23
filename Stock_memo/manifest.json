@@ -1,0 +1,25 @@
+{
+  "name": "ストック管理",
+  "short_name": "ストック",
+  "description": "家庭用ストック管理ツール",
+  "start_url": "./stock-memo.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f5f5f0",
+  "theme_color": "#5b8a6f",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
