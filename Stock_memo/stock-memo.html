@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v03_2026-05-23.2
+  @version   v03_2026-05-23.3
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -29,6 +29,7 @@
     v02_2026-03-24.6  - 検索バーをタブバーの上に移動、サンプルデータに商品名・保管場所・updatedBy追加（card-noteクラスの付け外し）
     v03_2026-05-23.1  - 保管場所機能追加（設定で一括管理、品目にタグ表示、検索対応）
     v03_2026-05-23.2  - 保管場所タグタップで同一保管場所の品目をフィルター表示
+    v03_2026-05-23.3  - PWA対応（オフライン動作・ホーム画面追加）
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -36,6 +37,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ストック管理</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#5b8a6f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ストック管理">
+<link rel="apple-touch-icon" href="./icon.svg">
 <script type="module">
 import { initializeApp }   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
@@ -898,7 +905,6 @@ if (savedConfig) {
     padding: 0;
     line-height: 1;
   }
-  }
 
   .btn-stale.active {
     background: var(--accent);
@@ -933,13 +939,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v03_2026-05-23.2</span>
+        <span class="header-version" id="version-inline">v03_2026-05-23.3</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v03_2026-05-23.2</span>
+      <span class="header-version">v03_2026-05-23.3</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -1738,6 +1744,10 @@ document.getElementById('searchClear').addEventListener('click', () => {
   document.getElementById('searchClear').style.display = 'none';
   renderCards();
 });
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
 
 renderTabs();
 renderCards();
