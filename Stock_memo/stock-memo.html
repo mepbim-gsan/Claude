@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v02_2026-03-24.6
+  @version   v03_2026-05-23.1
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -27,6 +27,7 @@
     v02_2026-03-24.4  - カードレイアウトを元に戻す
     v02_2026-03-24.5  - 未確認フィルター（⌛）追加、設定で日数選択（7/14/30/60日）
     v02_2026-03-24.6  - 検索バーをタブバーの上に移動、サンプルデータに商品名・保管場所・updatedBy追加（card-noteクラスの付け外し）
+    v03_2026-05-23.1  - 保管場所機能追加（設定で一括管理、品目にタグ表示、検索対応）
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -53,7 +54,7 @@ window._parseFirebaseConfig = function(text) {
   if (!text || !text.trim()) return null;
   try { return JSON.parse(text.trim()); } catch {}
   try {
-    let s = text.replace(/\/\/.*$/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
+    let s = text.replace(/\/\/.*/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
     const match = s.match(/\{[\s\S]*\}/);
     if (!match) return null;
     const jsonStr = match[0].replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":').replace(/'/g,'"');
@@ -100,7 +101,7 @@ function setupAuth() {
     if (!auth || !auth.currentUser) return;
     try {
       const ref = doc(db, 'shared', FIRESTORE_DOC);
-      window._lastWriteAt = Date.now(); // CHANGED: 書き込みタイムスタンプを記録
+      window._lastWriteAt = Date.now();
       await setDoc(ref, stateObj);
     } catch(e) { console.error('Firestore write error:', e); }
   };
@@ -118,8 +119,7 @@ function setupAuth() {
         if (snap.exists()) {
           window._applyRemoteState(snap.data());
         } else {
-          // CHANGED: Firestoreに未登録 → カテゴリ初期値・品目空で始める
-          window._applyRemoteState({ categories: ['食品', 'キッチン', '洗濯・バス', 'トイレ・ティッシュ', 'その他'], items: [] });
+          window._applyRemoteState({ categories: ['食品', 'キッチン', '洗濯・バス', 'トイレ・ティッシュ', 'その他'], locations: [], items: [] });
         }
       });
     }
@@ -130,20 +130,20 @@ function updateAuthUI(user) {
   const btn  = document.getElementById('auth-btn');
   const info = document.getElementById('auth-info');
   const row  = document.getElementById('auth-row');
-  const verInline = document.getElementById('version-inline'); // CHANGED
+  const verInline = document.getElementById('version-inline');
   if (!btn) return;
   if (user) {
     btn.onclick      = window._fbLogout;
     info.textContent = user.displayName || user.email || '';
     info.title       = user.email || '';
     if (row) row.style.display = 'flex';
-    if (verInline) verInline.style.display = 'none'; // CHANGED: ログイン時は2段目に表示
+    if (verInline) verInline.style.display = 'none';
   } else {
     if (row) row.style.display = 'none';
-    if (verInline) verInline.style.display = ''; // CHANGED: 未ログイン時はrow1に表示
+    if (verInline) verInline.style.display = '';
   }
   if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
-  setTimeout(updateStickyTops, 50); // CHANGED: ログイン状態変化後にtop再計算
+  setTimeout(updateStickyTops, 50);
 }
 
 window._renderFirebaseConfigUI = function() {
@@ -292,7 +292,7 @@ if (savedConfig) {
   .header-row2 {
     display: flex;
     align-items: center;
-    justify-content: space-between; /* CHANGED: 左にバージョン、右に名前・ログアウト */
+    justify-content: space-between;
     gap: 6px;
   }
   .header-version {
@@ -340,7 +340,7 @@ if (savedConfig) {
     overflow-x: auto;
     scrollbar-width: none;
     position: sticky;
-    top: 0; /* CHANGED: JSで動的に設定 */
+    top: 0;
     z-index: 99;
     padding: 0 max(16px, calc(50% - 528px));
   }
@@ -433,12 +433,27 @@ if (savedConfig) {
     width: 52px;
     flex-shrink: 0;
   }
+  /* 保管場所タグ */
+  .location-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: 99px;
+    background: #e8f0fe;
+    color: #3c5a99;
+    font-size: .65rem;
+    border: 1px solid #c0d0ee;
+  }
+  .card-location {
+    margin-bottom: 4px;
+    min-height: 0;
+  }
   .card-note {
     font-size: 12px;
     color: var(--text-sub);
     margin-bottom: 8px;
     min-height: 0;
-    white-space: pre-wrap; /* CHANGED: 改行を保持 */
+    white-space: pre-wrap;
   }
   .card-note:empty { display: none; }
   .card-bottom {
@@ -693,8 +708,8 @@ if (savedConfig) {
     font-family: inherit;
     background: var(--bg);
     color: var(--text);
-    resize: vertical; /* CHANGED */
-    min-height: 60px; /* CHANGED */
+    resize: vertical;
+    min-height: 60px;
   }
   .note-edit-btns {
     display: flex;
@@ -815,7 +830,7 @@ if (savedConfig) {
     border-bottom: 1px solid var(--border);
     padding: 8px max(16px, calc(50% - 528px));
     position: sticky;
-    top: 0; /* JSで動的に設定 */
+    top: 0;
     z-index: 98;
   }
   .search-wrap {
@@ -882,13 +897,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v02_2026-03-24.6</span>
+        <span class="header-version" id="version-inline">v03_2026-05-23.1</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v02_2026-03-24.6</span>
+      <span class="header-version">v03_2026-05-23.1</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -930,6 +945,10 @@ if (savedConfig) {
     <div class="form-row">
       <label>カテゴリ</label>
       <select id="fCat"></select>
+    </div>
+    <div class="form-row">
+      <label>保管場所</label>
+      <select id="fLocation"></select>
     </div>
     <div class="form-row form-row-2col">
       <div>
@@ -985,6 +1004,14 @@ if (savedConfig) {
       </div>
     </div>
     <div class="form-row" style="margin-top:8px">
+      <label>保管場所管理</label>
+      <div id="locationList" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="newLocationName" placeholder="新しい保管場所名" style="flex:1">
+        <button class="btn-save" style="flex:none;padding:10px 14px;font-size:13px" onclick="addLocation()">追加</button>
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:8px">
       <label>未確認フィルター（⌛）の日数</label>
       <select id="staleDaysSel" style="margin-top:6px;width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:15px;font-family:inherit;background:var(--bg);color:var(--text)" onchange="saveStaleDays()">
         <option value="7">7日以上</option>
@@ -1032,15 +1059,14 @@ function loadData() {
 
 function saveData() {
   localStorage.setItem(STORE_KEY, JSON.stringify(ST));
-  if (window._saveToFirestore) window._saveToFirestore(ST); // CHANGED: Firebase同期
+  if (window._saveToFirestore) window._saveToFirestore(ST);
 }
 
-// CHANGED: Firestoreからのリモートデータ適用
 window._applyRemoteState = function(data) {
   if (!data || !data.items) return;
+  if (!data.locations) data.locations = []; // 旧データとの後方互換
   ST = data;
   renderTabs();
-  // CHANGED: 自己書き込み後1.5秒以内のsnapshotは並び替えをスキップ
   const isSelfWrite = window._lastWriteAt && (Date.now() - window._lastWriteAt < 1500);
   if (!isSelfWrite) renderCards();
 };
@@ -1049,6 +1075,7 @@ const now = Date.now();
 const DAY = 86400000;
 const DEFAULT = {
   categories: ['食品', 'キッチン', '洗濯・バス', 'トイレ・ティッシュ', 'その他'],
+  locations: [],
   staleDays: 30,
   items: [
     { id: '1',  name: 'マヨネーズ',         cat: '食品',               stock: 1, target: 2, note: 'キューピー / 冷蔵庫横',         updatedAt: now - 3*DAY,   updatedBy: 'Genta' },
@@ -1072,6 +1099,7 @@ const DEFAULT = {
 };
 
 let ST = loadData() || JSON.parse(JSON.stringify(DEFAULT));
+if (!ST.locations) ST.locations = []; // 旧データとの後方互換
 
 // ============================================================
 // 状態
@@ -1079,7 +1107,7 @@ let ST = loadData() || JSON.parse(JSON.stringify(DEFAULT));
 let curCat = 'all';
 let editingId = null;
 let buyItems = [];
-let staleFilter = false; // CHANGED: 未確認フィルターフラグ
+let staleFilter = false;
 
 // ============================================================
 // タブ
@@ -1111,7 +1139,7 @@ function sortedItems(items) {
     if (alertA !== alertB) return alertA - alertB;
     const catDiff = catOrder.indexOf(a.cat) - catOrder.indexOf(b.cat);
     if (catDiff !== 0) return catDiff;
-    return a.name.localeCompare(b.name, 'ja'); // CHANGED: 名前昇順
+    return a.name.localeCompare(b.name, 'ja');
   });
 }
 
@@ -1135,9 +1163,11 @@ function renderCards() {
   const q = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
   let base = curCat === 'all' ? ST.items : ST.items.filter(i => i.cat === curCat);
   if (q) base = base.filter(i =>
-    i.name.toLowerCase().includes(q) || (i.note && i.note.toLowerCase().includes(q))
+    i.name.toLowerCase().includes(q) ||
+    (i.note && i.note.toLowerCase().includes(q)) ||
+    (i.location && i.location.toLowerCase().includes(q))
   );
-  if (staleFilter) { // CHANGED: 未確認フィルター
+  if (staleFilter) {
     const days = ST.staleDays || 30;
     const threshold = Date.now() - days * 86400000;
     base = base.filter(i => !i.updatedAt || i.updatedAt < threshold);
@@ -1158,6 +1188,7 @@ function renderCards() {
           <span class="card-cat">${item.cat}</span>
           ${alert ? '<span class="badge-alert">要補充</span>' : '<span class="badge-alert-placeholder"></span>'}
         </div>
+        <div class="card-location" id="loc-${item.id}">${item.location ? `<span class="location-tag">📍 ${item.location}</span>` : ''}</div>
         ${item.note
           ? `<div class="card-note" id="note-${item.id}">${item.note} <button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">編集</button></div>`
           : `<div id="note-${item.id}"><button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">＋ 備考</button></div>`
@@ -1184,7 +1215,7 @@ function changeStock(id, delta) {
   if (!item) return;
   item.stock = Math.max(0, item.stock + delta);
   item.updatedAt = Date.now();
-  item.updatedBy = (window._getCurrentUserName && window._getCurrentUserName()) || null; // CHANGED
+  item.updatedBy = (window._getCurrentUserName && window._getCurrentUserName()) || null;
   saveData();
   updateCard(item);
 }
@@ -1195,18 +1226,15 @@ function updateCard(item) {
   const alert = item.stock < item.target;
   card.className = 'card' + (alert ? ' alert' : '');
   card.querySelector('.stock-num').textContent = item.stock;
-  // バッジ
   const badge = card.querySelector('.badge-alert');
   const placeholder = card.querySelector('.badge-alert-placeholder');
   if (alert && !badge) {
-    if (placeholder) {
-      placeholder.outerHTML = '<span class="badge-alert">要補充</span>';
-    }
+    if (placeholder) placeholder.outerHTML = '<span class="badge-alert">要補充</span>';
   } else if (!alert && badge) {
     badge.outerHTML = '<span class="badge-alert-placeholder"></span>';
   }
   const updEl = document.getElementById('updated-' + item.id);
-  if (updEl) updEl.textContent = (item.updatedBy ? item.updatedBy + ' · ' : '') + relativeTime(item.updatedAt); // CHANGED
+  if (updEl) updEl.textContent = (item.updatedBy ? item.updatedBy + ' · ' : '') + relativeTime(item.updatedAt);
 }
 
 // ============================================================
@@ -1234,15 +1262,15 @@ function saveNote(id) {
   const val = document.getElementById('note-input-' + id).value.trim();
   item.note = val;
   item.updatedAt = Date.now();
-  item.updatedBy = (window._getCurrentUserName && window._getCurrentUserName()) || null; // CHANGED
+  item.updatedBy = (window._getCurrentUserName && window._getCurrentUserName()) || null;
   saveData();
   const noteDiv = document.getElementById('note-' + id);
   const editArea = document.getElementById('note-edit-' + id);
   if (val) {
-    noteDiv.className = 'card-note'; // CHANGED: 備考ありはcard-noteクラスを付ける
+    noteDiv.className = 'card-note';
     noteDiv.innerHTML = `${val} <button class="btn-edit-note" onclick="showNoteEdit('${id}')">編集</button>`;
   } else {
-    noteDiv.className = ''; // CHANGED: 備考なしはcard-noteクラスを外す
+    noteDiv.className = '';
     noteDiv.innerHTML = `<button class="btn-edit-note" onclick="showNoteEdit('${id}')">＋ 備考</button>`;
   }
   editArea.innerHTML = '';
@@ -1273,10 +1301,17 @@ function openItemModal(id) {
   document.getElementById('btnDelete').style.display = item ? 'block' : 'none';
 
   const sel = document.getElementById('fCat');
-  const defaultCat = (!item && curCat !== 'all') ? curCat : (item ? item.cat : ST.categories[0]); // CHANGED
+  const defaultCat = (!item && curCat !== 'all') ? curCat : (item ? item.cat : ST.categories[0]);
   sel.innerHTML = ST.categories.map(c =>
     `<option value="${c}" ${c === defaultCat ? 'selected' : ''}>${c}</option>`
   ).join('');
+
+  const locSel = document.getElementById('fLocation');
+  const currentLocation = item ? (item.location || '') : '';
+  locSel.innerHTML = '<option value="">（未設定）</option>' +
+    (ST.locations || []).map(l =>
+      `<option value="${l}" ${l === currentLocation ? 'selected' : ''}>${l}</option>`
+    ).join('');
 
   document.getElementById('itemOverlay').classList.add('open');
   document.getElementById('fName').focus();
@@ -1290,16 +1325,17 @@ function closeItemModal() {
 function saveItem() {
   const name = document.getElementById('fName').value.trim();
   if (!name) { showToast('品目名を入力してください'); return; }
-  const cat    = document.getElementById('fCat').value;
-  const stock  = parseInt(document.getElementById('fStock').textContent)  || 0;
-  const target = parseInt(document.getElementById('fTarget').textContent) || 0;
-  const note   = document.getElementById('fNote').value.trim();
+  const cat      = document.getElementById('fCat').value;
+  const location = document.getElementById('fLocation').value;
+  const stock    = parseInt(document.getElementById('fStock').textContent)  || 0;
+  const target   = parseInt(document.getElementById('fTarget').textContent) || 0;
+  const note     = document.getElementById('fNote').value.trim();
 
   if (editingId) {
     const item = ST.items.find(i => i.id === editingId);
-    Object.assign(item, { name, cat, stock, target, note, updatedAt: Date.now(), updatedBy: (window._getCurrentUserName && window._getCurrentUserName()) || null }); // CHANGED
+    Object.assign(item, { name, cat, location, stock, target, note, updatedAt: Date.now(), updatedBy: (window._getCurrentUserName && window._getCurrentUserName()) || null });
   } else {
-    ST.items.push({ id: Date.now().toString(), name, cat, stock, target, note, updatedAt: Date.now(), updatedBy: (window._getCurrentUserName && window._getCurrentUserName()) || null }); // CHANGED
+    ST.items.push({ id: Date.now().toString(), name, cat, location, stock, target, note, updatedAt: Date.now(), updatedBy: (window._getCurrentUserName && window._getCurrentUserName()) || null });
   }
   saveData();
   closeItemModal();
@@ -1320,7 +1356,6 @@ function deleteItem() {
 // 買い出しリスト
 // ============================================================
 function openBuyList() {
-  // 不足品を自動リストアップ
   buyItems = ST.items
     .filter(i => i.stock < i.target)
     .map(i => ({
@@ -1416,14 +1451,13 @@ function fallbackCopy(text) {
 // ============================================================
 function openSettings() {
   renderCatList();
-  // CHANGED: 未確認日数セレクトを現在値に設定
+  renderLocationList();
   const sel = document.getElementById('staleDaysSel');
   if (sel) sel.value = ST.staleDays || 30;
   if (window._renderFirebaseConfigUI) window._renderFirebaseConfigUI();
   document.getElementById('settingsOverlay').classList.add('open');
 }
 
-// CHANGED: 未確認フィルター
 function toggleStale() {
   staleFilter = !staleFilter;
   const btn = document.getElementById('btnStale');
@@ -1442,6 +1476,7 @@ function closeSettings() {
   document.getElementById('settingsOverlay').classList.remove('open');
 }
 
+// ---- カテゴリ管理 ----
 function renderCatList() {
   const div = document.getElementById('catList');
   div.innerHTML = ST.categories.map((c, idx) => `
@@ -1469,7 +1504,6 @@ function startRenameCategory(idx) {
     if (e.key === 'Enter') commitRenameCategory(idx);
     if (e.key === 'Escape') renderCatList();
   });
-  // 編集ボタンを保存ボタンに差し替え
   const row = document.getElementById('cat-row-' + idx);
   const btns = row.querySelectorAll('button');
   btns[0].textContent = '保存';
@@ -1514,6 +1548,80 @@ function deleteCategory(idx) {
   renderTabs();
 }
 
+// ---- 保管場所管理 ----
+function renderLocationList() {
+  const div = document.getElementById('locationList');
+  if (!(ST.locations || []).length) {
+    div.innerHTML = '<div style="font-size:13px;color:var(--text-sub);margin-bottom:4px">まだ保管場所が登録されていません</div>';
+    return;
+  }
+  div.innerHTML = ST.locations.map((l, idx) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px" id="loc-row-${idx}">
+      <span style="flex:1;font-size:14px" id="loc-label-${idx}">${l}</span>
+      <button style="font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer"
+        onclick="startRenameLocation(${idx})">編集</button>
+      <button style="font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer"
+        onclick="deleteLocation(${idx})">削除</button>
+    </div>
+  `).join('');
+}
+
+function startRenameLocation(idx) {
+  const label = document.getElementById('loc-label-' + idx);
+  const current = ST.locations[idx];
+  label.outerHTML = `
+    <input id="loc-rename-${idx}" value="${current}"
+      style="flex:1;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:14px;font-family:inherit;background:var(--bg)">
+  `;
+  const input = document.getElementById('loc-rename-' + idx);
+  input.focus();
+  input.select();
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') commitRenameLocation(idx);
+    if (e.key === 'Escape') renderLocationList();
+  });
+  const row = document.getElementById('loc-row-' + idx);
+  const btns = row.querySelectorAll('button');
+  btns[0].textContent = '保存';
+  btns[0].onclick = () => commitRenameLocation(idx);
+}
+
+function commitRenameLocation(idx) {
+  const input = document.getElementById('loc-rename-' + idx);
+  if (!input) return;
+  const newName = input.value.trim();
+  if (!newName) { showToast('保管場所名を入力してください'); return; }
+  if (newName !== ST.locations[idx] && ST.locations.includes(newName)) {
+    showToast('同じ名前の保管場所があります'); return;
+  }
+  const oldName = ST.locations[idx];
+  ST.locations[idx] = newName;
+  ST.items.forEach(i => { if (i.location === oldName) i.location = newName; });
+  saveData();
+  renderLocationList();
+  renderCards();
+}
+
+function addLocation() {
+  const name = document.getElementById('newLocationName').value.trim();
+  if (!name) return;
+  if (!ST.locations) ST.locations = [];
+  if (ST.locations.includes(name)) { showToast('同じ名前の保管場所があります'); return; }
+  ST.locations.push(name);
+  saveData();
+  document.getElementById('newLocationName').value = '';
+  renderLocationList();
+}
+
+function deleteLocation(idx) {
+  const name = ST.locations[idx];
+  const inUse = ST.items.some(i => i.location === name);
+  if (inUse) { showToast('使用中の保管場所は削除できません'); return; }
+  ST.locations.splice(idx, 1);
+  saveData();
+  renderLocationList();
+}
+
 // ============================================================
 // 確認ダイアログ
 // ============================================================
@@ -1551,7 +1659,6 @@ function updateStickyTops() {
   if (tabBar) tabBar.style.top = (headerH + (searchBar?.offsetHeight || 0)) + 'px';
 }
 
-// 検索イベント
 document.getElementById('searchInput').addEventListener('input', () => {
   const val = document.getElementById('searchInput').value;
   document.getElementById('searchClear').style.display = val ? 'block' : 'none';
