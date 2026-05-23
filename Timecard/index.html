@@ -470,7 +470,7 @@ label:first-child{margin-top:0;}
 .work-chip.selected{border-color:var(--accent);color:var(--accent);background:rgba(79,142,247,.12);}
 .work-dot{width:10px;height:10px;border-radius:50%;display:inline-block;border:1px solid rgba(255,255,255,.28);flex-shrink:0;}
 .work-grid-wrap{overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:10px;background:var(--bg2);max-height:62dvh;touch-action:pan-x pan-y;overscroll-behavior:contain;}
-.work-grid{display:grid;grid-template-columns:48px repeat(96,22px);width:max-content;font-size:10px;user-select:none;-webkit-user-select:none;}
+.work-grid{display:grid;grid-template-columns:48px repeat(120,22px);width:max-content;font-size:10px;user-select:none;-webkit-user-select:none;}
 .work-head,.work-day-label,.work-cell{height:34px;border-right:1px solid rgba(255,255,255,.045);border-bottom:1px solid rgba(255,255,255,.055);}
 .work-head{height:24px;position:sticky;top:0;z-index:3;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:9px;}
 [data-theme="light"] .work-head,[data-theme="light"] .work-day-label,[data-theme="light"] .work-cell{border-right-color:rgba(0,0,0,.055);border-bottom-color:rgba(0,0,0,.055);}
@@ -488,6 +488,9 @@ label:first-child{margin-top:0;}
 .work-cell.focus-hour{background:rgba(79,142,247,.025);}
 [data-theme="light"] .work-cell.hour-border{border-left-color:rgba(0,0,0,.18);}
 [data-theme="light"] .work-cell.focus-hour{background:rgba(37,99,235,.025);}
+.work-cell.past-midnight{background:rgba(120,80,200,.06);}
+[data-theme="light"] .work-cell.past-midnight{background:rgba(100,60,180,.05);}
+.work-head.past-midnight-head{color:var(--accent);opacity:.7;}
 .work-cell.today-row,.work-day-label.today-row{box-shadow:inset 0 0 0 999px rgba(79,142,247,.06);}
 .work-cell.selected-day,.work-day-label.selected-day{box-shadow:inset 0 0 0 999px rgba(245,166,35,.08);}
 .work-grid-hint{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;}
@@ -1228,7 +1231,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v06_2026-05-15.2';
+const APP_VERSION = 'v06_2026-05-23.1';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -2604,7 +2607,7 @@ function getWorkById(id){return(settings.workItems||[]).find(w=>w.id===id);}
 function getWorkIndex(id){const idx=(settings.workItems||[]).findIndex(w=>w.id===id);return idx>=0?String(idx+1):'';}
 function getWorkLogMonth(y,m){const key=getMonthKey(y,m);if(!monthData[key])monthData[key]={days:{},schedules:{},workLogs:{}};if(!monthData[key].workLogs)monthData[key].workLogs={};return monthData[key].workLogs;}
 function getWorkNameLine(id){const w=getWorkById(id);return w?`${w.name}\n${w.jobNo}`:'';}
-function ensureWorkDayArray(logs,day){const dkey=String(+day);if(!logs[dkey])logs[dkey]=Array(96).fill('');return logs[dkey];}
+function ensureWorkDayArray(logs,day){const dkey=String(+day);if(!logs[dkey])logs[dkey]=Array(120).fill('');else if(logs[dkey].length<120){const extra=Array(120-logs[dkey].length).fill('');logs[dkey]=logs[dkey].concat(extra);}return logs[dkey];}
 function updateWorkCellVisual(cell,workId){
   const wid=workId||'';
   cell.dataset.workId=wid;
@@ -2678,7 +2681,7 @@ function updateWorkCellsForDay(day, slots){
   const logs=getWorkLogMonth(y,m);
   const arr=logs[String(+day)]||[];
   const ds=`${y}-${String(m).padStart(2,'0')}-${String(+day).padStart(2,'0')}`;
-  const targetSlots=Array.isArray(slots)?slots:Array.from({length:96},(_,i)=>i);
+  const targetSlots=Array.isArray(slots)?slots:Array.from({length:120},(_,i)=>i);
   for(const s of targetSlots){
     const cell=document.querySelector(`.work-cell[data-day="${+day}"][data-slot="${s}"]`);
     if(!cell)continue;
@@ -2893,7 +2896,7 @@ function renderWorkGrid(){
   const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;const dim=new Date(y,m,0).getDate();const logs=getWorkLogMonth(y,m);const today=toDateStr(new Date());
   grid.innerHTML='';
   const corner=document.createElement('div');corner.className='work-head work-corner';corner.textContent='日';grid.appendChild(corner);
-  for(let s=0;s<96;s++){const h=Math.floor(s/4);const head=document.createElement('div');head.className='work-head';head.textContent=s%4===0?String(h):'';grid.appendChild(head);}
+  for(let s=0;s<120;s++){const h=Math.floor(s/4);const head=document.createElement('div');head.className='work-head'+(h>=24?' past-midnight-head':'');head.textContent=s%4===0?String(h):'';grid.appendChild(head);}
   let purged=false;
   for(let d=1;d<=dim;d++){
     const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const dow=new Date(ds+'T00:00:00').getDay();
@@ -2901,9 +2904,9 @@ function renderWorkGrid(){
     label.className='work-day-label '+(dow===0?'sun':dow===6?'sat':isHoliday(ds)?'hol':'')+(ds===today?' today-row':'')+(workSummaryDay===d?' selected-day':'');
     label.textContent=String(d).padStart(2,'0');label.addEventListener('click',()=>setWorkSummaryDay(workSummaryDay===d?null:d));grid.appendChild(label);
     const arr=logs[String(d)]||[];
-    for(let s=0;s<96;s++){
+    for(let s=0;s<120;s++){
       const cell=document.createElement('div');const hour=Math.floor(s/4);
-      cell.className='work-cell'+(s%4===0?' hour-border':'')+(hour>=8&&hour<18?' focus-hour':'')+(ds===today?' today-row':'')+(workSummaryDay===d?' selected-day':'');
+      cell.className='work-cell'+(s%4===0?' hour-border':'')+(hour>=8&&hour<18?' focus-hour':'')+(hour>=24?' past-midnight':'')+(ds===today?' today-row':'')+(workSummaryDay===d?' selected-day':'');
       cell.dataset.day=d;cell.dataset.slot=s;
       const lockState=getCellLockState(ds,s);
       if(lockState){
@@ -2937,7 +2940,7 @@ function renderWorkGrid(){
     }
   }
   const bottomCorner=document.createElement('div');bottomCorner.className='work-bottom-head work-bottom-corner';bottomCorner.textContent='時';grid.appendChild(bottomCorner);
-  for(let s=0;s<96;s++){const h=Math.floor(s/4);const head=document.createElement('div');head.className='work-bottom-head';head.textContent=s%4===0?String(h):'';grid.appendChild(head);}
+  for(let s=0;s<120;s++){const h=Math.floor(s/4);const head=document.createElement('div');head.className='work-bottom-head'+(h>=24?' past-midnight-head':'');head.textContent=s%4===0?String(h):'';grid.appendChild(head);}
   if(purged)saveStorage();
   requestAnimationFrame(()=>{if(wrap&&!wrap.dataset.workScrolled){wrap.scrollLeft=8*4*22;wrap.dataset.workScrolled='1';}});
 }
