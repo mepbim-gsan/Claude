@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v03_2026-05-23.1
+  @version   v03_2026-05-23.2
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -28,6 +28,7 @@
     v02_2026-03-24.5  - 未確認フィルター（⌛）追加、設定で日数選択（7/14/30/60日）
     v02_2026-03-24.6  - 検索バーをタブバーの上に移動、サンプルデータに商品名・保管場所・updatedBy追加（card-noteクラスの付け外し）
     v03_2026-05-23.1  - 保管場所機能追加（設定で一括管理、品目にタグ表示、検索対応）
+    v03_2026-05-23.2  - 保管場所タグタップで同一保管場所の品目をフィルター表示
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -54,7 +55,7 @@ window._parseFirebaseConfig = function(text) {
   if (!text || !text.trim()) return null;
   try { return JSON.parse(text.trim()); } catch {}
   try {
-    let s = text.replace(/\/\/.*/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
+    let s = text.replace(/\/\/.*$/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
     const match = s.match(/\{[\s\S]*\}/);
     if (!match) return null;
     const jsonStr = match[0].replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":').replace(/'/g,'"');
@@ -443,10 +444,44 @@ if (savedConfig) {
     color: #3c5a99;
     font-size: .65rem;
     border: 1px solid #c0d0ee;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .location-tag.active {
+    background: #3c5a99;
+    color: #fff;
+    border-color: #3c5a99;
   }
   .card-location {
     margin-bottom: 4px;
     min-height: 0;
+  }
+  /* 保管場所フィルターバー */
+  .location-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .location-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 99px;
+    background: #3c5a99;
+    color: #fff;
+    font-size: .75rem;
+    font-weight: 600;
+  }
+  .location-filter-clear {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
   }
   .card-note {
     font-size: 12px;
@@ -863,6 +898,7 @@ if (savedConfig) {
     padding: 0;
     line-height: 1;
   }
+  }
 
   .btn-stale.active {
     background: var(--accent);
@@ -897,13 +933,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v03_2026-05-23.1</span>
+        <span class="header-version" id="version-inline">v03_2026-05-23.2</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v03_2026-05-23.1</span>
+      <span class="header-version">v03_2026-05-23.2</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -920,6 +956,12 @@ if (savedConfig) {
       <button class="search-clear" id="searchClear">✕</button>
     </div>
     <button class="btn-icon btn-stale" id="btnStale" onclick="toggleStale()" title="未確認フィルター">⌛</button>
+  </div>
+  <div class="location-filter-bar" id="locationFilterBar" style="display:none">
+    <span class="location-filter-chip">
+      📍 <span id="locationFilterName"></span>
+      <button class="location-filter-clear" onclick="clearLocationFilter()">✕</button>
+    </span>
   </div>
 </div>
 
@@ -1105,6 +1147,7 @@ if (!ST.locations) ST.locations = []; // 旧データとの後方互換
 // 状態
 // ============================================================
 let curCat = 'all';
+let curLocation = null;
 let editingId = null;
 let buyItems = [];
 let staleFilter = false;
@@ -1167,6 +1210,7 @@ function renderCards() {
     (i.note && i.note.toLowerCase().includes(q)) ||
     (i.location && i.location.toLowerCase().includes(q))
   );
+  if (curLocation) base = base.filter(i => i.location === curLocation);
   if (staleFilter) {
     const days = ST.staleDays || 30;
     const threshold = Date.now() - days * 86400000;
@@ -1188,7 +1232,7 @@ function renderCards() {
           <span class="card-cat">${item.cat}</span>
           ${alert ? '<span class="badge-alert">要補充</span>' : '<span class="badge-alert-placeholder"></span>'}
         </div>
-        <div class="card-location" id="loc-${item.id}">${item.location ? `<span class="location-tag">📍 ${item.location}</span>` : ''}</div>
+        <div class="card-location" id="loc-${item.id}">${item.location ? `<span class="location-tag${curLocation === item.location ? ' active' : ''}" data-loc="${item.location.replace(/"/g,'&quot;')}" onclick="filterByLocation(this.dataset.loc)">📍 ${item.location}</span>` : ''}</div>
         ${item.note
           ? `<div class="card-note" id="note-${item.id}">${item.note} <button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">編集</button></div>`
           : `<div id="note-${item.id}"><button class="btn-edit-note" onclick="showNoteEdit('${item.id}')">＋ 備考</button></div>`
@@ -1548,6 +1592,31 @@ function deleteCategory(idx) {
   renderTabs();
 }
 
+// ---- 保管場所フィルター ----
+function filterByLocation(loc) {
+  curLocation = (curLocation === loc) ? null : loc;
+  updateLocationFilterBar();
+  renderCards();
+}
+
+function clearLocationFilter() {
+  curLocation = null;
+  updateLocationFilterBar();
+  renderCards();
+}
+
+function updateLocationFilterBar() {
+  const bar = document.getElementById('locationFilterBar');
+  const nameEl = document.getElementById('locationFilterName');
+  if (curLocation) {
+    nameEl.textContent = curLocation;
+    bar.style.display = 'flex';
+  } else {
+    bar.style.display = 'none';
+  }
+  updateStickyTops();
+}
+
 // ---- 保管場所管理 ----
 function renderLocationList() {
   const div = document.getElementById('locationList');
@@ -1676,4 +1745,3 @@ updateStickyTops();
 window.addEventListener('resize', updateStickyTops);
 </script>
 </body>
-</html>
