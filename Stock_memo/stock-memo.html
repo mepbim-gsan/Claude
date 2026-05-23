@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v03_2026-05-23.3
+  @version   v03_2026-05-23.4
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -30,6 +30,7 @@
     v03_2026-05-23.1  - 保管場所機能追加（設定で一括管理、品目にタグ表示、検索対応）
     v03_2026-05-23.2  - 保管場所タグタップで同一保管場所の品目をフィルター表示
     v03_2026-05-23.3  - PWA対応（オフライン動作・ホーム画面追加）
+    v03_2026-05-23.4  - 保管場所を昇順ソート、ドロップダウンを検索セレクトに変更
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -929,6 +930,44 @@ if (savedConfig) {
     pointer-events: none;
   }
   .toast.show { opacity: 1; }
+
+  /* 保管場所検索セレクト */
+  .loc-sel { position: relative; }
+  .loc-sel-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 15px;
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .loc-sel-input:focus { border-color: var(--accent); }
+  .loc-sel-list {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 350;
+    box-shadow: var(--shadow);
+  }
+  .loc-sel-list.open { display: block; }
+  .loc-sel-opt {
+    padding: 10px 12px;
+    font-size: 15px;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .loc-sel-opt.empty { color: var(--text-sub); }
+  .loc-sel-opt:hover, .loc-sel-opt.active { background: var(--accent-light); }
 </style>
 </head>
 <body>
@@ -939,13 +978,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v03_2026-05-23.3</span>
+        <span class="header-version" id="version-inline">v03_2026-05-23.4</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v03_2026-05-23.3</span>
+      <span class="header-version">v03_2026-05-23.4</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -996,7 +1035,10 @@ if (savedConfig) {
     </div>
     <div class="form-row">
       <label>保管場所</label>
-      <select id="fLocation"></select>
+      <div class="loc-sel" id="fLocWrap">
+        <input type="text" class="loc-sel-input" id="fLocInput" placeholder="（未設定）— 入力で絞り込み" autocomplete="off">
+        <div class="loc-sel-list" id="fLocList"></div>
+      </div>
     </div>
     <div class="form-row form-row-2col">
       <div>
@@ -1356,12 +1398,11 @@ function openItemModal(id) {
     `<option value="${c}" ${c === defaultCat ? 'selected' : ''}>${c}</option>`
   ).join('');
 
-  const locSel = document.getElementById('fLocation');
+  const locInput = document.getElementById('fLocInput');
   const currentLocation = item ? (item.location || '') : '';
-  locSel.innerHTML = '<option value="">（未設定）</option>' +
-    (ST.locations || []).map(l =>
-      `<option value="${l}" ${l === currentLocation ? 'selected' : ''}>${l}</option>`
-    ).join('');
+  locInput.value = currentLocation;
+  locInput.dataset.selected = currentLocation;
+  document.getElementById('fLocList').classList.remove('open');
 
   document.getElementById('itemOverlay').classList.add('open');
   document.getElementById('fName').focus();
@@ -1376,7 +1417,7 @@ function saveItem() {
   const name = document.getElementById('fName').value.trim();
   if (!name) { showToast('品目名を入力してください'); return; }
   const cat      = document.getElementById('fCat').value;
-  const location = document.getElementById('fLocation').value;
+  const location = document.getElementById('fLocInput').dataset.selected || '';
   const stock    = parseInt(document.getElementById('fStock').textContent)  || 0;
   const target   = parseInt(document.getElementById('fTarget').textContent) || 0;
   const note     = document.getElementById('fNote').value.trim();
@@ -1598,6 +1639,28 @@ function deleteCategory(idx) {
   renderTabs();
 }
 
+// ---- 保管場所検索セレクト ----
+function _buildLocList(q) {
+  const list = document.getElementById('fLocList');
+  if (!list) return;
+  const cur = document.getElementById('fLocInput')?.dataset.selected || '';
+  const filtered = (ST.locations || []).filter(l => !q || l.toLowerCase().includes(q.toLowerCase()));
+  list.innerHTML =
+    `<div class="loc-sel-opt empty${cur === '' ? ' active' : ''}" data-val="">（未設定）</div>` +
+    filtered.map(l =>
+      `<div class="loc-sel-opt${cur === l ? ' active' : ''}" data-val="${l.replace(/"/g,'&quot;')}">${l}</div>`
+    ).join('');
+}
+
+function _selectLocation(val) {
+  const input = document.getElementById('fLocInput');
+  const list  = document.getElementById('fLocList');
+  if (!input || !list) return;
+  input.value = val;
+  input.dataset.selected = val;
+  list.classList.remove('open');
+}
+
 // ---- 保管場所フィルター ----
 function filterByLocation(loc) {
   curLocation = (curLocation === loc) ? null : loc;
@@ -1683,6 +1746,7 @@ function addLocation() {
   if (!ST.locations) ST.locations = [];
   if (ST.locations.includes(name)) { showToast('同じ名前の保管場所があります'); return; }
   ST.locations.push(name);
+  ST.locations.sort((a, b) => a.localeCompare(b, 'ja'));
   saveData();
   document.getElementById('newLocationName').value = '';
   renderLocationList();
@@ -1743,6 +1807,31 @@ document.getElementById('searchClear').addEventListener('click', () => {
   document.getElementById('searchInput').value = '';
   document.getElementById('searchClear').style.display = 'none';
   renderCards();
+});
+
+// 保管場所検索セレクト イベント
+document.getElementById('fLocInput').addEventListener('focus', () => {
+  _buildLocList('');
+  document.getElementById('fLocList').classList.add('open');
+});
+document.getElementById('fLocInput').addEventListener('input', e => {
+  document.getElementById('fLocInput').dataset.selected = '';
+  _buildLocList(e.target.value);
+  document.getElementById('fLocList').classList.add('open');
+});
+document.getElementById('fLocList').addEventListener('mousedown', e => {
+  const opt = e.target.closest('[data-val]');
+  if (!opt) return;
+  e.preventDefault();
+  _selectLocation(opt.dataset.val);
+});
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('fLocWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('fLocList').classList.remove('open');
+    const inp = document.getElementById('fLocInput');
+    if (inp) inp.value = inp.dataset.selected || '';
+  }
 });
 
 if ('serviceWorker' in navigator) {
