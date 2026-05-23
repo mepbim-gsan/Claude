@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v03_2026-05-23.5
+  @version   v03_2026-05-23.6
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -32,6 +32,7 @@
     v03_2026-05-23.3  - PWA対応（オフライン動作・ホーム画面追加）
     v03_2026-05-23.4  - 保管場所を昇順ソート、ドロップダウンを検索セレクトに変更
     v03_2026-05-23.5  - PWAキャッシュを無効化（常にネットワーク取得）
+    v03_2026-05-23.6  - 保管場所を読み込み時・リネーム時にも昇順ソート
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -979,13 +980,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v03_2026-05-23.5</span>
+        <span class="header-version" id="version-inline">v03_2026-05-23.6</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v03_2026-05-23.5</span>
+      <span class="header-version">v03_2026-05-23.6</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -1156,6 +1157,7 @@ function saveData() {
 window._applyRemoteState = function(data) {
   if (!data || !data.items) return;
   if (!data.locations) data.locations = []; // 旧データとの後方互換
+  data.locations.sort((a, b) => a.localeCompare(b, 'ja'));
   ST = data;
   renderTabs();
   const isSelfWrite = window._lastWriteAt && (Date.now() - window._lastWriteAt < 1500);
@@ -1191,6 +1193,7 @@ const DEFAULT = {
 
 let ST = loadData() || JSON.parse(JSON.stringify(DEFAULT));
 if (!ST.locations) ST.locations = []; // 旧データとの後方互換
+ST.locations.sort((a, b) => a.localeCompare(b, 'ja'));
 
 // ============================================================
 // 状態
@@ -1735,6 +1738,7 @@ function commitRenameLocation(idx) {
   }
   const oldName = ST.locations[idx];
   ST.locations[idx] = newName;
+  ST.locations.sort((a, b) => a.localeCompare(b, 'ja'));
   ST.items.forEach(i => { if (i.location === oldName) i.location = newName; });
   saveData();
   renderLocationList();
