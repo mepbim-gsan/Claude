@@ -1,6 +1,6 @@
 <!--
   @tool      家庭用ストック管理ツール
-  @version   v03_2026-05-23.4
+  @version   v03_2026-05-23.5
   @chat      Stock_02_Firebase対応
   @changelog
     v01_2026-03-22    - 初版
@@ -31,6 +31,7 @@
     v03_2026-05-23.2  - 保管場所タグタップで同一保管場所の品目をフィルター表示
     v03_2026-05-23.3  - PWA対応（オフライン動作・ホーム画面追加）
     v03_2026-05-23.4  - 保管場所を昇順ソート、ドロップダウンを検索セレクトに変更
+    v03_2026-05-23.5  - PWAキャッシュを無効化（常にネットワーク取得）
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -63,7 +64,7 @@ window._parseFirebaseConfig = function(text) {
   if (!text || !text.trim()) return null;
   try { return JSON.parse(text.trim()); } catch {}
   try {
-    let s = text.replace(/\/\/.*$/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
+    let s = text.replace(/\/\/.*/gm,'').replace(/const\s+\w+\s*=\s*/g,'').replace(/;?\s*$/,'').trim();
     const match = s.match(/\{[\s\S]*\}/);
     if (!match) return null;
     const jsonStr = match[0].replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":').replace(/'/g,'"');
@@ -978,13 +979,13 @@ if (savedConfig) {
     <div class="header-row1">
       <div class="header-title">📦 ストック管理</div>
       <div class="header-btns">
-        <span class="header-version" id="version-inline">v03_2026-05-23.4</span>
+        <span class="header-version" id="version-inline">v03_2026-05-23.5</span>
         <button class="btn-icon" onclick="openBuyList()">🛒 補充リスト</button>
         <button class="btn-icon" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="header-row2" id="auth-row" style="display:none">
-      <span class="header-version">v03_2026-05-23.4</span>
+      <span class="header-version">v03_2026-05-23.5</span>
       <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span class="auth-name" id="auth-info"></span>
         <button class="btn-logout" id="auth-btn">ログアウト</button>
@@ -1844,3 +1845,4 @@ updateStickyTops();
 window.addEventListener('resize', updateStickyTops);
 </script>
 </body>
+</html>
