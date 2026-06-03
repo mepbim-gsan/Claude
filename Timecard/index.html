@@ -1176,7 +1176,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v06_2026-06-02.1';
+const APP_VERSION = 'v06_2026-06-02.2';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1348,7 +1348,7 @@ function updateStampButtons(){
   const needLive = isToday && !!inVal && !outVal;
   document.getElementById('live-indicator').style.display = needLive ? 'inline' : 'none';
   if(needLive && !liveTimer){
-    liveTimer = setInterval(()=>{ updateDaySummary(true); }, 60000);
+    liveTimer = setInterval(()=>{ updateDaySummary(true); if(document.getElementById('page-month').classList.contains('active')) renderMonthTab(); }, 60000);
   } else if(!needLive && liveTimer){
     clearInterval(liveTimer); liveTimer = null;
   }
@@ -2143,7 +2143,7 @@ function renderDayList(y,m,data){
     const dow=new Date(ds+'T00:00:00').getDay();
     const obj=(data.days||{})[String(d)];
     const sob=(data.schedules||{})[String(d)];
-    const wM=obj?calcWorkMinutes(obj):null;
+    const wM=(()=>{if(!obj)return null;if(ds===today&&obj.timeIn&&!obj.timeOut)return calcWorkMinutes(Object.assign({},obj,{timeOut:nowHHMM()}));return calcWorkMinutes(obj);})();
     const isT=ds===today;
     const dc=dow===0?'sun':dow===6?'sat':isHoliday(ds)?'hol':'';
     const hn=settings.holidays.find(h=>h.date===ds)?.name||'';
@@ -2196,7 +2196,7 @@ function renderDayList(y,m,data){
     let rightContent='';
     if(wM!==null && !isNoTimeLeave){
       const otColor=wM>(settings.stdHours||8)*60?'var(--warn)':'var(--text)';
-      rightContent=`<div class="day-hours" style="color:${otColor}">${formatHours(wM)}h</div>`;
+      rightContent=`<div class="day-hours" style="color:${otColor}">${formatHoursMin(wM)}</div>`;
     } else if(sob){
       const schedLeaveNames={paid:'有給',comp:'代休',half:'半日'};
       const schedLv=sob?.leave||'normal';
@@ -2212,7 +2212,7 @@ function renderDayList(y,m,data){
       <div class="day-num ${dc}">${String(d).padStart(2,'0')}<br><span style="font-size:10px;font-weight:400">${dn[dow]}</span></div>
       <div class="day-info">
         <div class="day-time" style="${isT?'color:var(--accent)':''}">
-          ${badge}${ls&&!timeStr?'':(wM!==null?formatHours(wM)+'h':'')}
+          ${badge}${ls&&!timeStr?'':(wM!==null?formatHoursMin(wM):'')}
         </div>
         <div class="day-sub">${subFinal}</div>
       </div>
