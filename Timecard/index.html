@@ -2206,8 +2206,10 @@ function renderDayList(y,m,data){
 
     // 休暇バッジ
     const badge=ls?`<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${ls.bg};color:${ls.color};margin-right:4px;">${ls.label}</span>`:'';
-    // テレワークバッジ
-    const remoteBadge=obj?.remote?`<span style="display:inline-block;padding:2px 6px;border-radius:99px;font-size:11px;font-weight:700;background:rgba(79,142,247,.12);color:var(--accent);margin-right:4px;">🏠</span>`:'';
+    // テレワークバッジ（実績: 青塗り / 予定のみ: 薄・破線枠）
+    const remoteBadge=obj?.remote
+      ?`<span style="display:inline-block;padding:2px 6px;border-radius:99px;font-size:11px;font-weight:700;background:rgba(79,142,247,.12);color:var(--accent);margin-right:4px;">🏠</span>`
+      :(!obj&&sob?.remote?`<span style="display:inline-block;padding:2px 6px;border-radius:99px;font-size:11px;font-weight:700;border:1px dashed var(--accent);color:var(--text3);margin-right:4px;">🏠</span>`:'');
 
     // 実績/予定 表示
     // 時刻なし半休・時間休は予定表示にフォールバック
