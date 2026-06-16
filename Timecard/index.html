@@ -695,6 +695,12 @@ label:first-child{margin-top:0;}
         <label>時間休 取得時間数</label>
         <input type="number" id="hourly-hours" min="0.5" max="8" step="0.5" value="1">
       </div>
+      <div style="margin-top:10px;">
+        <label id="punch-remote-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;padding:6px 14px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);transition:border-color .15s,background .15s;">
+          <input type="checkbox" id="punch-remote" style="width:17px;height:17px;accent-color:var(--accent);cursor:pointer;">
+          <span style="font-size:13px;font-weight:600;color:var(--text2);">🏠 テレワーク</span>
+        </label>
+      </div>
     </div>
     <div class="card">
       <div class="card-title">
@@ -760,6 +766,7 @@ label:first-child{margin-top:0;}
         <div class="stat-box-label">実労働日数</div>
         <div class="stat-box-val" id="m-work-days-actual" style="color:var(--accent)">--</div>
         <div class="stat-box-sub" id="m-workdays">-- 営業日</div>
+        <div class="stat-box-sub" id="m-remote-days" style="margin-top:3px;color:var(--text2);">🏠 0日</div>
       </div>
       <div class="stat-box">
         <div class="stat-box-label">法定時間外（見込）</div>
@@ -955,6 +962,7 @@ label:first-child{margin-top:0;}
             <th style="text-align:right">法定休日(h)</th>
             <th style="text-align:right">有給(日)</th>
             <th style="text-align:right">代休(日)</th>
+            <th style="text-align:right">🏠TW(日)</th>
           </tr></thead>
           <tbody id="annual-tbody"></tbody>
           <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
@@ -965,6 +973,7 @@ label:first-child{margin-top:0;}
             <td id="at-lot" style="text-align:right">-</td>
             <td id="at-paid" style="text-align:right">-</td>
             <td id="at-comp" style="text-align:right">-</td>
+            <td id="at-remote" style="text-align:right">-</td>
           </tr></tfoot>
         </table>
       </div>
@@ -1176,7 +1185,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v06_2026-06-02.2';
+const APP_VERSION = 'v07_2026-06-16';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1194,6 +1203,17 @@ const DEFAULT_HOLIDAYS=[
   {date:'2027-01-01',name:'元日'},{date:'2027-01-11',name:'成人の日'},{date:'2027-02-11',name:'建国記念の日'},{date:'2027-02-23',name:'天皇誕生日'},{date:'2027-03-21',name:'春分の日'},{date:'2027-04-29',name:'昭和の日'},{date:'2027-05-03',name:'憲法記念日'},{date:'2027-05-04',name:'みどりの日'},{date:'2027-05-05',name:'こどもの日'},{date:'2027-07-19',name:'海の日'},{date:'2027-08-11',name:'山の日'},{date:'2027-09-20',name:'敬老の日'},{date:'2027-09-23',name:'秋分の日'},{date:'2027-10-11',name:'スポーツの日'},{date:'2027-11-03',name:'文化の日'},{date:'2027-11-23',name:'勤労感謝の日'},
   {date:'2028-01-01',name:'元日'},{date:'2028-01-10',name:'成人の日'},{date:'2028-02-11',name:'建国記念の日'},{date:'2028-02-23',name:'天皇誕生日'},{date:'2028-03-20',name:'春分の日'},{date:'2028-04-29',name:'昭和の日'},{date:'2028-05-03',name:'憲法記念日'},{date:'2028-05-04',name:'みどりの日'},{date:'2028-05-05',name:'こどもの日'},{date:'2028-07-17',name:'海の日'},{date:'2028-08-11',name:'山の日'},{date:'2028-09-18',name:'敬老の日'},{date:'2028-09-22',name:'秋分の日'},{date:'2028-10-09',name:'スポーツの日'},{date:'2028-11-03',name:'文化の日'},{date:'2028-11-23',name:'勤労感謝の日'},
 ];
+
+function updateRemoteLabel(){
+  const chk=document.getElementById('punch-remote');
+  const lbl=document.getElementById('punch-remote-label');
+  const txt=lbl?.querySelector('span');
+  if(!chk||!lbl)return;
+  const on=chk.checked;
+  lbl.style.borderColor=on?'var(--accent)':'var(--border)';
+  lbl.style.background=on?'rgba(79,142,247,.12)':'var(--bg3)';
+  if(txt)txt.style.color=on?'var(--accent)':'var(--text2)';
+}
 
 function loadStorage(){
   try{const d=localStorage.getItem(STORAGE_KEY);if(d)monthData=JSON.parse(d);}catch{}
@@ -1383,6 +1403,8 @@ function loadDayToPunch(ds){
     document.getElementById('punch-out').value = d.timeOut || '';
     selectLeave(d.leave || 'normal');
     if(d.hourlyHours) document.getElementById('hourly-hours').value = d.hourlyHours;
+    document.getElementById('punch-remote').checked = !!d.remote;
+    updateRemoteLabel();
     for(const b of (d.breaks||[])) addBreakRow(b.start, b.end);
     // 休憩が1件以下なら2行目（空欄）も追加
     if((d.breaks||[]).length <= 1) addBreakRow('','');
@@ -1390,6 +1412,8 @@ function loadDayToPunch(ds){
     document.getElementById('punch-in').value  = '';
     document.getElementById('punch-out').value = '';
     selectLeave('normal');
+    document.getElementById('punch-remote').checked = false;
+    updateRemoteLabel();
     // デフォルト休憩: 設定があればそれ、なければ1200-1300固定
     const bp = settings.breakPresets || [];
     if(bp.length > 0){
@@ -1506,10 +1530,11 @@ function autoSavePunch(){
   if(!ds)return;
   const inVal=document.getElementById('punch-in').value.trim();
   const outVal=document.getElementById('punch-out').value.trim();
+  const isRemote=document.getElementById('punch-remote').checked;
   // 開始のみの休憩も保存対象に含める（終了が空でも記録）
   const allBreaks=breakRows.filter(Boolean).filter(b=>b.start);
   const validBreaks=allBreaks.filter(b=>!b.end||isBreakValid(b,inVal,outVal));
-  setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks});
+  setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks,remote:isRemote});
   saveStorage();
   // 月次タブが表示中なら更新
   if(document.getElementById('page-month').classList.contains('active')) renderMonthTab();
@@ -1520,12 +1545,13 @@ function savePunchDay(){
   if(!ds)return;
   const inVal=document.getElementById('punch-in').value.trim();
   const outVal=document.getElementById('punch-out').value.trim();
+  const isRemote=document.getElementById('punch-remote').checked;
   // 休憩開始中（startあり/endなし）も「休憩中の状態」として保持する
   const validBreaks=breakRows
     .filter(Boolean)
     .filter(b=>b.start)
     .filter(b=>!b.end||isBreakValid(b,inVal,outVal));
-  setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks});
+  setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks,remote:isRemote});
   saveStorage();
   const[y,m]=ds.split('-').map(Number);
   if(getMonthKey(y,m)===getMonthKey(currentMonth.getFullYear(),currentMonth.getMonth()+1))renderMonthTab();
@@ -1587,13 +1613,13 @@ function renderMonthTab(){
     }
   }
 
-  // 実労働日数カウント
-  let actualWorkDays=0;
+  // 実労働日数・テレワーク日数カウント
+  let actualWorkDays=0, remoteDays=0;
   for(let d=1;d<=dim;d++){
     const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     if(ds>today)continue;
     const obj=(data.days||{})[String(d)];
-    if(obj&&calcWorkMinutes(obj)>0)actualWorkDays++;
+    if(obj&&calcWorkMinutes(obj)>0){actualWorkDays++;if(obj.remote)remoteDays++;}
   }
 
   // 法定時間外計算用: 実績済み日は実績、未入力営業日(日曜除く)は計画値で補完
@@ -1653,6 +1679,8 @@ function renderMonthTab(){
 
   document.getElementById('m-work-days-actual').textContent=actualWorkDays;
   document.getElementById('m-workdays').textContent=`${bizDays.length}営業日`;
+  const remEl=document.getElementById('m-remote-days');
+  if(remEl)remEl.textContent=`🏠 ${remoteDays}日`;
   // 予測超過（青）
   const legalOtEl=document.getElementById('m-legal-ot');
   if(legalOtEl){
@@ -2178,20 +2206,15 @@ function renderDayList(y,m,data){
 
     // 休暇バッジ
     const badge=ls?`<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${ls.bg};color:${ls.color};margin-right:4px;">${ls.label}</span>`:'';
+    // テレワークバッジ（実績: 青塗り / 予定のみ: 薄・破線枠）
+    const remoteBadge=obj?.remote
+      ?`<span style="display:inline-block;padding:2px 6px;border-radius:99px;font-size:11px;font-weight:700;background:rgba(79,142,247,.12);color:var(--accent);margin-right:4px;">🏠</span>`
+      :(!obj&&sob?.remote?`<span style="display:inline-block;padding:2px 6px;border-radius:99px;font-size:11px;font-weight:700;border:1px dashed var(--accent);color:var(--text3);margin-right:4px;">🏠</span>`:'');
 
     // 実績/予定 表示
     // 時刻なし半休・時間休は予定表示にフォールバック
     const hasTime = obj?.timeIn && obj?.timeOut;
     const isNoTimeLeave = obj && ['half','hourly'].includes(obj.leave||'') && !hasTime;
-
-    // day-subの予定時刻（実績なし時）
-    let subSched='';
-    if(!obj && sob?.timeIn && sob?.timeOut){
-      subSched=formatTime(parseTime(sob.timeIn))+'〜'+formatTime(parseTime(sob.timeOut));
-    } else if(!obj && isBusinessDay(ds) && !sob){
-      subSched=`${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}`;
-    }
-    const subFinal=[hn, timeStr+breakStr, subSched].filter(Boolean).join(' ');
 
     let rightContent='';
     if(wM!==null && !isNoTimeLeave){
@@ -2212,9 +2235,9 @@ function renderDayList(y,m,data){
       <div class="day-num ${dc}">${String(d).padStart(2,'0')}<br><span style="font-size:10px;font-weight:400">${dn[dow]}</span></div>
       <div class="day-info">
         <div class="day-time" style="${isT?'color:var(--accent)':''}">
-          ${badge}${ls&&!timeStr?'':(wM!==null?formatHoursMin(wM):'')}
+          ${badge}${remoteBadge}${ls&&!timeStr?'':(wM!==null?formatHoursMin(wM):'')}
         </div>
-        <div class="day-sub">${subFinal}</div>
+        <div class="day-sub">${sub}</div>
       </div>
       ${rightContent}`;
     item.addEventListener('click',()=>openDayModal(ds));
@@ -2279,6 +2302,26 @@ function openDayModal(ds){
   };
   c.appendChild(lr);
 
+  // テレワークトグル（実績・予定共通）：タブの上・休暇区分チップ直下
+  const remoteWrap=document.createElement('div');remoteWrap.style.cssText='margin-top:10px;';
+  const remoteLabel=document.createElement('label');
+  remoteLabel.id='modal-remote-label';
+  remoteLabel.style.cssText='display:inline-flex;align-items:center;gap:8px;cursor:pointer;padding:6px 14px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);transition:border-color .15s,background .15s;';
+  const remoteChk=document.createElement('input');
+  remoteChk.type='checkbox';remoteChk.id='modal-remote';
+  remoteChk.style.cssText='width:17px;height:17px;accent-color:var(--accent);cursor:pointer;';
+  const remoteTxt=document.createElement('span');
+  remoteTxt.style.cssText='font-size:13px;font-weight:600;color:var(--text2);';
+  remoteTxt.textContent='🏠 テレワーク';
+  const syncModalRemoteStyle=()=>{
+    const on=remoteChk.checked;
+    remoteLabel.style.borderColor=on?'var(--accent)':'var(--border)';
+    remoteLabel.style.background=on?'rgba(79,142,247,.12)':'var(--bg3)';
+    remoteTxt.style.color=on?'var(--accent)':'var(--text2)';
+  };
+  remoteChk.addEventListener('change',syncModalRemoteStyle);
+  remoteLabel.append(remoteChk,remoteTxt);remoteWrap.appendChild(remoteLabel);c.appendChild(remoteWrap);
+
   // タブ
   const tabs=document.createElement('div');tabs.className='modal-tabs';
   const tabActual=document.createElement('div');tabActual.className='modal-tab active';tabActual.textContent='実績';
@@ -2295,6 +2338,9 @@ function openDayModal(ds){
     modalBreakRows=[];
     const src=mode==='actual'?getDay(ds):getSched(ds);
     buildLeaveChips(src?.leave||'normal');
+    // テレワーク状態をタブに合わせて同期
+    remoteChk.checked=!!(src?.remote);
+    syncModalRemoteStyle();
     form.innerHTML='';
 
     const tr=document.createElement('div');tr.className='row mt-8';
@@ -2401,10 +2447,11 @@ function saveDayModal(){
   const outT=document.getElementById('modal-out').value.trim();
   const breaks=modalBreakRows.filter(b=>b&&b.start&&b.end);
   const mode=document.querySelector('.modal-tab.active')?.textContent==='予定'?'sched':'actual';
+  const isRemote=!!(document.getElementById('modal-remote')?.checked);
   if(mode==='actual'){
-    setDay(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks});
+    setDay(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks,remote:isRemote});
   } else {
-    setSched(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks});
+    setSched(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks,remote:isRemote});
   }
   saveStorage();closeModal('day-modal');renderMonthTab();
 }
@@ -3347,13 +3394,13 @@ function renderAnnualJobCharts(){
 function renderAnnualTab(){
   document.getElementById('year-label').textContent=`${currentYear}年`;
   const cm=new Date().getMonth()+1,cy=new Date().getFullYear();
-  let tA=0,tLL=0,tLOT=0,tHol=0,tPaid=0,tComp=0;
+  let tA=0,tLL=0,tLOT=0,tHol=0,tPaid=0,tComp=0,tRemote=0;
   const rows=[];
   for(let mon=1;mon<=12;mon++){
     const key=getMonthKey(currentYear,mon),data=monthData[key]||{days:{},schedules:{}};
     const legalLim=calcLegalLimit(currentYear,mon);
     const dim=new Date(currentYear,mon,0).getDate();
-    let actual=0,holWork=0,paid=0,comp=0;
+    let actual=0,holWork=0,paid=0,comp=0,remote=0;
     for(let d=1;d<=dim;d++){
       const obj=(data.days||{})[String(d)];
       if(!obj)continue;
@@ -3363,9 +3410,10 @@ function renderAnnualTab(){
       if(obj.leave==='paid')paid++;
       if(obj.leave==='comp')comp++;
       if(obj.leave==='half')paid+=0.5;
+      if(obj.remote&&wm>0)remote++;
     }
     const lot=Math.max(0,actual-legalLim);
-    tA+=actual;tLL+=legalLim;tLOT+=lot;tHol+=holWork;tPaid+=paid;tComp+=comp;
+    tA+=actual;tLL+=legalLim;tLOT+=lot;tHol+=holWork;tPaid+=paid;tComp+=comp;tRemote+=remote;
     const ic=(currentYear===cy&&mon===cm);
     const r=(v)=>`style="text-align:right">${v}`;
     rows.push(`<tr class="${ic?'current-month':''}">
@@ -3376,6 +3424,7 @@ function renderAnnualTab(){
       <td style="text-align:right;color:${holWork>0?'var(--danger)':'var(--text)'}">${formatHours(holWork)}</td>
       <td ${r(paid>0?paid:'-')}</td>
       <td ${r(comp>0?comp:'-')}</td>
+      <td style="text-align:right;color:${remote>0?'var(--accent)':'var(--text)'}">${remote>0?remote:'-'}</td>
     </tr>`);
   }
   document.getElementById('annual-tbody').innerHTML=rows.join('');
@@ -3385,11 +3434,79 @@ function renderAnnualTab(){
   document.getElementById('at-lot').textContent=formatHours(tHol);
   document.getElementById('at-paid').textContent=tPaid;
   document.getElementById('at-comp').textContent=tComp;
+  document.getElementById('at-remote').textContent=tRemote>0?tRemote:'-';
   renderAnnualJobCharts();
 }
 
 // EXCEL
-function exportExcel(){const wb=XLSX.utils.book_new(),y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1,key=getMonthKey(y,m),data=monthData[key]||{days:{},schedules:{}},dim=new Date(y,m,0).getDate(),dn=['日','月','火','水','木','金','土'],ln={normal:'通常',paid:'有給',comp:'代休',half:'半日休',hourly:'時間休'};const ws1=[['日','曜日','区分','出勤','退勤','休憩(h)','実労働(h)','残業(h)','備考']];for(let d=1;d<=dim;d++){const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`,dow=new Date(ds+'T00:00:00').getDay(),obj=(data.days||{})[String(d)],hn=settings.holidays.find(h=>h.date===ds)?.name||'';if(obj){const wM=calcWorkMinutes(obj),bM=(obj.breaks||[]).reduce((s,b)=>{const bs=parseTime(b.start),be=parseTime(b.end);if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=1440;return s+bd;}return s;},0);ws1.push([d,dn[dow],ln[obj.leave||'normal']||'通常',obj.timeIn?formatTime(parseTime(obj.timeIn)):'',obj.timeOut?formatTime(parseTime(obj.timeOut)):'',parseFloat((bM/60).toFixed(2)),parseFloat((wM/60).toFixed(2)),parseFloat((Math.max(0,wM-(settings.stdHours||8)*60)/60).toFixed(2)),hn]);}else ws1.push([d,dn[dow],'','','','','','',hn]);}const s1=XLSX.utils.aoa_to_sheet(ws1);s1['!cols']=[{wch:4},{wch:4},{wch:6},{wch:6},{wch:6},{wch:8},{wch:10},{wch:8},{wch:12}];XLSX.utils.book_append_sheet(wb,s1,`${y}年${m}月`);const ws2=[[`${currentYear}年 年間サマリ`],[],['月','実労働(h)','所定(h)','所定残業(h)','法定残業(h)','有給(日)','代休(日)']];let tA=0,tP=0,tCOT=0,tLOT=0,tPaid=0,tComp=0;for(let mon=1;mon<=12;mon++){const mk=getMonthKey(currentYear,mon),md=monthData[mk]||{days:{},schedules:{}},biz=getBusinessDays(currentYear,mon),pres=calcPrescribed(biz),legalLim2=calcLegalLimit(currentYear,mon),dim2=new Date(currentYear,mon,0).getDate();let a=0,p=0,co=0;for(let d=1;d<=dim2;d++){const o=(md.days||{})[String(d)];if(!o)continue;const dow3=new Date(`${currentYear}-${String(mon).padStart(2,'0')}-${String(d).padStart(2,'0')}T00:00:00`).getDay();if(dow3!==0)a+=calcWorkMinutes(o);if(o.leave==='paid')p++;if(o.leave==='comp')co++;if(o.leave==='half')p+=0.5;}const c=Math.max(0,a-pres),l=Math.max(0,a-legalLim2);tA+=a;tP+=pres;tCOT+=c;tLOT+=l;tPaid+=p;tComp+=co;ws2.push([`${mon}月`,parseFloat((a/60).toFixed(2)),parseFloat((pres/60).toFixed(2)),parseFloat((c/60).toFixed(2)),parseFloat((l/60).toFixed(2)),p||0,co||0]);}ws2.push([]);ws2.push(['合計',parseFloat((tA/60).toFixed(2)),parseFloat((tP/60).toFixed(2)),parseFloat((tCOT/60).toFixed(2)),parseFloat((tLOT/60).toFixed(2)),tPaid,tComp]);const s2=XLSX.utils.aoa_to_sheet(ws2);s2['!cols']=[{wch:6},{wch:12},{wch:10},{wch:14},{wch:12},{wch:8},{wch:8}];XLSX.utils.book_append_sheet(wb,s2,`${currentYear}年サマリ`);XLSX.writeFile(wb,`timecard_${currentYear}.xlsx`);}
+function exportExcel(){
+  const wb=XLSX.utils.book_new();
+  const y=currentMonth.getFullYear(),m=currentMonth.getMonth()+1;
+  const key=getMonthKey(y,m),data=monthData[key]||{days:{},schedules:{}};
+  const dim=new Date(y,m,0).getDate();
+  const dn=['日','月','火','水','木','金','土'];
+  const ln={normal:'通常',paid:'有給',comp:'代休',half:'半日休',hourly:'時間休'};
+
+  // 月次シート
+  const ws1=[['日','曜日','区分','テレワーク','出勤','退勤','休憩(h)','実労働(h)','残業(h)','備考']];
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=new Date(ds+'T00:00:00').getDay();
+    const obj=(data.days||{})[String(d)];
+    const hn=settings.holidays.find(h=>h.date===ds)?.name||'';
+    if(obj){
+      const wM=calcWorkMinutes(obj);
+      const bM=(obj.breaks||[]).reduce((s,b)=>{
+        const bs=parseTime(b.start),be=parseTime(b.end);
+        if(bs!==null&&be!==null){let bd=be-bs;if(bd<0)bd+=1440;return s+bd;}
+        return s;
+      },0);
+      ws1.push([d,dn[dow],ln[obj.leave||'normal']||'通常',obj.remote?'○':'',
+        obj.timeIn?formatTime(parseTime(obj.timeIn)):'',
+        obj.timeOut?formatTime(parseTime(obj.timeOut)):'',
+        parseFloat((bM/60).toFixed(2)),parseFloat((wM/60).toFixed(2)),
+        parseFloat((Math.max(0,wM-(settings.stdHours||8)*60)/60).toFixed(2)),hn]);
+    } else {
+      ws1.push([d,dn[dow],'','','','','','','',hn]);
+    }
+  }
+  const s1=XLSX.utils.aoa_to_sheet(ws1);
+  s1['!cols']=[{wch:4},{wch:4},{wch:6},{wch:6},{wch:6},{wch:6},{wch:8},{wch:10},{wch:8},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,s1,`${y}年${m}月`);
+
+  // 年間サマリシート
+  const ws2=[[`${currentYear}年 年間サマリ`],[],
+    ['月','実労働(h)','所定(h)','所定残業(h)','法定残業(h)','有給(日)','代休(日)','テレワーク(日)']];
+  let tA=0,tP=0,tCOT=0,tLOT=0,tPaid=0,tComp=0,tRem=0;
+  for(let mon=1;mon<=12;mon++){
+    const mk=getMonthKey(currentYear,mon),md=monthData[mk]||{days:{},schedules:{}};
+    const biz=getBusinessDays(currentYear,mon),pres=calcPrescribed(biz);
+    const legalLim2=calcLegalLimit(currentYear,mon),dim2=new Date(currentYear,mon,0).getDate();
+    let a=0,p=0,co=0,rem=0;
+    for(let d=1;d<=dim2;d++){
+      const o=(md.days||{})[String(d)];
+      if(!o)continue;
+      const dow3=new Date(`${currentYear}-${String(mon).padStart(2,'0')}-${String(d).padStart(2,'0')}T00:00:00`).getDay();
+      const wm=calcWorkMinutes(o);
+      if(dow3!==0)a+=wm;
+      if(o.leave==='paid')p++;
+      if(o.leave==='comp')co++;
+      if(o.leave==='half')p+=0.5;
+      if(o.remote&&wm>0)rem++;
+    }
+    const c=Math.max(0,a-pres),l=Math.max(0,a-legalLim2);
+    tA+=a;tP+=pres;tCOT+=c;tLOT+=l;tPaid+=p;tComp+=co;tRem+=rem;
+    ws2.push([`${mon}月`,parseFloat((a/60).toFixed(2)),parseFloat((pres/60).toFixed(2)),
+      parseFloat((c/60).toFixed(2)),parseFloat((l/60).toFixed(2)),p||0,co||0,rem||0]);
+  }
+  ws2.push([]);
+  ws2.push(['合計',parseFloat((tA/60).toFixed(2)),parseFloat((tP/60).toFixed(2)),
+    parseFloat((tCOT/60).toFixed(2)),parseFloat((tLOT/60).toFixed(2)),tPaid,tComp,tRem]);
+  const s2=XLSX.utils.aoa_to_sheet(ws2);
+  s2['!cols']=[{wch:6},{wch:12},{wch:10},{wch:14},{wch:12},{wch:8},{wch:8},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,s2,`${currentYear}年サマリ`);
+  XLSX.writeFile(wb,`timecard_${currentYear}.xlsx`);
+}
 
 // SETTINGS
 function renderSettingsUI(){document.getElementById('std-hours').value=settings.stdHours||8;document.getElementById('core-start').value=settings.coreStart||'1000';document.getElementById('core-end').value=settings.coreEnd||'1500';renderPresetList();renderBreakPresetList();renderHolidayYearFilter();renderHolidayList();const dk=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('btn-theme-setting').textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';}
@@ -3443,6 +3560,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('add-break-btn').addEventListener('click',()=>addBreakRow('',''));
   document.getElementById('btn-save-punch').addEventListener('click',savePunchDay);
   document.getElementById('leave-chips').addEventListener('click',e=>{const c=e.target.closest('.leave-chip');if(c)selectLeave(c.dataset.leave);});
+  document.getElementById('punch-remote').addEventListener('change',updateRemoteLabel);
 
   // スタンプボタン
   document.getElementById('stamp-in').addEventListener('click',()=>{
