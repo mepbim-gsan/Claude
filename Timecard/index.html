@@ -962,7 +962,7 @@ label:first-child{margin-top:0;}
             <th style="text-align:right">法定休日(h)</th>
             <th style="text-align:right">有給(日)</th>
             <th style="text-align:right">代休(日)</th>
-            <th style="text-align:right">🏠テレワーク(日)</th>
+            <th style="text-align:right">🏠TW(日)</th>
           </tr></thead>
           <tbody id="annual-tbody"></tbody>
           <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
@@ -2327,6 +2327,29 @@ function openDayModal(ds){
     buildLeaveChips(src?.leave||'normal');
     form.innerHTML='';
 
+    // テレワークトグル（実績タブのみ）：休暇区分チップの直下
+    if(mode==='actual'){
+      const remoteWrap=document.createElement('div');remoteWrap.style.cssText='margin-top:10px;';
+      const remoteLabel=document.createElement('label');
+      remoteLabel.id='modal-remote-label';
+      remoteLabel.style.cssText='display:inline-flex;align-items:center;gap:8px;cursor:pointer;padding:6px 14px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);transition:border-color .15s,background .15s;';
+      const remoteChk=document.createElement('input');
+      remoteChk.type='checkbox';remoteChk.id='modal-remote';
+      remoteChk.style.cssText='width:17px;height:17px;accent-color:var(--accent);cursor:pointer;';
+      remoteChk.checked=!!(src?.remote);
+      const remoteTxt=document.createElement('span');
+      remoteTxt.style.cssText='font-size:13px;font-weight:600;color:var(--text2);';
+      remoteTxt.textContent='🏠 テレワーク';
+      const updateModalRemoteStyle=()=>{
+        remoteLabel.style.borderColor=remoteChk.checked?'var(--accent)':'var(--border)';
+        remoteLabel.style.background=remoteChk.checked?'rgba(79,142,247,.12)':'var(--bg3)';
+        remoteTxt.style.color=remoteChk.checked?'var(--accent)':'var(--text2)';
+      };
+      remoteChk.addEventListener('change',updateModalRemoteStyle);
+      updateModalRemoteStyle();
+      remoteLabel.append(remoteChk,remoteTxt);remoteWrap.appendChild(remoteLabel);form.appendChild(remoteWrap);
+    }
+
     const tr=document.createElement('div');tr.className='row mt-8';
     tr.innerHTML=`<div><label>出勤</label><input type="text" id="modal-in" value="${src?.timeIn||''}" maxlength="6" placeholder="0900" style="font-size:20px;font-weight:700;text-align:center"></div><div><label>退勤</label><input type="text" id="modal-out" value="${src?.timeOut||''}" maxlength="6" placeholder="1800" style="font-size:20px;font-weight:700;text-align:center"></div>`;
     form.appendChild(tr);
@@ -2363,29 +2386,6 @@ function openDayModal(ds){
     const ab=document.createElement('button');
     ab.style.cssText='width:100%;margin-top:8px;background:transparent;border:1px dashed var(--border);color:var(--text2);border-radius:8px;padding:8px;cursor:pointer;font-size:13px;';
     ab.textContent='＋ 休憩';ab.addEventListener('click',()=>addModalBreakRow());form.appendChild(ab);
-
-    // テレワークトグル（実績タブのみ）
-    if(mode==='actual'){
-      const remoteWrap=document.createElement('div');remoteWrap.style.cssText='margin-top:12px;';
-      const remoteLabel=document.createElement('label');
-      remoteLabel.id='modal-remote-label';
-      remoteLabel.style.cssText='display:inline-flex;align-items:center;gap:8px;cursor:pointer;padding:6px 14px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);transition:border-color .15s,background .15s;';
-      const remoteChk=document.createElement('input');
-      remoteChk.type='checkbox';remoteChk.id='modal-remote';
-      remoteChk.style.cssText='width:17px;height:17px;accent-color:var(--accent);cursor:pointer;';
-      remoteChk.checked=!!(src?.remote);
-      const remoteTxt=document.createElement('span');
-      remoteTxt.style.cssText='font-size:13px;font-weight:600;color:var(--text2);';
-      remoteTxt.textContent='🏠 テレワーク';
-      const updateModalRemoteStyle=()=>{
-        remoteLabel.style.borderColor=remoteChk.checked?'var(--accent)':'var(--border)';
-        remoteLabel.style.background=remoteChk.checked?'rgba(79,142,247,.12)':'var(--bg3)';
-        remoteTxt.style.color=remoteChk.checked?'var(--accent)':'var(--text2)';
-      };
-      remoteChk.addEventListener('change',updateModalRemoteStyle);
-      updateModalRemoteStyle();
-      remoteLabel.append(remoteChk,remoteTxt);remoteWrap.appendChild(remoteLabel);form.appendChild(remoteWrap);
-    }
 
     // 削除ボタン表示切替
     const delBtn=document.getElementById('btn-modal-delete');
