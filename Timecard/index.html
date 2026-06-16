@@ -2216,15 +2216,6 @@ function renderDayList(y,m,data){
     const hasTime = obj?.timeIn && obj?.timeOut;
     const isNoTimeLeave = obj && ['half','hourly'].includes(obj.leave||'') && !hasTime;
 
-    // day-subの予定時刻（実績なし時）
-    let subSched='';
-    if(!obj && sob?.timeIn && sob?.timeOut){
-      subSched=formatTime(parseTime(sob.timeIn))+'〜'+formatTime(parseTime(sob.timeOut));
-    } else if(!obj && isBusinessDay(ds) && !sob){
-      subSched=`${DEFAULT_WORK_IN.slice(0,2)}:${DEFAULT_WORK_IN.slice(2)}〜${DEFAULT_WORK_OUT.slice(0,2)}:${DEFAULT_WORK_OUT.slice(2)}`;
-    }
-    const subFinal=[hn, timeStr+breakStr, subSched].filter(Boolean).join(' ');
-
     let rightContent='';
     if(wM!==null && !isNoTimeLeave){
       const otColor=wM>(settings.stdHours||8)*60?'var(--warn)':'var(--text)';
@@ -2246,7 +2237,7 @@ function renderDayList(y,m,data){
         <div class="day-time" style="${isT?'color:var(--accent)':''}">
           ${badge}${remoteBadge}${ls&&!timeStr?'':(wM!==null?formatHoursMin(wM):'')}
         </div>
-        <div class="day-sub">${subFinal}</div>
+        <div class="day-sub">${sub}</div>
       </div>
       ${rightContent}`;
     item.addEventListener('click',()=>openDayModal(ds));
