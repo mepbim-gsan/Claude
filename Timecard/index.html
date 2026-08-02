@@ -1185,7 +1185,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-02.2';
+const APP_VERSION = 'v07_2026-08-02.3';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1622,7 +1622,7 @@ function renderMonthTab(){
     if(obj&&calcWorkMinutes(obj)>0){actualWorkDays++;if(obj.remote)remoteDays++;}
   }
 
-  // 法定時間外計算用: 実績済み日は実績、未入力営業日(日曜除く)は計画値で補完
+  // 法定時間外計算用: 実績確定日は実績、未確定(未入力/退勤前)営業日(日曜除く)は計画値で補完
   let combinedMins=0; // 実績+計画合算（日曜除く）
   for(let d=1;d<=dim;d++){
     const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -1630,13 +1630,14 @@ function renderMonthTab(){
     if(dow===0)continue; // 日曜除外
     const obj=(data.days||{})[String(d)];
     const sob=(data.schedules||{})[String(d)];
-    if(obj){
-      // 実績あり
+    const actualLeave=obj?.leave||'normal';
+    // 実績確定判定: 休暇で時刻不要、または出退勤とも入力済み
+    const actualSettled = !!obj && (actualLeave==='paid'||actualLeave==='comp'||(actualLeave==='half'&&!obj.timeIn)||(obj.timeIn&&obj.timeOut));
+    if(actualSettled){
       combinedMins+=calcWorkMinutes(obj);
     } else {
-      // 実績なし: 計画で補完
+      // 実績未確定（未入力、または出勤済み・退勤前）: 計画で補完
       if(sob&&sob.timeIn&&sob.timeOut){
-        const actualLeave=obj?.leave||'normal';
         if(!['paid','comp','half'].includes(actualLeave))
           combinedMins+=calcWorkMinutes({timeIn:sob.timeIn,timeOut:sob.timeOut,breaks:sob.breaks||[]});
       } else if(isBusinessDay(ds)){
