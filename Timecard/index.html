@@ -1185,7 +1185,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-03.6';
+const APP_VERSION = 'v07_2026-08-03.7';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1353,19 +1353,20 @@ function updateStampButtons(){
     const t = parseTime(b.start);
     return (t !== null && (latest === null || t > latest)) ? t : latest;
   }, null);
+  // 出勤前は休憩の表示自体が無意味なので、出勤済み(inValあり)の時だけ表示する
   document.getElementById('stamp-break-start-time').textContent =
-    latestBreakStart !== null ? formatTime(latestBreakStart) : '--:--';
-  document.getElementById('stamp-break-start').classList.toggle('active', latestBreakStart !== null);
+    (inVal && latestBreakStart !== null) ? formatTime(latestBreakStart) : '--:--';
+  document.getElementById('stamp-break-start').classList.toggle('active', !!inVal && latestBreakStart !== null);
 
-  // 休憩終了ボタン：休憩中は--:--。休憩中でなければ直近に確定した休憩の終了時刻を表示
-  // （休憩中に他の確定済み休憩（昼休み等）の終了時刻を誤って表示しないようにする）
+  // 休憩終了ボタン：休憩中、または未出勤なら--:--。それ以外は直近に確定した休憩の終了時刻を表示
+  // （休憩中や出勤前に、他の確定済み休憩（昼休みプリセット等）の終了時刻を誤って表示しないようにする）
   const closedBreaks = breakRows.filter(b => b && b.start && b.end);
   const latestBreakEnd = closedBreaks.reduce((latest, b) => {
     const t = parseTime(b.end);
     return (t !== null && (latest === null || t > latest)) ? t : latest;
   }, null);
   document.getElementById('stamp-break-end-time').textContent =
-    (openBreaks.length===0 && latestBreakEnd !== null) ? formatTime(latestBreakEnd) : '--:--';
+    (inVal && openBreaks.length===0 && latestBreakEnd !== null) ? formatTime(latestBreakEnd) : '--:--';
 
   // 退勤済みなら休憩ボタンは無効。休憩中は開始を、休憩中でなければ終了を無効化（二重に休憩を開始できないようにする）
   document.getElementById('stamp-break-start').disabled = !isToday || !inVal || !!outVal || openBreaks.length>0;
