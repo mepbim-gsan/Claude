@@ -1185,7 +1185,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-02.3';
+const APP_VERSION = 'v07_2026-08-02.4';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1342,13 +1342,6 @@ function updateStampButtons(){
   // 勤務開始: 今日かつ未入力で押せる
   document.getElementById('stamp-in').disabled  = !isToday || !!inVal;
   document.getElementById('stamp-out').disabled = !isToday || !inVal;
-  // 退勤済みなら休憩ボタンは無効
-  document.getElementById('stamp-break-start').disabled = !isToday || !inVal || !!outVal;
-  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal || !!outVal;
-
-  // 入力済みの時刻を表示
-  document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
-  document.getElementById('stamp-out-time').textContent = outVal ? formatTime(parseTime(outVal)) : '--:--';
 
   // 休憩開始ボタン：終了が空の行のうち最も遅い開始時刻を表示
   const openBreaks = breakRows.filter(b => b && b.start && !b.end);
@@ -1359,6 +1352,23 @@ function updateStampButtons(){
   document.getElementById('stamp-break-start-time').textContent =
     latestBreakStart !== null ? formatTime(latestBreakStart) : '--:--';
   document.getElementById('stamp-break-start').classList.toggle('active', latestBreakStart !== null);
+
+  // 休憩終了ボタン：直近に確定した休憩の終了時刻を表示
+  const closedBreaks = breakRows.filter(b => b && b.start && b.end);
+  const latestBreakEnd = closedBreaks.reduce((latest, b) => {
+    const t = parseTime(b.end);
+    return (t !== null && (latest === null || t > latest)) ? t : latest;
+  }, null);
+  document.getElementById('stamp-break-end-time').textContent =
+    latestBreakEnd !== null ? formatTime(latestBreakEnd) : '--:--';
+
+  // 退勤済みなら休憩ボタンは無効。休憩中は開始を、休憩中でなければ終了を無効化（二重に休憩を開始できないようにする）
+  document.getElementById('stamp-break-start').disabled = !isToday || !inVal || !!outVal || openBreaks.length>0;
+  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal || !!outVal || openBreaks.length===0;
+
+  // 入力済みの時刻を表示
+  document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
+  document.getElementById('stamp-out-time').textContent = outVal ? formatTime(parseTime(outVal)) : '--:--';
 
   // activeスタイル
   document.getElementById('stamp-in').classList.toggle('active', !!inVal);
@@ -3596,8 +3606,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     } else {
       addBreakRow(t,'');
     }
-    document.getElementById('stamp-break-start-time').textContent=formatTime(parseTime(t));
-    document.getElementById('stamp-break-start').classList.add('active');
     updateDaySummary();
     autoSavePunch();
   });
@@ -3609,8 +3617,6 @@ document.addEventListener('DOMContentLoaded',()=>{
       const row=document.querySelector(`.break-row[data-idx="${target}"]`);
       if(row) row.querySelectorAll('input')[1].value=t;
     }
-    document.getElementById('stamp-break-end-time').textContent=formatTime(parseTime(t));
-    document.getElementById('stamp-break-end').classList.remove('active');
     updateDaySummary();
     sortBreakRows(); // 終了確定後に昇順ソート
     autoSavePunch();
