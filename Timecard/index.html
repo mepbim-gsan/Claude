@@ -395,6 +395,7 @@ label:first-child{margin-top:0;}
 .modal-tabs{display:flex;gap:0;margin:12px 0 0;border-radius:8px;overflow:hidden;border:1px solid var(--border);}
 .modal-tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;background:var(--bg3);color:var(--text2);transition:all .15s;}
 .modal-tab.active{background:var(--accent);color:#fff;}
+.modal-tab.sched-mode.active{background:var(--warn);}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:16px;}
 .mt-8{margin-top:8px;}.mt-12{margin-top:12px;}
 .divider{height:1px;background:var(--border);margin:12px 0;}
@@ -1185,7 +1186,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-03.8';
+const APP_VERSION = 'v07_2026-08-03.9';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -2349,7 +2350,7 @@ function openDayModal(ds){
   // タブ
   const tabs=document.createElement('div');tabs.className='modal-tabs';
   const tabActual=document.createElement('div');tabActual.className='modal-tab active';tabActual.textContent='実績';
-  const tabSched=document.createElement('div');tabSched.className='modal-tab';tabSched.textContent='予定';
+  const tabSched=document.createElement('div');tabSched.className='modal-tab sched-mode';tabSched.textContent='予定';
   tabs.append(tabActual,tabSched);
   c.appendChild(tabs);
 
