@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f1115"/>
+  <!-- カメラ本体 -->
+  <rect x="96" y="180" width="320" height="220" rx="28" fill="#1c2029" stroke="#5b8cff" stroke-width="10"/>
+  <!-- ファインダー突起 -->
+  <path d="M196 180 L212 144 Q218 132 232 132 L280 132 Q294 132 300 144 L316 180 Z" fill="#1c2029" stroke="#5b8cff" stroke-width="10" stroke-linejoin="round"/>
+  <!-- レンズ外枠 -->
+  <circle cx="256" cy="296" r="78" fill="#0f1115" stroke="#5b8cff" stroke-width="10"/>
+  <!-- レンズ内円（台形補正の枠を表す差し色） -->
+  <circle cx="256" cy="296" r="46" fill="none" stroke="#3ecf8e" stroke-width="8"/>
+  <!-- シャッターボタン -->
+  <circle cx="366" cy="216" r="10" fill="#f5a623"/>
+</svg>
