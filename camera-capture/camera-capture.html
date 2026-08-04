@@ -1,0 +1,506 @@
+<!--
+  @tool      カメラキャプチャ（台形補正）
+  @version   v01_2026-08-05
+  @changelog
+    v01_2026-08-05 - 初版：カメラ経由でスクリーン矩形を半自動検出→タップ確定→台形補正→IndexedDB保存・一覧管理
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>カメラキャプチャ</title>
+<style>
+:root{
+  --bg:#0f1115; --bg2:#171a21; --sf:#1c2029; --border:#2a2f3a;
+  --text:#e8eaef; --text2:#9aa1af; --text3:#5b6270;
+  --accent:#5b8cff; --accent2:#3ecf8e; --danger:#ff5c6c;
+  --radius:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;}
+.page{flex:1;display:none;overflow:hidden;position:relative;}
+.page.active{display:flex;flex-direction:column;}
+
+/* ── 撮影ページ ── */
+#page-cam{background:#000;}
+.cam-stage{flex:1;position:relative;overflow:hidden;background:#000;}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+#overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.cam-hint{position:absolute;top:14px;left:0;right:0;text-align:center;
+  font-size:13px;color:#fff;background:rgba(0,0,0,.45);padding:8px 12px;
+  margin:0 auto;width:fit-content;border-radius:99px;transition:opacity .2s;}
+.cam-hint.detected{background:rgba(62,207,142,.85);}
+.cam-bar{padding:18px 20px calc(18px + env(safe-area-inset-bottom));
+  background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.shutter{width:68px;height:68px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.35);
+  flex-shrink:0;transition:transform .1s;}
+.shutter:active{transform:scale(.92);}
+.shutter[disabled]{opacity:.35;}
+.cam-side-btn{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.12);
+  color:#fff;font-size:18px;border:none;display:flex;align-items:center;justify-content:center;}
+.cam-count{color:#fff;font-size:13px;text-align:center;min-width:44px;}
+
+/* ── 確認モーダル ── */
+#reviewModal{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;}
+#reviewModal.open{display:flex;}
+.review-img-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;}
+#reviewCanvas{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.5);}
+.review-bar{padding:16px 20px calc(16px + env(safe-area-inset-bottom));
+  display:flex;gap:12px;background:#0a0a0a;}
+.review-btn{flex:1;padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:600;}
+.review-btn.retake{background:var(--sf);color:var(--text);}
+.review-btn.save{background:var(--accent2);color:#06251a;}
+
+/* ── 一覧ページ ── */
+#page-list{background:var(--bg);}
+.list-header{padding:16px 18px 10px;display:flex;align-items:center;justify-content:space-between;}
+.list-title{font-size:20px;font-weight:700;}
+.list-sub{font-size:12px;color:var(--text3);}
+.grid{flex:1;overflow-y:auto;padding:8px 12px calc(80px + env(safe-area-inset-bottom));
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.grid-item{position:relative;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:var(--sf);border:1px solid var(--border);}
+.grid-item img{width:100%;height:100%;object-fit:cover;display:block;}
+.grid-empty{padding:60px 20px;text-align:center;color:var(--text3);font-size:14px;}
+
+/* ── 詳細モーダル ── */
+#detailModal{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;}
+#detailModal.open{display:flex;}
+.detail-img-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;}
+.detail-img-wrap img{max-width:100%;max-height:100%;border-radius:8px;}
+.detail-bar{padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+  display:flex;gap:12px;background:#0a0a0a;}
+.detail-btn{flex:1;padding:13px;border-radius:12px;border:none;font-size:14px;font-weight:600;}
+.detail-btn.close{background:var(--sf);color:var(--text);}
+.detail-btn.download{background:var(--accent);color:#fff;}
+.detail-btn.delete{background:transparent;color:var(--danger);border:1px solid var(--danger);}
+
+/* ── 下部ナビ ── */
+.navbar{display:flex;background:var(--bg2);border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom);}
+.nav-btn{flex:1;padding:10px 0 8px;text-align:center;background:none;border:none;color:var(--text3);font-size:11px;}
+.nav-btn .ic{font-size:20px;display:block;margin-bottom:2px;}
+.nav-btn.active{color:var(--accent);}
+
+.toast{position:fixed;bottom:calc(90px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+  background:rgba(30,33,40,.95);color:#fff;padding:10px 18px;border-radius:99px;font-size:13px;
+  z-index:300;opacity:0;pointer-events:none;transition:opacity .25s;}
+.toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- 撮影ページ -->
+  <div id="page-cam" class="page active">
+    <div class="cam-stage">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="overlay"></canvas>
+      <div id="camHint" class="cam-hint">画面全体をフレーム内に収めてください</div>
+    </div>
+    <div class="cam-bar">
+      <button class="cam-side-btn" onclick="window._toggleTorch && window._toggleTorch()">💡</button>
+      <button id="shutterBtn" class="shutter" onclick="window._onShutter()"></button>
+      <div class="cam-count" id="camCount">0枚</div>
+    </div>
+  </div>
+
+  <!-- 一覧ページ -->
+  <div id="page-list" class="page">
+    <div class="list-header">
+      <div>
+        <div class="list-title">キャプチャ一覧</div>
+        <div class="list-sub" id="listCount">0件</div>
+      </div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <!-- ナビ -->
+  <div class="navbar">
+    <button class="nav-btn active" id="navCam" onclick="window._showPage('cam')">
+      <span class="ic">📷</span>撮影
+    </button>
+    <button class="nav-btn" id="navList" onclick="window._showPage('list')">
+      <span class="ic">🗂️</span>一覧
+    </button>
+  </div>
+</div>
+
+<!-- 撮影確認モーダル -->
+<div id="reviewModal">
+  <div class="review-img-wrap"><canvas id="reviewCanvas"></canvas></div>
+  <div class="review-bar">
+    <button class="review-btn retake" onclick="window._retake()">撮り直す</button>
+    <button class="review-btn save" onclick="window._saveCapture()">保存</button>
+  </div>
+</div>
+
+<!-- 詳細モーダル -->
+<div id="detailModal">
+  <div class="detail-img-wrap"><img id="detailImg" src=""></div>
+  <div class="detail-bar">
+    <button class="detail-btn close" onclick="window._closeDetail()">閉じる</button>
+    <button class="detail-btn download" onclick="window._downloadDetail()">保存</button>
+    <button class="detail-btn delete" onclick="window._deleteDetail()">削除</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://docs.opencv.org/4.9.0/opencv.js"></script>
+<script>
+'use strict';
+
+/* ===================== IndexedDB ===================== */
+const DB_NAME = 'camera-capture-db';
+const STORE = 'captures';
+let db = null;
+
+function openDB(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = ()=>{
+      const d = req.result;
+      if(!d.objectStoreNames.contains(STORE)){
+        const os = d.createObjectStore(STORE, {keyPath:'id'});
+        os.createIndex('createdAt', 'createdAt');
+      }
+    };
+    req.onsuccess = ()=>{ db = req.result; resolve(db); };
+    req.onerror = ()=> reject(req.error);
+  });
+}
+function dbAdd(record){
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).add(record);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+function dbDelete(id){
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+function dbAll(){
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = ()=> resolve(req.result.sort((a,b)=> b.createdAt - a.createdAt));
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+/* ===================== 共通 ===================== */
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._tm);
+  toast._tm = setTimeout(()=> t.classList.remove('show'), 1600);
+}
+
+window._showPage = function(name){
+  document.querySelectorAll('.page').forEach(p=> p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.getElementById('navCam').classList.toggle('active', name==='cam');
+  document.getElementById('navList').classList.toggle('active', name==='list');
+  if(name==='list') renderGrid();
+};
+
+/* ===================== カメラ / 検出 ===================== */
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const octx = overlay.getContext('2d');
+const camHint = document.getElementById('camHint');
+
+let cvReady = false;
+let stream = null;
+let detectTimer = null;
+let lastQuad = null;          // 直近検出した4点（video座標系）
+const DETECT_INTERVAL_MS = 700; // 一定間隔のみ再検出（軽量優先）
+const DETECT_SCALE_W = 320;     // 検出は縮小フレームで実施
+
+function cvOnRuntimeInitialized(){ cvReady = true; }
+if (window.cv) {
+  if (cv.getBuildInformation) cvReady = true;
+  else cv['onRuntimeInitialized'] = cvOnRuntimeInitialized;
+} else {
+  window.addEventListener('load', ()=>{
+    if (window.cv) cv['onRuntimeInitialized'] = cvOnRuntimeInitialized;
+  });
+}
+
+async function startCamera(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:{ ideal:'environment' }, width:{ideal:1920}, height:{ideal:1080} },
+      audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
+    resizeOverlay();
+    startDetectLoop();
+  }catch(e){
+    toast('カメラを起動できません: ' + e.message);
+  }
+}
+function resizeOverlay(){
+  const r = video.getBoundingClientRect();
+  overlay.width = r.width; overlay.height = r.height;
+}
+window.addEventListener('resize', resizeOverlay);
+
+function startDetectLoop(){
+  clearInterval(detectTimer);
+  detectTimer = setInterval(runDetect, DETECT_INTERVAL_MS);
+}
+
+function orderPoints(pts){
+  // pts: [{x,y}x4] -> [tl, tr, br, bl]
+  const sum = pts.map(p=>p.x+p.y);
+  const diff = pts.map(p=>p.x-p.y);
+  const tl = pts[sum.indexOf(Math.min(...sum))];
+  const br = pts[sum.indexOf(Math.max(...sum))];
+  const tr = pts[diff.indexOf(Math.max(...diff))];
+  const bl = pts[diff.indexOf(Math.min(...diff))];
+  return [tl,tr,br,bl];
+}
+
+function findQuadOnMat(mat){
+  // mat: RGBA cv.Mat -> 戻り値: [{x,y}x4] または null（mat座標系）
+  let gray = new cv.Mat();
+  cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
+  let edges = new cv.Mat();
+  cv.Canny(gray, edges, 50, 150);
+  let kernel = cv.Mat.ones(3,3, cv.CV_8U);
+  cv.dilate(edges, edges, kernel);
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+  cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+
+  let bestPts = null, bestArea = 0;
+  const minArea = mat.rows * mat.cols * 0.12;
+  for(let i=0;i<contours.size();i++){
+    const cnt = contours.get(i);
+    const peri = cv.arcLength(cnt, true);
+    const approx = new cv.Mat();
+    cv.approxPolyDP(cnt, approx, 0.02*peri, true);
+    if(approx.rows === 4 && cv.isContourConvex(approx)){
+      const area = Math.abs(cv.contourArea(approx));
+      if(area > bestArea && area > minArea){
+        bestArea = area;
+        const pts = [];
+        for(let j=0;j<4;j++){
+          pts.push({ x: approx.data32S[j*2], y: approx.data32S[j*2+1] });
+        }
+        bestPts = pts;
+      }
+    }
+    approx.delete(); cnt.delete();
+  }
+  gray.delete(); edges.delete(); kernel.delete(); contours.delete(); hierarchy.delete();
+  return bestPts ? orderPoints(bestPts) : null;
+}
+
+function runDetect(){
+  if(!cvReady || video.readyState < 2) return;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if(!vw || !vh) return;
+
+  const scale = DETECT_SCALE_W / vw;
+  const dw = DETECT_SCALE_W, dh = Math.round(vh*scale);
+
+  const tmp = document.createElement('canvas');
+  tmp.width = dw; tmp.height = dh;
+  tmp.getContext('2d').drawImage(video, 0, 0, dw, dh);
+
+  let mat;
+  try{
+    mat = cv.imread(tmp);
+    const quad = findQuadOnMat(mat);
+    mat.delete();
+    if(quad){
+      // 検出座標(縮小)→動画本来解像度に戻す
+      lastQuad = quad.map(p=>({ x:p.x/scale, y:p.y/scale }));
+      drawOverlayQuad(lastQuad, vw, vh, true);
+    } else {
+      lastQuad = null;
+      drawOverlayQuad(null, vw, vh, false);
+    }
+  }catch(e){
+    if(mat) mat.delete();
+  }
+}
+
+function drawOverlayQuad(quadVideoCoords, vw, vh, detected){
+  octx.clearRect(0,0,overlay.width, overlay.height);
+  camHint.textContent = detected ? 'この枠でタップして撮影' : '画面全体をフレーム内に収めてください';
+  camHint.classList.toggle('detected', detected);
+  if(!quadVideoCoords) return;
+
+  // object-fit:cover 前提でvideo座標→表示座標に変換
+  const rect = video.getBoundingClientRect();
+  const scaleCover = Math.max(rect.width/vw, rect.height/vh);
+  const offX = (rect.width - vw*scaleCover)/2;
+  const offY = (rect.height - vh*scaleCover)/2;
+  const toDisp = p => ({ x: p.x*scaleCover + offX, y: p.y*scaleCover + offY });
+  const pts = quadVideoCoords.map(toDisp);
+
+  octx.strokeStyle = '#3ecf8e';
+  octx.lineWidth = 3;
+  octx.beginPath();
+  pts.forEach((p,i)=> i===0 ? octx.moveTo(p.x,p.y) : octx.lineTo(p.x,p.y));
+  octx.closePath();
+  octx.stroke();
+  octx.fillStyle = 'rgba(62,207,142,.15)';
+  octx.fill();
+}
+
+/* ===================== 撮影 ===================== */
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+
+function warpFullFrame(quad){
+  // videoの現フレームをフルサイズでcanvasに描画→cv.Matへ
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const full = document.createElement('canvas');
+  full.width = vw; full.height = vh;
+  full.getContext('2d').drawImage(video, 0, 0, vw, vh);
+  const src = cv.imread(full);
+
+  const [tl,tr,br,bl] = quad;
+  const widthA = dist(br,bl), widthB = dist(tr,tl);
+  const maxW = Math.max(widthA, widthB);
+  const heightA = dist(tr,br), heightB = dist(tl,bl);
+  const maxH = Math.max(heightA, heightB);
+
+  const srcTri = cv.matFromArray(4,1,cv.CV_32FC2, [tl.x,tl.y, tr.x,tr.y, br.x,br.y, bl.x,bl.y]);
+  const dstTri = cv.matFromArray(4,1,cv.CV_32FC2, [0,0, maxW-1,0, maxW-1,maxH-1, 0,maxH-1]);
+  const M = cv.getPerspectiveTransform(srcTri, dstTri);
+  const dst = new cv.Mat();
+  cv.warpPerspective(src, dst, M, new cv.Size(maxW, maxH), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+  const outCanvas = document.createElement('canvas');
+  cv.imshow(outCanvas, dst);
+
+  src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
+  return outCanvas;
+}
+
+function captureFullFrameOnly(){
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const c = document.createElement('canvas');
+  c.width = vw; c.height = vh;
+  c.getContext('2d').drawImage(video, 0, 0, vw, vh);
+  return c;
+}
+
+let pendingCanvas = null;
+
+window._onShutter = function(){
+  if(!video.videoWidth) return;
+  let outCanvas;
+  try{
+    if(lastQuad && cvReady){
+      outCanvas = warpFullFrame(lastQuad);
+    } else {
+      outCanvas = captureFullFrameOnly();
+      toast('矩形未検出のため全体を保存します');
+    }
+  }catch(e){
+    outCanvas = captureFullFrameOnly();
+  }
+  pendingCanvas = outCanvas;
+  openReview(outCanvas);
+};
+
+function openReview(canvas){
+  const rc = document.getElementById('reviewCanvas');
+  rc.width = canvas.width; rc.height = canvas.height;
+  rc.getContext('2d').drawImage(canvas, 0, 0);
+  document.getElementById('reviewModal').classList.add('open');
+}
+window._retake = function(){
+  document.getElementById('reviewModal').classList.remove('open');
+  pendingCanvas = null;
+};
+window._saveCapture = async function(){
+  if(!pendingCanvas) return;
+  const dataURL = pendingCanvas.toDataURL('image/jpeg', 0.9);
+  const record = { id:'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), dataURL, createdAt: Date.now() };
+  await dbAdd(record);
+  document.getElementById('reviewModal').classList.remove('open');
+  pendingCanvas = null;
+  toast('保存しました');
+  updateCamCount();
+};
+
+/* ===================== 一覧 / 詳細 ===================== */
+let curDetailId = null;
+
+async function updateCamCount(){
+  const all = await dbAll();
+  document.getElementById('camCount').textContent = all.length + '枚';
+}
+
+async function renderGrid(){
+  const all = await dbAll();
+  document.getElementById('listCount').textContent = all.length + '件';
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  if(all.length === 0){
+    grid.innerHTML = '<div class="grid-empty" style="grid-column:1/-1;">まだキャプチャがありません</div>';
+    return;
+  }
+  all.forEach(rec=>{
+    const div = document.createElement('div');
+    div.className = 'grid-item';
+    div.innerHTML = `<img src="${rec.dataURL}">`;
+    div.addEventListener('click', ()=> openDetail(rec));
+    grid.appendChild(div);
+  });
+}
+
+function openDetail(rec){
+  curDetailId = rec.id;
+  document.getElementById('detailImg').src = rec.dataURL;
+  document.getElementById('detailModal').classList.add('open');
+}
+window._closeDetail = function(){
+  document.getElementById('detailModal').classList.remove('open');
+  curDetailId = null;
+};
+window._downloadDetail = function(){
+  if(!curDetailId) return;
+  const img = document.getElementById('detailImg').src;
+  const a = document.createElement('a');
+  a.href = img;
+  a.download = 'capture_' + Date.now() + '.jpg';
+  a.click();
+};
+window._deleteDetail = async function(){
+  if(!curDetailId) return;
+  await dbDelete(curDetailId);
+  window._closeDetail();
+  renderGrid();
+  updateCamCount();
+};
+
+/* ===================== 初期化 ===================== */
+(async function init(){
+  await openDB();
+  await updateCamCount();
+  await startCamera();
+})();
+</script>
+</body>
+</html>
