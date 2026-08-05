@@ -1,4 +1,4 @@
-const CACHE_NAME = 'camera-capture-v1';
+const CACHE_NAME = 'camera-capture-v2';
 const ENTRY_HTML = './index.html';
 
 // ネットワーク優先で取得するリソース（更新頻度が高いもの）
@@ -52,7 +52,10 @@ self.addEventListener('fetch', e => {
   }
 
   // HTMLエントリ・manifest・CDN → ネットワーク優先
+  // ディレクトリURL（例: .../camera-capture/）でのアクセスはURL文字列が
+  // ENTRY_HTMLで終わらないため、ナビゲーションリクエスト自体も判定に含める
   const isNetworkFirst =
+    e.request.mode === 'navigate' ||
     url.endsWith(ENTRY_HTML) ||
     url.includes('manifest.json') ||
     NETWORK_FIRST_PATTERNS.some(p => p.test(url));
