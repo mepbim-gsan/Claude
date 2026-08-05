@@ -6,6 +6,7 @@
     v02_2026-08-05 - PWA化（manifest.json, sw.js, アイコン追加）、index.htmlへリネーム
     v03_2026-08-05 - 矩形の手動ドラッグ調整UIを追加、保存時に縦長へ自動回転＋手動回転ボタン
     v04_2026-08-05 - sw.jsのキャッシュ判定バグ修正（ディレクトリURLアクセス時にHTMLがキャッシュ固定される問題）、CACHE_NAMEをv2に
+    v05_2026-08-05 - 台形補正をOpenCV.js非依存の純粋JS実装（三角形分割アフィン変換）に置き換え。CDN読込失敗時も常に補正が効くように。CACHE_NAMEをv3に
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -411,26 +412,49 @@ function drawOverlayQuad(quadVideoCoords, vw, vh, detected){
 /* ===================== 撮影 ===================== */
 function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 
-function warpFullFrame(quad, sourceCanvas){
-  // 指定canvas（撮影済みフルフレーム）をcv.Matへ→矩形で台形補正
-  const src = cv.imread(sourceCanvas);
+// 3点対応からアフィン行列(a,b,c,d,e,f)を解く（src->dstの三角形テクスチャマッピング用）
+function solveAffine(s0,s1,s2,d0,d1,d2){
+  const denom = s0.x*(s1.y-s2.y) + s1.x*(s2.y-s0.y) + s2.x*(s0.y-s1.y);
+  if (Math.abs(denom) < 1e-9) return null;
+  return {
+    a: (d0.x*(s1.y-s2.y) + d1.x*(s2.y-s0.y) + d2.x*(s0.y-s1.y)) / denom,
+    b: (d0.y*(s1.y-s2.y) + d1.y*(s2.y-s0.y) + d2.y*(s0.y-s1.y)) / denom,
+    c: (d0.x*(s2.x-s1.x) + d1.x*(s0.x-s2.x) + d2.x*(s1.x-s0.x)) / denom,
+    d: (d0.y*(s2.x-s1.x) + d1.y*(s0.x-s2.x) + d2.y*(s1.x-s0.x)) / denom,
+    e: (d0.x*(s1.x*s2.y-s2.x*s1.y) + d1.x*(s2.x*s0.y-s0.x*s2.y) + d2.x*(s0.x*s1.y-s1.x*s0.y)) / denom,
+    f: (d0.y*(s1.x*s2.y-s2.x*s1.y) + d1.y*(s2.x*s0.y-s0.x*s2.y) + d2.y*(s0.x*s1.y-s1.x*s0.y)) / denom,
+  };
+}
+function drawTriangleWarp(ctx, srcImg, s0,s1,s2, d0,d1,d2){
+  const m = solveAffine(s0,s1,s2, d0,d1,d2);
+  if(!m) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(d0.x,d0.y); ctx.lineTo(d1.x,d1.y); ctx.lineTo(d2.x,d2.y);
+  ctx.closePath();
+  ctx.clip();
+  ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+  ctx.drawImage(srcImg, 0, 0);
+  ctx.restore();
+}
 
+function warpFullFrame(quad, sourceCanvas){
+  // OpenCV.js不要：矩形を2枚の三角形に分割し、それぞれアフィン変換で貼り付けることで
+  // 台形補正を近似する（外部CDNに依存せず常に動作する）
   const [tl,tr,br,bl] = quad;
   const widthA = dist(br,bl), widthB = dist(tr,tl);
-  const maxW = Math.max(widthA, widthB);
+  const maxW = Math.max(1, Math.round(Math.max(widthA, widthB)));
   const heightA = dist(tr,br), heightB = dist(tl,bl);
-  const maxH = Math.max(heightA, heightB);
-
-  const srcTri = cv.matFromArray(4,1,cv.CV_32FC2, [tl.x,tl.y, tr.x,tr.y, br.x,br.y, bl.x,bl.y]);
-  const dstTri = cv.matFromArray(4,1,cv.CV_32FC2, [0,0, maxW-1,0, maxW-1,maxH-1, 0,maxH-1]);
-  const M = cv.getPerspectiveTransform(srcTri, dstTri);
-  const dst = new cv.Mat();
-  cv.warpPerspective(src, dst, M, new cv.Size(maxW, maxH), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+  const maxH = Math.max(1, Math.round(Math.max(heightA, heightB)));
 
   const outCanvas = document.createElement('canvas');
-  cv.imshow(outCanvas, dst);
+  outCanvas.width = maxW; outCanvas.height = maxH;
+  const ctx = outCanvas.getContext('2d');
 
-  src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
+  const d00={x:0,y:0}, d10={x:maxW,y:0}, d11={x:maxW,y:maxH}, d01={x:0,y:maxH};
+  drawTriangleWarp(ctx, sourceCanvas, tl, tr, bl, d00, d10, d01);
+  drawTriangleWarp(ctx, sourceCanvas, tr, br, bl, d10, d11, d01);
+
   return outCanvas;
 }
 
@@ -555,7 +579,7 @@ window._adjustConfirm = function(){
   document.getElementById('adjustModal').classList.remove('open');
   let outCanvas;
   try{
-    outCanvas = cvReady ? warpFullFrame(adjustQuad, capturedFullCanvas) : cropBoundingBox(capturedFullCanvas, adjustQuad);
+    outCanvas = warpFullFrame(adjustQuad, capturedFullCanvas);
   }catch(e){
     outCanvas = cropBoundingBox(capturedFullCanvas, adjustQuad);
   }
