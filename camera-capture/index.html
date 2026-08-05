@@ -1,9 +1,10 @@
 <!--
   @tool      カメラキャプチャ（台形補正）
-  @version   v02_2026-08-05
+  @version   v03_2026-08-05
   @changelog
     v01_2026-08-05 - 初版：カメラ経由でスクリーン矩形を半自動検出→タップ確定→台形補正→IndexedDB保存・一覧管理
     v02_2026-08-05 - PWA化（manifest.json, sw.js, アイコン追加）、index.htmlへリネーム
+    v03_2026-08-05 - 矩形の手動ドラッグ調整UIを追加、保存時に縦長へ自動回転＋手動回転ボタン
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -58,7 +59,25 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
   display:flex;gap:12px;background:#0a0a0a;}
 .review-btn{flex:1;padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:600;}
 .review-btn.retake{background:var(--sf);color:var(--text);}
+.review-btn.rotate{background:var(--sf);color:var(--text);flex:0 0 56px;font-size:18px;}
 .review-btn.save{background:var(--accent2);color:#06251a;}
+
+/* ── 矩形調整モーダル ── */
+#adjustModal{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;}
+#adjustModal.open{display:flex;}
+.adjust-stage{flex:1;display:flex;padding:16px;overflow:hidden;}
+.adjust-stage svg{width:100%;height:100%;touch-action:none;}
+.adjust-quad{fill:rgba(62,207,142,.18);stroke:#3ecf8e;stroke-width:3;}
+.adjust-handle{fill:#3ecf8e;stroke:#06251a;stroke-width:3;cursor:grab;}
+.adjust-hint{position:absolute;top:14px;left:0;right:0;text-align:center;
+  font-size:13px;color:#fff;background:rgba(0,0,0,.45);padding:8px 12px;
+  margin:0 auto;width:fit-content;border-radius:99px;}
+.adjust-bar{padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  display:flex;gap:10px;background:#0a0a0a;}
+.adjust-btn{flex:1;padding:13px;border-radius:12px;border:none;font-size:14px;font-weight:600;}
+.adjust-btn.retake{background:var(--sf);color:var(--text);}
+.adjust-btn.reset{background:var(--sf);color:var(--text2);}
+.adjust-btn.next{background:var(--accent2);color:#06251a;}
 
 /* ── 一覧ページ ── */
 #page-list{background:var(--bg);}
@@ -136,11 +155,24 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
   </div>
 </div>
 
+<!-- 矩形調整モーダル -->
+<div id="adjustModal">
+  <div class="adjust-stage">
+    <svg id="adjustSvg" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+  <div class="adjust-bar">
+    <button class="adjust-btn retake" onclick="window._adjustRetake()">撮り直す</button>
+    <button class="adjust-btn reset" onclick="window._adjustReset()">リセット</button>
+    <button class="adjust-btn next" onclick="window._adjustConfirm()">この範囲で確定</button>
+  </div>
+</div>
+
 <!-- 撮影確認モーダル -->
 <div id="reviewModal">
   <div class="review-img-wrap"><canvas id="reviewCanvas"></canvas></div>
   <div class="review-bar">
     <button class="review-btn retake" onclick="window._retake()">撮り直す</button>
+    <button class="review-btn rotate" onclick="window._rotateReview()">↻</button>
     <button class="review-btn save" onclick="window._saveCapture()">保存</button>
   </div>
 </div>
@@ -255,6 +287,9 @@ async function startCamera(){
     await video.play();
     resizeOverlay();
     startDetectLoop();
+    setTimeout(()=>{
+      if(!cvReady) toast('自動検出が利用できません。シャッター後に手動で角を調整してください');
+    }, 8000);
   }catch(e){
     toast('カメラを起動できません: ' + e.message);
   }
@@ -375,13 +410,9 @@ function drawOverlayQuad(quadVideoCoords, vw, vh, detected){
 /* ===================== 撮影 ===================== */
 function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 
-function warpFullFrame(quad){
-  // videoの現フレームをフルサイズでcanvasに描画→cv.Matへ
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const full = document.createElement('canvas');
-  full.width = vw; full.height = vh;
-  full.getContext('2d').drawImage(video, 0, 0, vw, vh);
-  const src = cv.imread(full);
+function warpFullFrame(quad, sourceCanvas){
+  // 指定canvas（撮影済みフルフレーム）をcv.Matへ→矩形で台形補正
+  const src = cv.imread(sourceCanvas);
 
   const [tl,tr,br,bl] = quad;
   const widthA = dist(br,bl), widthB = dist(tr,tl);
@@ -410,23 +441,131 @@ function captureFullFrameOnly(){
   return c;
 }
 
+function rotate90CW(canvas){
+  const rc = document.createElement('canvas');
+  rc.width = canvas.height; rc.height = canvas.width;
+  const ctx = rc.getContext('2d');
+  ctx.translate(rc.width/2, rc.height/2);
+  ctx.rotate(Math.PI/2);
+  ctx.drawImage(canvas, -canvas.width/2, -canvas.height/2);
+  return rc;
+}
+function rotateToPortrait(canvas){
+  // 横長で仕上がった場合は常に縦長へ自動回転（向きが逆なら確認画面の↻で補正）
+  if(canvas.width <= canvas.height) return canvas;
+  return rotate90CW(canvas);
+}
+function cropBoundingBox(sourceCanvas, quad){
+  // OpenCV未読込時のフォールバック：台形補正せず選択範囲の外接矩形で切り抜く
+  const xs = quad.map(p=>p.x), ys = quad.map(p=>p.y);
+  const minX = Math.max(0, Math.min(...xs)), maxX = Math.min(sourceCanvas.width, Math.max(...xs));
+  const minY = Math.max(0, Math.min(...ys)), maxY = Math.min(sourceCanvas.height, Math.max(...ys));
+  const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(sourceCanvas, minX, minY, w, h, 0, 0, w, h);
+  return c;
+}
+
 let pendingCanvas = null;
+
+/* ── 矩形調整（手動ドラッグ） ── */
+const adjustSvg = document.getElementById('adjustSvg');
+adjustSvg.innerHTML =
+  '<image id="adjustImageEl" x="0" y="0" preserveAspectRatio="none"></image>' +
+  '<polygon id="adjustPolygonEl" class="adjust-quad"></polygon>' +
+  '<circle class="adjust-handle" data-i="0" r="0"></circle>' +
+  '<circle class="adjust-handle" data-i="1" r="0"></circle>' +
+  '<circle class="adjust-handle" data-i="2" r="0"></circle>' +
+  '<circle class="adjust-handle" data-i="3" r="0"></circle>';
+const adjustImageEl = document.getElementById('adjustImageEl');
+const adjustPolygonEl = document.getElementById('adjustPolygonEl');
+const adjustHandleEls = Array.from(adjustSvg.querySelectorAll('.adjust-handle'));
+
+let capturedFullCanvas = null;
+let adjustQuad = null;
+let adjustAutoQuad = null;
+let dragIndex = -1;
+
+function defaultQuad(w,h){
+  const mx = w*0.08, my = h*0.08;
+  return [{x:mx,y:my},{x:w-mx,y:my},{x:w-mx,y:h-my},{x:mx,y:h-my}];
+}
+function updateAdjustOverlay(){
+  adjustPolygonEl.setAttribute('points', adjustQuad.map(p=>`${p.x},${p.y}`).join(' '));
+  adjustHandleEls.forEach((el,i)=>{
+    el.setAttribute('cx', adjustQuad[i].x);
+    el.setAttribute('cy', adjustQuad[i].y);
+  });
+}
+function svgPointFromEvent(evt){
+  const pt = adjustSvg.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  const ctm = adjustSvg.getScreenCTM();
+  if(!ctm) return {x:0,y:0};
+  const p = pt.matrixTransform(ctm.inverse());
+  return {x:p.x, y:p.y};
+}
+adjustSvg.addEventListener('pointerdown', e=>{
+  const idx = +e.target.dataset.i;
+  if(Number.isNaN(idx)) return;
+  dragIndex = idx;
+  e.target.setPointerCapture(e.pointerId);
+});
+adjustSvg.addEventListener('pointermove', e=>{
+  if(dragIndex < 0 || !capturedFullCanvas) return;
+  const p = svgPointFromEvent(e);
+  const w = capturedFullCanvas.width, h = capturedFullCanvas.height;
+  adjustQuad[dragIndex] = {
+    x: Math.min(Math.max(p.x,0), w),
+    y: Math.min(Math.max(p.y,0), h)
+  };
+  updateAdjustOverlay();
+});
+['pointerup','pointercancel'].forEach(ev=> adjustSvg.addEventListener(ev, ()=> dragIndex = -1));
+
+function openAdjust(canvas, quadVideoCoords){
+  capturedFullCanvas = canvas;
+  const w = canvas.width, h = canvas.height;
+  adjustAutoQuad = quadVideoCoords ? quadVideoCoords.map(p=>({x:p.x,y:p.y})) : null;
+  adjustQuad = adjustAutoQuad ? adjustAutoQuad.map(p=>({...p})) : defaultQuad(w,h);
+  adjustSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  adjustImageEl.setAttribute('width', w);
+  adjustImageEl.setAttribute('height', h);
+  adjustImageEl.setAttribute('href', canvas.toDataURL('image/jpeg', 0.9));
+  const r = Math.max(w,h) * 0.025;
+  adjustHandleEls.forEach(el => el.setAttribute('r', r));
+  updateAdjustOverlay();
+  document.getElementById('adjustModal').classList.add('open');
+  if(!adjustAutoQuad) toast('自動検出なし。角をドラッグして範囲を調整してください');
+}
+window._adjustRetake = function(){
+  document.getElementById('adjustModal').classList.remove('open');
+  capturedFullCanvas = null;
+  adjustQuad = null;
+};
+window._adjustReset = function(){
+  if(!capturedFullCanvas) return;
+  const w = capturedFullCanvas.width, h = capturedFullCanvas.height;
+  adjustQuad = adjustAutoQuad ? adjustAutoQuad.map(p=>({...p})) : defaultQuad(w,h);
+  updateAdjustOverlay();
+};
+window._adjustConfirm = function(){
+  document.getElementById('adjustModal').classList.remove('open');
+  let outCanvas;
+  try{
+    outCanvas = cvReady ? warpFullFrame(adjustQuad, capturedFullCanvas) : cropBoundingBox(capturedFullCanvas, adjustQuad);
+  }catch(e){
+    outCanvas = cropBoundingBox(capturedFullCanvas, adjustQuad);
+  }
+  outCanvas = rotateToPortrait(outCanvas);
+  pendingCanvas = outCanvas;
+  openReview(outCanvas);
+};
 
 window._onShutter = function(){
   if(!video.videoWidth) return;
-  let outCanvas;
-  try{
-    if(lastQuad && cvReady){
-      outCanvas = warpFullFrame(lastQuad);
-    } else {
-      outCanvas = captureFullFrameOnly();
-      toast('矩形未検出のため全体を保存します');
-    }
-  }catch(e){
-    outCanvas = captureFullFrameOnly();
-  }
-  pendingCanvas = outCanvas;
-  openReview(outCanvas);
+  openAdjust(captureFullFrameOnly(), lastQuad);
 };
 
 function openReview(canvas){
@@ -438,6 +577,13 @@ function openReview(canvas){
 window._retake = function(){
   document.getElementById('reviewModal').classList.remove('open');
   pendingCanvas = null;
+};
+window._rotateReview = function(){
+  if(!pendingCanvas) return;
+  pendingCanvas = rotate90CW(pendingCanvas);
+  const rc = document.getElementById('reviewCanvas');
+  rc.width = pendingCanvas.width; rc.height = pendingCanvas.height;
+  rc.getContext('2d').drawImage(pendingCanvas, 0, 0);
 };
 window._saveCapture = async function(){
   if(!pendingCanvas) return;
