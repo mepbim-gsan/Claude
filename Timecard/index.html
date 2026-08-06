@@ -395,6 +395,7 @@ label:first-child{margin-top:0;}
 .modal-tabs{display:flex;gap:0;margin:12px 0 0;border-radius:8px;overflow:hidden;border:1px solid var(--border);}
 .modal-tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;background:var(--bg3);color:var(--text2);transition:all .15s;}
 .modal-tab.active{background:var(--accent);color:#fff;}
+.modal-tab.sched-mode.active{background:var(--warn);}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:16px;}
 .mt-8{margin-top:8px;}.mt-12{margin-top:12px;}
 .divider{height:1px;background:var(--border);margin:12px 0;}
@@ -983,8 +984,8 @@ label:first-child{margin-top:0;}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div class="card-title" style="margin-bottom:0;">JOB実績推移</div>
         <div style="display:flex;gap:6px;">
-          <button type="button" id="btn-annual-job-mode-jobno" class="btn btn-sm btn-primary" style="font-size:11px;">JOBNO</button>
-          <button type="button" id="btn-annual-job-mode-cat" class="btn btn-sm btn-ghost" style="font-size:11px;">カテゴリ</button>
+          <button type="button" id="btn-annual-job-mode-jobno" class="btn btn-sm btn-ghost" style="font-size:11px;">JOBNO</button>
+          <button type="button" id="btn-annual-job-mode-cat" class="btn btn-sm btn-primary" style="font-size:11px;">カテゴリ</button>
         </div>
       </div>
       <div style="position:relative;height:220px;"><canvas id="annual-job-bar-chart"></canvas></div>
@@ -1185,7 +1186,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-06-16';
+const APP_VERSION = 'v07_2026-08-03.9';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1319,6 +1320,10 @@ function calcWorkMinutesForForecast(o){
 function getDay(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.days||{})[String(+d)]||null;}
 function getSched(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.schedules||{})[String(+d)]||null;}
 function setDay(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(!monthData[key])monthData[key]={days:{},schedules:{}};monthData[key].days[String(+d)]=data;}
+function deleteDay(ds){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(monthData[key]?.days)delete monthData[key].days[String(+d)];}
+// 出退勤・休暇・休憩・テレワークいずれも入力がない実質空のレコードかどうか（実績削除と同じ扱いにするため）
+function isEmptyDayRecord(o){return(!o.leave||o.leave==='normal')&&!o.timeIn&&!o.timeOut&&!(o.breaks&&o.breaks.length)&&!o.remote;}
+function saveOrDeleteDay(ds,data){if(isEmptyDayRecord(data))deleteDay(ds);else setDay(ds,data);}
 function setSched(ds,data){const[y,m,d]=ds.split('-');const key=getMonthKey(+y,+m);if(!monthData[key])monthData[key]={days:{},schedules:{}};monthData[key].schedules[String(+d)]=data;}
 
 // THEME
@@ -1342,13 +1347,6 @@ function updateStampButtons(){
   // 勤務開始: 今日かつ未入力で押せる
   document.getElementById('stamp-in').disabled  = !isToday || !!inVal;
   document.getElementById('stamp-out').disabled = !isToday || !inVal;
-  // 退勤済みなら休憩ボタンは無効
-  document.getElementById('stamp-break-start').disabled = !isToday || !inVal || !!outVal;
-  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal || !!outVal;
-
-  // 入力済みの時刻を表示
-  document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
-  document.getElementById('stamp-out-time').textContent = outVal ? formatTime(parseTime(outVal)) : '--:--';
 
   // 休憩開始ボタン：終了が空の行のうち最も遅い開始時刻を表示
   const openBreaks = breakRows.filter(b => b && b.start && !b.end);
@@ -1356,9 +1354,30 @@ function updateStampButtons(){
     const t = parseTime(b.start);
     return (t !== null && (latest === null || t > latest)) ? t : latest;
   }, null);
+  // 出勤前は休憩の表示自体が無意味なので、出勤済み(inValあり)の時だけ表示する
   document.getElementById('stamp-break-start-time').textContent =
-    latestBreakStart !== null ? formatTime(latestBreakStart) : '--:--';
-  document.getElementById('stamp-break-start').classList.toggle('active', latestBreakStart !== null);
+    (inVal && latestBreakStart !== null) ? formatTime(latestBreakStart) : '--:--';
+  document.getElementById('stamp-break-start').classList.toggle('active', !!inVal && latestBreakStart !== null);
+
+  // 休憩終了ボタン：休憩中、または未出勤なら--:--。それ以外は「現在時刻以前で」最も直近に終わった休憩の終了時刻を表示
+  // （日内で単純に一番遅い終了時刻を拾うと、昼休みプリセット等まだ迎えていない未来の休憩を誤って表示してしまうため）
+  const nowT = isToday ? parseTime(nowHHMM()) : null;
+  const closedBreaks = breakRows.filter(b => b && b.start && b.end);
+  const latestBreakEnd = closedBreaks.reduce((latest, b) => {
+    const t = parseTime(b.end);
+    if(t === null || (nowT !== null && t > nowT)) return latest;
+    return (latest === null || t > latest) ? t : latest;
+  }, null);
+  document.getElementById('stamp-break-end-time').textContent =
+    (inVal && openBreaks.length===0 && latestBreakEnd !== null) ? formatTime(latestBreakEnd) : '--:--';
+
+  // 退勤済みなら休憩ボタンは無効。休憩中は開始を、休憩中でなければ終了を無効化（二重に休憩を開始できないようにする）
+  document.getElementById('stamp-break-start').disabled = !isToday || !inVal || !!outVal || openBreaks.length>0;
+  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal || !!outVal || openBreaks.length===0;
+
+  // 入力済みの時刻を表示
+  document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
+  document.getElementById('stamp-out-time').textContent = outVal ? formatTime(parseTime(outVal)) : '--:--';
 
   // activeスタイル
   document.getElementById('stamp-in').classList.toggle('active', !!inVal);
@@ -1534,7 +1553,7 @@ function autoSavePunch(){
   // 開始のみの休憩も保存対象に含める（終了が空でも記録）
   const allBreaks=breakRows.filter(Boolean).filter(b=>b.start);
   const validBreaks=allBreaks.filter(b=>!b.end||isBreakValid(b,inVal,outVal));
-  setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks,remote:isRemote});
+  saveOrDeleteDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks,remote:isRemote});
   saveStorage();
   // 月次タブが表示中なら更新
   if(document.getElementById('page-month').classList.contains('active')) renderMonthTab();
@@ -1551,7 +1570,7 @@ function savePunchDay(){
     .filter(Boolean)
     .filter(b=>b.start)
     .filter(b=>!b.end||isBreakValid(b,inVal,outVal));
-  setDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks,remote:isRemote});
+  saveOrDeleteDay(ds,{timeIn:inVal,timeOut:outVal,leave:selectedLeave,hourlyHours:parseFloat(document.getElementById('hourly-hours').value)||0,breaks:validBreaks,remote:isRemote});
   saveStorage();
   const[y,m]=ds.split('-').map(Number);
   if(getMonthKey(y,m)===getMonthKey(currentMonth.getFullYear(),currentMonth.getMonth()+1))renderMonthTab();
@@ -1622,7 +1641,7 @@ function renderMonthTab(){
     if(obj&&calcWorkMinutes(obj)>0){actualWorkDays++;if(obj.remote)remoteDays++;}
   }
 
-  // 法定時間外計算用: 実績済み日は実績、未入力営業日(日曜除く)は計画値で補完
+  // 法定時間外計算用: 実績確定日は実績、未確定(未入力/退勤前)営業日(日曜除く)は計画値で補完
   let combinedMins=0; // 実績+計画合算（日曜除く）
   for(let d=1;d<=dim;d++){
     const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -1630,13 +1649,14 @@ function renderMonthTab(){
     if(dow===0)continue; // 日曜除外
     const obj=(data.days||{})[String(d)];
     const sob=(data.schedules||{})[String(d)];
-    if(obj){
-      // 実績あり
+    const actualLeave=obj?.leave||'normal';
+    // 実績確定判定: 休暇で時刻不要、または出退勤とも入力済み
+    const actualSettled = !!obj && (actualLeave==='paid'||actualLeave==='comp'||(actualLeave==='half'&&!obj.timeIn)||(obj.timeIn&&obj.timeOut));
+    if(actualSettled){
       combinedMins+=calcWorkMinutes(obj);
     } else {
-      // 実績なし: 計画で補完
+      // 実績未確定（未入力、または出勤済み・退勤前）: 計画で補完
       if(sob&&sob.timeIn&&sob.timeOut){
-        const actualLeave=obj?.leave||'normal';
         if(!['paid','comp','half'].includes(actualLeave))
           combinedMins+=calcWorkMinutes({timeIn:sob.timeIn,timeOut:sob.timeOut,breaks:sob.breaks||[]});
       } else if(isBusinessDay(ds)){
@@ -1656,6 +1676,8 @@ function renderMonthTab(){
     for(let d=1;d<=dim;d++){
       const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       if(ds>today) break;
+      const dow=new Date(ds+'T00:00:00').getDay();
+      if(dow===0){lastD2=d;continue;} // 日曜=法定休日は法定時間外の対象外
       const obj=(data.days||{})[String(d)];
       if(obj){
         const hasFullTime=obj.timeIn&&obj.timeOut;
@@ -1993,14 +2015,17 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
     sC.push(parseFloat((rS/60).toFixed(2)));
 
     // 実績累積（過去月・当月共通）
+    const dow=new Date(ds+'T00:00:00').getDay();
     if(ds<=today){
-      if(obj){
+      if(obj&&dow!==0){ // 日曜=法定休日は法定時間外の対象外
         // timeIn・timeOut両方入力済みの日のみ平均計算に使用
         const hasFullTime = obj.timeIn && obj.timeOut;
         const wM=calcWorkMinutesForForecast(obj);
         rA+=wM;
         lastD=d;
         if(hasFullTime && !['paid','comp'].includes(obj.leave||'normal')) cnt++;
+      } else if(dow===0){
+        lastD=d;
       }
       acC.push(parseFloat((rA/60).toFixed(2)));
     } else {
@@ -2325,7 +2350,7 @@ function openDayModal(ds){
   // タブ
   const tabs=document.createElement('div');tabs.className='modal-tabs';
   const tabActual=document.createElement('div');tabActual.className='modal-tab active';tabActual.textContent='実績';
-  const tabSched=document.createElement('div');tabSched.className='modal-tab';tabSched.textContent='予定';
+  const tabSched=document.createElement('div');tabSched.className='modal-tab sched-mode';tabSched.textContent='予定';
   tabs.append(tabActual,tabSched);
   c.appendChild(tabs);
 
@@ -2449,7 +2474,7 @@ function saveDayModal(){
   const mode=document.querySelector('.modal-tab.active')?.textContent==='予定'?'sched':'actual';
   const isRemote=!!(document.getElementById('modal-remote')?.checked);
   if(mode==='actual'){
-    setDay(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks,remote:isRemote});
+    saveOrDeleteDay(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks,remote:isRemote});
   } else {
     setSched(dayModalDate,{timeIn:inT,timeOut:outT,leave:lv,breaks,remote:isRemote});
   }
@@ -3232,7 +3257,7 @@ function addWorkItem(){
 }
 window.addEventListener('pointerdown',e=>{if(!e.target.closest?.('.work-cell'))hideWorkTooltip();});
 // ANNUAL
-let annualJobChartMode='jobno'; // 'jobno' or 'category'
+let annualJobChartMode='category'; // 'jobno' or 'category'
 let annualBarChart=null, annualPieChart=null, annualSelectedMonth=null;
 let _annualChartData=null;
 
@@ -3590,8 +3615,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     } else {
       addBreakRow(t,'');
     }
-    document.getElementById('stamp-break-start-time').textContent=formatTime(parseTime(t));
-    document.getElementById('stamp-break-start').classList.add('active');
     updateDaySummary();
     autoSavePunch();
   });
@@ -3603,8 +3626,6 @@ document.addEventListener('DOMContentLoaded',()=>{
       const row=document.querySelector(`.break-row[data-idx="${target}"]`);
       if(row) row.querySelectorAll('input')[1].value=t;
     }
-    document.getElementById('stamp-break-end-time').textContent=formatTime(parseTime(t));
-    document.getElementById('stamp-break-end').classList.remove('active');
     updateDaySummary();
     sortBreakRows(); // 終了確定後に昇順ソート
     autoSavePunch();
