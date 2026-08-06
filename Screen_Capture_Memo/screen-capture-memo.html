@@ -5,71 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Screen Capture Memo</title>
 <!--
-  @version v64
-  @changelog v01: 初版。getDisplayMediaで画面共有→範囲固定→連写キャプチャ+メモ→IndexedDBキャッシュ→単一HTML書き出し
-  @changelog v02: メモが保存ボタン押し忘れでエクスポートに反映されない不具合を修正(input/blurで自動保存+export前強制フラッシュ)
-  @changelog v03: 一覧・エクスポートともに撮影順(id昇順・古い→新しい)に統一。以前は一覧が新しい順で紛らわしかった
-  @changelog v04: 範囲選択に比率指定(16:9/9:16/4:3/3:4/1:1/3:2/フリー)を追加。キャプチャボタン横にクリップボード貼り付けボタン+Ctrl/Cmd+V貼り付けに対応
-  @changelog v05: OSのライトモード設定(prefers-color-scheme)に自動追従。全削除・まとめてHTML保存ボタンをキャプチャ行の右側へ移動(エクスポートHTML側もライトモード対応)
-  @changelog v06: ステータス文言を簡略化(「範囲を固定してください」等の冗長表示を削除)。ヘッダーにライト/ダーク手動切替ボタンを追加(localStorageに保存、OS設定より優先)
-  @changelog v07: getDisplayMediaにdisplaySurface:"monitor"を指定し、画面共有ダイアログの初期選択を「画面全体」優先に(ブラウザ対応状況により効果がない場合あり)
-  @changelog v08: Document Picture-in-Picture APIで「常時表示ウィンドウ」機能を追加(他アプリ操作中も最前面の小窓からキャプチャ可能。Edge/Chrome 116+対応)。ページフォーカス中はSpaceキーでもキャプチャ可能に
-  @changelog v09: ライトモードでdisabledボタン(全削除等)の文字が読みにくかった不具合を修正。disabled専用のコントラスト調整済みカラー変数を追加
-  @changelog v10: キャプチャ/貼り付けボタンのパネルをスクロール時も画面上部に固定表示(sticky)。表示順・保存順は撮影順のまま統一を維持
-  @changelog v11: エクスポートHTMLにライト/ダーク切替ボタンを追加。PDF化を意識した2つの印刷レイアウトを追加(A4に2枚/ページ、ノート形式)。印刷/PDF保存ボタン、@page A4指定、印刷時は常に読みやすい配色を強制
-  @changelog v12: 「保存」ボタンを廃止(自動保存のみに一本化、メモ横に保存済み表示)。ライトモードでsecondaryボタンの文字が白文字で読めなかった不具合を修正、dangerボタンの色も濃く調整。エクスポートHTMLのPDFレイアウトを刷新しデータ埋め込み+動的レンダリング方式に変更、「A4にN枚/ページ」の枚数を2/3/4/6から選択可能に(初期値4)
-  @changelog v13: キャプチャ行に「資料タイトル(任意)」入力欄を追加。エクスポート時にHTMLの<title>・画面見出し・印刷時にも表示される見出しへ反映。エクスポート出力(一覧/グリッド/ノート)から個別タイムスタンプ表示を削除(アプリ本体の記録一覧では引き続き表示)
-  @changelog v14: グリッドレイアウトの列数計算を修正(3枚指定時に1列縦積みで高さがA4を超え2枚しか収まらなかった不具合。2枚=1列、3〜4枚=2列、5枚以上=3列に変更)。ノート形式も「枚数/ページ」を共有で選べるように変更し固定3枚をやめ、標準4枚に統一
-  @changelog v15: ノート形式の行間余白を詰め(padding/margin 5mm→3mm)、標準4行がより確実に1ページへ収まるよう調整
-  @changelog v16: キャプチャ行のボタン文言を短縮(クリップボードから貼り付け→貼り付け、常時表示ウィンドウ→常時表示、まとめてHTML保存→HTML保存。フル名称はtitle属性で保持)。タイトル入力欄の幅とボタン余白を詰め、横幅に収まりやすく調整
-  @changelog v17: 記録一覧・エクスポートHTML(一覧/グリッド/ノート全レイアウト)の画像クリックで拡大表示するライトボックスを追加(背景クリックまたはEscで閉じる)。「🖥 全画面で固定」ボタンを追加し、範囲を選ばずワンクリックで全画面キャプチャを固定できるように。範囲固定後は画面共有パネルを自動的に折りたたみ、手動での展開/折りたたみも可能に
-  @changelog v18: 「全画面で固定」実行時に、残っていた範囲選択の矩形表示をクリアするよう修正(全画面固定なのに小さい範囲枠が残って見える不整合を解消)
-  @changelog v19: 背景タブの動画フレーム間引きにより「常時表示ウィンドウ」経由のキャプチャが古い映像を拾うことがある問題に対応。video要素をPiPウィンドウを開くたびに実際に移動させ(閉じたら元に戻す)、常に「表示中」の文脈でデコードされるようにして最新フレームを維持。共有パネル側にはPiP中である旨のプレースホルダーを表示
-  @changelog v20: 範囲固定(通常/全画面どちらも)と同時に対応ブラウザでは自動的にPiP(常時表示ウィンドウ)を開くように変更(タブが背景に回っても最新フレームを維持しやすくする一連の流れ)。パネル1のヘッダーに「⏹ 共有を停止」ボタンを追加(折りたたんでいても常に見える位置)。共有終了時の後処理を共通関数化し、停止ボタン・トラック終了イベントどちらからも同じクリーンアップが走るように。共有終了時にPiPが開いていれば自動的に閉じるように
-  @changelog v21: 「共有を停止」を押してもブラウザ/OS側の共有インジケーターが消えない不具合に対応。トラック停止後にvideo.srcObjectを明示的にnullへ設定しストリーム参照を完全に切り離すよう修正(video要素がストリームを参照したまま残ると、ブラウザによっては共有中インジケーターが残るケースがあるため)
-  @changelog v22: 共有停止時に範囲選択・固定範囲もクリアするよう修正。既存の範囲選択の内側をドラッグすると「移動」として扱い、書き直さず位置だけ微調整できるように変更(ホバー時はmoveカーソル表示)。比率プルダウンを後から変更した場合、既存の範囲選択を中心を保ったままその比率に変形するように対応。矢印キー(Shiftで10px)でも範囲選択を微調整可能に
-  @changelog v23: 「折りたたむ/展開」ボタンを廃止し、ヘッダー(見出し+矢印アイコン)全体をクリック(またはEnter/Space)で開閉できるように変更。閉じている時は矢印が反転して状態を示す。「共有を停止」ボタンとのアンバランスさを解消
-  @changelog v24: 展開UIをヘッダー内chevronから、パネル下部の帯状バー(▼、クリックで展開)に変更。ヘッダークリックでの折りたたみは維持しつつ、展開操作はパネル下部のバーに一本化
-  @changelog v25: 選択範囲の四隅に丸いリサイズハンドルを追加し、ドラッグで拡大縮小できるように対応(対角を基準点として固定し、比率指定時はその比率を保ったまま拡大縮小。ステージ範囲を超えないようクランプ)
-  @changelog v26: 開閉バーを「▼(展開時のみ表示)」から、開閉どちらの状態でも常時表示される統一バーに変更(展開中は▲、折りたたみ中は▼、同じ場所・同じテイストで一貫表示)。パディング・フォントサイズを縮小しより控えめな表記に
-  @changelog v27: 画面共有選択直後にgetSettings().displaySurfaceを判定し、「ウィンドウ」選択時は最小化で更新が止まる旨を警告、「タブ」選択時は更新頻度が落ちる可能性を注意喚起する通知バナーを追加(mute/unmuteイベントは信頼性が低いため使用せず、確実に取得できるdisplaySurfaceで判定)
-  @changelog v28: 記録一覧の各画像に「✂️ トリミング」ボタンを追加。撮影済み画像をモーダルで開き、範囲選択(ドラッグ/移動/四隅リサイズ、既存の範囲選択UIと同じ操作感)して切り抜き、IndexedDBの画像を上書き保存できるように
-  @changelog v29: 記録一覧をドラッグ&ドロップで並び替え可能に(左端の⠿ハンドルをドラッグ)。並び替え後は各レコードにorderフィールドを保存し、一覧表示・エクスポート(一覧/グリッド/ノート全レイアウト)のソートをid昇順からorder優先(未設定ならid)に変更
-  @changelog v30: トリミングを非破壊化。初回トリミング時に元画像をoriginalDataURLとして保持し、以降「✂️ トリミング」を開くたびに常に元画像から範囲を選び直せるように変更(削除するまで元画像は保持される)。モーダルに「元に戻す(トリミング前の画像)」ボタンを追加
-  @changelog v31: トリミング適用範囲をcropRect(元画像の実ピクセル座標)として保存し、再度トリミングを開いた際は全体選択ではなく前回の範囲から再開できるように変更。「元に戻す」時はcropRectもクリアし次回は全体選択に戻る
-  @changelog v32: ウィンドウ/タブ共有時の注意文言を適宜改行して読みやすく調整(white-space:pre-lineで改行を反映)
-  @changelog v33: 保存ファイル名を「capture-memo-タイムスタンプ.html」から「資料タイトル名_yyyy-mmdd.html」に変更。タイトル入力欄の横に日付入力欄(カレンダー選択、初期値は今日)を追加し、日付を変更してから保存できるように。ファイル名に使えない記号は自動除去
-  @changelog v34: 「📝 見出し」ボタンを追加。画像なしのメモ(発表者交代、テーマ変更など区切り用途)を記録一覧に追加できるように。見出しは左に色線を引いた区切りスタイルで表示。エクスポート(一覧/グリッド/ノート全レイアウト)にも対応し、「A4にN枚」「ノート形式」では見出しをページ内の全幅区切りとして挿入(画像の枚数カウントには含めない)
-  @changelog v35: ボタンを増やさず、画像なしエントリ内の「📝 見出し/💬 メモ」バッジをクリックすることで見た目(太字の区切り線⇄控えめな通常メモ)を切り替えられるように追加。エクスポート側にも種別を引き継ぎ、見出し/メモで表示の強弱を分けるように
-  @changelog v36: 「📥 インポート」ボタンを追加。このツールで書き出したHTMLファイルを選択すると、埋め込まれているデータ(画像・メモ・見出し種別)を記録一覧の末尾に読み込めるように。文字列中の"];"やエスケープされた"</script"を含むメモでも壊れないよう、クォート/エスケープを考慮した括弧対応抽出ロジックを実装(jsdomで実際に検証済み)
-  @changelog v37: 「📌 常時表示」ボタンを「2. キャプチャ」から「1. 画面を共有 → 範囲を固定」の行へ移動(範囲固定と同時にPiPが自動で開く仕様と一致させるため)。案内文言もパネル1内に統一
-  @changelog v38: 記録一覧のメモ欄でEscを押すとフォーカスが外れる(自動保存も実行)ように対応。メモ入力量に応じてテキストエリアの高さを自動拡大するように変更(手動リサイズも引き続き可能)。エクスポートHTMLにMETA(タイトル・日付)を埋め込み、インポート時にタイトル・日付欄へも復元できるように(旧形式のファイルにも後方互換で対応)
-  @changelog v39: 日付入力欄の幅を140px→118pxに縮小し、キャプチャ行のボタンが横一列に収まりやすいよう調整
-  @changelog v40: 記録一覧の削除ボタンを目立たない控えめなアイコンボタン(🗑)に変更し、itemactions内で右端寄せに配置。ホバー時のみ赤背景になり誤操作を防ぎつつ主張を抑えた
-  @changelog v41: ライトボックス(画像拡大表示)にホイールスクロールでの拡大縮小(0.5〜5倍)を追加。記録一覧・エクスポートHTML両方に対応。画像を開くたびに倍率はリセット
-  @changelog v42: 画像の保存形式をPNGからJPEG(quality 0.9)に変更し、長辺1920pxを超える場合は自動縮小してからエンコードするよう変更(ファイルサイズ軽減)。WebPはOneNote等での貼り付け非対応のケースがあるため、右クリック→コピーでTeams/OneNote等へ流用する互換性を優先しJPEGを採用。キャプチャ・トリミング適用の両方に適用(クリップボード貼り付けは元の形式のまま維持)
-  @changelog v43: インポート時の画像にも同じ最適化(JPEG化・長辺1920px上限)を適用するよう変更。古いエクスポート(PNG等)や大きい画像を読み込んでも、取り込み時点で統一された基準に揃うように
-  @changelog v44: ヘッダーのバージョン表記(v44)をクリックすると、v01からの更新内容を簡潔な一行要約リストで見られるモーダルを追加(イースターエッグ的に、目立たせず知りたい人だけ見られる位置づけ)
-  @changelog v45: 保存ファイル名を「資料タイトル名_yyyy-mmdd」から「yyyy-MMDD_資料タイトル名」に変更し、キャプチャ行の入力欄も日付→タイトルの順に入れ替え。File System Access API対応ブラウザ限定の裏機能として、「HTML保存」をShift+クリックすると保存先フォルダを選択・記憶でき、以降は通常クリックでダイアログなしにそのフォルダへ直接保存されるように(IndexedDBにDirectoryHandleを保持、権限未許可・非対応時は従来のダウンロードにフォールバック)
-  @changelog v46: 記録一覧の見出しに、エクスポートHTMLのおおよそのファイルサイズ(画像Base64+メモ+テンプレート固定分約20KB)を表示するように追加。追加・削除・トリミング等の操作のたびに自動更新(150msデバウンス)
-  @changelog v47: 資料タイトル・日付をlocalStorageに保存し、リロードしても前回値を保持するように変更。「全削除」実行時はタイトル・日付も初期状態(空欄/今日の日付)へリセット。保存先フォルダ機能に、保存結果を知らせる控えめなトースト通知を追加(登録フォルダへの無言保存/通常ダウンロードいずれも通知することで、現在どちらの状態か分かるように)。Ctrl(⌘)+Shift+クリックで登録済み保存先フォルダを解除できる機能を追加
-  @changelog v48: エクスポートHTMLの見出し(H1)に日付も併記するように変更(これまでファイル名にしか使われていなかった)。「A4にN枚」「ノート形式」は自前でページを分割生成している特性を活かし、各ページ先頭にタイトル・日付の小さなヘッダー帯を挿入(画面では非表示、印刷時のみ表示)。CSSの全ページ共通ヘッダーはブラウザ印刷が非対応のため、この方式で代替
-  @changelog v49: キャプチャ範囲サイズの表示(captureStatus)をボタン行から「2. キャプチャ」見出し行の右側へ移動。パネル1と同じpanelHeadRowパターンを再利用し、表示時にボタンが折り返す問題を解消
-  @changelog v50: 記録一覧の見出し(件数・書き出し目安・並び替えヒント)を独立要素化し、スクロール時に「2. キャプチャ」パネル直下へ貼り付くスティッキー表示に変更。ResizeObserverでキャプチャパネルの実高さを監視しCSS変数に反映することで、ボタンの折り返し等で高さが変わっても位置がずれないように対応
-  @changelog v51: 書き出し系ボタン(インポート・日付・タイトル・全削除・HTML保存)を「2. キャプチャ」パネルから記録一覧の見出し内へ移動。撮影操作(📸📋📝)と書き出し操作を役割ごとに分離し、書き出し系は記録一覧のスティッキーヘッダー内で常に手の届く位置に
-  @changelog v52: 記録一覧の見出しとボタン列(recordActions)を分離し、ボタン列を上下に罫線を引いた独立ツールバー帯に変更。align-items:centerとpadding調整で帯の中で縦中央に揃うように(見出しの直下に窮屈に詰まっていた見た目を改善)
-  @changelog v53: PiP中に共有パネルの映像プレビューが消える問題を解消。video要素をPiPへ「移動」する方式をやめ、PiPウィンドウ側に別のvideo要素を新設して同じMediaStreamを流す方式に変更(1本のstreamは複数video要素へ同時に紐付け可能)。共有パネル側の映像は常に表示されたままとなり、キャプチャの描画元はcaptureSourceEl変数でPiP中はPiP側、非PiP中は共有パネル側に自動切替(fixedRectはストリームのネイティブ解像度基準のためどちらから描画しても結果は同一)
-  @changelog v54: 保存先フォルダへの書き込みが権限拒否/失敗した際、無言で通常ダウンロードに切り替わり「未登録の場合」と見分けがつかなかった問題を修正。失敗時は⚠️付きの専用メッセージで通常ダウンロードに切り替えたことを明示。トースト通知はクリックで閉じられるように、表示時間も3.5秒→5秒に延長、連続保存時も確実に再フェードインするよう強制リフローを追加
-  @changelog v55: 保存結果の通知を画面下部のトーストから、HTML保存ボタンのすぐ右側に表示する方式に変更。クリックした手元でそのまま結果が分かるように。成功(✅)は緑、警告(⚠️)は赤で色分け
-  @changelog v56: 「HTML保存」の重さを改善する2つの修正。①エクスポート前のメモ取りこぼし防止処理が、記録N件に対しdbGetAll()(全件読み込み、画像データ込み)をN回実行していた無駄を解消し1回にまとめた。②Shift+クリックでの保存先フォルダ「登録」が、これまで登録と同時に全件のHTML生成・保存まで行っていたため重かった問題を修正。登録処理を関数の先頭に移動し、全件読み込み・HTML生成より前に完了して返るように変更(登録だけなら軽量、実際の保存は次回以降の通常クリックで行う)
-  @changelog v57: 登録済みフォルダへの保存時、同名ファイルが既に存在する場合は上書き確認ダイアログを出すように変更。キャンセルした場合は保存を中止しメッセージで通知(fileExistsInDirで事前にgetFileHandle(create:false)を試み、NotFoundErrorかどうかで存在判定)
-  @changelog v58: v53のPiP二重video化(captureSourceEl切替)に起因する可能性のあるキャプチャ失敗に対応。captureSourceElの映像データがまだ準備できていない(readyState不足/videoWidth未取得)場合は、常に表示され続けている共有パネル側のvideoへ自動フォールバックするよう変更。drawImage自体の例外も捕捉してキャプチャ処理が完全に落ちないように。PiP自動起動の失敗もconsole.errorへ記録するように
-  @changelog v59: v53で導入したPiP二重video方式(共有パネルとPiPに同じstreamを別々のvideo要素で流す)を撤回し、v52以前の「video要素を実際にPiPへ移動する」方式に戻した。v58の対策後もキャプチャ失敗が解消しなかったため。captureSourceEl変数を廃止しvideoのみを参照するシンプルな構成に戻し、共有パネル側の映像はPiP中は非表示・案内メッセージ表示に戻る(PiP中はプレビューが見えないトレードオフを受け入れる形)
-  @changelog v60: v59での撤回は原因誤認と判明(不具合は別のPC環境固有の問題で、PiP二重video方式自体が原因ではなかった)。v58時点のPiP二重video方式(共有パネルとPiPの両方に映像プレビューが表示され続ける、captureSourceElによる自動フォールバック付き)へ復帰
-  @changelog v61: ライトボックス(画像拡大表示)にドラッグでのパン(表示位置移動)機能を追加。記録一覧・エクスポートHTML両方に対応。ドラッグ後のクリックでは閉じないよう判定し、誤って閉じないように配慮。カーソルもgrab/grabbingで見た目のフィードバックを追加
-  @changelog v62: ライトボックス表示中、矢印キー(←↑=前へ、→↓=次へ)で前後の画像に切り替えられるように追加。記録一覧側はDOM順、エクスポートHTML側はDATA配列順(レイアウトに依存せず常に撮影順)を基準に巡回。範囲選択の矢印キー微調整と競合しないよう、ライトボックス表示中はそちらを無効化するガードを追加
-  @changelog v63: トリミング中、ドラッグがモーダル背景まで出てからマウスを離すと「背景クリックで閉じる」判定が誤発動し、進行中の選択ごとキャンセルされていた不具合を修正。閉じる判定をclickイベントからpointerdown/pointerupの両方が背景要素自体で発生した場合のみに変更。あわせて新規選択・範囲移動のドラッグ追跡をcropStage限定からwindow全体に変更し、画像範囲外までカーソルが出ても追跡が止まらないよう座標をステージ範囲内にクランプするように改善
+  @tool      Screen Capture Memo
+  @version   v65
+  @changelog v65: キャプチャの範囲選択(選択枠)にも上下左右の辺ハンドルを追加(トリミングと同様、辺ドラッグで幅または高さの片方だけ変更。比率指定時は中心を保ったまま比率を維持)。インポート時にMETA(タイトル・日付)がlocalStorageへ保存されず次回リロードで消えていた不具合を修正
   @changelog v64: トリミングの選択範囲に上下左右の辺ハンドルを追加。辺を掴むと幅または高さの片方だけを平行に変更できるように(四隅は従来通り両方変更)。カーソルもns-resize/ew-resizeで方向を明示
+  @changelog v63: トリミング中、ドラッグがモーダル背景まで出てからマウスを離すと「背景クリックで閉じる」判定が誤発動し、進行中の選択ごとキャンセルされていた不具合を修正。閉じる判定をclickイベントからpointerdown/pointerupの両方が背景要素自体で発生した場合のみに変更。あわせて新規選択・範囲移動のドラッグ追跡をcropStage限定からwindow全体に変更し、画像範囲外までカーソルが出ても追跡が止まらないよう座標をステージ範囲内にクランプするように改善
+  ※ v01〜v62の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -347,7 +288,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v64</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v65</span>
 </header>
 
 <div id="versionModal">
@@ -396,10 +337,14 @@
             <div class="handle ne" data-corner="ne"></div>
             <div class="handle sw" data-corner="sw"></div>
             <div class="handle se" data-corner="se"></div>
+            <div class="handle edge-n" data-corner="n"></div>
+            <div class="handle edge-s" data-corner="s"></div>
+            <div class="handle edge-e" data-corner="e"></div>
+            <div class="handle edge-w" data-corner="w"></div>
           </div>
         </div>
       </div>
-      <div class="hint">映像をドラッグして範囲指定 → 「この範囲で固定」で以降は連写できます／範囲内をドラッグすると位置だけ移動、四隅の丸をドラッグすると拡大縮小、矢印キーでも位置を微調整できます／範囲を選ばず全画面をそのまま使いたい場合は「🖥 全画面で固定」</div>
+      <div class="hint">映像をドラッグして範囲指定 → 「この範囲で固定」で以降は連写できます／範囲内をドラッグすると位置だけ移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます(比率指定時は辺ドラッグでも比率を保持)、矢印キーでも位置を微調整できます／範囲を選ばず全画面をそのまま使いたい場合は「🖥 全画面で固定」</div>
       <div class="hint" id="pipHint">範囲固定と同時に対応ブラウザでは自動的に「常時表示ウィンドウ」が開き、他のアプリを操作中でも最前面の小窓からワンクリックで撮影できます(この共有パネルの映像プレビューはそのまま表示され続けます)</div>
     </div>
     <div id="shareToggleBar" tabindex="0" role="button" aria-label="折りたたむ">▲</div>
@@ -695,12 +640,16 @@
   }
 
   function cornerPoint(corner, sel){
-    // 指定コーナーの対角(=リサイズ中に固定しておく基準点)を返す
+    // 指定コーナー・辺の対辺(=リサイズ中に固定しておく基準点)を返す
     const right = sel.x + sel.w, bottom = sel.y + sel.h;
     if(corner === "nw") return { x: right, y: bottom };
     if(corner === "ne") return { x: sel.x, y: bottom };
     if(corner === "sw") return { x: right, y: sel.y };
-    return { x: sel.x, y: sel.y }; // "se"
+    if(corner === "se") return { x: sel.x, y: sel.y };
+    if(corner === "n") return { x: sel.x, y: bottom }; // 上辺: 下端を固定
+    if(corner === "s") return { x: sel.x, y: sel.y };  // 下辺: 上端を固定
+    if(corner === "e") return { x: sel.x, y: sel.y };  // 右辺: 左端を固定
+    return { x: right, y: sel.y }; // "w" 左辺: 右端を固定
   }
 
   document.querySelectorAll("#selRect .handle").forEach((h) => {
@@ -720,20 +669,54 @@
     const cy = Math.max(0, Math.min(e.clientY - r.top, r.height));
     const ratio = parseFloat(ratioSelect.value) || 0;
     const MIN = 10;
-    const ax = resizeAnchor.x, ay = resizeAnchor.y;
-    const dx = cx - ax, dy = cy - ay;
+    const corner = resizingHandle;
+    let { x, y, w, h } = selection;
 
-    let w = Math.max(MIN, Math.abs(dx));
-    let h = ratio > 0 ? w / ratio : Math.max(MIN, Math.abs(dy));
+    if(corner === "n" || corner === "s"){
+      // 辺ハンドル(上下): 高さだけを変更。比率指定時は高さから幅を再計算し、中心を保ったまま幅も追従させる
+      const ay = resizeAnchor.y;
+      let newH = Math.max(MIN, Math.abs(cy - ay));
+      let newY = cy < ay ? ay - newH : ay;
+      let newW = w, newX = x;
+      if(ratio > 0){
+        newW = newH * ratio;
+        newX = x + w / 2 - newW / 2;
+      }
+      if(newY < 0){ newH += newY; newY = 0; if(ratio > 0) newW = newH * ratio; }
+      if(newY + newH > r.height){ newH = r.height - newY; if(ratio > 0) newW = newH * ratio; }
+      newX = Math.max(0, Math.min(newX, r.width - newW));
+      x = newX; y = newY; w = newW; h = newH;
+    }else if(corner === "e" || corner === "w"){
+      // 辺ハンドル(左右): 幅だけを変更。比率指定時は幅から高さを再計算し、中心を保ったまま高さも追従させる
+      const ax = resizeAnchor.x;
+      let newW = Math.max(MIN, Math.abs(cx - ax));
+      let newX = cx < ax ? ax - newW : ax;
+      let newH = h, newY = y;
+      if(ratio > 0){
+        newH = newW / ratio;
+        newY = y + h / 2 - newH / 2;
+      }
+      if(newX < 0){ newW += newX; newX = 0; if(ratio > 0) newH = newW / ratio; }
+      if(newX + newW > r.width){ newW = r.width - newX; if(ratio > 0) newH = newW / ratio; }
+      newY = Math.max(0, Math.min(newY, r.height - newH));
+      x = newX; y = newY; w = newW; h = newH;
+    }else{
+      // 四隅ハンドル: 従来通り幅・高さ両方を変更
+      const ax = resizeAnchor.x, ay = resizeAnchor.y;
+      const dx = cx - ax, dy = cy - ay;
 
-    let x = dx < 0 ? ax - w : ax;
-    let y = dy < 0 ? ay - h : ay;
+      w = Math.max(MIN, Math.abs(dx));
+      h = ratio > 0 ? w / ratio : Math.max(MIN, Math.abs(dy));
 
-    // ステージ範囲を超えないようクランプ(比率指定時は再計算して形状を維持)
-    if(x < 0){ w += x; x = 0; if(ratio > 0) h = w / ratio; }
-    if(y < 0){ h += y; y = 0; if(ratio > 0) w = h * ratio; }
-    if(x + w > r.width){ w = r.width - x; if(ratio > 0) h = w / ratio; }
-    if(y + h > r.height){ h = r.height - y; if(ratio > 0) w = h * ratio; }
+      x = dx < 0 ? ax - w : ax;
+      y = dy < 0 ? ay - h : ay;
+
+      // ステージ範囲を超えないようクランプ(比率指定時は再計算して形状を維持)
+      if(x < 0){ w += x; x = 0; if(ratio > 0) h = w / ratio; }
+      if(y < 0){ h += y; y = 0; if(ratio > 0) w = h * ratio; }
+      if(x + w > r.width){ w = r.width - x; if(ratio > 0) h = w / ratio; }
+      if(y + h > r.height){ h = r.height - y; if(ratio > 0) w = h * ratio; }
+    }
 
     selection = { x, y, w, h };
     updateSelRectVisual();
@@ -1349,8 +1332,15 @@
       renderItem(record, false);
     }
     if(meta){
-      if(meta.title) exportTitleInput.value = meta.title;
-      if(meta.date) exportDateInput.value = meta.date;
+      // .valueへの代入だけではinputイベントが発火せずlocalStorageへ保存されないため、明示的に保存する
+      if(meta.title){
+        exportTitleInput.value = meta.title;
+        localStorage.setItem(TITLE_KEY, meta.title);
+      }
+      if(meta.date){
+        exportDateInput.value = meta.date;
+        localStorage.setItem(DATE_KEY, meta.date);
+      }
     }
     updateCount();
   });
@@ -2372,7 +2362,8 @@
     ["v61","ライトボックスにドラッグでのパン(表示位置移動)機能を追加"],
     ["v62","ライトボックスで矢印キーによる前後の画像切り替えに対応"],
     ["v63","トリミングで範囲外リリース時に誤キャンセルされる不具合を修正"],
-    ["v64","トリミングに辺ハンドルを追加し幅/高さの片方だけ変更可能に"]
+    ["v64","トリミングに辺ハンドルを追加し幅/高さの片方だけ変更可能に"],
+    ["v65","キャプチャの範囲選択にも辺ハンドルを追加。インポート時のタイトル/日付保存漏れを修正"]
   ];
 
   const verLabel = $("verLabel");
