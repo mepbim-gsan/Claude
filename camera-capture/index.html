@@ -1,12 +1,13 @@
 <!--
   @tool      カメラキャプチャ（台形補正）
-  @version   v04_2026-08-05
+  @version   v06_2026-08-05
   @changelog
     v01_2026-08-05 - 初版：カメラ経由でスクリーン矩形を半自動検出→タップ確定→台形補正→IndexedDB保存・一覧管理
     v02_2026-08-05 - PWA化（manifest.json, sw.js, アイコン追加）、index.htmlへリネーム
     v03_2026-08-05 - 矩形の手動ドラッグ調整UIを追加、保存時に縦長へ自動回転＋手動回転ボタン
     v04_2026-08-05 - sw.jsのキャッシュ判定バグ修正（ディレクトリURLアクセス時にHTMLがキャッシュ固定される問題）、CACHE_NAMEをv2に
     v05_2026-08-05 - 台形補正をOpenCV.js非依存の純粋JS実装（三角形分割アフィン変換）に置き換え。CDN読込失敗時も常に補正が効くように。CACHE_NAMEをv3に
+    v06_2026-08-05 - 三角形分割アフィン近似（歪みが残る）から、4隅対応の真の射影変換（ホモグラフィ）＋バイリニア補間へ変更。CACHE_NAMEをv4に
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -412,49 +413,79 @@ function drawOverlayQuad(quadVideoCoords, vw, vh, detected){
 /* ===================== 撮影 ===================== */
 function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 
-// 3点対応からアフィン行列(a,b,c,d,e,f)を解く（src->dstの三角形テクスチャマッピング用）
-function solveAffine(s0,s1,s2,d0,d1,d2){
-  const denom = s0.x*(s1.y-s2.y) + s1.x*(s2.y-s0.y) + s2.x*(s0.y-s1.y);
-  if (Math.abs(denom) < 1e-9) return null;
-  return {
-    a: (d0.x*(s1.y-s2.y) + d1.x*(s2.y-s0.y) + d2.x*(s0.y-s1.y)) / denom,
-    b: (d0.y*(s1.y-s2.y) + d1.y*(s2.y-s0.y) + d2.y*(s0.y-s1.y)) / denom,
-    c: (d0.x*(s2.x-s1.x) + d1.x*(s0.x-s2.x) + d2.x*(s1.x-s0.x)) / denom,
-    d: (d0.y*(s2.x-s1.x) + d1.y*(s0.x-s2.x) + d2.y*(s1.x-s0.x)) / denom,
-    e: (d0.x*(s1.x*s2.y-s2.x*s1.y) + d1.x*(s2.x*s0.y-s0.x*s2.y) + d2.x*(s0.x*s1.y-s1.x*s0.y)) / denom,
-    f: (d0.y*(s1.x*s2.y-s2.x*s1.y) + d1.y*(s2.x*s0.y-s0.x*s2.y) + d2.y*(s0.x*s1.y-s1.x*s0.y)) / denom,
-  };
+// 4点対応から射影変換(ホモグラフィ)係数[a,b,c,d,e,f,g,h]を8元連立方程式で解く
+// 適用: X=(a*x+b*y+c)/(g*x+h*y+1), Y=(d*x+e*y+f)/(g*x+h*y+1)
+function solveLinear8(A,B){
+  const n = 8;
+  const M = A.map((row,i)=>[...row, B[i]]);
+  for(let col=0; col<n; col++){
+    let piv = col;
+    for(let r=col+1;r<n;r++) if(Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    [M[col],M[piv]] = [M[piv],M[col]];
+    const pv = M[col][col];
+    for(let c=col;c<=n;c++) M[col][c] /= pv;
+    for(let r=0;r<n;r++){
+      if(r===col) continue;
+      const f = M[r][col];
+      for(let c=col;c<=n;c++) M[r][c] -= f*M[col][c];
+    }
+  }
+  return M.map(row=>row[n]);
 }
-function drawTriangleWarp(ctx, srcImg, s0,s1,s2, d0,d1,d2){
-  const m = solveAffine(s0,s1,s2, d0,d1,d2);
-  if(!m) return;
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(d0.x,d0.y); ctx.lineTo(d1.x,d1.y); ctx.lineTo(d2.x,d2.y);
-  ctx.closePath();
-  ctx.clip();
-  ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
-  ctx.drawImage(srcImg, 0, 0);
-  ctx.restore();
+function solvePerspective(fromPts, toPts){
+  const A=[], B=[];
+  for(let i=0;i<4;i++){
+    const {x,y} = fromPts[i];
+    const {x:X,y:Y} = toPts[i];
+    A.push([x,y,1,0,0,0,-x*X,-y*X]); B.push(X);
+    A.push([0,0,0,x,y,1,-x*Y,-y*Y]); B.push(Y);
+  }
+  return solveLinear8(A,B);
 }
 
 function warpFullFrame(quad, sourceCanvas){
-  // OpenCV.js不要：矩形を2枚の三角形に分割し、それぞれアフィン変換で貼り付けることで
-  // 台形補正を近似する（外部CDNに依存せず常に動作する）
+  // OpenCV.js不要：4隅から射影変換(ホモグラフィ)を解き、出力側の各ピクセルごとに
+  // 逆写像で元画像をバイリニア補間サンプリングする（真の台形補正）
   const [tl,tr,br,bl] = quad;
   const widthA = dist(br,bl), widthB = dist(tr,tl);
   const maxW = Math.max(1, Math.round(Math.max(widthA, widthB)));
   const heightA = dist(tr,br), heightB = dist(tl,bl);
   const maxH = Math.max(1, Math.round(Math.max(heightA, heightB)));
 
+  const dstCorners = [{x:0,y:0},{x:maxW,y:0},{x:maxW,y:maxH},{x:0,y:maxH}];
+  const srcCorners = [tl,tr,br,bl];
+  const [a,b,c,d,e,f,g,h] = solvePerspective(dstCorners, srcCorners); // 出力->入力
+
+  const sw = sourceCanvas.width, sh = sourceCanvas.height;
+  const srcData = sourceCanvas.getContext('2d').getImageData(0,0,sw,sh).data;
+
   const outCanvas = document.createElement('canvas');
   outCanvas.width = maxW; outCanvas.height = maxH;
-  const ctx = outCanvas.getContext('2d');
+  const outCtx = outCanvas.getContext('2d');
+  const outImg = outCtx.createImageData(maxW, maxH);
+  const outData = outImg.data;
 
-  const d00={x:0,y:0}, d10={x:maxW,y:0}, d11={x:maxW,y:maxH}, d01={x:0,y:maxH};
-  drawTriangleWarp(ctx, sourceCanvas, tl, tr, bl, d00, d10, d01);
-  drawTriangleWarp(ctx, sourceCanvas, tr, br, bl, d10, d11, d01);
+  for(let dy=0; dy<maxH; dy++){
+    for(let dx=0; dx<maxW; dx++){
+      const denom = g*dx + h*dy + 1;
+      const sx = (a*dx + b*dy + c) / denom;
+      const sy = (d*dx + e*dy + f) / denom;
+      const outIdx = (dy*maxW + dx) * 4;
+      if(sx < 0 || sy < 0 || sx >= sw-1 || sy >= sh-1) continue; // 範囲外は透明のまま
 
+      const x0 = Math.floor(sx), y0 = Math.floor(sy);
+      const fx = sx - x0, fy = sy - y0;
+      const i00 = (y0*sw + x0)*4, i10 = (y0*sw + x0+1)*4;
+      const i01 = ((y0+1)*sw + x0)*4, i11 = ((y0+1)*sw + x0+1)*4;
+      for(let ch=0; ch<3; ch++){
+        outData[outIdx+ch] =
+          srcData[i00+ch]*(1-fx)*(1-fy) + srcData[i10+ch]*fx*(1-fy) +
+          srcData[i01+ch]*(1-fx)*fy     + srcData[i11+ch]*fx*fy;
+      }
+      outData[outIdx+3] = 255;
+    }
+  }
+  outCtx.putImageData(outImg, 0, 0);
   return outCanvas;
 }
 
@@ -577,15 +608,19 @@ window._adjustReset = function(){
 };
 window._adjustConfirm = function(){
   document.getElementById('adjustModal').classList.remove('open');
-  let outCanvas;
-  try{
-    outCanvas = warpFullFrame(adjustQuad, capturedFullCanvas);
-  }catch(e){
-    outCanvas = cropBoundingBox(capturedFullCanvas, adjustQuad);
-  }
-  outCanvas = rotateToPortrait(outCanvas);
-  pendingCanvas = outCanvas;
-  openReview(outCanvas);
+  toast('補正処理中…');
+  // ピクセル単位の射影変換はブロッキング処理のため、トーストが描画される猶予を与えてから実行
+  setTimeout(()=>{
+    let outCanvas;
+    try{
+      outCanvas = warpFullFrame(adjustQuad, capturedFullCanvas);
+    }catch(e){
+      outCanvas = cropBoundingBox(capturedFullCanvas, adjustQuad);
+    }
+    outCanvas = rotateToPortrait(outCanvas);
+    pendingCanvas = outCanvas;
+    openReview(outCanvas);
+  }, 30);
 };
 
 window._onShutter = function(){
