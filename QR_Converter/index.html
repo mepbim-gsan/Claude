@@ -1,7 +1,8 @@
 <!--
   @tool      QR⇄テキスト変換ツール
-  @version   v2026-08-07.2
+  @version   v2026-08-07.3
   @changelog
+    v2026-08-07.3 - スマホ向けにカメラ撮影ボタンを追加（capture属性でカメラ起動しQRコードデコードへ直結）。画像ペーストがtext/htmlのimgタグやdata:image URIとして渡されるケースに対応し、意図せずテキスト欄へ画像データが挿入される不具合を修正
     v2026-08-07.2 - QR生成CDNのURLが実在しないパスで404していた不具合を修正（qrcode@1.5.3/build/qrcode.min.js → qrcode-generator@2.0.4/dist/qrcode.js + qrcode_UTF8.js に差し替え、APIをcanvas直描画からdataURL/imgベースに変更）
     v2026-08-07   - 初版
 -->
@@ -100,6 +101,7 @@
 
   .input-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 10px;
   }
@@ -306,11 +308,13 @@
       <textarea id="inputText" placeholder="URLやテキストをペースト・入力&#10;（QRコード画像もここにペースト／ドロップできます）"></textarea>
     </div>
     <div class="input-actions">
+      <button id="btnCamera">📷 カメラで撮影</button>
       <button id="btnPickImage">🖼 画像から読み取る</button>
       <button class="ghost" id="btnClear">クリア</button>
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
       <input type="file" id="fileInput" accept="image/*" style="display:none;">
     </div>
-    <div class="hint">アドレスを入力するとQRコードで開けるように、文章はコピーできるように表示します。QRコード画像をペースト／ドロップ／選択すると中身のURLや文章を確認できます。</div>
+    <div class="hint">アドレスを入力するとQRコードで開けるように、文章はコピーできるように表示します。QRコード画像をペースト／ドロップ／選択、またはカメラで撮影すると中身のURLや文章を確認できます。</div>
   </div>
 
   <div class="card" id="resultSection">
@@ -493,9 +497,22 @@ async function decodeImageFile(file) {
 }
 
 // クリップボードからのペースト（テキスト／画像）。フォーカス位置に関わらず document で拾う
+async function decodeImageUrl(url) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    await decodeImageFile(blob);
+  } catch (e) {
+    console.error(e);
+    showToast('画像の読み込みに失敗しました');
+  }
+}
+
 document.addEventListener('paste', (e) => {
   const items = e.clipboardData && e.clipboardData.items;
   if (!items) return;
+
+  // 1. クリップボードに直接 image/* が含まれる場合（デスクトップの一般的なケース）
   for (const item of items) {
     if (item.type && item.type.startsWith('image/')) {
       e.preventDefault();
@@ -504,7 +521,26 @@ document.addEventListener('paste', (e) => {
       return;
     }
   }
+
+  // 2. text/html に <img> タグとして画像が埋め込まれている場合（一部アプリ・ブラウザで発生）
+  const html = e.clipboardData.getData('text/html');
+  if (html) {
+    const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (m && m[1]) {
+      e.preventDefault();
+      decodeImageUrl(m[1]);
+      return;
+    }
+  }
+
+  // 3. text/plain 自体が data:image URI の場合（一部クリップボードマネージャ等）
   const text = e.clipboardData.getData('text/plain');
+  if (/^data:image\//i.test((text || '').trim())) {
+    e.preventDefault();
+    decodeImageUrl(text.trim());
+    return;
+  }
+
   if (text) {
     e.preventDefault();
     inputText.value = text;
@@ -537,6 +573,15 @@ fileInput.addEventListener('change', () => {
   const file = fileInput.files && fileInput.files[0];
   if (file) decodeImageFile(file);
   fileInput.value = '';
+});
+
+// カメラ撮影（スマホでは capture 属性によりカメラが直接起動、非対応環境ではファイル選択にフォールバック）
+const cameraInput = document.getElementById('cameraInput');
+document.getElementById('btnCamera').addEventListener('click', () => cameraInput.click());
+cameraInput.addEventListener('change', () => {
+  const file = cameraInput.files && cameraInput.files[0];
+  if (file) decodeImageFile(file);
+  cameraInput.value = '';
 });
 
 // ============================================================
