@@ -1,4 +1,4 @@
-const CACHE_NAME = 'camera-capture-v4';
+const CACHE_NAME = 'camera-capture-v6';
 const ENTRY_HTML = './index.html';
 
 // ネットワーク優先で取得するリソース（更新頻度が高いもの）
