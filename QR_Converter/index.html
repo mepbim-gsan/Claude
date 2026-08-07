@@ -1,8 +1,9 @@
 <!--
   @tool      QR⇄テキスト変換ツール
-  @version   v2026-08-07
+  @version   v2026-08-07.2
   @changelog
-    v2026-08-07 - 初版
+    v2026-08-07.2 - QR生成CDNのURLが実在しないパスで404していた不具合を修正（qrcode@1.5.3/build/qrcode.min.js → qrcode-generator@2.0.4/dist/qrcode.js + qrcode_UTF8.js に差し替え、APIをcanvas直描画からdataURL/imgベースに変更）
+    v2026-08-07   - 初版
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -10,7 +11,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>QR⇄テキスト変換</title>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode_UTF8.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <style>
   :root {
@@ -193,8 +195,15 @@
     border-radius: 10px;
     padding: 12px;
     cursor: pointer;
+    line-height: 0;
   }
   .qr-frame.static { cursor: default; }
+  #qrImage {
+    display: block;
+    width: 200px;
+    height: 200px;
+    image-rendering: pixelated;
+  }
   #qrCaption {
     text-align: center;
     font-size: 11px;
@@ -315,7 +324,7 @@
     </div>
     <div class="qr-wrap">
       <div class="qr-frame" id="qrFrame">
-        <canvas id="qrCanvas"></canvas>
+        <img id="qrImage" alt="QRコード">
       </div>
     </div>
     <div id="qrCaption"></div>
@@ -346,12 +355,13 @@ const resultSource   = document.getElementById('resultSource');
 const resultText     = document.getElementById('resultText');
 const btnOpen        = document.getElementById('btnOpen');
 const qrFrame        = document.getElementById('qrFrame');
-const qrCanvas       = document.getElementById('qrCanvas');
+const qrImage        = document.getElementById('qrImage');
 const qrCaption      = document.getElementById('qrCaption');
 const historyList    = document.getElementById('historyList');
 const toast          = document.getElementById('toast');
 
 let currentUrl = null; // 開く/QRクリック用の正規化URL
+let currentQrDataUrl = null; // QR画像保存用
 let inputDebounce = null;
 
 // ============================================================
@@ -416,21 +426,23 @@ function renderResult(text, source) {
 
   resultSource.textContent = source === 'qr' ? 'QRコード画像から読み取り' : '入力テキスト';
 
-  if (typeof QRCode === 'undefined') {
+  if (typeof qrcode === 'undefined') {
     qrFrame.style.display = 'none';
+    currentQrDataUrl = null;
     qrCaption.textContent = 'QRコード生成ライブラリの読み込みに失敗しました（オフライン等）';
   } else {
     qrFrame.style.display = '';
     try {
-      QRCode.toCanvas(qrCanvas, type === 'url' ? currentUrl : s, {
-        width: 200,
-        margin: 2,
-        color: { dark: '#000000', light: '#ffffff' }
-      }, (err) => { if (err) { console.error(err); qrCaption.textContent = 'QRコードの生成に失敗しました'; } });
+      const qr = qrcode(0, 'M'); // typeNumber 0 = 自動サイズ判定
+      qr.addData(type === 'url' ? currentUrl : s);
+      qr.make();
+      currentQrDataUrl = qr.createDataURL(6, 16);
+      qrImage.src = currentQrDataUrl;
     } catch (e) {
       console.error(e);
       qrFrame.style.display = 'none';
-      qrCaption.textContent = 'QRコードの生成に失敗しました';
+      currentQrDataUrl = null;
+      qrCaption.textContent = 'QRコードの生成に失敗しました（データが長すぎる可能性があります）';
     }
   }
 
@@ -553,10 +565,10 @@ btnOpen.addEventListener('click', () => { if (currentUrl) window.open(currentUrl
 qrFrame.addEventListener('click', () => { if (currentUrl) window.open(currentUrl, '_blank', 'noopener'); });
 
 document.getElementById('btnSaveQr').addEventListener('click', () => {
-  if (!resultText.value) return;
+  if (!currentQrDataUrl) { showToast('QRコードがありません'); return; }
   const link = document.createElement('a');
   link.download = 'qrcode.png';
-  link.href = qrCanvas.toDataURL('image/png');
+  link.href = currentQrDataUrl;
   link.click();
 });
 
