@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v66
+  @version   v67
+  @changelog v67: 記録一覧のキーボード並び替えに対応。⠿ハンドルにフォーカスした状態でCtrl(⌘)+Alt+↑/↓を押すと1つ上/下のアイテムと入れ替えられるように(ドラッグ操作の代替)。既存の範囲選択矢印キー微調整・ライトボックス矢印キー切替とキー組み合わせが衝突しないようそれぞれにCtrl/Alt除外ガードを追加
   @changelog v66: 保存先フォルダ機能を再設計。登録済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログを開いて確認する方式に変更(queryPermission/requestPermissionによる無言の権限確認をやめ、毎回の明示的なピッカー操作に統一)。これにより権限失効でダウンロードへ無言フォールバックしていた不安定さを解消。フォルダ選択自体もクリック直後(user activationが有効なうち)に確定させるよう処理順を変更
   @changelog v65: キャプチャの範囲選択(選択枠)にも上下左右の辺ハンドルを追加(トリミングと同様、辺ドラッグで幅または高さの片方だけ変更。比率指定時は中心を保ったまま比率を維持)。インポート時にMETA(タイトル・日付)がlocalStorageへ保存されず次回リロードで消えていた不具合を修正
-  @changelog v64: トリミングの選択範囲に上下左右の辺ハンドルを追加。辺を掴むと幅または高さの片方だけを平行に変更できるように(四隅は従来通り両方変更)。カーソルもns-resize/ew-resizeで方向を明示
-  ※ v01〜v63の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v64の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -288,7 +288,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v66</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v67</span>
 </header>
 
 <div id="versionModal">
@@ -375,7 +375,7 @@
         <button class="ok" id="btnExport" title="まとめてHTML保存(Shift+クリックで保存先フォルダを設定/Ctrl+Shift+クリックで解除。設定済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログで確認します)">HTML保存</button>
         <span id="exportStatusMsg"></span>
       </div>
-      <div class="hint" style="margin:8px 0 0;">左端の ⠿ をドラッグすると並び替えできます</div>
+      <div class="hint" style="margin:8px 0 0;">左端の ⠿ をドラッグすると並び替えできます／⠿ にフォーカスしてCtrl(⌘)+Alt+↑/↓でも並び替え可能です</div>
     </div>
     <div id="captureList"><div class="empty">まだキャプチャがありません</div></div>
   </div>
@@ -829,6 +829,7 @@
     if(!selection) return;
     if(sharePanel.classList.contains("collapsed")) return;
     if(lightbox.classList.contains("open")) return;
+    if(e.ctrlKey || e.metaKey || e.altKey) return; // Ctrl(⌘)+Alt+矢印は記録一覧のキーボード並び替えと競合するため除外
     const tag = document.activeElement && document.activeElement.tagName;
     if(tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
     const arrowKeys = ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"];
@@ -1049,7 +1050,7 @@
     if(isHeading){
       const asHeading = record.heading !== false; // 未設定(既存データ含む)はデフォルトで見出し扱い
       div.innerHTML = `
-        <span class="drag-handle" draggable="true" title="ドラッグして並び替え">⠿</span>
+        <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてCtrl+Alt+↑/↓で並び替え">⠿</span>
         <div class="itembody">
           <div class="meta">
             <span class="type-badge" title="クリックで見出し/メモを切替">${asHeading ? "📝 見出し" : "💬 メモ"}</span>
@@ -1064,7 +1065,7 @@
       if(!asHeading) div.classList.add("type-memo");
     }else{
       div.innerHTML = `
-        <span class="drag-handle" draggable="true" title="ドラッグして並び替え">⠿</span>
+        <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてCtrl+Alt+↑/↓で並び替え">⠿</span>
         <img src="${record.dataURL}" alt="capture">
         <div class="itembody">
           <div class="meta">${fmtTime(record.timestamp)} <span class="saveState"></span></div>
@@ -1175,6 +1176,22 @@
   // ---------- 記録一覧のドラッグ&ドロップ並び替え ----------
   let draggingItem = null;
 
+  // 現在のDOM順を正として、全レコードのorderを振り直して保存する(ドラッグ&ドロップ・キーボード並び替え共通)
+  async function persistOrderFromDom(){
+    const records = await dbGetAll();
+    const byId = new Map(records.map((r) => [String(r.id), r]));
+    const items = Array.from(captureList.querySelectorAll(".item"));
+    const updates = [];
+    items.forEach((div, index) => {
+      const rec = byId.get(div.dataset.id);
+      if(rec && rec.order !== index){
+        rec.order = index;
+        updates.push(dbPut(rec));
+      }
+    });
+    await Promise.all(updates);
+  }
+
   captureList.addEventListener("dragstart", (e) => {
     const handle = e.target.closest(".drag-handle");
     if(!handle) return;
@@ -1198,20 +1215,28 @@
     if(!draggingItem) return;
     draggingItem.classList.remove("dragging");
     draggingItem = null;
+    await persistOrderFromDom();
+  });
 
-    // 現在のDOM順を正として、全レコードのorderを振り直して保存する
-    const records = await dbGetAll();
-    const byId = new Map(records.map((r) => [String(r.id), r]));
-    const items = Array.from(captureList.querySelectorAll(".item"));
-    const updates = [];
-    items.forEach((div, index) => {
-      const rec = byId.get(div.dataset.id);
-      if(rec && rec.order !== index){
-        rec.order = index;
-        updates.push(dbPut(rec));
-      }
-    });
-    await Promise.all(updates);
+  // キーボードでの並び替え: ⠿ハンドルにフォーカスした状態でCtrl(⌘)+Alt+↑/↓を押すと
+  // 1つ上/下のアイテムと入れ替える(ドラッグ操作の代替)。移動後もハンドルのフォーカスは維持される
+  captureList.addEventListener("keydown", async (e) => {
+    if(e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    if(!(e.ctrlKey || e.metaKey) || !e.altKey) return;
+    const handle = e.target.closest(".drag-handle");
+    if(!handle) return;
+    const item = handle.closest(".item");
+    if(!item) return;
+    const sibling = e.key === "ArrowUp" ? item.previousElementSibling : item.nextElementSibling;
+    if(!sibling) return; // 端まで来たら何もしない
+    e.preventDefault();
+    if(e.key === "ArrowUp"){
+      captureList.insertBefore(item, sibling);
+    }else{
+      captureList.insertBefore(item, sibling.nextSibling); // nextSiblingがnullなら末尾へ移動
+    }
+    handle.focus(); // 同じノードを再配置しているだけだがブラウザ差異に備えて明示的に再フォーカス
+    await persistOrderFromDom();
   });
 
   async function loadAll(){
@@ -2032,6 +2057,7 @@
   lightboxImg.addEventListener("pointerup", () => { lightboxDragging = false; });
   document.addEventListener("keydown", (e) => {
     if(lightbox.classList.contains("open") &&
+       !(e.ctrlKey || e.metaKey || e.altKey) &&
        ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)){
       e.preventDefault();
       if(e.key === "ArrowLeft" || e.key === "ArrowUp") showLightboxByOffset(-1);
@@ -2364,7 +2390,8 @@
     ["v63","トリミングで範囲外リリース時に誤キャンセルされる不具合を修正"],
     ["v64","トリミングに辺ハンドルを追加し幅/高さの片方だけ変更可能に"],
     ["v65","キャプチャの範囲選択にも辺ハンドルを追加。インポート時のタイトル/日付保存漏れを修正"],
-    ["v66","保存先フォルダを毎回ピッカーで確認する方式に再設計(権限失効の不安定さを解消)"]
+    ["v66","保存先フォルダを毎回ピッカーで確認する方式に再設計(権限失効の不安定さを解消)"],
+    ["v67","記録一覧をCtrl(⌘)+Alt+↑/↓でも並び替え可能に(⠿ハンドルにフォーカスして操作)"]
   ];
 
   const verLabel = $("verLabel");
