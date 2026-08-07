@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v65
+  @version   v66
+  @changelog v66: 保存先フォルダ機能を再設計。登録済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログを開いて確認する方式に変更(queryPermission/requestPermissionによる無言の権限確認をやめ、毎回の明示的なピッカー操作に統一)。これにより権限失効でダウンロードへ無言フォールバックしていた不安定さを解消。フォルダ選択自体もクリック直後(user activationが有効なうち)に確定させるよう処理順を変更
   @changelog v65: キャプチャの範囲選択(選択枠)にも上下左右の辺ハンドルを追加(トリミングと同様、辺ドラッグで幅または高さの片方だけ変更。比率指定時は中心を保ったまま比率を維持)。インポート時にMETA(タイトル・日付)がlocalStorageへ保存されず次回リロードで消えていた不具合を修正
   @changelog v64: トリミングの選択範囲に上下左右の辺ハンドルを追加。辺を掴むと幅または高さの片方だけを平行に変更できるように(四隅は従来通り両方変更)。カーソルもns-resize/ew-resizeで方向を明示
-  @changelog v63: トリミング中、ドラッグがモーダル背景まで出てからマウスを離すと「背景クリックで閉じる」判定が誤発動し、進行中の選択ごとキャンセルされていた不具合を修正。閉じる判定をclickイベントからpointerdown/pointerupの両方が背景要素自体で発生した場合のみに変更。あわせて新規選択・範囲移動のドラッグ追跡をcropStage限定からwindow全体に変更し、画像範囲外までカーソルが出ても追跡が止まらないよう座標をステージ範囲内にクランプするように改善
-  ※ v01〜v62の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v63の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -288,7 +288,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v65</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v66</span>
 </header>
 
 <div id="versionModal">
@@ -372,7 +372,7 @@
         <input type="date" id="exportDate">
         <input type="text" id="exportTitle" placeholder="資料タイトル(任意)">
         <button class="secondary" id="btnClearAll">全削除</button>
-        <button class="ok" id="btnExport" title="まとめてHTML保存(Shift+クリックで保存先フォルダを設定/Ctrl+Shift+クリックで解除)">HTML保存</button>
+        <button class="ok" id="btnExport" title="まとめてHTML保存(Shift+クリックで保存先フォルダを設定/Ctrl+Shift+クリックで解除。設定済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログで確認します)">HTML保存</button>
         <span id="exportStatusMsg"></span>
       </div>
       <div class="hint" style="margin:8px 0 0;">左端の ⠿ をドラッグすると並び替えできます</div>
@@ -1367,11 +1367,29 @@
       try{
         const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         await kvSet("saveDirHandle", dirHandle);
-        showToast(`✅ 保存先フォルダを「${dirHandle.name}」に設定しました。次回から自動保存されます(通常クリックで保存)。`);
+        showToast(`✅ 保存先フォルダを「${dirHandle.name}」に設定しました。次回から保存のたびにこのフォルダを起点に確認します。`);
         return;
       }catch(err){
         if(err && err.name !== "AbortError") console.error(err);
         return; // フォルダ選択をキャンセルした場合は何もしない
+      }
+    }
+
+    // 保存先フォルダが登録済みなら、クリック直後(ブラウザのuser activationが有効なうち)に
+    // ピッカーを前回のフォルダを起点(startIn)にして開き、書き込み先を確定させておく。
+    // 実際の書き込みはこの後の重い処理(全件読み込み・HTML生成)の後に行うが、
+    // フォルダの選び直し自体はここで確認済みのため、権限の失効(requestPermissionが
+    // クリックから離れすぎて無反応になる)を気にする必要がなくなる。
+    let pendingDirHandle = null;
+    let dirPickCancelled = false;
+    const savedHandle = fsSupported ? await kvGet("saveDirHandle") : null;
+    if(savedHandle){
+      try{
+        pendingDirHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: savedHandle });
+        await kvSet("saveDirHandle", pendingDirHandle); // 選び直した場合に備え最新のハンドルを覚え直す
+      }catch(err){
+        if(err && err.name !== "AbortError") console.error("保存先フォルダの選択に失敗しました", err);
+        dirPickCancelled = true;
       }
     }
 
@@ -1755,38 +1773,25 @@
 
     const blob = new Blob([exportHtml], { type:"text/html" });
 
-    // 保存先フォルダ(裏機能・通常クリック時): 記憶済みフォルダがあればダイアログなしでそこへ保存、
-    // 無ければ従来通りダウンロード(登録・解除の判定はこの関数の先頭で完了済み。fsSupportedも先頭で宣言済み)
-    if(fsSupported){
+    // 保存先フォルダ: クリック直後に確定させておいたpendingDirHandleがあればそこへ保存、
+    // 無ければ(未登録、またはフォルダ選択をキャンセルした場合)通常ダウンロード。
+    if(pendingDirHandle){
       try{
-        const savedHandle = await kvGet("saveDirHandle");
-        if(savedHandle){
-          const granted = await ensureDirPermission(savedHandle);
-          if(granted){
-            const exists = await fileExistsInDir(savedHandle, fileName);
-            if(exists && !confirm(`「${fileName}」は既に存在します。上書きしますか？`)){
-              showToast("保存を中止しました(同名ファイルが既に存在します)。タイトルや日付を変えて再度お試しください。");
-              return;
-            }
-            await writeFileToDir(savedHandle, fileName, blob);
-            showToast(`✅「${savedHandle.name}」に保存しました: ${fileName}`);
-            return;
-          }
-          // 権限が得られなかった場合、無言でダウンロードに切り替えると気づけないため明示する
-          const url1 = URL.createObjectURL(blob);
-          const a1 = document.createElement("a");
-          a1.href = url1; a1.download = fileName; a1.click();
-          URL.revokeObjectURL(url1);
-          showToast(`⚠️ 登録フォルダへのアクセス許可が得られず、通常のダウンロードに切り替えました: ${fileName}`);
+        const exists = await fileExistsInDir(pendingDirHandle, fileName);
+        if(exists && !confirm(`「${fileName}」は既に存在します。上書きしますか？`)){
+          showToast("保存を中止しました(同名ファイルが既に存在します)。タイトルや日付を変えて再度お試しください。");
           return;
         }
+        await writeFileToDir(pendingDirHandle, fileName, blob);
+        showToast(`✅「${pendingDirHandle.name}」に保存しました: ${fileName}`);
+        return;
       }catch(err){
         console.error("保存先フォルダへの書き込みに失敗、通常のダウンロードに切り替えます", err);
         const url2 = URL.createObjectURL(blob);
         const a2 = document.createElement("a");
         a2.href = url2; a2.download = fileName; a2.click();
         URL.revokeObjectURL(url2);
-        showToast(`⚠️ 登録フォルダへの保存に失敗し、通常のダウンロードに切り替えました: ${fileName}`);
+        showToast(`⚠️ 保存に失敗し、通常のダウンロードに切り替えました: ${fileName}`);
         return;
       }
     }
@@ -1797,15 +1802,10 @@
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
-    showToast(`ダウンロードしました: ${fileName}`);
+    showToast(dirPickCancelled
+      ? `保存先の選択をキャンセルしたため、通常のダウンロードに切り替えました: ${fileName}`
+      : `ダウンロードしました: ${fileName}`);
   });
-
-  async function ensureDirPermission(dirHandle){
-    const opts = { mode: "readwrite" };
-    if((await dirHandle.queryPermission(opts)) === "granted") return true;
-    if((await dirHandle.requestPermission(opts)) === "granted") return true;
-    return false;
-  }
 
   async function fileExistsInDir(dirHandle, name){
     try{
@@ -2363,7 +2363,8 @@
     ["v62","ライトボックスで矢印キーによる前後の画像切り替えに対応"],
     ["v63","トリミングで範囲外リリース時に誤キャンセルされる不具合を修正"],
     ["v64","トリミングに辺ハンドルを追加し幅/高さの片方だけ変更可能に"],
-    ["v65","キャプチャの範囲選択にも辺ハンドルを追加。インポート時のタイトル/日付保存漏れを修正"]
+    ["v65","キャプチャの範囲選択にも辺ハンドルを追加。インポート時のタイトル/日付保存漏れを修正"],
+    ["v66","保存先フォルダを毎回ピッカーで確認する方式に再設計(権限失効の不安定さを解消)"]
   ];
 
   const verLabel = $("verLabel");
