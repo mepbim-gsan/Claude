@@ -1,0 +1,687 @@
+<!--
+  @tool      QR⇄テキスト変換ツール
+  @version   v2026-08-07.3
+  @changelog
+    v2026-08-07.3 - スマホ向けにカメラ撮影ボタンを追加（capture属性でカメラ起動しQRコードデコードへ直結）。画像ペーストがtext/htmlのimgタグやdata:image URIとして渡されるケースに対応し、意図せずテキスト欄へ画像データが挿入される不具合を修正
+    v2026-08-07.2 - QR生成CDNのURLが実在しないパスで404していた不具合を修正（qrcode@1.5.3/build/qrcode.min.js → qrcode-generator@2.0.4/dist/qrcode.js + qrcode_UTF8.js に差し替え、APIをcanvas直描画からdataURL/imgベースに変更）
+    v2026-08-07   - 初版
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>QR⇄テキスト変換</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode_UTF8.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+  :root {
+    --paper:       #faf7f2;
+    --surface:     #f4f0e8;
+    --border:      #ddd5c4;
+    --ink:         #2e2a22;
+    --ink-light:   #6b5e4a;
+    --ink-faint:   #9c8e7c;
+    --accent:      #c0392b;
+    --accent-light:#f9ecea;
+    --shadow:      rgba(0,0,0,0.08);
+    --green:       #27ae60;
+    --green-light: #eaf7ee;
+    --amber:       #e67e22;
+    --amber-light: #fef4e8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100dvh;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  .header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-title { font-size: 16px; font-weight: 700; letter-spacing: 0.04em; }
+  .header-sub   { font-size: 11px; color: #a09080; margin-top: 1px; }
+
+  .main { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .card-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-light);
+    letter-spacing: 0.03em;
+    margin-bottom: 8px;
+  }
+
+  /* 入力エリア */
+  .drop-zone {
+    position: relative;
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    transition: border-color .15s, background .15s;
+  }
+  .drop-zone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+  #inputText {
+    width: 100%;
+    min-height: 88px;
+    resize: vertical;
+    border: none;
+    background: transparent;
+    padding: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  #inputText:focus { outline: none; }
+  #inputText::placeholder { color: var(--ink-faint); }
+
+  .input-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background .15s, transform .05s;
+  }
+  button:active { transform: scale(0.97); }
+  button.primary {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  button.accent {
+    background: var(--accent);
+    color: var(--paper);
+    border-color: var(--accent);
+  }
+  button.ghost {
+    background: transparent;
+    color: var(--ink-light);
+  }
+  button:disabled { opacity: .4; cursor: default; }
+
+  .hint {
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+
+  /* 結果エリア */
+  #resultSection { display: none; }
+
+  .result-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .badge-url  { background: var(--green-light); color: var(--green); }
+  .badge-text { background: var(--amber-light); color: var(--amber); }
+
+  .result-source {
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-bottom: 10px;
+  }
+
+  #resultText {
+    width: 100%;
+    min-height: 60px;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--paper);
+    padding: 10px;
+    font-size: 13px;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    color: var(--ink);
+    word-break: break-all;
+    line-height: 1.5;
+  }
+
+  .result-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+
+  .qr-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 14px;
+  }
+  .qr-frame {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    cursor: pointer;
+    line-height: 0;
+  }
+  .qr-frame.static { cursor: default; }
+  #qrImage {
+    display: block;
+    width: 200px;
+    height: 200px;
+    image-rendering: pixelated;
+  }
+  #qrCaption {
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 6px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: var(--paper);
+    padding: 9px 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    box-shadow: 0 4px 14px var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    z-index: 999;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+
+  /* 履歴 */
+  .history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .history-header span { font-size: 12px; font-weight: 700; color: var(--ink-light); }
+  .btn-clear-history {
+    background: none;
+    border: none;
+    color: var(--ink-faint);
+    font-size: 11px;
+    padding: 2px 4px;
+  }
+  .history-list { display: flex; flex-direction: column; gap: 6px; }
+  .history-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  .history-icon {
+    flex-shrink: 0;
+    width: 18px; height: 18px;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+  }
+  .history-icon.url  { background: var(--green-light); color: var(--green); }
+  .history-icon.text { background: var(--amber-light); color: var(--amber); }
+  .history-body { flex: 1; min-width: 0; }
+  .history-text {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .history-time { font-size: 10px; color: var(--ink-faint); margin-top: 1px; }
+  .history-del {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--ink-faint);
+    font-size: 15px;
+    padding: 2px 6px;
+  }
+  .history-empty {
+    font-size: 12px;
+    color: var(--ink-faint);
+    text-align: center;
+    padding: 10px 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-title">QR⇄テキスト変換</div>
+    <div class="header-sub">アドレスはQRで開く / 文章はコピー / QR画像は中身を確認</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="card">
+    <div class="card-title">入力</div>
+    <div class="drop-zone" id="dropZone">
+      <textarea id="inputText" placeholder="URLやテキストをペースト・入力&#10;（QRコード画像もここにペースト／ドロップできます）"></textarea>
+    </div>
+    <div class="input-actions">
+      <button id="btnCamera">📷 カメラで撮影</button>
+      <button id="btnPickImage">🖼 画像から読み取る</button>
+      <button class="ghost" id="btnClear">クリア</button>
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+      <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    </div>
+    <div class="hint">アドレスを入力するとQRコードで開けるように、文章はコピーできるように表示します。QRコード画像をペースト／ドロップ／選択、またはカメラで撮影すると中身のURLや文章を確認できます。</div>
+  </div>
+
+  <div class="card" id="resultSection">
+    <div id="resultBadge" class="result-badge badge-text">テキスト</div>
+    <div id="resultSource" class="result-source"></div>
+    <textarea id="resultText" readonly></textarea>
+    <div class="result-actions">
+      <button class="primary" id="btnCopy">📋 コピー</button>
+      <button class="accent" id="btnOpen" style="display:none;">🔗 開く</button>
+      <button class="ghost" id="btnSaveQr">⬇ QR保存</button>
+    </div>
+    <div class="qr-wrap">
+      <div class="qr-frame" id="qrFrame">
+        <img id="qrImage" alt="QRコード">
+      </div>
+    </div>
+    <div id="qrCaption"></div>
+  </div>
+
+  <div class="card">
+    <div class="history-header">
+      <span>最近の変換履歴</span>
+      <button class="btn-clear-history" id="btnClearHistory">クリア</button>
+    </div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 状態・要素
+// ============================================================
+const inputText     = document.getElementById('inputText');
+const dropZone       = document.getElementById('dropZone');
+const fileInput      = document.getElementById('fileInput');
+const resultSection  = document.getElementById('resultSection');
+const resultBadge    = document.getElementById('resultBadge');
+const resultSource   = document.getElementById('resultSource');
+const resultText     = document.getElementById('resultText');
+const btnOpen        = document.getElementById('btnOpen');
+const qrFrame        = document.getElementById('qrFrame');
+const qrImage        = document.getElementById('qrImage');
+const qrCaption      = document.getElementById('qrCaption');
+const historyList    = document.getElementById('historyList');
+const toast          = document.getElementById('toast');
+
+let currentUrl = null; // 開く/QRクリック用の正規化URL
+let currentQrDataUrl = null; // QR画像保存用
+let inputDebounce = null;
+
+// ============================================================
+// URL判定
+// ============================================================
+function detectType(raw) {
+  const s = (raw || '').trim();
+  if (!s) return null;
+  if (/\s/.test(s)) {
+    // 改行やスペースを含む文章はURLとして扱わない（1行のみ例外的にURLを許容）
+    if (s.split('\n').length > 1 || / /.test(s)) return 'text';
+  }
+  if (/^(https?:\/\/|mailto:|tel:|sms:|[a-zA-Z][a-zA-Z0-9+.-]*:\/\/)\S+/i.test(s)) {
+    try { new URL(s); return 'url'; } catch { return 'text'; }
+  }
+  if (/^[\w.-]+\.[a-zA-Z]{2,}(\/\S*)?$/.test(s)) {
+    try { new URL('https://' + s); return 'url'; } catch { return 'text'; }
+  }
+  return 'text';
+}
+function normalizeUrl(s) {
+  const hasScheme = /^(https?:\/\/|mailto:|tel:|sms:|[a-zA-Z][a-zA-Z0-9+.-]*:\/\/)/i.test(s);
+  return hasScheme ? s : ('https://' + s);
+}
+
+// ============================================================
+// トースト
+// ============================================================
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+// ============================================================
+// 結果表示
+// ============================================================
+function renderResult(text, source) {
+  const s = (text || '').trim();
+  if (!s) { resultSection.style.display = 'none'; currentUrl = null; return; }
+
+  const type = detectType(s);
+  resultSection.style.display = 'block';
+  resultText.value = s;
+
+  if (type === 'url') {
+    currentUrl = normalizeUrl(s);
+    resultBadge.textContent = 'URL';
+    resultBadge.className = 'result-badge badge-url';
+    btnOpen.style.display = 'inline-block';
+    qrFrame.classList.remove('static');
+    qrCaption.textContent = 'タップして開く / スキャンして開く';
+  } else {
+    currentUrl = null;
+    resultBadge.textContent = 'テキスト';
+    resultBadge.className = 'result-badge badge-text';
+    btnOpen.style.display = 'none';
+    qrFrame.classList.add('static');
+    qrCaption.textContent = 'スキャンしてテキストを確認';
+  }
+
+  resultSource.textContent = source === 'qr' ? 'QRコード画像から読み取り' : '入力テキスト';
+
+  if (typeof qrcode === 'undefined') {
+    qrFrame.style.display = 'none';
+    currentQrDataUrl = null;
+    qrCaption.textContent = 'QRコード生成ライブラリの読み込みに失敗しました（オフライン等）';
+  } else {
+    qrFrame.style.display = '';
+    try {
+      const qr = qrcode(0, 'M'); // typeNumber 0 = 自動サイズ判定
+      qr.addData(type === 'url' ? currentUrl : s);
+      qr.make();
+      currentQrDataUrl = qr.createDataURL(6, 16);
+      qrImage.src = currentQrDataUrl;
+    } catch (e) {
+      console.error(e);
+      qrFrame.style.display = 'none';
+      currentQrDataUrl = null;
+      qrCaption.textContent = 'QRコードの生成に失敗しました（データが長すぎる可能性があります）';
+    }
+  }
+
+  addHistory(s, type, source);
+}
+
+// ============================================================
+// 入力欄（テキスト直接入力・ペースト）
+// ============================================================
+inputText.addEventListener('input', () => {
+  clearTimeout(inputDebounce);
+  inputDebounce = setTimeout(() => renderResult(inputText.value, 'input'), 150);
+});
+
+document.getElementById('btnClear').addEventListener('click', () => {
+  inputText.value = '';
+  resultSection.style.display = 'none';
+  currentUrl = null;
+});
+
+// ============================================================
+// QRコード画像デコード
+// ============================================================
+async function decodeImageFile(file) {
+  if (typeof jsQR === 'undefined') {
+    showToast('QR読み取りライブラリの読み込みに失敗しました（オフライン等）');
+    return;
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imgData.data, imgData.width, imgData.height);
+    if (code && code.data) {
+      inputText.value = code.data;
+      renderResult(code.data, 'qr');
+    } else {
+      showToast('QRコードを認識できませんでした');
+    }
+  } catch (e) {
+    console.error(e);
+    showToast('画像の読み込みに失敗しました');
+  }
+}
+
+// クリップボードからのペースト（テキスト／画像）。フォーカス位置に関わらず document で拾う
+async function decodeImageUrl(url) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    await decodeImageFile(blob);
+  } catch (e) {
+    console.error(e);
+    showToast('画像の読み込みに失敗しました');
+  }
+}
+
+document.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+
+  // 1. クリップボードに直接 image/* が含まれる場合（デスクトップの一般的なケース）
+  for (const item of items) {
+    if (item.type && item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) decodeImageFile(file);
+      return;
+    }
+  }
+
+  // 2. text/html に <img> タグとして画像が埋め込まれている場合（一部アプリ・ブラウザで発生）
+  const html = e.clipboardData.getData('text/html');
+  if (html) {
+    const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (m && m[1]) {
+      e.preventDefault();
+      decodeImageUrl(m[1]);
+      return;
+    }
+  }
+
+  // 3. text/plain 自体が data:image URI の場合（一部クリップボードマネージャ等）
+  const text = e.clipboardData.getData('text/plain');
+  if (/^data:image\//i.test((text || '').trim())) {
+    e.preventDefault();
+    decodeImageUrl(text.trim());
+    return;
+  }
+
+  if (text) {
+    e.preventDefault();
+    inputText.value = text;
+    renderResult(text, 'input');
+    inputText.focus();
+  }
+});
+
+// ドラッグ&ドロップ
+['dragenter', 'dragover'].forEach(ev => {
+  dropZone.addEventListener(ev, (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+});
+['dragleave', 'drop'].forEach(ev => {
+  dropZone.addEventListener(ev, (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+  });
+});
+dropZone.addEventListener('drop', (e) => {
+  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) decodeImageFile(file);
+});
+
+// ファイル選択
+document.getElementById('btnPickImage').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files && fileInput.files[0];
+  if (file) decodeImageFile(file);
+  fileInput.value = '';
+});
+
+// カメラ撮影（スマホでは capture 属性によりカメラが直接起動、非対応環境ではファイル選択にフォールバック）
+const cameraInput = document.getElementById('cameraInput');
+document.getElementById('btnCamera').addEventListener('click', () => cameraInput.click());
+cameraInput.addEventListener('change', () => {
+  const file = cameraInput.files && cameraInput.files[0];
+  if (file) decodeImageFile(file);
+  cameraInput.value = '';
+});
+
+// ============================================================
+// 結果アクション
+// ============================================================
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => showToast('コピーしました')).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
+  }
+  function fallbackCopy() {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); showToast('コピーしました'); }
+    catch { showToast('コピーに失敗しました'); }
+    document.body.removeChild(ta);
+  }
+}
+document.getElementById('btnCopy').addEventListener('click', () => copyToClipboard(resultText.value));
+btnOpen.addEventListener('click', () => { if (currentUrl) window.open(currentUrl, '_blank', 'noopener'); });
+qrFrame.addEventListener('click', () => { if (currentUrl) window.open(currentUrl, '_blank', 'noopener'); });
+
+document.getElementById('btnSaveQr').addEventListener('click', () => {
+  if (!currentQrDataUrl) { showToast('QRコードがありません'); return; }
+  const link = document.createElement('a');
+  link.download = 'qrcode.png';
+  link.href = currentQrDataUrl;
+  link.click();
+});
+
+// ============================================================
+// 履歴
+// ============================================================
+const HISTORY_KEY = 'qr-converter-history';
+const HISTORY_MAX = 20;
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function saveHistoryList(list) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+}
+function addHistory(text, type, source) {
+  const list = loadHistory().filter(h => h.text !== text);
+  list.unshift({ text, type, source, ts: Date.now() });
+  saveHistoryList(list.slice(0, HISTORY_MAX));
+  renderHistory();
+}
+function formatTime(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function renderHistory() {
+  const list = loadHistory();
+  historyList.innerHTML = '';
+  if (!list.length) {
+    historyList.innerHTML = '<div class="history-empty">履歴はまだありません</div>';
+    return;
+  }
+  list.forEach((h, i) => {
+    const row = document.createElement('div');
+    row.className = 'history-item';
+    row.innerHTML = `
+      <div class="history-icon ${h.type}">${h.type === 'url' ? 'URL' : 'Tx'}</div>
+      <div class="history-body">
+        <div class="history-text"></div>
+        <div class="history-time">${formatTime(h.ts)} ・ ${h.source === 'qr' ? 'QR読取' : '入力'}</div>
+      </div>
+      <button class="history-del" data-i="${i}">✕</button>
+    `;
+    row.querySelector('.history-text').textContent = h.text;
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.history-del')) return;
+      inputText.value = h.text;
+      renderResult(h.text, h.source);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    row.querySelector('.history-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const l = loadHistory();
+      l.splice(i, 1);
+      saveHistoryList(l);
+      renderHistory();
+    });
+    historyList.appendChild(row);
+  });
+}
+document.getElementById('btnClearHistory').addEventListener('click', () => {
+  saveHistoryList([]);
+  renderHistory();
+});
+
+renderHistory();
+</script>
+
+</body>
+</html>
