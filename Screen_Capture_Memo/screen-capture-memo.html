@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v69
-  @changelog v69: 記録一覧のキーボード並び替えのキー組み合わせをCtrl(⌘)+Alt+↑/↓からShift+Alt+↑/↓に変更(OneNoteの行移動と同じキー組み合わせに統一)。既存の衝突防止ガード(範囲選択矢印キー微調整・ライトボックス矢印キー切替)はAlt押下時点で除外する実装だったため、コード変更は並び替えハンドラ本体と表示文言のみ
+  @version   v70
+  @changelog v70: 記録一覧で行を選択中(⠿ハンドル等にフォーカスあり)に📸キャプチャ/📋貼り付け/📝見出しを行うと、末尾ではなくその行の直後に挿入されるように変更。選択中の行はoutlineで視覚的に強調(.item:focus-within)。挿入直後にorderをDOM順で振り直して保存し(persistOrderFromDom)、リロード時にid基準の並び順で末尾へ戻ってしまうのを防止。連続挿入時は新しい行へフォーカスを移し、続けて同じ位置に挿入できるように
+  @changelog v69: 記録一覧のキーボード並び替えのキー組み合わせをCtrl(⌘)+Alt+↑/↓からShift+Alt+↑/↓に変更(OneNoteの行移動と同じキー組み合わせに統一)
   @changelog v68: メモ欄でEscを押して抜けた際、フォーカスをその行の⠿ハンドルへ移すよう変更。以前はtextarea.blur()するだけでフォーカスがどこにも残らず、Escで抜けた直後はキーボードでの並び替えができなかった不具合を修正
-  @changelog v67: 記録一覧のキーボード並び替えに対応。⠿ハンドルにフォーカスした状態で修飾キー+↑/↓を押すと1つ上/下のアイテムと入れ替えられるように(ドラッグ操作の代替)
-  ※ v01〜v66の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v67の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -167,6 +167,7 @@
   }
   .item.dragging{opacity:.4;}
   .item.drag-over{border-top:3px solid var(--accent);}
+  .item:focus-within{outline:2px solid var(--accent); outline-offset:2px;}
   .drag-handle{
     align-self:center; flex-shrink:0; cursor:grab; color:var(--sub); font-size:16px;
     padding:4px 2px; user-select:none;
@@ -288,7 +289,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v69</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v70</span>
 </header>
 
 <div id="versionModal">
@@ -360,7 +361,7 @@
       <button id="btnPaste" title="クリップボードから貼り付け">📋 貼り付け</button>
       <button id="btnAddNote" title="画像なしの見出し/メモを追加(発表者交代、テーマ変更など)">📝 見出し</button>
     </div>
-    <div class="hint">スクショをコピーした状態で Ctrl+V (⌘+V) でも追加できます／このページにフォーカスがある間は Space キーでもキャプチャできます</div>
+    <div class="hint">スクショをコピーした状態で Ctrl+V (⌘+V) でも追加できます／このページにフォーカスがある間は Space キーでもキャプチャできます／記録一覧で行を選択中(枠線表示)は、その行の直後に追加されます</div>
   </div>
 
   <div class="panel" id="recordListPanel">
@@ -913,11 +914,29 @@
   });
 
   // ---------- レコード追加共通処理(キャプチャ/貼り付け共通) ----------
+  // 現在フォーカスのある行(⠿ハンドル/メモ欄/ボタン等、その行のどこか)を返す。
+  // なければnull(=末尾に追加、という従来通りの挙動になる)
+  function getFocusedItem(){
+    const el = document.activeElement;
+    if(!el || !captureList.contains(el)) return null;
+    return el.closest(".item");
+  }
+
   async function addCaptureRecord(dataURL){
+    const anchorItem = getFocusedItem(); // 選択中の行があれば、その直後に挿入する
     const record = { dataURL, memo:"", timestamp: Date.now() };
     const id = await dbAdd(record);
     record.id = id;
-    renderItem(record, false);
+    const div = renderItem(record, false, anchorItem);
+    if(anchorItem){
+      // 見た目の挿入位置とDB上のorderを一致させる(orderが空のままだと、
+      // idの大小で決まるリロード時の並び順で末尾に戻ってしまうため)
+      await persistOrderFromDom();
+      // 続けてキャプチャ/見出し追加した場合も同じ行の直後に連続して挿入されるよう、
+      // フォーカスを新しい行の⠿ハンドルへ移す
+      const handle = div.querySelector(".drag-handle");
+      if(handle) handle.focus();
+    }
     updateCount();
     return record;
   }
@@ -1041,7 +1060,7 @@
     if(empty) empty.remove();
   }
 
-  function renderItem(record, prepend){
+  function renderItem(record, prepend, afterEl){
     clearEmptyState();
     const div = document.createElement("div");
     const isHeading = !record.dataURL;
@@ -1135,11 +1154,14 @@
         captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
       }
     });
-    if(prepend){
+    if(afterEl && afterEl.parentNode === captureList){
+      captureList.insertBefore(div, afterEl.nextSibling); // afterElの直後(nextSiblingがnullなら末尾)
+    }else if(prepend){
       captureList.insertBefore(div, captureList.firstChild);
     }else{
       captureList.appendChild(div);
     }
+    return div;
   }
 
   function updateCount(){
@@ -2397,7 +2419,8 @@
     ["v66","保存先フォルダを毎回ピッカーで確認する方式に再設計(権限失効の不安定さを解消)"],
     ["v67","記録一覧をCtrl(⌘)+Alt+↑/↓でも並び替え可能に(⠿ハンドルにフォーカスして操作)"],
     ["v68","メモ欄でEscを押した後もそのまま並び替えできるよう修正"],
-    ["v69","並び替えのキー組み合わせをShift+Alt+↑/↓に変更(OneNote同様)"]
+    ["v69","並び替えのキー組み合わせをShift+Alt+↑/↓に変更(OneNote同様)"],
+    ["v70","行選択中のキャプチャ/貼り付け/見出しは、その行の直後に挿入されるように"]
   ];
 
   const verLabel = $("verLabel");
