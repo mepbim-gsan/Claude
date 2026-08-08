@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v68
-  @changelog v68: メモ欄でEscを押して抜けた際、フォーカスをその行の⠿ハンドルへ移すよう変更。以前はtextarea.blur()するだけでフォーカスがどこにも残らず、Escで抜けた直後はCtrl(⌘)+Alt+↑/↓での並び替えができなかった不具合を修正
-  @changelog v67: 記録一覧のキーボード並び替えに対応。⠿ハンドルにフォーカスした状態でCtrl(⌘)+Alt+↑/↓を押すと1つ上/下のアイテムと入れ替えられるように(ドラッグ操作の代替)。既存の範囲選択矢印キー微調整・ライトボックス矢印キー切替とキー組み合わせが衝突しないようそれぞれにCtrl/Alt除外ガードを追加
-  @changelog v66: 保存先フォルダ機能を再設計。登録済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログを開いて確認する方式に変更(queryPermission/requestPermissionによる無言の権限確認をやめ、毎回の明示的なピッカー操作に統一)。これにより権限失効でダウンロードへ無言フォールバックしていた不安定さを解消。フォルダ選択自体もクリック直後(user activationが有効なうち)に確定させるよう処理順を変更
-  ※ v01〜v65の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  @version   v70
+  @changelog v70: 記録一覧で行を選択中(⠿ハンドル等にフォーカスあり)に📸キャプチャ/📋貼り付け/📝見出しを行うと、末尾ではなくその行の直後に挿入されるように変更。選択中の行はoutlineで視覚的に強調(.item:focus-within)。挿入直後にorderをDOM順で振り直して保存し(persistOrderFromDom)、リロード時にid基準の並び順で末尾へ戻ってしまうのを防止。連続挿入時は新しい行へフォーカスを移し、続けて同じ位置に挿入できるように
+  @changelog v69: 記録一覧のキーボード並び替えのキー組み合わせをCtrl(⌘)+Alt+↑/↓からShift+Alt+↑/↓に変更(OneNoteの行移動と同じキー組み合わせに統一)
+  @changelog v68: メモ欄でEscを押して抜けた際、フォーカスをその行の⠿ハンドルへ移すよう変更。以前はtextarea.blur()するだけでフォーカスがどこにも残らず、Escで抜けた直後はキーボードでの並び替えができなかった不具合を修正
+  ※ v01〜v67の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -167,6 +167,7 @@
   }
   .item.dragging{opacity:.4;}
   .item.drag-over{border-top:3px solid var(--accent);}
+  .item:focus-within{outline:2px solid var(--accent); outline-offset:2px;}
   .drag-handle{
     align-self:center; flex-shrink:0; cursor:grab; color:var(--sub); font-size:16px;
     padding:4px 2px; user-select:none;
@@ -288,7 +289,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v68</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v70</span>
 </header>
 
 <div id="versionModal">
@@ -360,7 +361,7 @@
       <button id="btnPaste" title="クリップボードから貼り付け">📋 貼り付け</button>
       <button id="btnAddNote" title="画像なしの見出し/メモを追加(発表者交代、テーマ変更など)">📝 見出し</button>
     </div>
-    <div class="hint">スクショをコピーした状態で Ctrl+V (⌘+V) でも追加できます／このページにフォーカスがある間は Space キーでもキャプチャできます</div>
+    <div class="hint">スクショをコピーした状態で Ctrl+V (⌘+V) でも追加できます／このページにフォーカスがある間は Space キーでもキャプチャできます／記録一覧で行を選択中(枠線表示)は、その行の直後に追加されます</div>
   </div>
 
   <div class="panel" id="recordListPanel">
@@ -375,7 +376,7 @@
         <button class="ok" id="btnExport" title="まとめてHTML保存(Shift+クリックで保存先フォルダを設定/Ctrl+Shift+クリックで解除。設定済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログで確認します)">HTML保存</button>
         <span id="exportStatusMsg"></span>
       </div>
-      <div class="hint" style="margin:8px 0 0;">左端の ⠿ をドラッグすると並び替えできます／⠿ にフォーカスしてCtrl(⌘)+Alt+↑/↓でも並び替え可能です</div>
+      <div class="hint" style="margin:8px 0 0;">左端の ⠿ をドラッグすると並び替えできます／⠿ にフォーカスしてShift+Alt+↑/↓でも並び替え可能です(OneNote同様)</div>
     </div>
     <div id="captureList"><div class="empty">まだキャプチャがありません</div></div>
   </div>
@@ -829,7 +830,7 @@
     if(!selection) return;
     if(sharePanel.classList.contains("collapsed")) return;
     if(lightbox.classList.contains("open")) return;
-    if(e.ctrlKey || e.metaKey || e.altKey) return; // Ctrl(⌘)+Alt+矢印は記録一覧のキーボード並び替えと競合するため除外
+    if(e.ctrlKey || e.metaKey || e.altKey) return; // Shift+Alt+矢印は記録一覧のキーボード並び替えと競合するため除外(Altを含む組み合わせは全て対象外に)
     const tag = document.activeElement && document.activeElement.tagName;
     if(tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
     const arrowKeys = ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"];
@@ -913,11 +914,29 @@
   });
 
   // ---------- レコード追加共通処理(キャプチャ/貼り付け共通) ----------
+  // 現在フォーカスのある行(⠿ハンドル/メモ欄/ボタン等、その行のどこか)を返す。
+  // なければnull(=末尾に追加、という従来通りの挙動になる)
+  function getFocusedItem(){
+    const el = document.activeElement;
+    if(!el || !captureList.contains(el)) return null;
+    return el.closest(".item");
+  }
+
   async function addCaptureRecord(dataURL){
+    const anchorItem = getFocusedItem(); // 選択中の行があれば、その直後に挿入する
     const record = { dataURL, memo:"", timestamp: Date.now() };
     const id = await dbAdd(record);
     record.id = id;
-    renderItem(record, false);
+    const div = renderItem(record, false, anchorItem);
+    if(anchorItem){
+      // 見た目の挿入位置とDB上のorderを一致させる(orderが空のままだと、
+      // idの大小で決まるリロード時の並び順で末尾に戻ってしまうため)
+      await persistOrderFromDom();
+      // 続けてキャプチャ/見出し追加した場合も同じ行の直後に連続して挿入されるよう、
+      // フォーカスを新しい行の⠿ハンドルへ移す
+      const handle = div.querySelector(".drag-handle");
+      if(handle) handle.focus();
+    }
     updateCount();
     return record;
   }
@@ -1041,7 +1060,7 @@
     if(empty) empty.remove();
   }
 
-  function renderItem(record, prepend){
+  function renderItem(record, prepend, afterEl){
     clearEmptyState();
     const div = document.createElement("div");
     const isHeading = !record.dataURL;
@@ -1050,7 +1069,7 @@
     if(isHeading){
       const asHeading = record.heading !== false; // 未設定(既存データ含む)はデフォルトで見出し扱い
       div.innerHTML = `
-        <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてCtrl+Alt+↑/↓で並び替え">⠿</span>
+        <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてShift+Alt+↑/↓で並び替え">⠿</span>
         <div class="itembody">
           <div class="meta">
             <span class="type-badge" title="クリックで見出し/メモを切替">${asHeading ? "📝 見出し" : "💬 メモ"}</span>
@@ -1065,7 +1084,7 @@
       if(!asHeading) div.classList.add("type-memo");
     }else{
       div.innerHTML = `
-        <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてCtrl+Alt+↑/↓で並び替え">⠿</span>
+        <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてShift+Alt+↑/↓で並び替え">⠿</span>
         <img src="${record.dataURL}" alt="capture">
         <div class="itembody">
           <div class="meta">${fmtTime(record.timestamp)} <span class="saveState"></span></div>
@@ -1114,7 +1133,7 @@
       doSave();
     });
     // Escでメモ欄からフォーカスを外す(ライトボックス等の他のEsc処理と競合しないようstopPropagation)。
-    // 抜けた後そのままCtrl(⌘)+Alt+↑/↓で並び替えできるよう、フォーカスをこの行の⠿ハンドルへ移す
+    // 抜けた後そのままShift+Alt+↑/↓で並び替えできるよう、フォーカスをこの行の⠿ハンドルへ移す
     textarea.addEventListener("keydown", (e) => {
       if(e.key === "Escape"){
         e.stopPropagation();
@@ -1135,11 +1154,14 @@
         captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
       }
     });
-    if(prepend){
+    if(afterEl && afterEl.parentNode === captureList){
+      captureList.insertBefore(div, afterEl.nextSibling); // afterElの直後(nextSiblingがnullなら末尾)
+    }else if(prepend){
       captureList.insertBefore(div, captureList.firstChild);
     }else{
       captureList.appendChild(div);
     }
+    return div;
   }
 
   function updateCount(){
@@ -1221,11 +1243,12 @@
     await persistOrderFromDom();
   });
 
-  // キーボードでの並び替え: ⠿ハンドルにフォーカスした状態でCtrl(⌘)+Alt+↑/↓を押すと
-  // 1つ上/下のアイテムと入れ替える(ドラッグ操作の代替)。移動後もハンドルのフォーカスは維持される
+  // キーボードでの並び替え: ⠿ハンドルにフォーカスした状態でShift+Alt+↑/↓を押すと
+  // 1つ上/下のアイテムと入れ替える(ドラッグ操作の代替、OneNoteの行移動と同じキー組み合わせ)。
+  // 移動後もハンドルのフォーカスは維持される
   captureList.addEventListener("keydown", async (e) => {
     if(e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-    if(!(e.ctrlKey || e.metaKey) || !e.altKey) return;
+    if(!e.shiftKey || !e.altKey) return;
     const handle = e.target.closest(".drag-handle");
     if(!handle) return;
     const item = handle.closest(".item");
@@ -2395,7 +2418,9 @@
     ["v65","キャプチャの範囲選択にも辺ハンドルを追加。インポート時のタイトル/日付保存漏れを修正"],
     ["v66","保存先フォルダを毎回ピッカーで確認する方式に再設計(権限失効の不安定さを解消)"],
     ["v67","記録一覧をCtrl(⌘)+Alt+↑/↓でも並び替え可能に(⠿ハンドルにフォーカスして操作)"],
-    ["v68","メモ欄でEscを押した後もそのままCtrl(⌘)+Alt+↑/↓で並び替えできるよう修正"]
+    ["v68","メモ欄でEscを押した後もそのまま並び替えできるよう修正"],
+    ["v69","並び替えのキー組み合わせをShift+Alt+↑/↓に変更(OneNote同様)"],
+    ["v70","行選択中のキャプチャ/貼り付け/見出しは、その行の直後に挿入されるように"]
   ];
 
   const verLabel = $("verLabel");
