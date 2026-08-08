@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v67
+  @version   v68
+  @changelog v68: メモ欄でEscを押して抜けた際、フォーカスをその行の⠿ハンドルへ移すよう変更。以前はtextarea.blur()するだけでフォーカスがどこにも残らず、Escで抜けた直後はCtrl(⌘)+Alt+↑/↓での並び替えができなかった不具合を修正
   @changelog v67: 記録一覧のキーボード並び替えに対応。⠿ハンドルにフォーカスした状態でCtrl(⌘)+Alt+↑/↓を押すと1つ上/下のアイテムと入れ替えられるように(ドラッグ操作の代替)。既存の範囲選択矢印キー微調整・ライトボックス矢印キー切替とキー組み合わせが衝突しないようそれぞれにCtrl/Alt除外ガードを追加
   @changelog v66: 保存先フォルダ機能を再設計。登録済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログを開いて確認する方式に変更(queryPermission/requestPermissionによる無言の権限確認をやめ、毎回の明示的なピッカー操作に統一)。これにより権限失効でダウンロードへ無言フォールバックしていた不安定さを解消。フォルダ選択自体もクリック直後(user activationが有効なうち)に確定させるよう処理順を変更
-  @changelog v65: キャプチャの範囲選択(選択枠)にも上下左右の辺ハンドルを追加(トリミングと同様、辺ドラッグで幅または高さの片方だけ変更。比率指定時は中心を保ったまま比率を維持)。インポート時にMETA(タイトル・日付)がlocalStorageへ保存されず次回リロードで消えていた不具合を修正
-  ※ v01〜v64の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v65の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -288,7 +288,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v67</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v68</span>
 </header>
 
 <div id="versionModal">
@@ -1113,11 +1113,14 @@
       clearTimeout(saveTimer);
       doSave();
     });
-    // Escでメモ欄からフォーカスを外す(ライトボックス等の他のEsc処理と競合しないようstopPropagation)
+    // Escでメモ欄からフォーカスを外す(ライトボックス等の他のEsc処理と競合しないようstopPropagation)。
+    // 抜けた後そのままCtrl(⌘)+Alt+↑/↓で並び替えできるよう、フォーカスをこの行の⠿ハンドルへ移す
     textarea.addEventListener("keydown", (e) => {
       if(e.key === "Escape"){
         e.stopPropagation();
         textarea.blur();
+        const handle = div.querySelector(".drag-handle");
+        if(handle) handle.focus();
       }
     });
     requestAnimationFrame(autoGrowTextarea); // 初期表示時、既存メモの内容に合わせて高さを合わせる
@@ -2391,7 +2394,8 @@
     ["v64","トリミングに辺ハンドルを追加し幅/高さの片方だけ変更可能に"],
     ["v65","キャプチャの範囲選択にも辺ハンドルを追加。インポート時のタイトル/日付保存漏れを修正"],
     ["v66","保存先フォルダを毎回ピッカーで確認する方式に再設計(権限失効の不安定さを解消)"],
-    ["v67","記録一覧をCtrl(⌘)+Alt+↑/↓でも並び替え可能に(⠿ハンドルにフォーカスして操作)"]
+    ["v67","記録一覧をCtrl(⌘)+Alt+↑/↓でも並び替え可能に(⠿ハンドルにフォーカスして操作)"],
+    ["v68","メモ欄でEscを押した後もそのままCtrl(⌘)+Alt+↑/↓で並び替えできるよう修正"]
   ];
 
   const verLabel = $("verLabel");
