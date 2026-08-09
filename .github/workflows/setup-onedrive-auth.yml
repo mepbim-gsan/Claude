@@ -1,0 +1,87 @@
+name: Setup OneDrive Auth (one-time)
+
+on:
+  workflow_dispatch:
+    inputs:
+      client_id:
+        description: 'Azure アプリのクライアントID (portal.azure.com で取得)'
+        required: true
+        type: string
+
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Device code flow
+        timeout-minutes: 10
+        env:
+          AZURE_CLIENT_ID: ${{ inputs.client_id }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, requests, time, sys
+
+          client_id = os.environ["AZURE_CLIENT_ID"]
+
+          resp = requests.post(
+              "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
+              data={
+                  "client_id": client_id,
+                  "scope": "Files.ReadWrite offline_access",
+              }
+          )
+          resp.raise_for_status()
+          data = resp.json()
+
+          print("\n" + "=" * 60)
+          print("スマホのブラウザで以下のURLを開き、コードを入力してください:")
+          print(f"  URL:  {data['verification_uri']}")
+          print(f"  CODE: {data['user_code']}")
+          print("=" * 60 + "\n")
+          sys.stdout.flush()
+
+          interval = data.get("interval", 5)
+          device_code = data["device_code"]
+          expires = time.time() + data["expires_in"]
+
+          while time.time() < expires:
+              time.sleep(interval)
+              token_resp = requests.post(
+                  "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
+                  data={
+                      "client_id": client_id,
+                      "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                      "device_code": device_code,
+                  }
+              )
+              token_data = token_resp.json()
+              if "access_token" in token_data:
+                  refresh_token = token_data["refresh_token"]
+                  print("\n" + "=" * 60)
+                  print("認証成功！")
+                  print("以下のリフレッシュトークンを GitHub Secrets に登録してください:")
+                  print("Secret 名: ONEDRIVE_REFRESH_TOKEN")
+                  print(f"値: {refresh_token}")
+                  print("=" * 60)
+                  print("\n登録後、このワークフローのログは削除してください。")
+                  sys.stdout.flush()
+                  break
+              elif token_data.get("error") == "authorization_pending":
+                  continue
+              elif token_data.get("error") == "slow_down":
+                  interval += 5
+                  continue
+              else:
+                  print(f"Error: {token_data}")
+                  sys.exit(1)
+          else:
+              print("タイムアウトしました。もう一度実行してください。")
+              sys.exit(1)
+          PYEOF

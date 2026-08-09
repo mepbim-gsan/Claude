@@ -1,0 +1,58 @@
+name: Copy to OneDrive
+
+on:
+  push:
+    paths:
+      - '.github/triggers/copy-request.json'
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      source_path:
+        description: 'コピー元パス (例: Timecard または MF_Classify/main.py)'
+        required: true
+        type: string
+      onedrive_parent:
+        description: 'OneDrive 親フォルダパス (例: バックアップ/ツール)'
+        required: true
+        type: string
+      tool_name:
+        description: 'ツール名 (フォルダ名: {name}_YYYYMMDD)'
+        required: true
+        type: string
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load trigger parameters
+        id: params
+        run: |
+          if [ -f .github/triggers/copy-request.json ]; then
+            echo "source_path=$(jq -r .source_path .github/triggers/copy-request.json)" >> $GITHUB_OUTPUT
+            echo "onedrive_parent=$(jq -r .onedrive_parent .github/triggers/copy-request.json)" >> $GITHUB_OUTPUT
+            echo "tool_name=$(jq -r .tool_name .github/triggers/copy-request.json)" >> $GITHUB_OUTPUT
+          else
+            echo "source_path=${{ inputs.source_path }}" >> $GITHUB_OUTPUT
+            echo "onedrive_parent=${{ inputs.onedrive_parent }}" >> $GITHUB_OUTPUT
+            echo "tool_name=${{ inputs.tool_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests pytz
+
+      - name: Copy to OneDrive
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ONEDRIVE_REFRESH_TOKEN: ${{ secrets.ONEDRIVE_REFRESH_TOKEN }}
+          SOURCE_PATH: ${{ steps.params.outputs.source_path }}
+          ONEDRIVE_PARENT: ${{ steps.params.outputs.onedrive_parent }}
+          TOOL_NAME: ${{ steps.params.outputs.tool_name }}
+        run: python .github/scripts/copy_to_onedrive.py
