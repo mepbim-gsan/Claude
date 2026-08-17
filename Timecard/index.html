@@ -981,15 +981,13 @@ label:first-child{margin-top:0;}
     </div>
 
     <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:6px;">
         <div class="card-title" style="margin-bottom:0;">JOB実績推移</div>
         <div style="display:flex;gap:6px;">
+          <button type="button" id="btn-annual-bar-percent" class="btn btn-sm btn-ghost" style="font-size:11px;">📊 100%積み上げ</button>
           <button type="button" id="btn-annual-job-mode-jobno" class="btn btn-sm btn-ghost" style="font-size:11px;">JOBNO</button>
           <button type="button" id="btn-annual-job-mode-cat" class="btn btn-sm btn-primary" style="font-size:11px;">カテゴリ</button>
         </div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
-        <button type="button" id="btn-annual-bar-percent" class="btn btn-sm btn-ghost" style="font-size:11px;">📊 100%積み上げ</button>
       </div>
       <div style="position:relative;height:220px;"><canvas id="annual-job-bar-chart"></canvas></div>
       <div id="annual-pie-title" style="text-align:center;font-size:12px;margin-top:16px;margin-bottom:4px;color:var(--text-muted);">年間合計</div>
@@ -1189,7 +1187,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-18.2';
+const APP_VERSION = 'v07_2026-08-18.3';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
