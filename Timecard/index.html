@@ -989,7 +989,8 @@ label:first-child{margin-top:0;}
         </div>
       </div>
       <div style="position:relative;height:220px;"><canvas id="annual-job-bar-chart"></canvas></div>
-      <div id="annual-pie-title" style="text-align:center;font-size:12px;margin-top:20px;margin-bottom:4px;color:var(--text-muted);">年間合計</div>
+      <div style="text-align:center;font-size:10px;margin-top:4px;color:var(--text3);">Y軸をタップで実数h⇔100%積み上げ表示を切替</div>
+      <div id="annual-pie-title" style="text-align:center;font-size:12px;margin-top:16px;margin-bottom:4px;color:var(--text-muted);">年間合計</div>
       <div style="position:relative;height:220px;"><canvas id="annual-job-pie-chart"></canvas></div>
       <div id="annual-job-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:11px;"></div>
     </div>
@@ -1186,7 +1187,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-03.9';
+const APP_VERSION = 'v07_2026-08-03.10';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3260,6 +3261,7 @@ window.addEventListener('pointerdown',e=>{if(!e.target.closest?.('.work-cell'))h
 let annualJobChartMode='category'; // 'jobno' or 'category'
 let annualBarChart=null, annualPieChart=null, annualSelectedMonth=null;
 let _annualChartData=null;
+let annualBarPercentMode=false; // Y軸ラベルタップで100%積み上げに切替
 
 function getAnnualJobData(mode){
   const months=[];
@@ -3375,7 +3377,8 @@ function renderAnnualJobCharts(){
   annualSelectedMonth=null;
   _annualChartData={months,colorMap,monthLabels};
 
-  // 積み上げ棒グラフ
+  // 積み上げ棒グラフ（Y軸ラベルタップで実数h⇔100%積み上げを切替）
+  const monthTotals=months.map(m=>Object.values(m).reduce((s,v)=>s+v,0));
   const barCtx=document.getElementById('annual-job-bar-chart')?.getContext('2d');
   if(barCtx){
     if(annualBarChart)annualBarChart.destroy();
@@ -3385,7 +3388,11 @@ function renderAnnualJobCharts(){
         labels:monthLabels,
         datasets:labels.map(l=>({
           label:l,
-          data:months.map(m=>parseFloat(((m[l]||0)/60).toFixed(1))),
+          data:months.map((m,i)=>{
+            const mins=m[l]||0;
+            if(annualBarPercentMode)return monthTotals[i]>0?parseFloat((mins/monthTotals[i]*100).toFixed(1)):0;
+            return parseFloat((mins/60).toFixed(1));
+          }),
           backgroundColor:colorMap[l],
           stack:'s'
         }))
@@ -3394,13 +3401,24 @@ function renderAnnualJobCharts(){
         responsive:true,maintainAspectRatio:false,
         plugins:{
           legend:{display:false},
-          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}h`}}
+          tooltip:{callbacks:{label:ctx=>{
+            if(!annualBarPercentMode)return `${ctx.dataset.label}: ${ctx.parsed.y}h`;
+            const hoursTotal=monthTotals[ctx.dataIndex]/60;
+            const hours=(hoursTotal*ctx.parsed.y/100).toFixed(1);
+            return `${ctx.dataset.label}: ${ctx.parsed.y}% (${hours}h)`;
+          }}}
         },
         scales:{
           x:{stacked:true,ticks:{color:textColor},grid:{color:gridColor}},
-          y:{stacked:true,ticks:{color:textColor,callback:v=>v+'h'},grid:{color:gridColor}}
+          y:{stacked:true,...(annualBarPercentMode?{max:100}:{}),ticks:{color:textColor,callback:v=>v+(annualBarPercentMode?'%':'h')},grid:{color:gridColor}}
         },
-        onClick:(e,elements)=>{
+        onClick:(e,elements,chart)=>{
+          const y=chart.scales.y;
+          if(e.x!==null&&e.x<=y.right&&e.y>=y.top&&e.y<=y.bottom){
+            annualBarPercentMode=!annualBarPercentMode;
+            renderAnnualJobCharts();
+            return;
+          }
           if(elements.length>0){
             const idx=elements[0].index;
             annualSelectedMonth=(annualSelectedMonth===idx)?null:idx;
