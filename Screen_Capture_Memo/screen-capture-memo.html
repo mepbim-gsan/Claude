@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v70
-  @changelog v70: 記録一覧で行を選択中(⠿ハンドル等にフォーカスあり)に📸キャプチャ/📋貼り付け/📝見出しを行うと、末尾ではなくその行の直後に挿入されるように変更。選択中の行はoutlineで視覚的に強調(.item:focus-within)。挿入直後にorderをDOM順で振り直して保存し(persistOrderFromDom)、リロード時にid基準の並び順で末尾へ戻ってしまうのを防止。連続挿入時は新しい行へフォーカスを移し、続けて同じ位置に挿入できるように
+  @version   v71
+  @changelog v71: トリミングモーダルに「前回の範囲」ボタンを追加。直前にトリミングを適用した範囲を画像サイズに依存しない比率(0〜1)で記憶しておき、別の画像をトリミングする際にクリックすると現在の画像サイズに合わせてスケールした選択範囲をプレビュー表示する(即確定はせず、その場で微調整してから「この範囲でトリミング」を押す運用)。一度もトリミングしていない間はボタン非表示
+  @changelog v70: 記録一覧で行を選択中(⠿ハンドル等にフォーカスあり)に📸キャプチャ/📋貼り付け/📝見出しを行うと、末尾ではなくその行の直後に挿入されるように変更。挿入直後にorderをDOM順で振り直して保存し(persistOrderFromDom)、リロード時にid基準の並び順で末尾へ戻ってしまうのを防止
   @changelog v69: 記録一覧のキーボード並び替えのキー組み合わせをCtrl(⌘)+Alt+↑/↓からShift+Alt+↑/↓に変更(OneNoteの行移動と同じキー組み合わせに統一)
-  @changelog v68: メモ欄でEscを押して抜けた際、フォーカスをその行の⠿ハンドルへ移すよう変更。以前はtextarea.blur()するだけでフォーカスがどこにも残らず、Escで抜けた直後はキーボードでの並び替えができなかった不具合を修正
-  ※ v01〜v67の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v68の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -289,7 +289,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v70</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v71</span>
 </header>
 
 <div id="versionModal">
@@ -409,6 +409,7 @@
     <div class="hint">ドラッグで範囲を選択/移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます</div>
     <div class="row" style="margin-top:10px;">
       <button class="danger" id="btnCropRevert" style="display:none;">元に戻す(トリミング前の画像)</button>
+      <button class="secondary" id="btnCropUseLast" style="display:none;" title="直前にトリミングした範囲(相対位置)をこの画像にも適用します">前回の範囲</button>
       <div class="row" style="margin-left:auto; gap:8px;">
         <button class="secondary" id="btnCropCancel">キャンセル</button>
         <button class="ok" id="btnCropApply">この範囲でトリミング</button>
@@ -2104,6 +2105,7 @@
   const btnCropApply = $("btnCropApply");
   const btnCropCancel = $("btnCropCancel");
   const btnCropRevert = $("btnCropRevert");
+  const btnCropUseLast = $("btnCropUseLast");
 
   let cropRecord = null;
   let cropThumbImg = null;
@@ -2114,6 +2116,10 @@
   let cropMoveOffset = { x:0, y:0 };
   let cropResizingHandle = null;
   let cropResizeAnchor = null;
+  // 直前にトリミングを適用した範囲を、画像サイズに依存しない比率(0〜1)で覚えておく。
+  // 画像ごとに解像度が異なりうるため、絶対px座標ではなく比率で保持し「前回の範囲」ボタンで
+  // 現在の画像サイズに合わせてスケールし直して適用する
+  let lastCropRatio = null;
 
   function updateCropRectVisual(){
     cropSelRect.style.left = cropSelection.x + "px";
@@ -2161,6 +2167,7 @@
     // 一度トリミング済みでも、常に元画像から範囲を選び直せるようにする
     cropImage.src = record.originalDataURL || record.dataURL;
     btnCropRevert.style.display = record.originalDataURL ? "inline-block" : "none";
+    btnCropUseLast.style.display = lastCropRatio ? "inline-block" : "none";
     cropModal.classList.add("open");
   }
 
@@ -2310,6 +2317,11 @@
     }
     cropRecord.dataURL = newDataURL;
     cropRecord.cropRect = { x: sx, y: sy, w: sw, h: sh }; // 次回開いた時にこの範囲から再開できるように
+    // 画像サイズに依存しない比率で記憶し、「前回の範囲」ボタンで別の画像にも適用できるようにする
+    lastCropRatio = {
+      x: sx / cropImage.naturalWidth, y: sy / cropImage.naturalHeight,
+      w: sw / cropImage.naturalWidth, h: sh / cropImage.naturalHeight
+    };
     await dbPut(cropRecord);
     if(cropThumbImg) cropThumbImg.src = newDataURL;
     closeCropModal();
@@ -2323,6 +2335,20 @@
     await dbPut(cropRecord);
     if(cropThumbImg) cropThumbImg.src = cropRecord.dataURL;
     closeCropModal();
+  });
+
+  // 直前にトリミングした範囲(比率)を、この画像のサイズに合わせて選択範囲へ反映する。
+  // その場で確定はせず、プレビューとして表示するだけ(必要なら微調整してから「この範囲でトリミング」)
+  btnCropUseLast.addEventListener("click", () => {
+    if(!lastCropRatio || !cropImage.naturalWidth || !cropImage.naturalHeight) return;
+    const r = cropStage.getBoundingClientRect();
+    const MIN = 10;
+    let w = Math.min(r.width, Math.max(MIN, lastCropRatio.w * r.width));
+    let h = Math.min(r.height, Math.max(MIN, lastCropRatio.h * r.height));
+    let x = Math.max(0, Math.min(lastCropRatio.x * r.width, r.width - w));
+    let y = Math.max(0, Math.min(lastCropRatio.y * r.height, r.height - h));
+    cropSelection = { x, y, w, h };
+    updateCropRectVisual();
   });
 
   // タイトル・日付: 前回値をlocalStorageに保持し、リロードしても保持されるように
@@ -2420,7 +2446,8 @@
     ["v67","記録一覧をCtrl(⌘)+Alt+↑/↓でも並び替え可能に(⠿ハンドルにフォーカスして操作)"],
     ["v68","メモ欄でEscを押した後もそのまま並び替えできるよう修正"],
     ["v69","並び替えのキー組み合わせをShift+Alt+↑/↓に変更(OneNote同様)"],
-    ["v70","行選択中のキャプチャ/貼り付け/見出しは、その行の直後に挿入されるように"]
+    ["v70","行選択中のキャプチャ/貼り付け/見出しは、その行の直後に挿入されるように"],
+    ["v71","トリミングに「前回の範囲」ボタンを追加(直前の範囲を比率で他画像にも適用可能)"]
   ];
 
   const verLabel = $("verLabel");
