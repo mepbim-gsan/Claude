@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v71
-  @changelog v71: トリミングモーダルに「前回の範囲」ボタンを追加。直前にトリミングを適用した範囲を画像サイズに依存しない比率(0〜1)で記憶しておき、別の画像をトリミングする際にクリックすると現在の画像サイズに合わせてスケールした選択範囲をプレビュー表示する(即確定はせず、その場で微調整してから「この範囲でトリミング」を押す運用)。一度もトリミングしていない間はボタン非表示
-  @changelog v70: 記録一覧で行を選択中(⠿ハンドル等にフォーカスあり)に📸キャプチャ/📋貼り付け/📝見出しを行うと、末尾ではなくその行の直後に挿入されるように変更。挿入直後にorderをDOM順で振り直して保存し(persistOrderFromDom)、リロード時にid基準の並び順で末尾へ戻ってしまうのを防止
-  @changelog v69: 記録一覧のキーボード並び替えのキー組み合わせをCtrl(⌘)+Alt+↑/↓からShift+Alt+↑/↓に変更(OneNoteの行移動と同じキー組み合わせに統一)
-  ※ v01〜v68の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  @version   v72
+  @changelog v72: ライトボックス/トリミング/バージョン履歴の各モーダル表示中、背景ページがホイール操作等でスクロールしてしまい誤操作やドラッグのずれの原因になっていた不具合を修正。lockBodyScroll()/unlockBodyScroll()を追加し、モーダルを開いている間はdocument.body.style.overflowをhiddenにして背景スクロールを止めるように統一(多重開閉に備えカウンタ管理)
+  @changelog v71: トリミングモーダルに「前回の範囲」ボタンを追加。直前にトリミングを適用した範囲を画像サイズに依存しない比率(0〜1)で記憶しておき、別の画像をトリミングする際にクリックすると現在の画像サイズに合わせてスケールした選択範囲をプレビュー表示する(即確定はせず、その場で微調整してから「この範囲でトリミング」を押す運用)
+  @changelog v70: 記録一覧で行を選択中(⠿ハンドル等にフォーカスあり)に📸キャプチャ/📋貼り付け/📝見出しを行うと、末尾ではなくその行の直後に挿入されるように変更
+  ※ v01〜v69の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -289,7 +289,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v71</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v72</span>
 </header>
 
 <div id="versionModal">
@@ -2027,6 +2027,19 @@
   }
   let lightboxIndex = -1;
 
+  // モーダル(ライトボックス/トリミング/バージョン履歴)表示中は背景ページのスクロールを止める。
+  // モーダル上でのホイール操作やドラッグ中に裏で本文がスクロールしてしまい、
+  // 誤操作やドラッグ座標のずれの原因になっていたための対策(複数モーダルの多重開閉に備えカウンタ管理)
+  let openModalCount = 0;
+  function lockBodyScroll(){
+    openModalCount++;
+    document.body.style.overflow = "hidden";
+  }
+  function unlockBodyScroll(){
+    openModalCount = Math.max(0, openModalCount - 1);
+    if(openModalCount === 0) document.body.style.overflow = "";
+  }
+
   function openLightbox(src, index){
     lightboxImg.src = src;
     lightboxIndex = index !== undefined ? index : -1;
@@ -2035,10 +2048,12 @@
     lightboxPanY = 0;
     applyLightboxTransform();
     lightbox.classList.add("open");
+    lockBodyScroll();
   }
   function closeLightbox(){
     lightbox.classList.remove("open");
     lightboxImg.src = "";
+    unlockBodyScroll();
   }
   function showLightboxByOffset(offset){
     if(lightboxIndex === -1) return;
@@ -2169,6 +2184,7 @@
     btnCropRevert.style.display = record.originalDataURL ? "inline-block" : "none";
     btnCropUseLast.style.display = lastCropRatio ? "inline-block" : "none";
     cropModal.classList.add("open");
+    lockBodyScroll();
   }
 
   function closeCropModal(){
@@ -2177,6 +2193,7 @@
     cropRecord = null;
     cropThumbImg = null;
     cropSelection = null;
+    unlockBodyScroll();
   }
 
   cropStage.addEventListener("pointerdown", (e) => {
@@ -2447,7 +2464,8 @@
     ["v68","メモ欄でEscを押した後もそのまま並び替えできるよう修正"],
     ["v69","並び替えのキー組み合わせをShift+Alt+↑/↓に変更(OneNote同様)"],
     ["v70","行選択中のキャプチャ/貼り付け/見出しは、その行の直後に挿入されるように"],
-    ["v71","トリミングに「前回の範囲」ボタンを追加(直前の範囲を比率で他画像にも適用可能)"]
+    ["v71","トリミングに「前回の範囲」ボタンを追加(直前の範囲を比率で他画像にも適用可能)"],
+    ["v72","モーダル表示中に背景ページがスクロールしてしまう不具合を修正"]
   ];
 
   const verLabel = $("verLabel");
@@ -2460,9 +2478,11 @@
       `<li><span class="v-tag">${v}</span><span>${t}</span></li>`
     ).join("");
     versionModal.classList.add("open");
+    lockBodyScroll();
   }
   function closeVersionModal(){
     versionModal.classList.remove("open");
+    unlockBodyScroll();
   }
   verLabel.addEventListener("click", openVersionModal);
   verLabel.addEventListener("keydown", (e) => {
