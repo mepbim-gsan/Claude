@@ -1187,7 +1187,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-18.3';
+const APP_VERSION = 'v07_2026-08-18.4';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3798,9 +3798,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   const y0=currentMonth.getFullYear(),m0=currentMonth.getMonth()+1;
   initScheduleDefaults(y0,m0);
 
-  // ショートカットからの自動打刻（?action=in / ?action=out）
+  // ショートカットからの自動打刻（?action=in / ?action=out / ?action=break）
   const urlAction=new URLSearchParams(location.search).get('action');
-  if(urlAction==='in'||urlAction==='out'){
+  if(urlAction==='in'||urlAction==='out'||urlAction==='break'){
     // URLパラメータをクリア（履歴を汚さない）
     history.replaceState(null,'',location.pathname);
 
@@ -3829,7 +3829,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         } else {
           msg='すでに出勤が記録されています';
         }
-      } else {
+      } else if(urlAction==='out'){
         if(inEl&&inEl.value&&outEl&&!outEl.value){
           outEl.value=t;
           document.getElementById('stamp-out-time').textContent=formatTime(parseTime(t));
@@ -3842,6 +3842,36 @@ document.addEventListener('DOMContentLoaded',()=>{
           msg='出勤が記録されていません';
         } else {
           msg='すでに退勤が記録されています';
+        }
+      } else {
+        // 休憩: 休憩中なら終了、勤務中なら開始（未出勤・退勤済みは何もしない）
+        if(!inEl?.value){
+          msg='まだ出勤していません';
+        } else if(outEl?.value){
+          msg='すでに退勤済みです';
+        } else {
+          const openIdx=breakRows.findIndex(b=>b&&b.start&&!b.end);
+          if(openIdx>=0){
+            breakRows[openIdx].end=t;
+            const row=document.querySelector(`.break-row[data-idx="${openIdx}"]`);
+            if(row) row.querySelectorAll('input')[1].value=t;
+            updateDaySummary();
+            sortBreakRows();
+            autoSavePunch();
+            msg=`休憩終了を記録しました（${formatTime(parseTime(t))}）`;
+          } else {
+            const blankIdx=breakRows.findIndex(b=>b&&!b.start);
+            if(blankIdx>=0){
+              breakRows[blankIdx].start=t;
+              const row=document.querySelector(`.break-row[data-idx="${blankIdx}"]`);
+              if(row) row.querySelectorAll('input')[0].value=t;
+            } else {
+              addBreakRow(t,'');
+            }
+            updateDaySummary();
+            autoSavePunch();
+            msg=`休憩開始を記録しました（${formatTime(parseTime(t))}）`;
+          }
         }
       }
 
