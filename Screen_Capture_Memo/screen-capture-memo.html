@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v73
+  @version   v74
+  @changelog v74: ライトボックスで、原寸が画面より小さい画像も上限倍率(3倍)まで画面いっぱいに拡大表示するように変更(fitLightboxImageSize)。以前は大きい画像のみ画面に収まるよう縮小し、小さい画像は原寸のまま小さく表示されていた。上限を設けているのは、極端に小さい画像を無理に引き伸ばしてぼやけて見えるのを防ぐため
   @changelog v73: ライトボックス・トリミング対象画像(lightboxImg/cropImage、エクスポートHTML側lightboxImgも含む)にdraggable="false"を追加。ブラウザ標準のネイティブ画像ドラッグ(ゴースト画像が浮くドラッグ&ドロップ)が左クリックでのパン/選択操作に割り込み、ドラッグがうまく効かなかったり途中で止まったりする不具合を修正
   @changelog v72: ライトボックス/トリミング/バージョン履歴の各モーダル表示中、背景ページがホイール操作等でスクロールしてしまい誤操作やドラッグのずれの原因になっていた不具合を修正。lockBodyScroll()/unlockBodyScroll()を追加し、モーダルを開いている間はdocument.body.style.overflowをhiddenにして背景スクロールを止めるように統一(多重開閉に備えカウンタ管理)
-  @changelog v71: トリミングモーダルに「前回の範囲」ボタンを追加。直前にトリミングを適用した範囲を画像サイズに依存しない比率(0〜1)で記憶しておき、別の画像をトリミングする際にクリックすると現在の画像サイズに合わせてスケールした選択範囲をプレビュー表示する(即確定はせず、その場で微調整してから「この範囲でトリミング」を押す運用)
-  ※ v01〜v70の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v71の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -289,7 +289,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v73</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v74</span>
 </header>
 
 <div id="versionModal">
@@ -2040,7 +2040,23 @@
     if(openModalCount === 0) document.body.style.overflow = "";
   }
 
+  // 原寸が画面より小さい画像は、上限倍率までは画面いっぱいに拡大して表示する
+  // (原寸のまま表示すると小さすぎて見づらいため)。上限を設けているのは、
+  // 極端に小さい画像を無理に画面いっぱいまで引き伸ばすとぼやけて粗く見えるのを防ぐため
+  const LIGHTBOX_MAX_UPSCALE = 3;
+  function fitLightboxImageSize(){
+    const natW = lightboxImg.naturalWidth, natH = lightboxImg.naturalHeight;
+    if(!natW || !natH) return;
+    const maxW = window.innerWidth * 0.96, maxH = window.innerHeight * 0.96;
+    const scale = Math.min(maxW / natW, maxH / natH, LIGHTBOX_MAX_UPSCALE);
+    lightboxImg.style.width = Math.round(natW * scale) + "px";
+    lightboxImg.style.height = Math.round(natH * scale) + "px";
+  }
+
   function openLightbox(src, index){
+    lightboxImg.style.width = "";
+    lightboxImg.style.height = "";
+    lightboxImg.onload = fitLightboxImageSize;
     lightboxImg.src = src;
     lightboxIndex = index !== undefined ? index : -1;
     lightboxZoom = 1;
@@ -2466,7 +2482,8 @@
     ["v70","行選択中のキャプチャ/貼り付け/見出しは、その行の直後に挿入されるように"],
     ["v71","トリミングに「前回の範囲」ボタンを追加(直前の範囲を比率で他画像にも適用可能)"],
     ["v72","モーダル表示中に背景ページがスクロールしてしまう不具合を修正"],
-    ["v73","ライトボックス/トリミング画像のネイティブドラッグを無効化しドラッグ操作を安定化"]
+    ["v73","ライトボックス/トリミング画像のネイティブドラッグを無効化しドラッグ操作を安定化"],
+    ["v74","ライトボックスで小さい画像も上限倍率まで画面いっぱいに拡大表示"]
   ];
 
   const verLabel = $("verLabel");
