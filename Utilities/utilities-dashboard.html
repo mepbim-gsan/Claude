@@ -1,10 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v01_2026-08-23.5
+  @version   v01_2026-08-23.6
   @changelog
-    v01_2026-08-23.3 - ダッシュボードのサービス別合計行、月別diffが1件も揃わなくても年間合計どうしの差分を表示するよう修正（水道等の隔月徴収で計上月がズレるケース対応）
     v01_2026-08-23.4 - 比較タブの年間グラフ（金額推移・使用量推移）で、記録月数が他年度より少ない（データが揃っていない）年度の棒を薄い色で区別表示
     v01_2026-08-23.5 - ダッシュボードの差分表示（サービス別比較表）で、金額とパーセントを必ず改行して表示するよう変更
+    v01_2026-08-23.6 - サマリーカードのラベルから重複していた年度表記を削除（上部の年度セレクタと重複のため）
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -366,7 +366,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v01_2026-08-23.5';
+const APP_VERSION = 'v01_2026-08-23.6';
 const CONFIG_KEY = 'firebase-config-v1';
 const DOC_PATH   = 'shared/utilities-data';
 
@@ -678,7 +678,7 @@ function _renderSummaryCards(fy) {
     const unitStr   = avgUnit     ? '平均 '+avgUnit+'円/'+svc.unit : '';
 
     html += `<div class="summary-card ${svc.key}">
-      <div class="s-label">${svc.label} ${fy}年度</div>
+      <div class="s-label">${svc.label}</div>
       <div class="s-amount" style="color:${svc.color}">${amountStr}</div>
       <div class="s-sub">${usageStr}</div>
       <div class="s-sub">${unitStr}</div>
@@ -693,7 +693,7 @@ function _renderSummaryCards(fy) {
     grandTotal += _getOthers(+y,+mo).reduce((s,r)=>s+(r.amount||0),0);
   });
   html += `<div class="summary-card total" style="grid-column:1/-1;">
-    <div class="s-label">${fy}年度 合計</div>
+    <div class="s-label">合計</div>
     <div class="s-amount">¥${grandTotal.toLocaleString()}</div>
   </div>`;
 
