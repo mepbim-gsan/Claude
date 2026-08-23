@@ -1,10 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v01_2026-08-23.4
+  @version   v01_2026-08-23.5
   @changelog
-    v01_2026-08-23.2 - 比較タブに年間使用量推移グラフを追加（電気kWh/ガスm³/水道m³、単位が異なるためサービス別に個別表示）
     v01_2026-08-23.3 - ダッシュボードのサービス別合計行、月別diffが1件も揃わなくても年間合計どうしの差分を表示するよう修正（水道等の隔月徴収で計上月がズレるケース対応）
     v01_2026-08-23.4 - 比較タブの年間グラフ（金額推移・使用量推移）で、記録月数が他年度より少ない（データが揃っていない）年度の棒を薄い色で区別表示
+    v01_2026-08-23.5 - ダッシュボードの差分表示（サービス別比較表）で、金額とパーセントを必ず改行して表示するよう変更
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -366,7 +366,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v01_2026-08-23.4';
+const APP_VERSION = 'v01_2026-08-23.5';
 const CONFIG_KEY = 'firebase-config-v1';
 const DOC_PATH   = 'shared/utilities-data';
 
@@ -777,8 +777,8 @@ function _renderServiceSection(svc, fy) {
       if (metric==='amount') dVal = sign+'¥'+Math.abs(diff).toLocaleString();
       else if (metric==='unit') dVal = sign+Math.abs(diff).toFixed(1);
       else dVal = sign+Math.abs(diff);
-      const rVal = rate!=null ? ` (${rate>0?'+':''}${rate}%)` : '';
-      diffStr = `<span class="${rateCls}">${dVal}${rVal}</span>`;
+      const rVal = rate!=null ? `(${rate>0?'+':''}${rate}%)` : '';
+      diffStr = `<span class="${rateCls}">${dVal}${rVal ? '<br>'+rVal : ''}</span>`;
     }
     tableRows += `<tr>
       <td>${y.slice(2)}/${mo}</td>
@@ -806,8 +806,8 @@ function _renderServiceSection(svc, fy) {
         ? sign + '¥' + Math.abs(Math.round(totalDiff)).toLocaleString()
         : sign + Math.abs(Math.round(totalDiff)).toLocaleString();
       const sumRate = sumPrev !== 0 ? Math.round((sumCur / sumPrev - 1) * 1000) / 10 : null;
-      const rVal = sumRate !== null ? ` (${sumRate > 0 ? '+' : ''}${sumRate}%)` : '';
-      diffSumStr = `<span class="${cls}">${dVal}${rVal}</span>`;
+      const rVal = sumRate !== null ? `(${sumRate > 0 ? '+' : ''}${sumRate}%)` : '';
+      diffSumStr = `<span class="${cls}">${dVal}${rVal ? '<br>'+rVal : ''}</span>`;
     }
     totalRow = `<tr class="table-total-row">
       <td>合計</td>
