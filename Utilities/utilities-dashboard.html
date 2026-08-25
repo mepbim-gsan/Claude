@@ -1,19 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v01_2026-04-19
+  @version   v01_2026-08-23.6
   @changelog
-    v01_2026-04-19   - 初版
-    v01_2026-04-19.2 - type=module廃止→通常script+動的import、サンプルデータ対応
-    v01_2026-04-19.3 - ダッシュボード刷新：サービス別グラフ（棒=今年/折れ線=前年）、金額/使用量タブ切替、前年同月比較表
-    v01_2026-04-19.4 - 単価（円/kWh・円/m³）タブ追加
-    v01_2026-04-19.5 - メモ欄追加（契約名・備考）、サンプルデータを実データに差し替え
-    v01_2026-04-19.6 - 年度選択（4月〜3月）、表を全月スクロール表示、年度合計カード追加
-    v01_2026-04-25   - 年度セレクタをヘッダー下に固定、サマリーカードに月表示追加
-    v01_2026-04-25.2 - グラフに年間平均線追加、単価を小数点1桁固定
-    v01_2026-04-26   - 比較タブ追加（月間金額比較・年間金額推移）
-    v01_2026-04-26.2 - 月/年度◀▶ナビ、履歴カード形式、その他カテゴリ追加、比較タブothers対応・凡例クリックON/OFF
-    v01_2026-04-26.3 - CSVエクスポート・インポート追加（設定モーダル内）
-    v01_2026-04-26.4 - 入力タブ廃止→記録タブ（表形式12ヶ月一覧+セルタップ入力モーダル）
+    v01_2026-08-23.4 - 比較タブの年間グラフ（金額推移・使用量推移）で、記録月数が他年度より少ない（データが揃っていない）年度の棒を薄い色で区別表示
+    v01_2026-08-23.5 - ダッシュボードの差分表示（サービス別比較表）で、金額とパーセントを必ず改行して表示するよう変更
+    v01_2026-08-23.6 - サマリーカードのラベルから重複していた年度表記を削除（上部の年度セレクタと重複のため）
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -46,7 +37,9 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 }
 .app-header h1 { font-size: 1rem; font-weight: 700; }
 .header-right  { display: flex; align-items: center; gap: 8px; }
-.user-name     { font-size: 0.75rem; color: #64748b; }
+.header-user   { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; min-width: 0; }
+.app-version   { font-size: 0.62rem; color: #94a3b8; white-space: nowrap; }
+.user-name     { font-size: 0.75rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .btn-icon      { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 4px; }
 .chart-title-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .seg-btns { display:flex; gap:4px; }
@@ -98,6 +91,10 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 .record-table td.has-data { font-weight: 600; }
 .record-table td.no-data { color: #cbd5e1; }
 .record-table td.future { color: #e2e8f0; cursor: default; }
+.record-table td.cell-incomplete { background: #fffbeb; }
+.incomplete-dot { color: #f59e0b; font-size: 0.5rem; vertical-align: super; margin-left: 2px; }
+.record-legend { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #94a3b8; padding: 0 4px 8px; }
+.record-legend .incomplete-dot { margin-left: 0; }
 .record-table td:not(:first-child):not(.future):hover { background: #f0f9ff; }
 .record-table tr.current-month td:first-child { color: #3b82f6; font-weight: 700; }
 .sample-badge  { display: inline-block; background: #fef3c7; color: #92400e; font-size: 0.68rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px; }
@@ -259,7 +256,10 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
   <header class="app-header">
     <h1>💡 光熱費ダッシュボード<span class="sample-badge" id="sampleBadge" style="display:none">サンプル</span></h1>
     <div class="header-right">
-      <span class="user-name" id="userName"></span>
+      <div class="header-user">
+        <span class="app-version" id="appVersion"></span>
+        <span class="user-name" id="userName"></span>
+      </div>
       <button class="btn-icon" onclick="_openSettings()">⚙️</button>
     </div>
   </header>
@@ -287,12 +287,24 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
     </div>
     <div class="chart-section">
       <div class="chart-title">年間 金額推移 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
+      <div style="font-size:0.68rem;color:#94a3b8;padding:0 12px 4px;">色が薄い部分は、その年度の記録月数が他年度より少ないことを示します</div>
       <div class="chart-wrap" style="height:220px"><canvas id="chartAnnual"></canvas></div>
+    </div>
+    <div class="chart-section">
+      <div class="chart-title">年間 使用量推移</div>
+      <div style="font-size:0.68rem;color:#94a3b8;padding:0 12px 4px;">色が薄い年度は、記録月数が他年度より少ないことを示します</div>
+      <div style="font-size:0.78rem;color:#64748b;padding:10px 12px 2px;">⚡ 電気 (kWh)</div>
+      <div class="chart-wrap" style="height:160px"><canvas id="chartAnnualUsageElec"></canvas></div>
+      <div style="font-size:0.78rem;color:#64748b;padding:10px 12px 2px;">🔥 ガス (m³)</div>
+      <div class="chart-wrap" style="height:160px"><canvas id="chartAnnualUsageGas"></canvas></div>
+      <div style="font-size:0.78rem;color:#64748b;padding:10px 12px 2px;">💧 水道 (m³)</div>
+      <div class="chart-wrap" style="height:160px"><canvas id="chartAnnualUsageWater"></canvas></div>
     </div>
   </div>
 
   <!-- Record -->
   <div class="tab-pane" id="tab-history" style="display:none">
+    <div class="record-legend"><span class="incomplete-dot">●</span>使用量が未入力のセル</div>
     <div class="record-table-wrap">
       <table class="record-table" id="recordTable">
         <thead>
@@ -354,6 +366,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 
 <script>
 // ── Config ────────────────────────────────────────────────────────
+const APP_VERSION = 'v01_2026-08-23.6';
 const CONFIG_KEY = 'firebase-config-v1';
 const DOC_PATH   = 'shared/utilities-data';
 
@@ -645,22 +658,27 @@ function _renderSummaryCards(fy) {
   SERVICES.forEach(svc => {
     // 年間合計
     let totalAmount = 0, totalUsage = 0, usageCount = 0;
+    // 平均単価は「金額・使用量とも入力済みの月」のみで算出（使用量未入力の月の金額を分子に含めない）
+    let unitAmountSum = 0, unitUsageSum = 0;
     months.forEach(m => {
       const [y,mo] = m.split('-');
       const r = _get(svc.key, +y, +mo);
       if (!r) return;
       totalAmount += r.amount || 0;
-      if (r[svc.unitKey] != null) { totalUsage += r[svc.unitKey]; usageCount++; }
+      if (r[svc.unitKey] != null) {
+        totalUsage += r[svc.unitKey]; usageCount++;
+        if (r.amount != null) { unitAmountSum += r.amount; unitUsageSum += r[svc.unitKey]; }
+      }
     });
-    const avgUnit = (totalAmount > 0 && totalUsage > 0)
-      ? (totalAmount / totalUsage).toFixed(1) : null;
+    const avgUnit = (unitAmountSum > 0 && unitUsageSum > 0)
+      ? (unitAmountSum / unitUsageSum).toFixed(1) : null;
 
     const amountStr = totalAmount > 0 ? '¥'+totalAmount.toLocaleString() : '—';
     const usageStr  = usageCount  > 0 ? totalUsage.toLocaleString()+' '+svc.unit : '—';
     const unitStr   = avgUnit     ? '平均 '+avgUnit+'円/'+svc.unit : '';
 
     html += `<div class="summary-card ${svc.key}">
-      <div class="s-label">${svc.label} ${fy}年度</div>
+      <div class="s-label">${svc.label}</div>
       <div class="s-amount" style="color:${svc.color}">${amountStr}</div>
       <div class="s-sub">${usageStr}</div>
       <div class="s-sub">${unitStr}</div>
@@ -675,7 +693,7 @@ function _renderSummaryCards(fy) {
     grandTotal += _getOthers(+y,+mo).reduce((s,r)=>s+(r.amount||0),0);
   });
   html += `<div class="summary-card total" style="grid-column:1/-1;">
-    <div class="s-label">${fy}年度 合計</div>
+    <div class="s-label">合計</div>
     <div class="s-amount">¥${grandTotal.toLocaleString()}</div>
   </div>`;
 
@@ -722,7 +740,7 @@ function _renderServiceSection(svc, fy) {
   const tableMonths = [...months].reverse();
   let tableRows = '';
   // 合計用集計
-  let sumCur = null, sumPrev = null, sumDiffTotal = null, bothCount = 0;
+  let sumCur = null, sumPrev = null, sumDiffUnit = null; // sumDiffUnitは単価（差分のみ合計）専用
 
   tableMonths.forEach(m => {
     const [y,mo] = m.split('-');
@@ -737,10 +755,9 @@ function _renderServiceSection(svc, fy) {
     if (metric !== 'unit') {
       if (curVal  != null) sumCur  = (sumCur  || 0) + curVal;
       if (prevVal != null) sumPrev = (sumPrev || 0) + prevVal;
-      if (diff    != null) { sumDiffTotal = Math.round(((sumDiffTotal || 0) + diff) * 10) / 10; bothCount++; }
     } else {
       // 単価は差分のみ合計
-      if (diff != null) sumCur = (sumCur || 0) + diff;
+      if (diff != null) sumDiffUnit = (sumDiffUnit || 0) + diff;
     }
 
     function _fmtCell(v) {
@@ -760,8 +777,8 @@ function _renderServiceSection(svc, fy) {
       if (metric==='amount') dVal = sign+'¥'+Math.abs(diff).toLocaleString();
       else if (metric==='unit') dVal = sign+Math.abs(diff).toFixed(1);
       else dVal = sign+Math.abs(diff);
-      const rVal = rate!=null ? ` (${rate>0?'+':''}${rate}%)` : '';
-      diffStr = `<span class="${rateCls}">${dVal}${rVal}</span>`;
+      const rVal = rate!=null ? `(${rate>0?'+':''}${rate}%)` : '';
+      diffStr = `<span class="${rateCls}">${dVal}${rVal ? '<br>'+rVal : ''}</span>`;
     }
     tableRows += `<tr>
       <td>${y.slice(2)}/${mo}</td>
@@ -779,17 +796,18 @@ function _renderServiceSection(svc, fy) {
       return metric === 'amount' ? '¥' + Math.round(v).toLocaleString() : Math.round(v).toLocaleString();
     };
     let diffSumStr = '<span class="no-data">—</span>';
-    if (sumDiffTotal !== null) {
-      const cls  = sumDiffTotal > 0 ? 'diff-up' : sumDiffTotal < 0 ? 'diff-down' : '';
-      const sign = sumDiffTotal >= 0 ? '+' : '';
+    // 合計金額（使用量）どうしの差分。水道など隔月徴収で計上月が年によってズレ、
+    // 月別の差分（同じ月同士のペア）が1件も揃わない場合でも、年間合計どうしなら比較できる
+    if (sumCur !== null && sumPrev !== null) {
+      const totalDiff = Math.round((sumCur - sumPrev) * 10) / 10;
+      const cls  = totalDiff > 0 ? 'diff-up' : totalDiff < 0 ? 'diff-down' : '';
+      const sign = totalDiff >= 0 ? '+' : '';
       const dVal = metric === 'amount'
-        ? sign + '¥' + Math.abs(Math.round(sumDiffTotal)).toLocaleString()
-        : sign + Math.abs(Math.round(sumDiffTotal)).toLocaleString();
-      // 増減率は12ヶ月両方揃っている場合のみ
-      const sumRate = (bothCount === 12 && sumCur !== null && sumPrev !== null && sumPrev !== 0)
-        ? Math.round((sumCur / sumPrev - 1) * 1000) / 10 : null;
-      const rVal = sumRate !== null ? ` (${sumRate > 0 ? '+' : ''}${sumRate}%)` : '';
-      diffSumStr = `<span class="${cls}">${dVal}${rVal}</span>`;
+        ? sign + '¥' + Math.abs(Math.round(totalDiff)).toLocaleString()
+        : sign + Math.abs(Math.round(totalDiff)).toLocaleString();
+      const sumRate = sumPrev !== 0 ? Math.round((sumCur / sumPrev - 1) * 1000) / 10 : null;
+      const rVal = sumRate !== null ? `(${sumRate > 0 ? '+' : ''}${sumRate}%)` : '';
+      diffSumStr = `<span class="${cls}">${dVal}${rVal ? '<br>'+rVal : ''}</span>`;
     }
     totalRow = `<tr class="table-total-row">
       <td>合計</td>
@@ -797,9 +815,9 @@ function _renderServiceSection(svc, fy) {
       <td>${fmtSum(sumPrev)}</td>
       <td>${diffSumStr}</td>
     </tr>`;
-  } else if (metric === 'unit' && sumCur !== null) {
+  } else if (metric === 'unit' && sumDiffUnit !== null) {
     // 単価：差分合計のみ表示
-    const diffTotal = Math.round(sumCur * 10) / 10;
+    const diffTotal = Math.round(sumDiffUnit * 10) / 10;
     const cls  = diffTotal > 0 ? 'diff-up' : diffTotal < 0 ? 'diff-down' : '';
     const sign = diffTotal >= 0 ? '+' : '';
     const diffSumStr = `<span class="${cls}">${sign}${Math.abs(diffTotal).toFixed(1)}</span>`;
@@ -1009,6 +1027,7 @@ function _renderCompare() {
   }
   _renderMonthlyChart();
   _renderAnnualChart();
+  _renderAnnualUsageCharts();
 }
 
 function _renderMonthlyChart() {
@@ -1097,6 +1116,25 @@ function _renderMonthlyChart() {
   });
 }
 
+// サービスごとの年度別記録月数（水道の隔月徴収など、サービスごとに正常な件数が異なるため、
+// 固定の「12ヶ月」ではなく全期間中の最多件数を「揃っている」基準として使う）
+function _svcRecordCountFY(type, fy) {
+  let n = 0;
+  _fiscalMonths(fy).forEach(m => { const [y,mo] = m.split('-'); if (_get(type, +y, +mo)) n++; });
+  return n;
+}
+function _svcMaxRecordCount(type, fys) {
+  return fys.reduce((max, fy) => Math.max(max, _svcRecordCountFY(type, fy)), 0);
+}
+// 年度の棒を薄く表示するための背景色配列（記録月数が全期間最多に満たない年度を薄色に）
+function _annualBarColors(type, fys, baseColor) {
+  const maxCount = _svcMaxRecordCount(type, fys);
+  return fys.map(fy => {
+    const incomplete = maxCount > 0 && _svcRecordCountFY(type, fy) < maxCount;
+    return baseColor + (incomplete ? '40' : 'cc');
+  });
+}
+
 function _renderAnnualChart() {
   const fys = _availableFiscalYears().reverse(); // 昇順
 
@@ -1113,9 +1151,9 @@ function _renderAnnualChart() {
 
   const labels = fys.map(y => y+'年度');
   const datasets = [
-    { label:'⚡ 電気',  data:fys.map(fy=>sumFY('electricity',fy)), backgroundColor:'#f59e0bcc', borderColor:'#f59e0b', borderWidth:1, borderRadius:4 },
-    { label:'🔥 ガス',  data:fys.map(fy=>sumFY('gas',fy)),         backgroundColor:'#ef4444cc', borderColor:'#ef4444', borderWidth:1, borderRadius:4 },
-    { label:'💧 水道',  data:fys.map(fy=>sumFY('water',fy)),       backgroundColor:'#3b82f6cc', borderColor:'#3b82f6', borderWidth:1, borderRadius:4 },
+    { label:'⚡ 電気',  data:fys.map(fy=>sumFY('electricity',fy)), backgroundColor:_annualBarColors('electricity',fys,'#f59e0b'), borderColor:'#f59e0b', borderWidth:1, borderRadius:4 },
+    { label:'🔥 ガス',  data:fys.map(fy=>sumFY('gas',fy)),         backgroundColor:_annualBarColors('gas',fys,'#ef4444'),         borderColor:'#ef4444', borderWidth:1, borderRadius:4 },
+    { label:'💧 水道',  data:fys.map(fy=>sumFY('water',fy)),       backgroundColor:_annualBarColors('water',fys,'#3b82f6'),       borderColor:'#3b82f6', borderWidth:1, borderRadius:4 },
     { label:'📦 その他',data:fys.map(fy=>sumOtherFY(fy)),          backgroundColor:'#8b5cf6cc', borderColor:'#8b5cf6', borderWidth:1, borderRadius:4 },
   ];
 
@@ -1133,6 +1171,53 @@ function _renderAnnualChart() {
         y:{ stacked:true, ticks:{ callback: v=>'¥'+v.toLocaleString(), font:{size:10} } }
       }
     }
+  });
+}
+
+// サービスごとの年間使用量推移（単位がkWh/m³で異なるため合算せずサービス別に描画）
+const ANNUAL_USAGE_CANVAS = { electricity: 'chartAnnualUsageElec', gas: 'chartAnnualUsageGas', water: 'chartAnnualUsageWater' };
+function _renderAnnualUsageCharts() {
+  const fys = _availableFiscalYears().reverse(); // 昇順
+  const labels = fys.map(y => y+'年度');
+
+  const sumUsageFY = (svc, fy) => {
+    let t = 0, has = false;
+    _fiscalMonths(fy).forEach(m => {
+      const [y,mo] = m.split('-');
+      const r = _get(svc.key, +y, +mo);
+      if (r && r[svc.unitKey] != null) { t += r[svc.unitKey]; has = true; }
+    });
+    return has ? t : null;
+  };
+
+  SERVICES.forEach(svc => {
+    const canvasId = ANNUAL_USAGE_CANVAS[svc.key];
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    const chartKey = 'annualUsage-' + svc.key;
+    if (charts2[chartKey]) charts2[chartKey].destroy();
+    charts2[chartKey] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: svc.label,
+          data: fys.map(fy => sumUsageFY(svc, fy)),
+          backgroundColor: _annualBarColors(svc.key, fys, svc.color),
+          borderColor: svc.color,
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { ticks: { callback: v => v.toLocaleString()+' '+svc.unit, font: { size: 10 } } }
+        }
+      }
+    });
   });
 }
 
@@ -1171,7 +1256,11 @@ function _renderHistory() {
     const fmtCell = (rec, type) => {
       if (isFuture) return `<td class="future">—</td>`;
       if (!rec) return `<td class="no-data" onclick="_openInputModal(${year},${month},'${type}')">—</td>`;
-      return `<td class="has-data" onclick="_openInputModal(${year},${month},'${type}')" style="color:${_svcColor(type)}">¥${rec.amount.toLocaleString()}</td>`;
+      const uf = type === 'electricity' ? 'kwh' : 'm3';
+      const missingUsage = rec[uf] == null;
+      const cls = missingUsage ? 'has-data cell-incomplete' : 'has-data';
+      const mark = missingUsage ? '<span class="incomplete-dot" title="使用量が未入力です">●</span>' : '';
+      return `<td class="${cls}" onclick="_openInputModal(${year},${month},'${type}')" style="color:${_svcColor(type)}">¥${rec.amount.toLocaleString()}${mark}</td>`;
     };
     const fmtOther = () => {
       if (isFuture) return `<td class="future">—</td>`;
@@ -1510,6 +1599,8 @@ async function _initFirebase(cfg) {
 
 // ── Boot ──────────────────────────────────────────────────────────
 (function(){
+  const verEl = document.getElementById('appVersion');
+  if (verEl) verEl.textContent = APP_VERSION;
   const cfg=_loadConfig();
   if (cfg?.apiKey) {
     document.getElementById('authArea').style.display='flex';

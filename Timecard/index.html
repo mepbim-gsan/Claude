@@ -1187,7 +1187,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-18.3';
+const APP_VERSION = 'v07_2026-08-20';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1360,14 +1360,12 @@ function updateStampButtons(){
     (inVal && latestBreakStart !== null) ? formatTime(latestBreakStart) : '--:--';
   document.getElementById('stamp-break-start').classList.toggle('active', !!inVal && latestBreakStart !== null);
 
-  // 休憩終了ボタン：休憩中、または未出勤なら--:--。それ以外は「現在時刻以前で」最も直近に終わった休憩の終了時刻を表示
-  // （日内で単純に一番遅い終了時刻を拾うと、昼休みプリセット等まだ迎えていない未来の休憩を誤って表示してしまうため）
-  const nowT = isToday ? parseTime(nowHHMM()) : null;
-  const closedBreaks = breakRows.filter(b => b && b.start && b.end);
+  // 休憩終了ボタン：休憩中、または未出勤なら--:--。それ以外はスタンプボタンで実際に記録した休憩のうち最も直近の終了時刻を表示
+  // （昼休みプリセット等、スタンプボタンを押さず入っているだけの休憩(stamped=falseまたは未定義)は対象外にする）
+  const closedBreaks = breakRows.filter(b => b && b.start && b.end && b.stamped);
   const latestBreakEnd = closedBreaks.reduce((latest, b) => {
     const t = parseTime(b.end);
-    if(t === null || (nowT !== null && t > nowT)) return latest;
-    return (latest === null || t > latest) ? t : latest;
+    return (t !== null && (latest === null || t > latest)) ? t : latest;
   }, null);
   document.getElementById('stamp-break-end-time').textContent =
     (inVal && openBreaks.length===0 && latestBreakEnd !== null) ? formatTime(latestBreakEnd) : '--:--';
@@ -1425,7 +1423,7 @@ function loadDayToPunch(ds){
     if(d.hourlyHours) document.getElementById('hourly-hours').value = d.hourlyHours;
     document.getElementById('punch-remote').checked = !!d.remote;
     updateRemoteLabel();
-    for(const b of (d.breaks||[])) addBreakRow(b.start, b.end);
+    for(const b of (d.breaks||[])) addBreakRow(b.start, b.end, !!b.stamped);
     // 休憩が1件以下なら2行目（空欄）も追加
     if((d.breaks||[]).length <= 1) addBreakRow('','');
   } else {
@@ -1458,8 +1456,8 @@ function isBreakValid(b,inVal,outVal){
   let bEnd=be;if(bEnd<=bStart)bEnd+=24*60;
   return bStart>=inM&&bEnd<=wEnd;
 }
-function addBreakRow(start='',end=''){
-  const idx=breakRows.length;breakRows.push({start,end});
+function addBreakRow(start='',end='',stamped=false){
+  const idx=breakRows.length;breakRows.push({start,end,stamped});
   const div=document.createElement('div');div.className='break-row';div.dataset.idx=idx;
   const i1=document.createElement('input');i1.type='text';i1.placeholder='開始 1200';i1.value=start;i1.maxLength=6;
   i1.addEventListener('input',e=>{breakRows[idx].start=e.target.value;updateDaySummary();});
@@ -1531,7 +1529,7 @@ function sortBreakRows(){
   });
   breakRows.length=0;
   document.getElementById('break-list').innerHTML='';
-  valid.forEach(b=>addBreakRow(b.start,b.end));
+  valid.forEach(b=>addBreakRow(b.start,b.end,b.stamped));
 }
 function _setPunchLock(locked) {
   const ids = ['stamp-in','stamp-out','stamp-break-start','stamp-break-end'];
@@ -3624,10 +3622,11 @@ document.addEventListener('DOMContentLoaded',()=>{
     const target=breakRows.findIndex(b=>b&&!b.start);
     if(target>=0){
       breakRows[target].start=t;
+      breakRows[target].stamped=true;
       const row=document.querySelector(`.break-row[data-idx="${target}"]`);
       if(row) row.querySelectorAll('input')[0].value=t;
     } else {
-      addBreakRow(t,'');
+      addBreakRow(t,'',true);
     }
     updateDaySummary();
     autoSavePunch();
@@ -3637,6 +3636,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     const target=breakRows.findIndex(b=>b&&b.start&&!b.end);
     if(target>=0){
       breakRows[target].end=t;
+      breakRows[target].stamped=true;
       const row=document.querySelector(`.break-row[data-idx="${target}"]`);
       if(row) row.querySelectorAll('input')[1].value=t;
     }
@@ -3798,9 +3798,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   const y0=currentMonth.getFullYear(),m0=currentMonth.getMonth()+1;
   initScheduleDefaults(y0,m0);
 
-  // ショートカットからの自動打刻（?action=in / ?action=out）
+  // ショートカットからの自動打刻（?action=in / ?action=out / ?action=break）
   const urlAction=new URLSearchParams(location.search).get('action');
-  if(urlAction==='in'||urlAction==='out'){
+  if(urlAction==='in'||urlAction==='out'||urlAction==='break'){
     // URLパラメータをクリア（履歴を汚さない）
     history.replaceState(null,'',location.pathname);
 
@@ -3829,7 +3829,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         } else {
           msg='すでに出勤が記録されています';
         }
-      } else {
+      } else if(urlAction==='out'){
         if(inEl&&inEl.value&&outEl&&!outEl.value){
           outEl.value=t;
           document.getElementById('stamp-out-time').textContent=formatTime(parseTime(t));
@@ -3842,6 +3842,38 @@ document.addEventListener('DOMContentLoaded',()=>{
           msg='出勤が記録されていません';
         } else {
           msg='すでに退勤が記録されています';
+        }
+      } else {
+        // 休憩: 休憩中なら終了、勤務中なら開始（未出勤・退勤済みは何もしない）
+        if(!inEl?.value){
+          msg='まだ出勤していません';
+        } else if(outEl?.value){
+          msg='すでに退勤済みです';
+        } else {
+          const openIdx=breakRows.findIndex(b=>b&&b.start&&!b.end);
+          if(openIdx>=0){
+            breakRows[openIdx].end=t;
+            breakRows[openIdx].stamped=true;
+            const row=document.querySelector(`.break-row[data-idx="${openIdx}"]`);
+            if(row) row.querySelectorAll('input')[1].value=t;
+            updateDaySummary();
+            sortBreakRows();
+            autoSavePunch();
+            msg=`休憩終了を記録しました（${formatTime(parseTime(t))}）`;
+          } else {
+            const blankIdx=breakRows.findIndex(b=>b&&!b.start);
+            if(blankIdx>=0){
+              breakRows[blankIdx].start=t;
+              breakRows[blankIdx].stamped=true;
+              const row=document.querySelector(`.break-row[data-idx="${blankIdx}"]`);
+              if(row) row.querySelectorAll('input')[0].value=t;
+            } else {
+              addBreakRow(t,'',true);
+            }
+            updateDaySummary();
+            autoSavePunch();
+            msg=`休憩開始を記録しました（${formatTime(parseTime(t))}）`;
+          }
         }
       }
 

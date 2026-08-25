@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v74
-  @changelog v74: ライトボックスで、原寸が画面より小さい画像も上限倍率(3倍)まで画面いっぱいに拡大表示するように変更(fitLightboxImageSize)。以前は大きい画像のみ画面に収まるよう縮小し、小さい画像は原寸のまま小さく表示されていた。上限を設けているのは、極端に小さい画像を無理に引き伸ばしてぼやけて見えるのを防ぐため
+  @version   v75
+  @changelog v75: 「📝見出し」ボタンで、記録一覧の行を選択中でも常に末尾に追加されてしまう不具合を修正。原因はボタンクリック時、click発火までにフォーカスがボタン自身へ移ってしまい、addCaptureRecord内部のgetFocusedItem()では選択していた行を検出できなくなっていたこと。pointerdown時点(フォーカス移動前)で選択行を先に検出し、addCaptureRecordへ明示的に渡すよう変更(📸キャプチャは同じ理由で従来通り末尾に追加のまま、📋貼り付けは元々ボタンを介さないCtrl+V操作が主なため影響なし)
+  @changelog v74: ライトボックスで、原寸が画面より小さい画像も上限倍率(3倍)まで画面いっぱいに拡大表示するように変更(fitLightboxImageSize)。以前は大きい画像のみ画面に収まるよう縮小し、小さい画像は原寸のまま小さく表示されていた
   @changelog v73: ライトボックス・トリミング対象画像(lightboxImg/cropImage、エクスポートHTML側lightboxImgも含む)にdraggable="false"を追加。ブラウザ標準のネイティブ画像ドラッグ(ゴースト画像が浮くドラッグ&ドロップ)が左クリックでのパン/選択操作に割り込み、ドラッグがうまく効かなかったり途中で止まったりする不具合を修正
-  @changelog v72: ライトボックス/トリミング/バージョン履歴の各モーダル表示中、背景ページがホイール操作等でスクロールしてしまい誤操作やドラッグのずれの原因になっていた不具合を修正。lockBodyScroll()/unlockBodyScroll()を追加し、モーダルを開いている間はdocument.body.style.overflowをhiddenにして背景スクロールを止めるように統一(多重開閉に備えカウンタ管理)
-  ※ v01〜v71の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v72の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -289,7 +289,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v74</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v75</span>
 </header>
 
 <div id="versionModal">
@@ -923,8 +923,12 @@
     return el.closest(".item");
   }
 
-  async function addCaptureRecord(dataURL){
-    const anchorItem = getFocusedItem(); // 選択中の行があれば、その直後に挿入する
+  // anchorItemOverrideを明示的に渡した場合はそちらを優先する(undefinedの場合のみ
+  // その場でgetFocusedItem()する)。ボタンクリックはclickイベント発火までに
+  // ボタン自身へフォーカスが移ってしまい、その時点でgetFocusedItem()しても
+  // 選択していた行を検出できないため、pointerdown時点で先に検出して渡す用途
+  async function addCaptureRecord(dataURL, anchorItemOverride){
+    const anchorItem = anchorItemOverride !== undefined ? anchorItemOverride : getFocusedItem();
     const record = { dataURL, memo:"", timestamp: Date.now() };
     const id = await dbAdd(record);
     record.id = id;
@@ -942,8 +946,15 @@
     return record;
   }
 
+  // 「📝見出し」ボタンはクリックするとフォーカスがボタン自身へ移ってしまい、
+  // click発火時点でgetFocusedItem()しても選択していた行が検出できなくなるため、
+  // フォーカス移動が起きる前のpointerdown時点で先に検出しておく
+  let noteInsertAnchor;
+  btnAddNote.addEventListener("pointerdown", () => {
+    noteInsertAnchor = getFocusedItem();
+  });
   btnAddNote.addEventListener("click", async () => {
-    const record = await addCaptureRecord(null);
+    const record = await addCaptureRecord(null, noteInsertAnchor);
     // 追加直後にメモ欄へフォーカスしてすぐ入力できるように
     const div = captureList.querySelector(`.item[data-id="${record.id}"]`);
     const ta = div && div.querySelector("textarea");
@@ -2483,7 +2494,8 @@
     ["v71","トリミングに「前回の範囲」ボタンを追加(直前の範囲を比率で他画像にも適用可能)"],
     ["v72","モーダル表示中に背景ページがスクロールしてしまう不具合を修正"],
     ["v73","ライトボックス/トリミング画像のネイティブドラッグを無効化しドラッグ操作を安定化"],
-    ["v74","ライトボックスで小さい画像も上限倍率まで画面いっぱいに拡大表示"]
+    ["v74","ライトボックスで小さい画像も上限倍率まで画面いっぱいに拡大表示"],
+    ["v75","「見出し」追加が選択行を無視して末尾に入ってしまう不具合を修正"]
   ];
 
   const verLabel = $("verLabel");
