@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v75
-  @changelog v75: 「📝見出し」ボタンで、記録一覧の行を選択中でも常に末尾に追加されてしまう不具合を修正。原因はボタンクリック時、click発火までにフォーカスがボタン自身へ移ってしまい、addCaptureRecord内部のgetFocusedItem()では選択していた行を検出できなくなっていたこと。pointerdown時点(フォーカス移動前)で選択行を先に検出し、addCaptureRecordへ明示的に渡すよう変更(📸キャプチャは同じ理由で従来通り末尾に追加のまま、📋貼り付けは元々ボタンを介さないCtrl+V操作が主なため影響なし)
+  @version   v76
+  @changelog v76: ライトボックスに、画像下部のキャプションとしてメモ本文を表示する機能を追加(以前から方針合意済みだったが未実装だった)。最大3行でline-clamp省略・展開ボタンなし・メモが空(空白のみ含む)の場合はキャプション自体を非表示(#lightboxCaption:empty)。openLightbox()の引数を画像src文字列から<img>要素そのものに変更し、その行のtextarea値からメモを取得。キャプション表示時はfitLightboxImageSize()の高さ計算からキャプション分を差し引き、画像がはみ出さないよう調整。キャプション上のクリックはライトボックスを閉じないようstopPropagation
+  @changelog v75: 「📝見出し」ボタンで、記録一覧の行を選択中でも常に末尾に追加されてしまう不具合を修正。原因はボタンクリック時、click発火までにフォーカスがボタン自身へ移ってしまい、addCaptureRecord内部のgetFocusedItem()では選択していた行を検出できなくなっていたこと。pointerdown時点(フォーカス移動前)で選択行を先に検出し、addCaptureRecordへ明示的に渡すよう変更
   @changelog v74: ライトボックスで、原寸が画面より小さい画像も上限倍率(3倍)まで画面いっぱいに拡大表示するように変更(fitLightboxImageSize)。以前は大きい画像のみ画面に収まるよう縮小し、小さい画像は原寸のまま小さく表示されていた
-  @changelog v73: ライトボックス・トリミング対象画像(lightboxImg/cropImage、エクスポートHTML側lightboxImgも含む)にdraggable="false"を追加。ブラウザ標準のネイティブ画像ドラッグ(ゴースト画像が浮くドラッグ&ドロップ)が左クリックでのパン/選択操作に割り込み、ドラッグがうまく効かなかったり途中で止まったりする不具合を修正
-  ※ v01〜v72の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v73の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -216,12 +216,20 @@
 
   #lightbox{
     display:none; position:fixed; inset:0; z-index:100;
-    background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:24px;
+    background:rgba(0,0,0,.85); flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:10px;
     cursor:zoom-out;
   }
   #lightbox.open{display:flex;}
   #lightbox img{max-width:96vw; max-height:96vh; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .08s ease-out; transform-origin:center; cursor:grab; touch-action:none;}
   #lightbox img:active{cursor:grabbing;}
+  #lightboxCaption{
+    max-width:min(96vw, 700px); color:#e6e8ec; background:rgba(23,26,33,.85);
+    border-radius:8px; padding:8px 14px; font-size:13px; line-height:1.5; white-space:pre-wrap;
+    overflow:hidden; text-overflow:ellipsis;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+    cursor:default; flex-shrink:0;
+  }
+  #lightboxCaption:empty{display:none;}
 
   .ver{cursor:pointer;}
   .ver:hover{text-decoration:underline;}
@@ -289,7 +297,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v75</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v76</span>
 </header>
 
 <div id="versionModal">
@@ -387,6 +395,7 @@
 
 <div id="lightbox">
   <img id="lightboxImg" alt="拡大表示" draggable="false">
+  <div id="lightboxCaption"></div>
 </div>
 
 <div id="cropModal">
@@ -431,6 +440,7 @@
   const ctx = workCanvas.getContext("2d");
   const lightbox = $("lightbox");
   const lightboxImg = $("lightboxImg");
+  const lightboxCaption = $("lightboxCaption");
 
   const btnShare = $("btnShare");
   const btnTheme = $("btnTheme");
@@ -2055,20 +2065,28 @@
   // (原寸のまま表示すると小さすぎて見づらいため)。上限を設けているのは、
   // 極端に小さい画像を無理に画面いっぱいまで引き伸ばすとぼやけて粗く見えるのを防ぐため
   const LIGHTBOX_MAX_UPSCALE = 3;
+  // キャプション表示分(最大3行+パディング+隙間)として画像の高さ計算から差し引く概算値
+  const LIGHTBOX_CAPTION_RESERVE = 110;
   function fitLightboxImageSize(){
     const natW = lightboxImg.naturalWidth, natH = lightboxImg.naturalHeight;
     if(!natW || !natH) return;
-    const maxW = window.innerWidth * 0.96, maxH = window.innerHeight * 0.96;
+    const hasCaption = lightboxCaption.textContent.trim() !== "";
+    const maxW = window.innerWidth * 0.96;
+    const maxH = window.innerHeight * 0.96 - (hasCaption ? LIGHTBOX_CAPTION_RESERVE : 0);
     const scale = Math.min(maxW / natW, maxH / natH, LIGHTBOX_MAX_UPSCALE);
     lightboxImg.style.width = Math.round(natW * scale) + "px";
     lightboxImg.style.height = Math.round(natH * scale) + "px";
   }
 
-  function openLightbox(src, index){
+  function openLightbox(imgEl, index){
+    const item = imgEl.closest(".item");
+    const textarea = item ? item.querySelector("textarea") : null;
+    const memo = textarea ? textarea.value : "";
+    lightboxCaption.textContent = memo.trim();
     lightboxImg.style.width = "";
     lightboxImg.style.height = "";
     lightboxImg.onload = fitLightboxImageSize;
-    lightboxImg.src = src;
+    lightboxImg.src = imgEl.src;
     lightboxIndex = index !== undefined ? index : -1;
     lightboxZoom = 1;
     lightboxPanX = 0;
@@ -2080,6 +2098,7 @@
   function closeLightbox(){
     lightbox.classList.remove("open");
     lightboxImg.src = "";
+    lightboxCaption.textContent = "";
     unlockBodyScroll();
   }
   function showLightboxByOffset(offset){
@@ -2087,14 +2106,16 @@
     const imgs = getLightboxImages();
     if(imgs.length === 0) return;
     const next = (lightboxIndex + offset + imgs.length) % imgs.length;
-    openLightbox(imgs[next].src, next);
+    openLightbox(imgs[next], next);
   }
   captureList.addEventListener("click", (e) => {
     const img = e.target.closest("img");
     if(!img) return;
     const imgs = getLightboxImages();
-    openLightbox(img.src, imgs.indexOf(img));
+    openLightbox(img, imgs.indexOf(img));
   });
+  // キャプション上のクリックはライトボックスを閉じない(文字選択・コピーの邪魔をしないため)
+  lightboxCaption.addEventListener("click", (e) => { e.stopPropagation(); });
   lightbox.addEventListener("click", (e) => {
     if(lightboxMoved){ lightboxMoved = false; return; } // ドラッグ後のclickでは閉じない
     closeLightbox();
@@ -2495,7 +2516,8 @@
     ["v72","モーダル表示中に背景ページがスクロールしてしまう不具合を修正"],
     ["v73","ライトボックス/トリミング画像のネイティブドラッグを無効化しドラッグ操作を安定化"],
     ["v74","ライトボックスで小さい画像も上限倍率まで画面いっぱいに拡大表示"],
-    ["v75","「見出し」追加が選択行を無視して末尾に入ってしまう不具合を修正"]
+    ["v75","「見出し」追加が選択行を無視して末尾に入ってしまう不具合を修正"],
+    ["v76","ライトボックスに画像下のメモキャプション表示を追加(3行で省略)"]
   ];
 
   const verLabel = $("verLabel");
