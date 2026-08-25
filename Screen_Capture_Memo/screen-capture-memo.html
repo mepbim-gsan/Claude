@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v76
-  @changelog v76: ライトボックスに、画像下部のキャプションとしてメモ本文を表示する機能を追加(以前から方針合意済みだったが未実装だった)。最大3行でline-clamp省略・展開ボタンなし・メモが空(空白のみ含む)の場合はキャプション自体を非表示(#lightboxCaption:empty)。openLightbox()の引数を画像src文字列から<img>要素そのものに変更し、その行のtextarea値からメモを取得。キャプション表示時はfitLightboxImageSize()の高さ計算からキャプション分を差し引き、画像がはみ出さないよう調整。キャプション上のクリックはライトボックスを閉じないようstopPropagation
-  @changelog v75: 「📝見出し」ボタンで、記録一覧の行を選択中でも常に末尾に追加されてしまう不具合を修正。原因はボタンクリック時、click発火までにフォーカスがボタン自身へ移ってしまい、addCaptureRecord内部のgetFocusedItem()では選択していた行を検出できなくなっていたこと。pointerdown時点(フォーカス移動前)で選択行を先に検出し、addCaptureRecordへ明示的に渡すよう変更
-  @changelog v74: ライトボックスで、原寸が画面より小さい画像も上限倍率(3倍)まで画面いっぱいに拡大表示するように変更(fitLightboxImageSize)。以前は大きい画像のみ画面に収まるよう縮小し、小さい画像は原寸のまま小さく表示されていた
-  ※ v01〜v73の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  @version   v77
+  @changelog v77: ライトボックスを開いたまま矢印キーで画像を切り替えると、その都度openLightbox()内でlockBodyScroll()が呼ばれ背景スクロール停止のカウンター(v72で導入)が余分に加算され、閉じてもスクロールが復活しなくなる不具合を修正。「閉→開」する瞬間(まだ開いていない時)だけロックするようopenLightbox()にガードを追加
+  @changelog v76: ライトボックスに、画像下部のキャプションとしてメモ本文を表示する機能を追加(以前から方針合意済みだったが未実装だった)。最大3行でline-clamp省略・展開ボタンなし・メモが空(空白のみ含む)の場合はキャプション自体を非表示(#lightboxCaption:empty)。openLightbox()の引数を画像src文字列から<img>要素そのものに変更し、その行のtextarea値からメモを取得
+  @changelog v75: 「📝見出し」ボタンで、記録一覧の行を選択中でも常に末尾に追加されてしまう不具合を修正。原因はボタンクリック時、click発火までにフォーカスがボタン自身へ移ってしまい、addCaptureRecord内部のgetFocusedItem()では選択していた行を検出できなくなっていたこと
+  ※ v01〜v74の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -297,7 +297,7 @@
 <header>
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v76</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v77</span>
 </header>
 
 <div id="versionModal">
@@ -2079,6 +2079,10 @@
   }
 
   function openLightbox(imgEl, index){
+    // 矢印キーでの画像切り替え(showLightboxByOffset)は開いたまま何度もopenLightboxを
+    // 呼び直すため、その都度lockBodyScroll()すると開閉回数のカウンターがズレて
+    // 閉じてもスクロールが復活しなくなる。実際に「閉→開」する瞬間だけロックする
+    const alreadyOpen = lightbox.classList.contains("open");
     const item = imgEl.closest(".item");
     const textarea = item ? item.querySelector("textarea") : null;
     const memo = textarea ? textarea.value : "";
@@ -2093,7 +2097,7 @@
     lightboxPanY = 0;
     applyLightboxTransform();
     lightbox.classList.add("open");
-    lockBodyScroll();
+    if(!alreadyOpen) lockBodyScroll();
   }
   function closeLightbox(){
     lightbox.classList.remove("open");
@@ -2517,7 +2521,8 @@
     ["v73","ライトボックス/トリミング画像のネイティブドラッグを無効化しドラッグ操作を安定化"],
     ["v74","ライトボックスで小さい画像も上限倍率まで画面いっぱいに拡大表示"],
     ["v75","「見出し」追加が選択行を無視して末尾に入ってしまう不具合を修正"],
-    ["v76","ライトボックスに画像下のメモキャプション表示を追加(3行で省略)"]
+    ["v76","ライトボックスに画像下のメモキャプション表示を追加(3行で省略)"],
+    ["v77","矢印キーで画像切替後、閉じてもスクロールが復活しない不具合を修正"]
   ];
 
   const verLabel = $("verLabel");
