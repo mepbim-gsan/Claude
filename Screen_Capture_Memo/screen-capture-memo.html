@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v77
+  @version   v79
+  @changelog v79: ヘッダー(タイトル・バージョン表示)がスクロールで流れて消えていたのを、記録一覧のスクロール中も常時見えるようposition:stickyで画面上部に固定。既存の「2. キャプチャ」パネル・記録一覧見出しのsticky位置(--capture-panel-h)はヘッダー分だけ下にずれるため、ヘッダー実高さを監視する--header-h変数を新設し、それぞれのtop位置をヘッダー高さ基準に組み替え
+  @changelog v78: v76で本体側のライトボックスに追加したメモキャプション表示が、書き出したHTML(exportHtml)側の簡易ライトボックスには反映されていなかった不具合を修正。exportHtml内にも#lightboxCaption要素・IMG_MEMO_LIST(IMG_SRC_LISTと対になるメモ配列)・対応CSSを追加し、書き出し後のファイルでも画像拡大時にメモが表示されるよう統一
   @changelog v77: ライトボックスを開いたまま矢印キーで画像を切り替えると、その都度openLightbox()内でlockBodyScroll()が呼ばれ背景スクロール停止のカウンター(v72で導入)が余分に加算され、閉じてもスクロールが復活しなくなる不具合を修正。「閉→開」する瞬間(まだ開いていない時)だけロックするようopenLightbox()にガードを追加
-  @changelog v76: ライトボックスに、画像下部のキャプションとしてメモ本文を表示する機能を追加(以前から方針合意済みだったが未実装だった)。最大3行でline-clamp省略・展開ボタンなし・メモが空(空白のみ含む)の場合はキャプション自体を非表示(#lightboxCaption:empty)。openLightbox()の引数を画像src文字列から<img>要素そのものに変更し、その行のtextarea値からメモを取得
-  @changelog v75: 「📝見出し」ボタンで、記録一覧の行を選択中でも常に末尾に追加されてしまう不具合を修正。原因はボタンクリック時、click発火までにフォーカスがボタン自身へ移ってしまい、addCaptureRecord内部のgetFocusedItem()では選択していた行を検出できなくなっていたこと
-  ※ v01〜v74の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v76の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -48,6 +48,8 @@
   header{
     padding:14px 20px; border-bottom:1px solid var(--border);
     display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    position:sticky; top:0; z-index:25; background:var(--bg);
+    box-shadow:0 6px 14px rgba(0,0,0,.18);
   }
   header h1{font-size:15px; margin:0; font-weight:600; color:var(--sub); letter-spacing:.02em;}
   .ver{font-size:11px; color:var(--sub);}
@@ -56,13 +58,13 @@
   main{padding:20px; max-width:960px; margin:0 auto;}
 
   #capturePanel{
-    position:sticky; top:0; z-index:20;
+    position:sticky; top:var(--header-h, 0px); z-index:20;
     box-shadow:0 6px 14px rgba(0,0,0,.18);
   }
 
   #recordListPanel{padding-top:0;}
   #recordListHeader{
-    position:sticky; top:var(--capture-panel-h, 0px); z-index:15;
+    position:sticky; top:calc(var(--header-h, 0px) + var(--capture-panel-h, 0px)); z-index:15;
     background:var(--panel); margin:0 -16px; padding:14px 16px 10px;
     border-bottom:1px solid var(--border); box-shadow:0 6px 10px rgba(0,0,0,.10);
   }
@@ -294,10 +296,10 @@
 </head>
 <body>
 
-<header>
+<header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v77</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v79</span>
 </header>
 
 <div id="versionModal">
@@ -470,6 +472,7 @@
   const countLabel = $("countLabel");
   const sizeEstimateLabel = $("sizeEstimate");
   const capturePanelEl = $("capturePanel");
+  const appHeaderEl = $("appHeader");
 
   let stream = null;
   let dragging = false;
@@ -1585,12 +1588,20 @@
 
   #lightbox{
     display:none; position:fixed; inset:0; z-index:100;
-    background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:24px;
+    background:rgba(0,0,0,.85); flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:10px;
     cursor:zoom-out;
   }
   #lightbox.open{display:flex;}
   #lightbox img{max-width:96vw; max-height:96vh; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .08s ease-out; transform-origin:center; cursor:grab; touch-action:none;}
   #lightbox img:active{cursor:grabbing;}
+  #lightboxCaption{
+    max-width:min(96vw, 700px); color:#e6e8ec; background:rgba(23,26,33,.85);
+    border-radius:8px; padding:8px 14px; font-size:13px; line-height:1.5; white-space:pre-wrap;
+    overflow:hidden; text-overflow:ellipsis;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+    cursor:default; flex-shrink:0;
+  }
+  #lightboxCaption:empty{display:none;}
 </style></head>
 <body>
 
@@ -1623,6 +1634,7 @@
 
 <div id="lightbox">
   <img id="lightboxImg" alt="拡大表示" draggable="false">
+  <div id="lightboxCaption"></div>
 </div>
 
 <script>
@@ -1632,11 +1644,14 @@
 
   var lightbox = document.getElementById("lightbox");
   var lightboxImg = document.getElementById("lightboxImg");
+  var lightboxCaption = document.getElementById("lightboxCaption");
   var lightboxZoom = 1;
   var lightboxPanX = 0, lightboxPanY = 0;
   var lightboxDragging = false, lightboxMoved = false, lightboxDragStart = null, lightboxPanStart = null;
   var IMG_SRC_LIST = DATA.filter(function(r){ return r.d; }).map(function(r){ return r.d; });
+  var IMG_MEMO_LIST = DATA.filter(function(r){ return r.d; }).map(function(r){ return r.m || ""; });
   var lightboxIndex = -1;
+  lightboxCaption.addEventListener("click", function(e){ e.stopPropagation(); });
 
   function applyLightboxTransform(){
     lightboxImg.style.transform = "translate(" + lightboxPanX + "px, " + lightboxPanY + "px) scale(" + lightboxZoom + ")";
@@ -1645,6 +1660,7 @@
   function openLightbox(src, index){
     lightboxImg.src = src;
     lightboxIndex = (index !== undefined) ? index : IMG_SRC_LIST.indexOf(src);
+    lightboxCaption.textContent = (IMG_MEMO_LIST[lightboxIndex] || "").trim();
     lightboxZoom = 1;
     lightboxPanX = 0;
     lightboxPanY = 0;
@@ -1654,6 +1670,7 @@
   function closeLightbox(){
     lightbox.classList.remove("open");
     lightboxImg.src = "";
+    lightboxCaption.textContent = "";
   }
   function showLightboxByOffset(offset){
     if(lightboxIndex === -1 || IMG_SRC_LIST.length === 0) return;
@@ -2522,7 +2539,9 @@
     ["v74","ライトボックスで小さい画像も上限倍率まで画面いっぱいに拡大表示"],
     ["v75","「見出し」追加が選択行を無視して末尾に入ってしまう不具合を修正"],
     ["v76","ライトボックスに画像下のメモキャプション表示を追加(3行で省略)"],
-    ["v77","矢印キーで画像切替後、閉じてもスクロールが復活しない不具合を修正"]
+    ["v77","矢印キーで画像切替後、閉じてもスクロールが復活しない不具合を修正"],
+    ["v78","書き出したHTMLの拡大表示にもメモキャプションを反映"],
+    ["v79","ヘッダー(タイトル・バージョン)をスクロールしても固定表示に"]
   ];
 
   const verLabel = $("verLabel");
@@ -2549,6 +2568,18 @@
   versionModal.addEventListener("click", (e) => {
     if(e.target === versionModal) closeVersionModal();
   });
+
+  // ヘッダー(タイトル/バージョン)の実高さを監視し、その直下に「2. キャプチャ」
+  // パネルがぴったり貼り付くようCSS変数へ反映する(折り返し等で高さが変わっても追従)
+  function updateHeaderHeight(){
+    document.documentElement.style.setProperty("--header-h", appHeaderEl.offsetHeight + "px");
+  }
+  if(typeof ResizeObserver !== "undefined"){
+    new ResizeObserver(updateHeaderHeight).observe(appHeaderEl);
+  }else{
+    window.addEventListener("resize", updateHeaderHeight);
+  }
+  updateHeaderHeight();
 
   // 「2. キャプチャ」パネルの実高さを監視し、記録一覧の見出しがその直下に
   // ぴったり貼り付くようCSS変数へ反映する(ボタンが折り返す等で高さが変わっても追従)
