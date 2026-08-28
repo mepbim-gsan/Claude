@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v79
+  @version   v80
+  @changelog v80: ライトボックスで画像を右クリックしても「画像をコピー」等のブラウザ標準メニューが出せない不具合を修正(本体・書き出しHTMLの両方)。原因はv73で追加したパン操作用のpointerdownハンドラがボタン種別を判定しておらず、右クリックでもsetPointerCapture()が実行されてしまい、ブラウザ標準のcontextmenuが出せなくなっていたこと。pointerdownの先頭でe.button!==0なら即returnし、右クリックはパン処理を素通りするよう修正
   @changelog v79: ヘッダー(タイトル・バージョン表示)がスクロールで流れて消えていたのを、記録一覧のスクロール中も常時見えるようposition:stickyで画面上部に固定。既存の「2. キャプチャ」パネル・記録一覧見出しのsticky位置(--capture-panel-h)はヘッダー分だけ下にずれるため、ヘッダー実高さを監視する--header-h変数を新設し、それぞれのtop位置をヘッダー高さ基準に組み替え
   @changelog v78: v76で本体側のライトボックスに追加したメモキャプション表示が、書き出したHTML(exportHtml)側の簡易ライトボックスには反映されていなかった不具合を修正。exportHtml内にも#lightboxCaption要素・IMG_MEMO_LIST(IMG_SRC_LISTと対になるメモ配列)・対応CSSを追加し、書き出し後のファイルでも画像拡大時にメモが表示されるよう統一
-  @changelog v77: ライトボックスを開いたまま矢印キーで画像を切り替えると、その都度openLightbox()内でlockBodyScroll()が呼ばれ背景スクロール停止のカウンター(v72で導入)が余分に加算され、閉じてもスクロールが復活しなくなる不具合を修正。「閉→開」する瞬間(まだ開いていない時)だけロックするようopenLightbox()にガードを追加
-  ※ v01〜v76の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v77の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -299,7 +299,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v79</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v80</span>
 </header>
 
 <div id="versionModal">
@@ -1689,6 +1689,7 @@
   }, { passive: false });
   // ドラッグで表示位置を移動(拡大時に便利。等倍でも動かせる)
   lightboxImg.addEventListener("pointerdown", function(e){
+    if(e.button !== 0) return; // 右クリックは素通りさせてブラウザ標準の「画像をコピー」等を使えるようにする
     e.stopPropagation();
     lightboxDragging = true;
     lightboxMoved = false;
@@ -2150,6 +2151,7 @@
   }, { passive: false });
   // ドラッグで表示位置を移動(拡大時に便利。等倍でも動かせる)
   lightboxImg.addEventListener("pointerdown", (e) => {
+    if(e.button !== 0) return; // 右クリックは素通りさせてブラウザ標準の「画像をコピー」等を使えるようにする
     e.stopPropagation();
     lightboxDragging = true;
     lightboxMoved = false;
@@ -2541,7 +2543,8 @@
     ["v76","ライトボックスに画像下のメモキャプション表示を追加(3行で省略)"],
     ["v77","矢印キーで画像切替後、閉じてもスクロールが復活しない不具合を修正"],
     ["v78","書き出したHTMLの拡大表示にもメモキャプションを反映"],
-    ["v79","ヘッダー(タイトル・バージョン)をスクロールしても固定表示に"]
+    ["v79","ヘッダー(タイトル・バージョン)をスクロールしても固定表示に"],
+    ["v80","ライトボックス画像の右クリックコピーができない不具合を修正"]
   ];
 
   const verLabel = $("verLabel");
