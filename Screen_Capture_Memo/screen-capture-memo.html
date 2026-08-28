@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v82
+  @version   v83
+  @changelog v83: v82で書き出しHTMLが白紙(画像も何も出ない)になる重大バグを修正。原因はexportHtml内に追加したlinkifyText()の正規表現内の「\/」「\-」「\]」が、exportHtmlを組み立てる外側のテンプレートリテラルの文字列評価時に無意味なエスケープとしてバックスラッシュごと消えてしまい(例:\/\/ → //)、書き出し後のファイル内で不正な正規表現リテラルとなってrenderList()実行時に例外が発生、一覧の描画全体(画像含む)が止まっていたこと。該当箇所のバックスラッシュを二重化(\\/など)して外側テンプレートの評価を経ても正しくエスケープが残るよう修正。あわせてPlaywrightで書き出しHTMLを実際にレンダリングして検証したところ、v81で追加した目次パネルがtocPanel.style.display=""ではCSS既定のdisplay:noneを上書きできず一度も表示されていなかった不具合も発覚したため、"block"を明示するよう修正
   @changelog v82: メモ・見出し内のURLを自動でハイパーリンク化(本体のライトボックスキャプション・書き出しHTMLの一覧/グリッド/ノート形式・書き出しHTML側ライトボックスキャプションの全箇所)。linkifyText()でHTMLエスケープ後にhttp(s)://で始まるURLだけを抽出して<a target="_blank" rel="noopener noreferrer">に変換、文末の句読点・括弧等はリンクに含めないようトリム。既存のtextContent代入をinnerHTML代入に置き換えるため、メモ本文はXSS対策として必ず先にHTMLエスケープしてからリンク化する実装に統一
   @changelog v81: 書き出しHTMLの「一覧表示」モードに、見出しレコードだけを拾ったNotion風の目次パネルを追加(画面右側にposition:fixedで表示、クリックでその見出し位置へスムーズスクロール)。目次パネル(#tocPanel)は見出しが1件もない場合は非表示、PDF用のグリッド/ノート形式モードや印刷時・狭い画面(1300px以下)でも非表示。ユーザーとの相談の結果、現在地ハイライトなしのシンプルなクリックジャンプのみの仕様に決定
-  @changelog v80: ライトボックスで画像を右クリックしても「画像をコピー」等のブラウザ標準メニューが出せない不具合を修正(本体・書き出しHTMLの両方)。原因はv73で追加したパン操作用のpointerdownハンドラがボタン種別を判定しておらず、右クリックでもsetPointerCapture()が実行されてしまい、ブラウザ標準のcontextmenuが出せなくなっていたこと。pointerdownの先頭でe.button!==0なら即returnし、右クリックはパン処理を素通りするよう修正
-  ※ v01〜v79の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v80の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -299,7 +299,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v82</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v83</span>
 </header>
 
 <div id="versionModal">
@@ -1747,8 +1747,8 @@
   // メモ・見出し内のURLをリンク化(HTMLエスケープしてから http(s) URLだけを<a>に変換)
   function linkifyText(text){
     var escaped = (text || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-    return escaped.replace(/(https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]+)/g, function(url){
-      var m = url.match(/[.,;:!?)\]}]+$/);
+    return escaped.replace(/(https?:\\/\\/[A-Za-z0-9\\-._~:/?#[\\]@!$&*+,;=%]+)/g, function(url){
+      var m = url.match(/[.,;:!?)\\]}]+$/);
       var trail = m ? m[0] : "";
       var core = trail ? url.slice(0, -trail.length) : url;
       return '<a href="' + core + '" target="_blank" rel="noopener noreferrer">' + core + '</a>' + trail;
@@ -1806,7 +1806,7 @@
       });
       tocList.appendChild(a);
     });
-    tocPanel.style.display = "";
+    tocPanel.style.display = "block";
   }
   function hideToc(){ tocPanel.style.display = "none"; }
 
@@ -2618,7 +2618,8 @@
     ["v79","ヘッダー(タイトル・バージョン)をスクロールしても固定表示に"],
     ["v80","ライトボックス画像の右クリックコピーができない不具合を修正"],
     ["v81","書き出しHTMLの一覧表示に見出しの目次パネルを追加"],
-    ["v82","メモ・見出し内のURLを自動でハイパーリンク化"]
+    ["v82","メモ・見出し内のURLを自動でハイパーリンク化"],
+    ["v83","書き出しHTMLが白紙になる重大バグを修正(v82の正規表現不具合)"]
   ];
 
   const verLabel = $("verLabel");
