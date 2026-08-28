@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v80
+  @version   v82
+  @changelog v82: メモ・見出し内のURLを自動でハイパーリンク化(本体のライトボックスキャプション・書き出しHTMLの一覧/グリッド/ノート形式・書き出しHTML側ライトボックスキャプションの全箇所)。linkifyText()でHTMLエスケープ後にhttp(s)://で始まるURLだけを抽出して<a target="_blank" rel="noopener noreferrer">に変換、文末の句読点・括弧等はリンクに含めないようトリム。既存のtextContent代入をinnerHTML代入に置き換えるため、メモ本文はXSS対策として必ず先にHTMLエスケープしてからリンク化する実装に統一
+  @changelog v81: 書き出しHTMLの「一覧表示」モードに、見出しレコードだけを拾ったNotion風の目次パネルを追加(画面右側にposition:fixedで表示、クリックでその見出し位置へスムーズスクロール)。目次パネル(#tocPanel)は見出しが1件もない場合は非表示、PDF用のグリッド/ノート形式モードや印刷時・狭い画面(1300px以下)でも非表示。ユーザーとの相談の結果、現在地ハイライトなしのシンプルなクリックジャンプのみの仕様に決定
   @changelog v80: ライトボックスで画像を右クリックしても「画像をコピー」等のブラウザ標準メニューが出せない不具合を修正(本体・書き出しHTMLの両方)。原因はv73で追加したパン操作用のpointerdownハンドラがボタン種別を判定しておらず、右クリックでもsetPointerCapture()が実行されてしまい、ブラウザ標準のcontextmenuが出せなくなっていたこと。pointerdownの先頭でe.button!==0なら即returnし、右クリックはパン処理を素通りするよう修正
-  @changelog v79: ヘッダー(タイトル・バージョン表示)がスクロールで流れて消えていたのを、記録一覧のスクロール中も常時見えるようposition:stickyで画面上部に固定。既存の「2. キャプチャ」パネル・記録一覧見出しのsticky位置(--capture-panel-h)はヘッダー分だけ下にずれるため、ヘッダー実高さを監視する--header-h変数を新設し、それぞれのtop位置をヘッダー高さ基準に組み替え
-  @changelog v78: v76で本体側のライトボックスに追加したメモキャプション表示が、書き出したHTML(exportHtml)側の簡易ライトボックスには反映されていなかった不具合を修正。exportHtml内にも#lightboxCaption要素・IMG_MEMO_LIST(IMG_SRC_LISTと対になるメモ配列)・対応CSSを追加し、書き出し後のファイルでも画像拡大時にメモが表示されるよう統一
-  ※ v01〜v77の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v79の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -299,7 +299,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v80</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v82</span>
 </header>
 
 <div id="versionModal">
@@ -1538,6 +1538,21 @@
   #docTitle{font-size:18px; margin:0 0 16px; padding-bottom:10px; border-bottom:2px solid var(--border);}
   .docDateTag{font-size:13px; font-weight:400; color:var(--sub);}
 
+  #tocPanel{
+    display:none; position:fixed; top:76px; right:24px; width:200px; max-height:calc(100vh - 100px);
+    overflow-y:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:12px 14px; z-index:5;
+  }
+  #tocPanel h2{font-size:11px; color:var(--sub); margin:0 0 8px; font-weight:600; letter-spacing:.02em;}
+  #tocPanel nav{display:flex; flex-direction:column;}
+  #tocPanel a{
+    display:block; color:var(--text); text-decoration:none; font-size:12px; line-height:1.4;
+    padding:4px 0 4px 8px; margin-left:-1px; border-left:2px solid transparent; opacity:.85;
+  }
+  #tocPanel a:hover{opacity:1; border-left-color:var(--accent);}
+  @media (max-width:1300px){ #tocPanel{display:none !important;} }
+  @media print{ #tocPanel{display:none !important;} }
+
   .pageHeaderPrint{
     display:none; font-size:8pt; color:var(--sub); padding-bottom:2mm; margin-bottom:4mm;
     border-bottom:1px solid var(--border);
@@ -1632,6 +1647,11 @@
   <div id="viewRoot"></div>
 </main>
 
+<div id="tocPanel">
+  <h2>目次</h2>
+  <nav id="tocList"></nav>
+</div>
+
 <div id="lightbox">
   <img id="lightboxImg" alt="拡大表示" draggable="false">
   <div id="lightboxCaption"></div>
@@ -1660,7 +1680,7 @@
   function openLightbox(src, index){
     lightboxImg.src = src;
     lightboxIndex = (index !== undefined) ? index : IMG_SRC_LIST.indexOf(src);
-    lightboxCaption.textContent = (IMG_MEMO_LIST[lightboxIndex] || "").trim();
+    lightboxCaption.innerHTML = linkifyText((IMG_MEMO_LIST[lightboxIndex] || "").trim());
     lightboxZoom = 1;
     lightboxPanX = 0;
     lightboxPanY = 0;
@@ -1724,6 +1744,23 @@
     return e;
   }
 
+  // メモ・見出し内のURLをリンク化(HTMLエスケープしてから http(s) URLだけを<a>に変換)
+  function linkifyText(text){
+    var escaped = (text || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    return escaped.replace(/(https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]+)/g, function(url){
+      var m = url.match(/[.,;:!?)\]}]+$/);
+      var trail = m ? m[0] : "";
+      var core = trail ? url.slice(0, -trail.length) : url;
+      return '<a href="' + core + '" target="_blank" rel="noopener noreferrer">' + core + '</a>' + trail;
+    });
+  }
+  function elLinked(tag, cls, text){
+    var e = document.createElement(tag);
+    if(cls) e.className = cls;
+    e.innerHTML = linkifyText(text || "");
+    return e;
+  }
+
   function makeImg(src){
     var img = document.createElement("img");
     img.src = src; img.alt = "capture";
@@ -1736,17 +1773,42 @@
   }
 
   function renderList(root){
-    DATA.forEach(function(r){
+    DATA.forEach(function(r, idx){
       if(r.d){
         var rec = el("div", "rec");
         rec.appendChild(makeImg(r.d));
-        rec.appendChild(el("div", "rec-memo", r.m || "(メモなし)"));
+        rec.appendChild(elLinked("div", "rec-memo", r.m || "(メモなし)"));
         root.appendChild(rec);
       }else{
-        root.appendChild(el("div", r.h === false ? "recHeading is-memo" : "recHeading", r.m || ""));
+        var headingEl = elLinked("div", r.h === false ? "recHeading is-memo" : "recHeading", r.m || "");
+        if(r.h !== false) headingEl.id = "toc-" + idx;
+        root.appendChild(headingEl);
       }
     });
   }
+
+  // 「見出し」レコードだけを拾って右側の目次パネルを組み立てる(一覧表示のときのみ表示)
+  var tocPanel = document.getElementById("tocPanel");
+  var tocList = document.getElementById("tocList");
+  function renderToc(){
+    tocList.innerHTML = "";
+    var headings = DATA.map(function(r, idx){ return { r: r, idx: idx }; })
+      .filter(function(x){ return !x.r.d && x.r.h !== false; });
+    if(headings.length === 0){ tocPanel.style.display = "none"; return; }
+    headings.forEach(function(h){
+      var a = document.createElement("a");
+      a.href = "#toc-" + h.idx;
+      a.textContent = h.r.m || "(無題)";
+      a.addEventListener("click", function(ev){
+        ev.preventDefault();
+        var target = document.getElementById("toc-" + h.idx);
+        if(target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      tocList.appendChild(a);
+    });
+    tocPanel.style.display = "";
+  }
+  function hideToc(){ tocPanel.style.display = "none"; }
 
   // 見出し(画像なし)はページの「N枚/ページ」の枚数カウントに含めず、
   // 現在のページの中に全幅の区切りとして挿入する
@@ -1792,10 +1854,10 @@
         if(r.d){
           var cell = el("div", "gridCell");
           cell.appendChild(makeImg(r.d));
-          cell.appendChild(el("div", "gridMemo", r.m || "(メモなし)"));
+          cell.appendChild(elLinked("div", "gridMemo", r.m || "(メモなし)"));
           page.appendChild(cell);
         }else{
-          page.appendChild(el("div", r.h === false ? "gridHeading is-memo" : "gridHeading", r.m || ""));
+          page.appendChild(elLinked("div", r.h === false ? "gridHeading is-memo" : "gridHeading", r.m || ""));
         }
       });
       root.appendChild(page);
@@ -1813,10 +1875,10 @@
           var slide = el("div", "noteSlide");
           slide.appendChild(makeImg(r.d));
           row.appendChild(slide);
-          row.appendChild(el("div", "noteComment", r.m || "(メモなし)"));
+          row.appendChild(elLinked("div", "noteComment", r.m || "(メモなし)"));
           page.appendChild(row);
         }else{
-          page.appendChild(el("div", r.h === false ? "noteHeading is-memo" : "noteHeading", r.m || ""));
+          page.appendChild(elLinked("div", r.h === false ? "noteHeading is-memo" : "noteHeading", r.m || ""));
         }
       });
       root.appendChild(page);
@@ -1834,9 +1896,9 @@
     viewRoot.innerHTML = "";
     var mode = layoutSelect.value;
     perPageWrap.style.display = (mode === "grid" || mode === "notes") ? "inline-flex" : "none";
-    if(mode === "list"){ renderList(viewRoot); }
-    else if(mode === "grid"){ renderGrid(viewRoot, parseInt(perPageSelect.value, 10)); }
-    else if(mode === "notes"){ renderNotes(viewRoot, parseInt(perPageSelect.value, 10)); }
+    if(mode === "list"){ renderList(viewRoot); renderToc(); }
+    else if(mode === "grid"){ renderGrid(viewRoot, parseInt(perPageSelect.value, 10)); hideToc(); }
+    else if(mode === "notes"){ renderNotes(viewRoot, parseInt(perPageSelect.value, 10)); hideToc(); }
   }
   layoutSelect.addEventListener("change", render);
   perPageSelect.addEventListener("change", render);
@@ -2085,6 +2147,16 @@
   const LIGHTBOX_MAX_UPSCALE = 3;
   // キャプション表示分(最大3行+パディング+隙間)として画像の高さ計算から差し引く概算値
   const LIGHTBOX_CAPTION_RESERVE = 110;
+  // メモ内のURLをリンク化(HTMLエスケープしてから http(s) URLだけを<a>に変換)
+  function linkifyText(text){
+    const escaped = (text || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    return escaped.replace(/(https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]+)/g, (url) => {
+      const m = url.match(/[.,;:!?)\]}]+$/);
+      const trail = m ? m[0] : "";
+      const core = trail ? url.slice(0, -trail.length) : url;
+      return `<a href="${core}" target="_blank" rel="noopener noreferrer">${core}</a>${trail}`;
+    });
+  }
   function fitLightboxImageSize(){
     const natW = lightboxImg.naturalWidth, natH = lightboxImg.naturalHeight;
     if(!natW || !natH) return;
@@ -2104,7 +2176,7 @@
     const item = imgEl.closest(".item");
     const textarea = item ? item.querySelector("textarea") : null;
     const memo = textarea ? textarea.value : "";
-    lightboxCaption.textContent = memo.trim();
+    lightboxCaption.innerHTML = linkifyText(memo.trim());
     lightboxImg.style.width = "";
     lightboxImg.style.height = "";
     lightboxImg.onload = fitLightboxImageSize;
@@ -2544,7 +2616,9 @@
     ["v77","矢印キーで画像切替後、閉じてもスクロールが復活しない不具合を修正"],
     ["v78","書き出したHTMLの拡大表示にもメモキャプションを反映"],
     ["v79","ヘッダー(タイトル・バージョン)をスクロールしても固定表示に"],
-    ["v80","ライトボックス画像の右クリックコピーができない不具合を修正"]
+    ["v80","ライトボックス画像の右クリックコピーができない不具合を修正"],
+    ["v81","書き出しHTMLの一覧表示に見出しの目次パネルを追加"],
+    ["v82","メモ・見出し内のURLを自動でハイパーリンク化"]
   ];
 
   const verLabel = $("verLabel");
