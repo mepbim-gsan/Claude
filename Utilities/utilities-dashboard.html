@@ -1,10 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v01_2026-08-23.6
+  @version   v01_2026-09-01
   @changelog
-    v01_2026-08-23.4 - 比較タブの年間グラフ（金額推移・使用量推移）で、記録月数が他年度より少ない（データが揃っていない）年度の棒を薄い色で区別表示
     v01_2026-08-23.5 - ダッシュボードの差分表示（サービス別比較表）で、金額とパーセントを必ず改行して表示するよう変更
     v01_2026-08-23.6 - サマリーカードのラベルから重複していた年度表記を削除（上部の年度セレクタと重複のため）
+    v01_2026-09-01   - 比較タブの月間金額比較に前年合計の折れ線グラフを追加
 -->
 <!DOCTYPE html>
 <html lang="ja">
@@ -366,7 +366,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v01_2026-08-23.6';
+const APP_VERSION = 'v01_2026-09-01';
 const CONFIG_KEY = 'firebase-config-v1';
 const DOC_PATH   = 'shared/utilities-data';
 
@@ -1037,20 +1037,38 @@ function _renderMonthlyChart() {
 
   const getAmt = (type, m) => { const [y,mo]=m.split('-'); return _get(type,+y,+mo)?.amount??null; };
   const getOth = m => { const [y,mo]=m.split('-'); return _getOthers(+y,+mo).reduce((s,r)=>s+(r.amount||0),0)||null; };
+  // 前年同月の合計金額（電気+ガス+水道+その他）。1件もデータが無い月はnull
+  const getPrevTotal = m => {
+    const [y,mo] = m.split('-');
+    const py = +y - 1, pmo = +mo;
+    let total = 0, has = false;
+    ['electricity','gas','water'].forEach(t => {
+      const r = _get(t, py, pmo);
+      if (r && r.amount != null) { total += r.amount; has = true; }
+    });
+    const oth = _getOthers(py, pmo).reduce((s,r)=>s+(r.amount||0),0);
+    if (oth) { total += oth; has = true; }
+    return has ? total : null;
+  };
 
   const datasets = [
     { label:'⚡ 電気', data:months.map(m=>getAmt('electricity',m)), type:'bar', backgroundColor:'#f59e0bcc', borderColor:'#f59e0b', borderWidth:1, borderRadius:3, order:2 },
     { label:'🔥 ガス', data:months.map(m=>getAmt('gas',m)),         type:'bar', backgroundColor:'#ef4444cc', borderColor:'#ef4444', borderWidth:1, borderRadius:3, order:2 },
     { label:'💧 水道', data:months.map(m=>getAmt('water',m)),       type:'bar', backgroundColor:'#3b82f6cc', borderColor:'#3b82f6', borderWidth:1, borderRadius:3, order:2 },
     { label:'📦 その他', data:months.map(m=>getOth(m)),             type:'bar', backgroundColor:'#8b5cf6cc', borderColor:'#8b5cf6', borderWidth:1, borderRadius:3, order:2 },
+    {
+      label: '前年 合計', data: months.map(getPrevTotal), type: 'line',
+      borderColor: '#64748b', backgroundColor: 'transparent', borderWidth: 2, borderDash: [4,3],
+      pointRadius: 3, pointBackgroundColor: '#64748b', tension: 0.3, order: 1,
+    },
   ];
 
-  // 表示中データセットの合計平均を描画するプラグイン
+  // 表示中の今年データセット（棒グラフ）の合計平均を描画するプラグイン（前年合計の折れ線は含めない）
   const avgLinePlugin = {
     id: 'monthlyAvgLine',
     afterDraw(chart) {
       const ctx2 = chart.ctx;
-      const visibleDatasets = chart.data.datasets.filter((_,i) => chart.isDatasetVisible(i));
+      const visibleDatasets = chart.data.datasets.filter((ds,i) => ds.type !== 'line' && chart.isDatasetVisible(i));
       if (!visibleDatasets.length) return;
       const n = chart.data.labels.length;
       const totals = Array.from({length:n}, (_,i) =>
