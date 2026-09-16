@@ -1187,7 +1187,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-08-20';
+const APP_VERSION = 'v07_2026-09-16';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1543,6 +1543,26 @@ function _setPunchLock(locked) {
   if (indicator) indicator.style.display = locked ? 'block' : 'none';
 }
 
+// 前日に開いたままの休憩＋未退勤があれば、休憩開始時刻を退勤時刻として記録するか確認する
+function checkPrevDayDanglingBreak(){
+  const ds=document.getElementById('punch-date').value;
+  if(!ds)return;
+  const d=new Date(ds+'T00:00:00');d.setDate(d.getDate()-1);
+  const prevDs=toDateStr(d);
+  const prevDay=getDay(prevDs);
+  if(!prevDay||!prevDay.timeIn||prevDay.timeOut)return; // 前日が未出勤 or 既に退勤済みなら対象外
+  const openBreak=(prevDay.breaks||[]).find(b=>b&&b.start&&!b.end);
+  if(!openBreak)return;
+  const t=openBreak.start;
+  const ok=confirm(`前日(${prevDs})が退勤未入力で、休憩(${formatTime(parseTime(t))}開始)が終了未入力のままです。\nこの休憩開始時刻を前日の退勤時刻として記録しますか？`);
+  if(!ok)return;
+  const breaks=(prevDay.breaks||[]).map(b=>(b===openBreak)?{...b,end:t}:b);
+  setDay(prevDs,{...prevDay,timeOut:t,breaks});
+  saveStorage();
+  const key=getMonthKey(d.getFullYear(),d.getMonth()+1);
+  if(document.getElementById('page-month').classList.contains('active')&&getMonthKey(currentMonth.getFullYear(),currentMonth.getMonth()+1)===key)renderMonthTab();
+  showWorkToast(`前日の退勤時刻を${formatTime(parseTime(t))}で記録しました`);
+}
 function autoSavePunch(){
   const ds=document.getElementById('punch-date').value;
   if(!ds)return;
@@ -3601,6 +3621,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   // スタンプボタン
   document.getElementById('stamp-in').addEventListener('click',()=>{
+    checkPrevDayDanglingBreak();
     const t=nowHHMM();
     document.getElementById('punch-in').value=t;
     document.getElementById('stamp-in-time').textContent=formatTime(parseTime(t));
@@ -3820,6 +3841,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
       if(urlAction==='in'){
         if(inEl&&!inEl.value){
+          checkPrevDayDanglingBreak();
           inEl.value=t;
           document.getElementById('stamp-in-time').textContent=formatTime(parseTime(t));
           document.getElementById('stamp-in').classList.add('active');
