@@ -1187,7 +1187,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-16';
+const APP_VERSION = 'v07_2026-09-17';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1316,6 +1316,12 @@ function calcWorkMinutesForForecast(o){
   // 時間休は差し引かない（実際の勤務時間で予測）
   if(lv==='half')t+=4*60; // 半休分4h加算
   return Math.max(0,t);
+}
+// 実績確定判定: 休暇で時刻不要、または出退勤とも入力済み。出勤済み・退勤前は未確定
+function isActualSettled(o){
+  if(!o)return false;
+  const lv=o.leave||'normal';
+  return lv==='paid'||lv==='comp'||(lv==='half'&&!o.timeIn)||!!(o.timeIn&&o.timeOut);
 }
 
 function getDay(ds){const[y,m,d]=ds.split('-');return(monthData[getMonthKey(+y,+m)]?.days||{})[String(+d)]||null;}
@@ -1670,7 +1676,7 @@ function renderMonthTab(){
     const sob=(data.schedules||{})[String(d)];
     const actualLeave=obj?.leave||'normal';
     // 実績確定判定: 休暇で時刻不要、または出退勤とも入力済み
-    const actualSettled = !!obj && (actualLeave==='paid'||actualLeave==='comp'||(actualLeave==='half'&&!obj.timeIn)||(obj.timeIn&&obj.timeOut));
+    const actualSettled = isActualSettled(obj);
     if(actualSettled){
       combinedMins+=calcWorkMinutes(obj);
     } else {
@@ -1698,7 +1704,7 @@ function renderMonthTab(){
       const dow=new Date(ds+'T00:00:00').getDay();
       if(dow===0){lastD2=d;continue;} // 日曜=法定休日は法定時間外の対象外
       const obj=(data.days||{})[String(d)];
-      if(obj){
+      if(obj&&isActualSettled(obj)){
         const hasFullTime=obj.timeIn&&obj.timeOut;
         rA2+=calcWorkMinutesForForecast(obj);
         lastD2=d;
@@ -2036,7 +2042,7 @@ function renderMonthChart(y,m,data,bizDays,_unused,legalLimit){
     // 実績累積（過去月・当月共通）
     const dow=new Date(ds+'T00:00:00').getDay();
     if(ds<=today){
-      if(obj&&dow!==0){ // 日曜=法定休日は法定時間外の対象外
+      if(obj&&dow!==0&&isActualSettled(obj)){ // 日曜=法定休日は法定時間外の対象外
         // timeIn・timeOut両方入力済みの日のみ平均計算に使用
         const hasFullTime = obj.timeIn && obj.timeOut;
         const wM=calcWorkMinutesForForecast(obj);
