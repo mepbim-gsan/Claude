@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1a1d27"/>
+  <!-- baseline -->
+  <rect x="96" y="368" width="320" height="10" rx="5" fill="#3a3f4f"/>
+  <!-- electricity bar (amber) -->
+  <rect x="120" y="216" width="70" height="152" rx="14" fill="#f59e0b"/>
+  <!-- gas bar (red) -->
+  <rect x="221" y="152" width="70" height="216" rx="14" fill="#ef4444"/>
+  <!-- water bar (blue) -->
+  <rect x="322" y="256" width="70" height="112" rx="14" fill="#3b82f6"/>
+  <!-- trend line over the bars -->
+  <polyline points="130,196 256,132 366,236" fill="none" stroke="#f5f7fa" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+  <circle cx="130" cy="196" r="12" fill="#f5f7fa"/>
+  <circle cx="256" cy="132" r="12" fill="#f5f7fa"/>
+  <circle cx="366" cy="236" r="12" fill="#f5f7fa"/>
+</svg>
