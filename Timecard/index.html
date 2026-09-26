@@ -477,6 +477,11 @@ label:first-child{margin-top:0;}
 .work-cell.locked-off:hover,.work-cell.locked-break:hover{outline:none;}
 .work-lock-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--text2);margin-top:8px;align-items:center;}
 .work-legend-box{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:4px;}
+.sum-copy{border:1px dashed var(--border);border-radius:6px;padding:2px 6px;cursor:pointer;}
+.sum-copy:active{background:rgba(79,142,247,.15);}
+.sum-bar-hit{display:flex;align-items:center;gap:6px;padding:10px 0;cursor:pointer;}
+.sum-bar-hit>.sum-bar{flex:1;height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;}
+.sum-bar-hit>.sum-chev{color:var(--text3);font-size:14px;font-weight:700;line-height:1;}
 .work-summary-row.clickable{cursor:pointer;border-radius:8px;padding-left:6px;padding-right:6px;}
 .work-summary-row.clickable:hover{background:rgba(79,142,247,.10);}
 .work-summary-detail{font-size:11px;color:var(--text3);text-align:right;}
@@ -1017,6 +1022,8 @@ label:first-child{margin-top:0;}
         <input type="text" id="core-start" placeholder="1000" maxlength="4">
         <input type="text" id="core-end" placeholder="1500" maxlength="4">
       </div>
+      <label style="margin-top:8px;">部署コード <span style="font-size:10px;color:var(--text3);">（JOB集計の日別表示でJOBNOコピー時に先頭へ付加）</span></label>
+      <input type="text" id="dept-code">
       <button id="btn-save-work-settings" class="btn btn-primary btn-sm mt-8">保存</button>
     </div>
     <div class="card">
@@ -1188,7 +1195,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-18.3';
+const APP_VERSION = 'v07_2026-09-26';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3092,13 +3099,17 @@ function renderWorkSummary(){
   const grandTotal=registeredTotal+unregistered;
   el.innerHTML=head+jobs.map(([job,data])=>{
     const pct=grandTotal>0?Math.round(data.total/grandTotal*100):0;
-    return `<div style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px;" class="clickable" role="button" tabindex="0" data-job-detail="${escapeHtml(job)}">
-        <span style="font-weight:700;">${escapeHtml(job)}</span>
-        <span style="color:var(--accent);font-weight:700;">${formatHoursMin(data.total)} <span style="color:var(--text2);font-weight:400;">${pct}%</span></span>
+    const rowAttr=workSummaryDay?'':` class="clickable" role="button" tabindex="0" data-job-detail="${escapeHtml(job)}"`;
+    const jobAttr=workSummaryDay&&isCopyableJobNo(job)?` class="sum-copy" data-copy="${escapeHtml((settings.deptCode||'')+job)}"`:'';
+    const timeAttr=workSummaryDay?` class="sum-copy" data-copy="${formatHHMM(data.total)}"`:'';
+    return `<div style="margin-bottom:2px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;"${rowAttr}>
+        <span style="font-weight:700;"${jobAttr}>${escapeHtml(job)}</span>
+        <span style="color:var(--accent);font-weight:700;"${timeAttr}>${formatHoursMin(data.total)} <span style="color:var(--text2);font-weight:400;">${pct}%</span></span>
       </div>
-      <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;">
-        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:4px;transition:width .4s;"></div>
+      <div class="sum-bar-hit" role="button" tabindex="0" data-job-detail="${escapeHtml(job)}">
+        <div class="sum-bar"><div style="height:100%;width:${pct}%;background:var(--accent);border-radius:4px;transition:width .4s;"></div></div>
+        <span class="sum-chev">›</span>
       </div>
     </div>`;
   }).join('')+(unregistered>0?(()=>{const pct=Math.round(unregistered/grandTotal*100);return `<div style="margin-bottom:10px;">
@@ -3118,7 +3129,18 @@ function renderWorkSummary(){
     row.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open();});
     row.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
   });
+  el.querySelectorAll('[data-copy]').forEach(c=>{
+    c.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();copyText(c.dataset.copy);});
+  });
   renderWorkSummaryCategory();
+}
+// 半角のみで数字を含むJOBNOのみコピー対象（未定・COMMON・INTERNAL等を除外）
+function isCopyableJobNo(job){return /^[\x21-\x7E]+$/.test(job)&&/\d/.test(job);}
+function formatHHMM(mins){const h=Math.floor(mins/60),m=Math.round(mins%60);return String(h).padStart(2,'0')+String(m).padStart(2,'0');}
+function copyText(text){
+  const done=()=>showWorkToast(`コピーしました: ${text}`);
+  const fallback=()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0;';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done();}catch(_){showWorkToast('コピーできませんでした');}ta.remove();};
+  if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).then(done,fallback);else fallback();
 }
 function showJobBreakdown(jobNo){
   // v11: 既存のmodal-overlayを使わず、内訳専用の完全独立オーバーレイを生成する。
@@ -3579,7 +3601,7 @@ function exportExcel(){
 }
 
 // SETTINGS
-function renderSettingsUI(){document.getElementById('std-hours').value=settings.stdHours||8;document.getElementById('core-start').value=settings.coreStart||'1000';document.getElementById('core-end').value=settings.coreEnd||'1500';renderPresetList();renderBreakPresetList();renderHolidayYearFilter();renderHolidayList();const dk=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('btn-theme-setting').textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';}
+function renderSettingsUI(){document.getElementById('std-hours').value=settings.stdHours||8;document.getElementById('core-start').value=settings.coreStart||'1000';document.getElementById('core-end').value=settings.coreEnd||'1500';document.getElementById('dept-code').value=settings.deptCode||'';renderPresetList();renderBreakPresetList();renderHolidayYearFilter();renderHolidayList();const dk=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('btn-theme-setting').textContent=dk?'☀️ ライトに切替':'🌙 ダークに切替';}
 function renderPresetList(){const el=document.getElementById('preset-list');el.innerHTML=(settings.presets||[]).map((p,i)=>`<div class="preset-item"><div class="preset-name">${p.name}</div><div class="preset-time">${formatTime(parseTime(p.timeIn))}〜${formatTime(parseTime(p.timeOut))}</div><button class="btn btn-ghost btn-sm" data-di="${i}">削除</button></div>`).join('');el.querySelectorAll('[data-di]').forEach(b=>b.addEventListener('click',()=>{settings.presets.splice(+b.dataset.di,1);saveSettingsStorage();renderPresetList();renderPresetButtons();}));}
 function renderBreakPresetList(){const el=document.getElementById('break-preset-list');el.innerHTML=(settings.breakPresets||[]).map((b,i)=>`<div class="preset-item"><div class="preset-name">${formatTime(parseTime(b.start))}〜${formatTime(parseTime(b.end))}</div><button class="btn btn-ghost btn-sm" data-dib="${i}">削除</button></div>`).join('');el.querySelectorAll('[data-dib]').forEach(b=>b.addEventListener('click',()=>{settings.breakPresets.splice(+b.dataset.dib,1);saveSettingsStorage();renderBreakPresetList();}));}
 function renderPresetButtons(){['preset-buttons','sched-preset-buttons'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.innerHTML='';(settings.presets||[]).forEach(p=>{const c=document.createElement('div');c.className='leave-chip';c.textContent=p.name;c.addEventListener('click',()=>{if(id==='preset-buttons'){document.getElementById('punch-in').value=p.timeIn;document.getElementById('punch-out').value=p.timeOut;updateDaySummary();}else{document.getElementById('sched-in').value=p.timeIn;document.getElementById('sched-out').value=p.timeOut;}});el.appendChild(c);});});}
@@ -3775,7 +3797,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     renderAnnualJobCharts();
   });
   document.getElementById('btn-export-excel').addEventListener('click',exportExcel);
-  document.getElementById('btn-save-work-settings').addEventListener('click',()=>{settings.stdHours=parseFloat(document.getElementById('std-hours').value)||8;settings.coreStart=document.getElementById('core-start').value;settings.coreEnd=document.getElementById('core-end').value;saveSettingsStorage();alert('保存しました');});
+  document.getElementById('btn-save-work-settings').addEventListener('click',()=>{settings.stdHours=parseFloat(document.getElementById('std-hours').value)||8;settings.coreStart=document.getElementById('core-start').value;settings.coreEnd=document.getElementById('core-end').value;settings.deptCode=document.getElementById('dept-code').value.trim();saveSettingsStorage();alert('保存しました');});
   document.getElementById('btn-add-preset').addEventListener('click',()=>{const n=document.getElementById('new-preset-name').value.trim(),i=document.getElementById('new-preset-in').value.trim(),o=document.getElementById('new-preset-out').value.trim();if(!n||!i||!o)return;settings.presets.push({name:n,timeIn:i,timeOut:o});saveSettingsStorage();renderPresetList();renderPresetButtons();document.getElementById('new-preset-name').value='';document.getElementById('new-preset-in').value='';document.getElementById('new-preset-out').value='';});
   document.getElementById('btn-add-break-preset').addEventListener('click',()=>{const s=document.getElementById('new-bp-start').value.trim(),e=document.getElementById('new-bp-end').value.trim();if(!s||!e)return;settings.breakPresets.push({start:s,end:e});saveSettingsStorage();renderBreakPresetList();});
   document.getElementById('btn-add-holiday').addEventListener('click',()=>{const d=document.getElementById('new-hol-date').value,n=document.getElementById('new-hol-name').value.trim();if(!d||!n)return;settings.holidays.push({date:d,name:n});settings.holidays.sort((a,b)=>a.date.localeCompare(b.date));saveSettingsStorage();renderHolidayYearFilter();renderHolidayList();});
