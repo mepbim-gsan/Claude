@@ -1,55 +1,15 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-05-03.18
+  @version   v06_2026-09-26
   @changelog
-    v01_2026-04-26 - 初版
-    v02_2026-04-26 - ライト/ダークモード、月次ダッシュボード、PC/SP対応
-    v03_2026-04-26 - 30分/1時間CSV自動判別、粒度をlocalStorageに記録し混在を拒否、
-                     内部キーをYYYY-MM-DD_HH:MMに変更、表示を30分刻み（棒グラフ48本・ヒートマップ48スロット）
-    v04_2026-04-27 - Firebase対応（Google認証・Firestore同期）、ゲストモード追加
-                     設定モーダル統合（CSV・データ消去・Firebase設定・ログアウト）
-                     集計キャッシュ追加（_aggCache・_slotAvgCache）、月別推移の重複集計削減
-                     resizeをdebounce（180ms）、日別KPIパネル追加、KPIに自家消費量追加
-                     スマホ表示調整、KPI数値右揃え・tabular-nums
-                     Firestoreデータ構造: shared-solar/solar-{YYYY-MM} = {granularity, slots:{...}}
-    v05_2026-04-27 - タブ全面刷新：月次ダッシュボード→日次分析、月別推移→月間推移（ヒストグラム・月別表追加）
-                     劣化トレンド→年間推移（年別KPI・累計・劣化診断）、日別ランキング→ランキング（日別Top15×4＋月別・年別）
-    v05_2026-04-27.5 - 箱ひげ図追加：月別（月間推移タブ・複数年色分け）、年別（経年劣化診断）
-                       劣化テーブルの比較指標をTop10平均→中央値に変更
-                       棒グラフスタイル統一（水平Xラベル・角丸・opacity）、不完全月フラグ（⚠斜線表示）
-                       月別サマリー表を降順に変更
-    v06_2026-05-01 - タブをheaderと一緒にstickyで固定（ResizeObserverでtopを動的同期）
-                     日次分析の発電量/売電量/買電量/消費量ボタンを時間帯別平均セクションに移動
-    v06_2026-05-01.2 - 箱ひげ図凡例を3行に改行（箱 / 線・ひげ / 点）
-    v07_2026-05-02 - 年間推移：年ナビ（◀YYYY年▶/全期間）追加、KPI選択年or設置後累計、年別集計+累計複合グラフ（指標切り替え・選択年ハイライト）、年別月次比較を移動（指標切り替え対応）
-                     月間推移：月ナビ（◀YYYY年▶）追加、KPIを選択年の年間合計に変更、各グラフを選択年+前年に絞り込み、ヒストグラムを選択年連動に変更
-    v06_2026-05-03 - タブ大改造：日次/月次/年次/推移/分析の5タブ構成に再編
-                     月次：日別棒グラフ新設、月別サマリー表（選択年）、○○率グラフ（月別折れ線）
-                     年次：月別棒グラフ新設、年別サマリー表新設、○○率グラフ（年別折れ線）新設
-                     推移：年別集計+累計、年別月次比較箱ひげ図（全年色分け）、経年劣化診断
-                     分析：季節別平均、ヒストグラム、ランキング統合
-    v06_2026-05-03.2 - 日次：日別サマリー表追加
-    v06_2026-05-03.3 - 月次箱ひげ修正
-    v06_2026-05-03.4 - 月次・年次箱ひげのboxStatsキー参照バグ修正（p25/p75/median→q1/q3/med）
-    v06_2026-05-03.5 - 月次箱ひげ：X軸を1〜12月固定・前年グレー表示を修正
-    v06_2026-05-03.6 - 月次箱ひげ：ひげを破線・箱を半透明・外れ値を空円・凡例を左上に変更
-    v06_2026-05-03.7 - 日別・月別・年別サマリー表を統一
-    v06_2026-05-03.8 - 月次・年次箱ひげを推移タブと同書式に統一
-    v06_2026-05-03.9 - 年次棒グラフ書式統一
-    v06_2026-05-03.10 - 日別サマリー表: 時間スロット数不足の日を斜線＋⚠表示
-    v06_2026-05-03.11 - 棒グラフ書式統一
-    v06_2026-05-03.12 - 日別サマリー表tfoot列数バグ修正
-    v06_2026-05-03.13 - expectedSlots/getDaySlotCount/isDayIncomplete関数欠落バグ修正
-    v06_2026-05-03.14 - 月次箱ひげ凡例位置修正
-    v06_2026-05-03.15 - 日次ヘッダー1行化
-    v06_2026-05-03.16 - 時間帯別平均: 丸一日データが揃っていない日を除外
-    v06_2026-05-03.17 - 月次日別棒グラフ: X軸を月の実日数（28〜31日）で固定
+    v06_2026-09-26 - 月次日別棒グラフ・年次月別棒グラフ（消費量）: 自家消費量の白破線に凡例追加、ツールチップに自家消費量・買電量を追加
     v06_2026-05-03.18 - 月次自家消費分析グラフ: X軸を月の実日数で固定（月ナビ・日ナビ・ピーク）、「月平均に戻す」→「平均」（mT拡大・凡例をSVG上部に固定）（スロット数列の空セル追加）（薄fill+枠線・消費量の自家消費線を白破線）（今日は除外）（棒幅細め・凡例左上・前年凡例追加）、年次初期値を最新年に修正（ひげ破線縦1本＋両端横線・箱opacity.25・外れ値空円）（自家消費量・自家消費率追加、合計行追加、不完全行スタイル統一）（日単位・選択月の月のみ表示）、月次・年次自家消費切り替えボタン追加
                       年次棒グラフに前年グレー折れ線追加、年次ナビ方向修正（古←◀ ▶→新→全期間）
                       月次：日別棒グラフを選択月のみに変更、消費量に自家消費線、自家消費分析（日単位）追加、月別日次箱ひげ追加
                       年次：自家消費分析（月単位）追加、月別棒グラフ消費量に自家消費線、年別月合計箱ひげ追加、ナビ初期値を最新年に変更
                       推移：箱ひげ図を月次・年次に移動し削除
+    v06_2026-05-03.17 - 月次日別棒グラフ: X軸を月の実日数（28〜31日）で固定
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -3002,7 +2962,7 @@ function renderDayBarChart(){
   const moW = Math.floor(availW/daysInMonth);
   const gap = Math.max(1, Math.floor(moW*0.18));
   const bW = Math.max(4, moW-gap);
-  const mL=44, mT=10, mB=28, cH=160;
+  const mL=44, mT=dayBarMet==='con'?24:10, mB=28, cH=160;
   const W=contW, H=cH+mT+mB;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
   drawGridAndYAxis(svg, maxV, mL, mT, W, cH, 2);
@@ -3019,11 +2979,12 @@ function renderDayBarChart(){
     if(!dkMap.has(dk)) return; // データなし列はスキップ
     const di=ds.indexOf(dk);
     const v=vals[di], bh=(v/maxV)*cH;
+    const selfTip=dayBarMet==='con'?'<br>自家消費量: '+selfVals[di].toFixed(2)+' kWh<br>買電量: '+daySum(dk,'buy').toFixed(2)+' kWh':'';
     svg.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',Math.max(bh,0))
       .attr('fill',col[dayBarMet]).attr('fill-opacity',.3)
       .attr('stroke',col[dayBarMet]).attr('stroke-width',1.5).attr('stroke-opacity',.9)
       .attr('rx',2)
-      .on('mousemove',e=>showTip(e,dk+'<br>'+ML[dayBarMet]+': <b>'+v.toFixed(2)+' kWh</b>'))
+      .on('mousemove',e=>showTip(e,dk+'<br>'+ML[dayBarMet]+': <b>'+v.toFixed(2)+' kWh</b>'+selfTip))
       .on('mouseleave',hideTip);
     // 消費量: 自家消費量を白破線で表示
     if(dayBarMet==='con' && selfVals[di]>0){
@@ -3032,6 +2993,16 @@ function renderDayBarChart(){
         .attr('stroke','#ffffff').attr('stroke-width',1.5).attr('stroke-dasharray','3,2').attr('opacity',.85);
     }
   });
+  if(dayBarMet==='con') drawSelfLineLegend(svg,mL,6,col.con);
+}
+
+function drawSelfLineLegend(svg,x,y,c){
+  svg.append('rect').attr('x',x).attr('y',y).attr('width',16).attr('height',12)
+    .attr('fill',c).attr('fill-opacity',.3).attr('stroke',c).attr('stroke-width',1).attr('rx',1);
+  svg.append('line').attr('x1',x+1).attr('x2',x+15).attr('y1',y+6).attr('y2',y+6)
+    .attr('stroke','#ffffff').attr('stroke-width',1.5).attr('stroke-dasharray','3,2').attr('opacity',.85);
+  svg.append('text').attr('x',x+20).attr('y',y+10).attr('fill',cv('--text2'))
+    .attr('font-size',9).text('自家消費量（白破線）');
 }
 
 // ================================================================
@@ -3070,11 +3041,12 @@ function renderYrMonBarChart(){
     const v=vals[i],bh=(v/maxV)*cH;
     const x=mL+i*moW+Math.floor(gap/2); // 月幅内で中央寄せ
     const inc=existMs.includes(ym)&&isIncomplete(ym);
+    const selfTip=yrMonBarMet==='con'&&existMs.includes(ym)?'<br>自家消費量: '+Math.max(moSum(ym,'con')-moSum(ym,'buy'),0).toFixed(1)+' kWh<br>買電量: '+moSum(ym,'buy').toFixed(1)+' kWh':'';
     svg.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',Math.max(bh,0))
       .attr('fill',col[yrMonBarMet]).attr('fill-opacity',inc?.15:.3)
       .attr('stroke',col[yrMonBarMet]).attr('stroke-width',inc?1:1.5).attr('stroke-opacity',inc?.4:.9)
       .attr('rx',2)
-      .on('mousemove',e=>showTip(e,ym+'<br>'+ML[yrMonBarMet]+': <b>'+v.toFixed(1)+' kWh</b>'+(inc?' ⚠':'')))
+      .on('mousemove',e=>showTip(e,ym+'<br>'+ML[yrMonBarMet]+': <b>'+v.toFixed(1)+' kWh</b>'+selfTip+(inc?' ⚠':'')))
       .on('mouseleave',hideTip);
     // 消費量: 自家消費量を白破線で表示
     if(yrMonBarMet==='con' && existMs.includes(ym)){
@@ -3122,6 +3094,7 @@ function renderYrMonBarChart(){
     svg.append('text').attr('x',mL+90).attr('y',legY+10).attr('fill',cv('--text2'))
       .attr('font-size',9).text(prevYr+'年（線）');
   }
+  if(yrMonBarMet==='con') drawSelfLineLegend(svg,mL+(hasPrevYr?165:80),legY,col.con);
 }
 
 function drawLineSeg(svg,pts){
