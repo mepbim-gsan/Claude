@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-09-26.3
+  @version   v06_2026-09-26.4
   @changelog
+    v06_2026-09-26.4 - ヘッダー右上にバージョン表記を追加（APP_VERSION定数で管理）
     v06_2026-09-26.3 - 年次: 年内累計（前年比較）グラフを新設（指標は月別棒グラフと連動、最終月が月途中なら前年は同日までの累計で比較）
     v06_2026-09-26.2 - 月次: 日別棒グラフに前年同月のグレー破線折れ線＋凡例を追加、月内累計（前年同月比較）グラフを新設（指標は日別棒グラフと連動）
-    v06_2026-09-26 - 月次日別棒グラフ・年次月別棒グラフ（消費量）: 自家消費量の白破線に凡例追加、ツールチップに自家消費量・買電量を追加
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -228,6 +228,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <button class="btn btn-theme" id="btn-theme">🌙</button>
     <button class="btn" id="btn-settings" onclick="_openSettings()">⚙ 設定</button>
   </div>
+  <span id="app-ver" style="position:absolute;top:2px;right:8px;font-size:.58rem;line-height:1;color:var(--text2);font-variant-numeric:tabular-nums;"></span>
 </header>
 
 <div class="tabs">
@@ -542,6 +543,8 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
+const APP_VERSION = 'v06_2026-09-26.4';
+document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
 // ================================================================
