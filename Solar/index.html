@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-09-27.4
+  @version   v06_2026-09-27.5
   @changelog
+    v06_2026-09-27.5 - manifest.jsonにid追加（Android Chromeで「インストール済み」と誤判定されインストールできない問題への対策）、sw.jsのCACHE_NAMEをv2に更新
     v06_2026-09-27.4 - PWA化（manifest.json, sw.js, アイコン追加）
     v06_2026-09-27.3 - 分析: 日別TOP15・月別/年別ランキングを4指標併記からボタン切替（発電/売電/買電/消費）に変更
-    v06_2026-09-27.2 - Y軸上限を調整: 日/月単位は全期間・4指標の上位2%を除いた値、日次タブは月別時間帯平均の最大値で決定。上限超えは描画領域でクリップし▲表示（累計・年別は実最大値）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -572,7 +572,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v06_2026-09-27.4';
+const APP_VERSION = 'v06_2026-09-27.5';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'solar-dashboard-v1';
+const CACHE_NAME = 'solar-dashboard-v2';
 const ENTRY_HTML = './index.html';
 
 // ネットワーク優先で取得するリソース（更新頻度が高いもの）
