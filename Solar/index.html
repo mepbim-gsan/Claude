@@ -1,17 +1,22 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-09-27.3
+  @version   v06_2026-09-27.4
   @changelog
+    v06_2026-09-27.4 - PWA化（manifest.json, sw.js, アイコン追加）
     v06_2026-09-27.3 - 分析: 日別TOP15・月別/年別ランキングを4指標併記からボタン切替（発電/売電/買電/消費）に変更
     v06_2026-09-27.2 - Y軸上限を調整: 日/月単位は全期間・4指標の上位2%を除いた値、日次タブは月別時間帯平均の最大値で決定。上限超えは描画領域でクリップし▲表示（累計・年別は実最大値）
-    v06_2026-09-27 - Y軸統一: 目盛りを1・2・5刻み（区間4〜6）に変更、全期間・4指標共通の最大値でY軸を固定（月日・指標切替で不変）。対象: 時間帯別・自家消費分析（日/月/年）・日別/月別棒・月内/年内累計・箱ひげ（月/年）・年別集計+累計・季節別・ヒストグラム
 -->
 <html lang="ja" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solar Dashboard</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#1a1d27">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
 [data-theme="light"] {
@@ -567,7 +572,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v06_2026-09-27.3';
+const APP_VERSION = 'v06_2026-09-27.4';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -3830,6 +3835,15 @@ async function _initFirebase(cfg){
     document.getElementById('setupScreen').style.display = 'flex';
   }
 })();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
 </script>
 </body>
 </html>
