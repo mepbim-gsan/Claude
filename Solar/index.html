@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-09-27
+  @version   v06_2026-09-27.2
   @changelog
+    v06_2026-09-27.2 - Y軸上限を調整: 日/月単位は全期間・4指標の上位2%を除いた値、日次タブは月別時間帯平均の最大値で決定。上限超えは描画領域でクリップし▲表示（累計・年別は実最大値）
     v06_2026-09-27 - Y軸統一: 目盛りを1・2・5刻み（区間4〜6）に変更、全期間・4指標共通の最大値でY軸を固定（月日・指標切替で不変）。対象: 時間帯別・自家消費分析（日/月/年）・日別/月別棒・月内/年内累計・箱ひげ（月/年）・年別集計+累計・季節別・ヒストグラム
     v06_2026-09-26.4 - ヘッダー右上にバージョン表記を追加（APP_VERSION定数で管理）
-    v06_2026-09-26.3 - 年次: 年内累計（前年比較）グラフを新設（指標は月別棒グラフと連動、最終月が月途中なら前年は同日までの累計で比較）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -543,7 +543,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v06_2026-09-27';
+const APP_VERSION = 'v06_2026-09-27.2';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -1096,23 +1096,43 @@ function niceMax(maxV, minStep){ return niceScale(maxV, minStep).max; }
 function tickLabel(v, step){
   return step>=1 ? String(Math.round(v)) : v.toFixed(Math.ceil(-Math.log10(step)-1e-9));
 }
-// 全期間・4指標共通の最大値（月日・指標の切替でY軸を固定するため）
+// 全期間・4指標共通のY軸上限（月日・指標の切替でY軸を固定するため）
+// day/month は上位2%を除いた値（0を除く）、slotAvg は月別時間帯平均の最大値。上限超えはクリップ＋▲表示。raw=trueで実最大値
+const SCALE_PCT = 0.98;
 let _scaleCache=null;
-function globalMax(level){
+function globalMax(level, raw){
   if(!_scaleCache){
-    const ms=Object.keys(ML), c={slot:0,day:0,month:0,year:0,total:0};
-    Object.values(D).forEach(r=>ms.forEach(m=>{ if(r[m]>c.slot) c.slot=r[m]; }));
-    const dt=_ensureAgg().dayTotals;
-    Object.values(dt).forEach(r=>ms.forEach(m=>{ if((r[m]||0)>c.day) c.day=r[m]; }));
+    const ms=Object.keys(ML), v={slot:[],day:[],month:[]}, c={year:0,total:0};
+    Object.values(D).forEach(r=>ms.forEach(m=>{ if(r[m]>0) v.slot.push(r[m]); }));
+    Object.values(_ensureAgg().dayTotals).forEach(r=>ms.forEach(m=>{ if(r[m]>0) v.day.push(r[m]); }));
     ms.forEach(m=>{
       let tot=0;
-      months().forEach(ym=>{ const v=moSum(ym,m); tot+=v; if(v>c.month) c.month=v; });
-      years().forEach(yr=>{ const v=yrSum(yr,m); if(v>c.year) c.year=v; });
+      months().forEach(ym=>{ const x=moSum(ym,m); tot+=x; if(x>0) v.month.push(x); });
+      years().forEach(yr=>{ const x=yrSum(yr,m); if(x>c.year) c.year=x; });
       if(tot>c.total) c.total=tot;
+      // 日次タブ用: 月ごとの時間帯別平均の最大値
+      months().forEach(ym=>slotAvg(ym,m).forEach(x=>{ if(x>(c.slotAvg||0)) c.slotAvg=x; }));
+    });
+    Object.entries(v).forEach(([k,a])=>{
+      a.sort((x,y)=>x-y);
+      c[k+'Raw']=a[a.length-1]||0;
+      c[k]=a.length ? a[Math.min(a.length-1, Math.floor(a.length*SCALE_PCT))] : 0;
     });
     _scaleCache=c;
   }
-  return _scaleCache[level]||1;
+  return (raw && _scaleCache[level+'Raw']!==undefined ? _scaleCache[level+'Raw'] : _scaleCache[level])||1;
+}
+// 描画領域でクリップするグループ
+let _clipSeq=0;
+function clipPlot(svg, x, y, w, h){
+  const id='plotclip'+(++_clipSeq);
+  svg.append('clipPath').attr('id',id).append('rect').attr('x',x).attr('y',y).attr('width',w).attr('height',h);
+  return svg.append('g').attr('clip-path','url(#'+id+')');
+}
+// 上限超えマーク（▲）
+function overMark(svg, cx, top, c){
+  svg.append('path').attr('d',`M${cx-3.5},${top+6}L${cx+3.5},${top+6}L${cx},${top}Z`)
+    .attr('fill',cv('--text')).attr('stroke',cv('--bg2')).attr('stroke-width',.8);
 }
 
 function drawGridAndYAxis(svg, maxV, mL, mT, W, cH, digits, minStep){
@@ -1251,7 +1271,7 @@ function renderHourlyBar(ym){
     isDay ? `時間帯別（kWh） — ${selectedDate}` : '時間帯別平均（kWh）';
 
   // Y軸: 月平均時は月平均データ、日別時は日別データのmaxV
-  const maxV = niceMax(globalMax('slot'));
+  const maxV = niceMax(globalMax('slotAvg'));
 
   const avgs    = slotAvg(ym, hMet, dk);
   const peakIdx = avgs.indexOf(Math.max(...avgs));
@@ -1274,15 +1294,17 @@ function renderHourlyBar(ym){
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
   drawGridAndYAxis(svg, maxV, mL, mT, W, cH, 3);
+  const plot = clipPlot(svg, mL, mT, W-mL, cH);
 
   avgs.forEach((val, i) => {
     const x  = mL + i*(bW+gap);
     const bh = (val/maxV)*cH;
     const isPk = i === peakIdx;
-    svg.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',bh)
+    plot.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',bh)
       .attr('fill',col).attr('opacity',isPk?1:.5).attr('rx',1)
       .on('mousemove',e=>showTip(e,`${sl[i]}<br>${ML[hMet]}: <b>${val.toFixed(3)} kWh</b>`))
       .on('mouseleave',hideTip);
+    if(val>maxV) overMark(svg, x+bW/2, mT, col);
     const labelStep = n===48 ? 6 : 3;
     if(i % labelStep === 0){
       svg.append('text').attr('x',x+bW/2).attr('y',mT+cH+14).attr('text-anchor','middle')
@@ -1424,7 +1446,7 @@ function renderSelfChart(ym){
   const selfAvg = avgCon.map((con, i) => con - avgBuy[i]);
   const sellAvg = avgSell;
 
-  const maxAbs = niceMax(globalMax('slot'));
+  const maxAbs = niceMax(globalMax('slotAvg'));
 
   const col = colors();
   const selfColor = col.con;   // 紫: 自家消費（消費－買電）
@@ -1445,6 +1467,7 @@ function renderSelfChart(ym){
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
   drawPosNegGrid(svg, maxAbs, mL, W, zeroY, cH_pos, cH_neg);
+  const plot = clipPlot(svg, mL, mT, W-mL, cH_pos+cH_neg);
 
   // ピークインデックス
   const conTotals   = avgCon;
@@ -1467,18 +1490,18 @@ function renderSelfChart(ym){
       const buyH   = (buyV / maxAbs) * cH_pos;
       const selfH  = totalH - buyH;
       if(selfH > 0)
-        svg.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
+        plot.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
           .attr('fill',selfColor).attr('opacity',isConPk?1:.6).attr('rx',1)
           .on('mousemove',e=>showTip(e,`${slot}<br>自家消費: <b>${selfV.toFixed(3)} kWh</b><br>買電: ${buyV.toFixed(3)} kWh`))
           .on('mouseleave',hideTip);
       if(buyH > 0)
-        svg.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',buyH)
+        plot.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',buyH)
           .attr('fill',buyColor).attr('opacity',isConPk?1:.6).attr('rx',1)
           .on('mousemove',e=>showTip(e,`${slot}<br>買電: <b>${buyV.toFixed(3)} kWh</b><br>自家消費: ${selfV.toFixed(3)} kWh`))
           .on('mouseleave',hideTip);
       if(selV > 0){
         const bh = (selV/maxAbs)*cH_neg;
-        svg.append('rect').attr('x',x).attr('y',zeroY).attr('width',bW).attr('height',bh)
+        plot.append('rect').attr('x',x).attr('y',zeroY).attr('width',bW).attr('height',bh)
           .attr('fill',sellColor).attr('opacity',isSellPk?1:.6).attr('rx',1)
           .on('mousemove',e=>showTip(e,`${slot}<br>売電: <b>−${selV.toFixed(3)} kWh</b>`))
           .on('mouseleave',hideTip);
@@ -1491,17 +1514,18 @@ function renderSelfChart(ym){
       const selH    = (selV / maxAbs) * cH_pos;
       const selfH2  = genH - selH;
       if(selfH2 > 0)
-        svg.append('rect').attr('x',x).attr('y',zeroY-selfH2).attr('width',bW).attr('height',selfH2)
+        plot.append('rect').attr('x',x).attr('y',zeroY-selfH2).attr('width',bW).attr('height',selfH2)
           .attr('fill',selfColor).attr('opacity',isGenPk?1:.6).attr('rx',1)
           .on('mousemove',e=>showTip(e,`${slot}<br>自家消費: <b>${selfV.toFixed(3)} kWh</b><br>発電量合計: ${genV.toFixed(3)} kWh`))
           .on('mouseleave',hideTip);
       if(selH > 0)
-        svg.append('rect').attr('x',x).attr('y',zeroY-genH).attr('width',bW).attr('height',selH)
+        plot.append('rect').attr('x',x).attr('y',zeroY-genH).attr('width',bW).attr('height',selH)
           .attr('fill',sellColor).attr('opacity',isGenPk?1:.6).attr('rx',1)
           .on('mousemove',e=>showTip(e,`${slot}<br>売電: <b>${selV.toFixed(3)} kWh</b><br>発電量合計: ${genV.toFixed(3)} kWh`))
           .on('mouseleave',hideTip);
     }
 
+    if((selfMode==='self' ? selfV+buyV : selfV+selV) > maxAbs) overMark(svg, x+bW/2, mT, selfMode==='self'?buyColor:sellColor);
     const labelStep = n===48 ? 6 : 3;
     if(i % labelStep === 0)
       svg.append('text').attr('x',x+bW/2).attr('y',H-6).attr('text-anchor','middle')
@@ -2662,6 +2686,7 @@ function renderMonSelfChart(mode){
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
   drawPosNegGrid(svg, maxAbs, mL, W, zeroY, cH_pos, cH_neg);
+  const plot = clipPlot(svg, mL, mT, W-mL, cH_pos+cH_neg);
 
   Array.from({length:daysInMonth},(_,i)=>i+1).forEach(dayNum=>{
     const dk=ym+'-'+String(dayNum).padStart(2,'0');
@@ -2673,24 +2698,25 @@ function renderMonSelfChart(mode){
     const v=dkMap.get(dk);
     if(!v) return;
     const {buy,sell,self}=v;
+    if((mode==='self' ? self+buy : self+sell) > maxAbs) overMark(svg, x+bW/2, mT, mode==='self'?buyColor:sellColor);
     if(mode==='self'){
       const selfH=(self/maxAbs)*cH_pos,buyH=(buy/maxAbs)*cH_pos,totalH=selfH+buyH;
-      if(selfH>0) svg.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
+      if(selfH>0) plot.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
         .attr('fill',selfColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,dk+'<br>自家消費: <b>'+self.toFixed(2)+' kWh</b>')).on('mouseleave',hideTip);
-      if(buyH>0) svg.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',buyH)
+      if(buyH>0) plot.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',buyH)
         .attr('fill',buyColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,dk+'<br>買電: <b>'+buy.toFixed(2)+' kWh</b>')).on('mouseleave',hideTip);
       if(sell>0){ const sh=(sell/maxAbs)*cH_neg;
-        svg.append('rect').attr('x',x).attr('y',zeroY).attr('width',bW).attr('height',sh)
+        plot.append('rect').attr('x',x).attr('y',zeroY).attr('width',bW).attr('height',sh)
           .attr('fill',sellColor).attr('opacity',.8).attr('rx',1)
           .on('mousemove',e=>showTip(e,dk+'<br>売電: <b>-'+sell.toFixed(2)+' kWh</b>')).on('mouseleave',hideTip); }
     } else {
       const selfH=(self/maxAbs)*cH_pos,selH=(sell/maxAbs)*cH_pos,totalH=selfH+selH;
-      if(selfH>0) svg.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
+      if(selfH>0) plot.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
         .attr('fill',selfColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,dk+'<br>自家消費: <b>'+self.toFixed(2)+' kWh</b>')).on('mouseleave',hideTip);
-      if(selH>0) svg.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',selH)
+      if(selH>0) plot.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',selH)
         .attr('fill',sellColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,dk+'<br>売電: <b>'+sell.toFixed(2)+' kWh</b>')).on('mouseleave',hideTip);
     }
@@ -2750,6 +2776,7 @@ function renderMonBox(){
   if(!allVals.length){ el.innerHTML=empty('データ不足'); return; }
   const maxV=niceMax(globalMax('day'));
   drawGridAndYAxis(svg,maxV,mL,mT,W,cH,2);
+  const plot=clipPlot(svg,mL,mT,W-mL,cH);
 
   const scaleY=v=>mT+cH-(v/maxV)*cH;
   const drawBox=(ym,bx,c,mo,yrr)=>{
@@ -2757,29 +2784,30 @@ function renderMonBox(){
     const st=boxStats(vals,false);
     if(!st) return;
     const cx=bx+bW/2;
+    if(st.p95>maxV || st.outliers.some(v=>v>maxV)) overMark(svg,cx,mT,c);
     // ひげ: p5〜p95の縦線1本＋両端横線（推移タブと同書式）
-    svg.append('line').attr('x1',cx).attr('x2',cx).attr('y1',scaleY(st.p95)).attr('y2',scaleY(st.p5))
+    plot.append('line').attr('x1',cx).attr('x2',cx).attr('y1',scaleY(st.p95)).attr('y2',scaleY(st.p5))
       .attr('stroke',c).attr('stroke-width',1.2).attr('stroke-dasharray','3,2').attr('opacity',.6);
     [st.p5,st.p95].forEach(v=>{
-      svg.append('line').attr('x1',cx-bW/4).attr('x2',cx+bW/4).attr('y1',scaleY(v)).attr('y2',scaleY(v))
+      plot.append('line').attr('x1',cx-bW/4).attr('x2',cx+bW/4).attr('y1',scaleY(v)).attr('y2',scaleY(v))
         .attr('stroke',c).attr('stroke-width',1.2).attr('opacity',.7);
     });
     // 箱（半透明）
     const boxY=scaleY(st.q3), boxH=Math.max(scaleY(st.q1)-scaleY(st.q3),1);
-    svg.append('rect').attr('x',bx).attr('y',boxY).attr('width',bW).attr('height',boxH)
+    plot.append('rect').attr('x',bx).attr('y',boxY).attr('width',bW).attr('height',boxH)
       .attr('fill',c).attr('opacity',.25).attr('rx',1).attr('stroke',c).attr('stroke-width',1.2);
     // 中央値
-    svg.append('line').attr('x1',bx).attr('x2',bx+bW).attr('y1',scaleY(st.med)).attr('y2',scaleY(st.med))
+    plot.append('line').attr('x1',bx).attr('x2',bx+bW).attr('y1',scaleY(st.med)).attr('y2',scaleY(st.med))
       .attr('stroke',c).attr('stroke-width',2);
     // 外れ値（空円）
     st.outliers.forEach(ov=>{
-      svg.append('circle').attr('cx',cx).attr('cy',scaleY(ov)).attr('r',2)
+      plot.append('circle').attr('cx',cx).attr('cy',scaleY(ov)).attr('r',2)
         .attr('fill','none').attr('stroke',c).attr('stroke-width',1).attr('opacity',.6)
         .on('mousemove',e=>showTip(e,mo+'月 '+yrr+'<br>'+ML[m]+': <b>'+ov.toFixed(2)+' kWh/日</b>'))
         .on('mouseleave',hideTip);
     });
     // hover（列全体）
-    svg.append('rect').attr('x',bx-1).attr('y',mT).attr('width',bW+2).attr('height',cH)
+    plot.append('rect').attr('x',bx-1).attr('y',mT).attr('width',bW+2).attr('height',cH)
       .attr('fill','transparent').attr('stroke','none')
       .on('mousemove',e=>showTip(e,mo+'月 '+yrr+'<br>中央値: <b>'+st.med.toFixed(2)+'</b> kWh/日<br>平均: '+st.mean.toFixed(2)+' kWh<br>Q1〜Q3: '+st.q1.toFixed(2)+'〜'+st.q3.toFixed(2)+' kWh<br>5〜95%ile: '+st.p5.toFixed(2)+'〜'+st.p95.toFixed(2)+' kWh<br>N: '+st.n+'日'))
       .on('mouseleave',hideTip);
@@ -2844,26 +2872,28 @@ function renderYrSelfChart(mode){
   const zeroY=mT+cH_pos,W=contW,H=mT+cH_pos+cH_neg+mB;
   const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
   drawPosNegGrid(svg,maxAbs,mL,W,zeroY,cH_pos,cH_neg);
+  const plot=clipPlot(svg,mL,mT,W-mL,cH_pos+cH_neg);
   vals.forEach(({ym,buy,sell,self},i)=>{
     const x=mL+i*(bW+gap);
+    if((mode==='self' ? self+buy : self+sell) > maxAbs) overMark(svg,x+bW/2,mT,mode==='self'?buyColor:sellColor);
     if(mode==='self'){
       const selfH=(self/maxAbs)*cH_pos,buyH=(buy/maxAbs)*cH_pos,totalH=selfH+buyH;
-      if(selfH>0) svg.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
+      if(selfH>0) plot.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
         .attr('fill',selfColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,ym+'<br>自家消費: <b>'+self.toFixed(1)+' kWh</b>')).on('mouseleave',hideTip);
-      if(buyH>0) svg.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',buyH)
+      if(buyH>0) plot.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',buyH)
         .attr('fill',buyColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,ym+'<br>買電: <b>'+buy.toFixed(1)+' kWh</b>')).on('mouseleave',hideTip);
       if(sell>0){ const sh=(sell/maxAbs)*cH_neg;
-        svg.append('rect').attr('x',x).attr('y',zeroY).attr('width',bW).attr('height',sh)
+        plot.append('rect').attr('x',x).attr('y',zeroY).attr('width',bW).attr('height',sh)
           .attr('fill',sellColor).attr('opacity',.8).attr('rx',1)
           .on('mousemove',e=>showTip(e,ym+'<br>売電: <b>-'+sell.toFixed(1)+' kWh</b>')).on('mouseleave',hideTip); }
     } else {
       const selfH=(self/maxAbs)*cH_pos,selH=(sell/maxAbs)*cH_pos,totalH=selfH+selH;
-      if(selfH>0) svg.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
+      if(selfH>0) plot.append('rect').attr('x',x).attr('y',zeroY-selfH).attr('width',bW).attr('height',selfH)
         .attr('fill',selfColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,ym+'<br>自家消費: <b>'+self.toFixed(1)+' kWh</b>')).on('mouseleave',hideTip);
-      if(selH>0) svg.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',selH)
+      if(selH>0) plot.append('rect').attr('x',x).attr('y',zeroY-totalH).attr('width',bW).attr('height',selH)
         .attr('fill',sellColor).attr('opacity',.8).attr('rx',1)
         .on('mousemove',e=>showTip(e,ym+'<br>売電: <b>'+sell.toFixed(1)+' kWh</b>')).on('mouseleave',hideTip);
     }
@@ -2908,32 +2938,34 @@ function renderYrBox(){
   const W=mL+n*ptW+10,H=cH+mT+mB;
   const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
   drawGridAndYAxis(svg,maxV,mL,mT,W,cH,2);
+  const plot=clipPlot(svg,mL,mT,W-mL,cH);
   const scaleY=v=>mT+cH-(v/maxV)*cH;
   stats.forEach(({yr,stats:st},i)=>{
     const cx=mL+i*ptW+ptW/2, bx=cx-bW/2;
+    if(st.p95>maxV || st.outliers.some(v=>v>maxV)) overMark(svg,cx,mT,metCol);
     // ひげ: p5〜p95縦線1本＋両端横線
-    svg.append('line').attr('x1',cx).attr('x2',cx).attr('y1',scaleY(st.p95)).attr('y2',scaleY(st.p5))
+    plot.append('line').attr('x1',cx).attr('x2',cx).attr('y1',scaleY(st.p95)).attr('y2',scaleY(st.p5))
       .attr('stroke',metCol).attr('stroke-width',1.2).attr('stroke-dasharray','3,2').attr('opacity',.6);
     [st.p5,st.p95].forEach(v=>{
-      svg.append('line').attr('x1',cx-bW/4).attr('x2',cx+bW/4).attr('y1',scaleY(v)).attr('y2',scaleY(v))
+      plot.append('line').attr('x1',cx-bW/4).attr('x2',cx+bW/4).attr('y1',scaleY(v)).attr('y2',scaleY(v))
         .attr('stroke',metCol).attr('stroke-width',1.2).attr('opacity',.7);
     });
     // 箱（半透明）
     const boxY=scaleY(st.q3), boxH=Math.max(scaleY(st.q1)-scaleY(st.q3),1);
-    svg.append('rect').attr('x',bx).attr('y',boxY).attr('width',bW).attr('height',boxH)
+    plot.append('rect').attr('x',bx).attr('y',boxY).attr('width',bW).attr('height',boxH)
       .attr('fill',metCol).attr('opacity',.25).attr('rx',1).attr('stroke',metCol).attr('stroke-width',1.2);
     // 中央値
-    svg.append('line').attr('x1',bx).attr('x2',bx+bW).attr('y1',scaleY(st.med)).attr('y2',scaleY(st.med))
+    plot.append('line').attr('x1',bx).attr('x2',bx+bW).attr('y1',scaleY(st.med)).attr('y2',scaleY(st.med))
       .attr('stroke',metCol).attr('stroke-width',2);
     // 外れ値（空円）
     st.outliers.forEach(ov=>{
-      svg.append('circle').attr('cx',cx).attr('cy',scaleY(ov)).attr('r',2.5)
+      plot.append('circle').attr('cx',cx).attr('cy',scaleY(ov)).attr('r',2.5)
         .attr('fill','none').attr('stroke',metCol).attr('stroke-width',1).attr('opacity',.6)
         .on('mousemove',e=>showTip(e,yr+'年<br>'+ML[m]+': <b>'+ov.toFixed(1)+' kWh/月</b>'))
         .on('mouseleave',hideTip);
     });
     // hover（列全体）
-    svg.append('rect').attr('x',bx-1).attr('y',mT).attr('width',bW+2).attr('height',cH)
+    plot.append('rect').attr('x',bx-1).attr('y',mT).attr('width',bW+2).attr('height',cH)
       .attr('fill','transparent').attr('stroke','none')
       .on('mousemove',e=>showTip(e,yr+'年<br>中央値: <b>'+st.med.toFixed(1)+'</b> kWh/月<br>平均: '+st.mean.toFixed(1)+' kWh<br>Q1〜Q3: '+st.q1.toFixed(1)+'〜'+st.q3.toFixed(1)+' kWh<br>5〜95%ile: '+st.p5.toFixed(1)+'〜'+st.p95.toFixed(1)+' kWh<br>N: '+st.n+'ヶ月'))
       .on('mouseleave',hideTip);
@@ -2977,6 +3009,7 @@ function renderDayBarChart(){
   const W=contW, H=cH+mT+mB;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
   drawGridAndYAxis(svg, maxV, mL, mT, W, cH, 2);
+  const plot = clipPlot(svg, mL, mT, W-mL, cH);
   // dsはデータがある日のみ→日付→列インデックスのマップ
   const dkMap = new Map(ds.map(dk=>[dk,true]));
   Array.from({length:daysInMonth},(_,i)=>i+1).forEach(dayNum=>{
@@ -2990,8 +3023,9 @@ function renderDayBarChart(){
     if(!dkMap.has(dk)) return; // データなし列はスキップ
     const di=ds.indexOf(dk);
     const v=vals[di], bh=(v/maxV)*cH;
+    if(v>maxV) overMark(svg, x+bW/2, mT, col[dayBarMet]);
     const selfTip=dayBarMet==='con'?'<br>自家消費量: '+selfVals[di].toFixed(2)+' kWh<br>買電量: '+daySum(dk,'buy').toFixed(2)+' kWh':'';
-    svg.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',Math.max(bh,0))
+    plot.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',Math.max(bh,0))
       .attr('fill',col[dayBarMet]).attr('fill-opacity',.3)
       .attr('stroke',col[dayBarMet]).attr('stroke-width',1.5).attr('stroke-opacity',.9)
       .attr('rx',2)
@@ -3000,7 +3034,7 @@ function renderDayBarChart(){
     // 消費量: 自家消費量を白破線で表示
     if(dayBarMet==='con' && selfVals[di]>0){
       const sy=mT+cH-(selfVals[di]/maxV)*cH;
-      svg.append('line').attr('x1',x).attr('x2',x+bW).attr('y1',sy).attr('y2',sy)
+      plot.append('line').attr('x1',x).attr('x2',x+bW).attr('y1',sy).attr('y2',sy)
         .attr('stroke','#ffffff').attr('stroke-width',1.5).attr('stroke-dasharray','3,2').attr('opacity',.85);
     }
   });
@@ -3009,13 +3043,13 @@ function renderDayBarChart(){
     let seg=[];
     pts.forEach(p=>{
       if(p){ seg.push(p); }
-      else if(seg.length){ drawLineSeg(svg,seg); seg=[]; }
+      else if(seg.length){ drawLineSeg(plot,seg); seg=[]; }
     });
-    if(seg.length) drawLineSeg(svg,seg);
+    if(seg.length) drawLineSeg(plot,seg);
     pts.forEach((p,i)=>{
       if(!p) return;
       const pdk=prevYm+'-'+String(i+1).padStart(2,'0');
-      svg.append('circle').attr('cx',p[0]).attr('cy',p[1]).attr('r',2.5)
+      plot.append('circle').attr('cx',p[0]).attr('cy',p[1]).attr('r',2.5)
         .attr('fill',cv('--text2')).attr('opacity',.7)
         .on('mousemove',e=>showTip(e,pdk+'<br>'+ML[dayBarMet]+': <b>'+prevVals[i].toFixed(2)+' kWh</b>（前年）'))
         .on('mouseleave',hideTip);
@@ -3069,7 +3103,7 @@ function renderDayCumChart(){
     });
   };
   const cur = cumOf(ym,ds), prev = cumOf(prevYm,prevDs);
-  const maxV = niceMax(globalMax('month'));
+  const maxV = niceMax(globalMax('month', true));
   const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
   const mL=44, mR=48, mT=24, mB=28, cH=160;
   const moW = (contW-mL-mR)/daysInMonth;
@@ -3157,14 +3191,16 @@ function renderYrMonBarChart(){
   const W=contW,H=cH+mT+mB;
   const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
   drawGridAndYAxis(svg,maxV,mL,mT,W,cH,2);
+  const plot=clipPlot(svg,mL,mT,W-mL,cH);
 
   // 当年棒グラフ
   ms.forEach((ym,i)=>{
     const v=vals[i],bh=(v/maxV)*cH;
     const x=mL+i*moW+Math.floor(gap/2); // 月幅内で中央寄せ
     const inc=existMs.includes(ym)&&isIncomplete(ym);
+    if(v>maxV) overMark(svg, x+bW/2, mT, col[yrMonBarMet]);
     const selfTip=yrMonBarMet==='con'&&existMs.includes(ym)?'<br>自家消費量: '+Math.max(moSum(ym,'con')-moSum(ym,'buy'),0).toFixed(1)+' kWh<br>買電量: '+moSum(ym,'buy').toFixed(1)+' kWh':'';
-    svg.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',Math.max(bh,0))
+    plot.append('rect').attr('x',x).attr('y',mT+cH-bh).attr('width',bW).attr('height',Math.max(bh,0))
       .attr('fill',col[yrMonBarMet]).attr('fill-opacity',inc?.15:.3)
       .attr('stroke',col[yrMonBarMet]).attr('stroke-width',inc?1:1.5).attr('stroke-opacity',inc?.4:.9)
       .attr('rx',2)
@@ -3174,7 +3210,7 @@ function renderYrMonBarChart(){
     if(yrMonBarMet==='con' && existMs.includes(ym)){
       const selfV=Math.max(moSum(ym,'con')-moSum(ym,'buy'),0);
       if(selfV>0){ const sy=mT+cH-(selfV/maxV)*cH;
-        svg.append('line').attr('x1',x).attr('x2',x+bW).attr('y1',sy).attr('y2',sy)
+        plot.append('line').attr('x1',x).attr('x2',x+bW).attr('y1',sy).attr('y2',sy)
           .attr('stroke','#ffffff').attr('stroke-width',1.5).attr('stroke-dasharray','3,2').attr('opacity',.85); }
     }
     svg.append('text').attr('x',mL+i*moW+moW/2).attr('y',mT+cH+14).attr('text-anchor','middle')
@@ -3187,13 +3223,13 @@ function renderYrMonBarChart(){
     let seg=[];
     pts.forEach((p,i)=>{
       if(p){ seg.push(p); }
-      else if(seg.length){ drawLineSeg(svg,seg); seg=[]; }
+      else if(seg.length){ drawLineSeg(plot,seg); seg=[]; }
     });
-    if(seg.length) drawLineSeg(svg,seg);
+    if(seg.length) drawLineSeg(plot,seg);
     pts.forEach((p,i)=>{
       if(!p) return;
       const v=prevVals[i];
-      svg.append('circle').attr('cx',p[0]).attr('cy',p[1]).attr('r',3)
+      plot.append('circle').attr('cx',p[0]).attr('cy',p[1]).attr('r',3)
         .attr('fill',cv('--text2')).attr('opacity',.7)
         .on('mousemove',e=>showTip(e,prevMs[i]+'<br>'+ML[yrMonBarMet]+': <b>'+v.toFixed(1)+' kWh</b>（前年）'))
         .on('mouseleave',hideTip);
