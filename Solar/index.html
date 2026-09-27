@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-09-26.4
+  @version   v06_2026-09-27
   @changelog
+    v06_2026-09-27 - Y軸統一: 目盛りを1・2・5刻み（区間4〜6）に変更、全期間・4指標共通の最大値でY軸を固定（月日・指標切替で不変）。対象: 時間帯別・自家消費分析（日/月/年）・日別/月別棒・月内/年内累計・箱ひげ（月/年）・年別集計+累計・季節別・ヒストグラム
     v06_2026-09-26.4 - ヘッダー右上にバージョン表記を追加（APP_VERSION定数で管理）
     v06_2026-09-26.3 - 年次: 年内累計（前年比較）グラフを新設（指標は月別棒グラフと連動、最終月が月途中なら前年は同日までの累計で比較）
-    v06_2026-09-26.2 - 月次: 日別棒グラフに前年同月のグレー破線折れ線＋凡例を追加、月内累計（前年同月比較）グラフを新設（指標は日別棒グラフと連動）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -543,7 +543,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v06_2026-09-26.4';
+const APP_VERSION = 'v06_2026-09-27';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -746,6 +746,7 @@ function parseCSV(text){
 // ================================================================
 function _invalidateAgg(){
   _aggDirty = true;
+  _scaleCache = null;
   _aggCache = null;
   _slotAvgCache.clear();
 }
@@ -1077,16 +1078,68 @@ function hideTip(){ tip.style.display='none'; }
 // ================================================================
 function empty(msg){ return `<div class="empty"><div class="icon">☀</div><p>${msg||'CSVをアップロードしてください'}</p></div>`; }
 
-function drawGridAndYAxis(svg, maxV, mL, mT, W, cH, digits){
-  for(let i=0;i<=4;i++){
-    const y=mT+cH-cH*i/4, v=maxV*i/4;
+// 目盛り: 刻みを1・2・5×10^nから選び、区間数4〜6以内に収める
+function niceScale(maxV, minStep){
+  if(!(maxV>0)) maxV=1;
+  let e=Math.pow(10,Math.floor(Math.log10(maxV/6)));
+  for(;;){
+    for(const f of [1,2,5]){
+      const st=f*e;
+      if(minStep && st<minStep) continue;
+      const n=Math.ceil(maxV/st-1e-9);
+      if(n<=6) return {max:n*st, step:st, n};
+    }
+    e*=10;
+  }
+}
+function niceMax(maxV, minStep){ return niceScale(maxV, minStep).max; }
+function tickLabel(v, step){
+  return step>=1 ? String(Math.round(v)) : v.toFixed(Math.ceil(-Math.log10(step)-1e-9));
+}
+// 全期間・4指標共通の最大値（月日・指標の切替でY軸を固定するため）
+let _scaleCache=null;
+function globalMax(level){
+  if(!_scaleCache){
+    const ms=Object.keys(ML), c={slot:0,day:0,month:0,year:0,total:0};
+    Object.values(D).forEach(r=>ms.forEach(m=>{ if(r[m]>c.slot) c.slot=r[m]; }));
+    const dt=_ensureAgg().dayTotals;
+    Object.values(dt).forEach(r=>ms.forEach(m=>{ if((r[m]||0)>c.day) c.day=r[m]; }));
+    ms.forEach(m=>{
+      let tot=0;
+      months().forEach(ym=>{ const v=moSum(ym,m); tot+=v; if(v>c.month) c.month=v; });
+      years().forEach(yr=>{ const v=yrSum(yr,m); if(v>c.year) c.year=v; });
+      if(tot>c.total) c.total=tot;
+    });
+    _scaleCache=c;
+  }
+  return _scaleCache[level]||1;
+}
+
+function drawGridAndYAxis(svg, maxV, mL, mT, W, cH, digits, minStep){
+  const {step,n}=niceScale(maxV, minStep);
+  for(let i=0;i<=n;i++){
+    const v=step*i, y=mT+cH-cH*v/maxV;
     svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',y).attr('y2',y)
       .attr('stroke',cv('--grid')).attr('stroke-width',1);
-    const lv = digits !== undefined ? v.toFixed(digits)
-      : v>=10 ? Math.round(v) : v>=0.1 ? v.toFixed(2) : v.toFixed(3);
     svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end')
-      .attr('fill',cv('--text2')).attr('font-size',9).text(lv);
+      .attr('fill',cv('--text2')).attr('font-size',9).text(tickLabel(v,step));
   }
+}
+
+// ±グラフ（自家消費分析）用: +側はcH_pos、−側はcH_negでmaxAbsを表す
+function drawPosNegGrid(svg, maxAbs, mL, W, zeroY, cH_pos, cH_neg){
+  const {step,n}=niceScale(maxAbs);
+  svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',zeroY).attr('y2',zeroY)
+    .attr('stroke',cv('--text2')).attr('stroke-width',1.5);
+  svg.append('text').attr('x',mL-5).attr('y',zeroY+4).attr('text-anchor','end')
+    .attr('fill',cv('--text2')).attr('font-size',9).text('0');
+  const line=(y,t)=>{
+    svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',y).attr('y2',y).attr('stroke',cv('--grid')).attr('stroke-width',1);
+    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text(t);
+  };
+  for(let i=1;i<=n;i++) line(zeroY-cH_pos*i/n, tickLabel(step*i,step));
+  const stride=Math.ceil(14/(cH_neg/n));
+  for(let i=stride;i<=n;i+=stride) line(zeroY+cH_neg*i/n, '−'+tickLabel(step*i,step));
 }
 
 // ================================================================
@@ -1198,8 +1251,7 @@ function renderHourlyBar(ym){
     isDay ? `時間帯別（kWh） — ${selectedDate}` : '時間帯別平均（kWh）';
 
   // Y軸: 月平均時は月平均データ、日別時は日別データのmaxV
-  const allAvgs = Object.keys(ML).flatMap(m => slotAvg(ym, m, dk));
-  const maxV = Math.max(...allAvgs) || 1;
+  const maxV = niceMax(globalMax('slot'));
 
   const avgs    = slotAvg(ym, hMet, dk);
   const peakIdx = avgs.indexOf(Math.max(...avgs));
@@ -1372,15 +1424,7 @@ function renderSelfChart(ym){
   const selfAvg = avgCon.map((con, i) => con - avgBuy[i]);
   const sellAvg = avgSell;
 
-  // maxAbs: 月内全日から計算して固定
-  const allSelf = moDates(ym).flatMap(d => {
-    const c = slotAvg(ym,'con',d), b = slotAvg(ym,'buy',d);
-    return c.map((v,i)=>Math.abs(v-b[i]));
-  });
-  const allSell  = moDates(ym).flatMap(d => slotAvg(ym,'sell',d));
-  const allCon   = moDates(ym).flatMap(d => slotAvg(ym,'con',d));
-  const allBuy   = moDates(ym).flatMap(d => slotAvg(ym,'buy',d));
-  const maxAbs   = Math.max(...allSelf, ...allSell, ...allCon, ...allBuy) || 1;
+  const maxAbs = niceMax(globalMax('slot'));
 
   const col = colors();
   const selfColor = col.con;   // 紫: 自家消費（消費－買電）
@@ -1400,29 +1444,7 @@ function renderSelfChart(ym){
 
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
-  // 0ライン
-  svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',zeroY).attr('y2',zeroY)
-    .attr('stroke',cv('--text2')).attr('stroke-width',1.5);
-  svg.append('text').attr('x',mL-5).attr('y',zeroY+4).attr('text-anchor','end')
-    .attr('fill',cv('--text2')).attr('font-size',9).text('0');
-
-  // +側グリッド
-  [0.5, 1].forEach(r => {
-    const y = zeroY - cH_pos*r, v = maxAbs*r;
-    svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',y).attr('y2',y)
-      .attr('stroke',cv('--grid')).attr('stroke-width',1);
-    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end')
-      .attr('fill',cv('--text2')).attr('font-size',9)
-      .text(v>=0.1 ? v.toFixed(2) : v.toFixed(3));
-  });
-
-  // -側グリッド
-  const negGridY = zeroY + cH_neg*0.7, negGridV = maxAbs*0.7;
-  svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',negGridY).attr('y2',negGridY)
-    .attr('stroke',cv('--grid')).attr('stroke-width',1);
-  svg.append('text').attr('x',mL-5).attr('y',negGridY+4).attr('text-anchor','end')
-    .attr('fill',cv('--text2')).attr('font-size',9)
-    .text('−'+(negGridV>=0.1?negGridV.toFixed(2):negGridV.toFixed(3)));
+  drawPosNegGrid(svg, maxAbs, mL, W, zeroY, cH_pos, cH_neg);
 
   // ピークインデックス
   const conTotals   = avgCon;
@@ -1709,7 +1731,7 @@ function renderSeaChart(){
   el.innerHTML = '';
   if(!data.length) return;
   const seaCol={'1〜3月':'#3b82f6','4〜6月':'#84cc16','7〜9月':'#f59e0b','10〜12月':'#f97316'};
-  const maxV = Math.max(...data.map(d=>d[1]))||1;
+  const maxV = niceMax(Math.max(...Object.keys(ML).flatMap(m=>seaData(m).map(d=>d[1]))));
   const contW = (el.parentElement.clientWidth || window.innerWidth) - 8;
   const n = data.length;
   const mL=44, mT=10, mB=28, cH=150;
@@ -2115,7 +2137,7 @@ function renderHistogram(){
   const numBins = Math.ceil(maxVal / binW) + 1;
   const bins = new Array(numBins).fill(0);
   vals.forEach(v => { const i = Math.floor(v / binW); if(i < numBins) bins[i]++; });
-  const maxCount = Math.max(...bins) || 1;
+  const maxCount = niceMax(Math.max(...bins), 1);
 
   const contW = el.parentElement.clientWidth - 32;
   const bW = Math.max(6, Math.min(20, Math.floor((contW - 52) / numBins) - 1));
@@ -2123,7 +2145,7 @@ function renderHistogram(){
   const mL=44, mT=10, mB=36, cH=140;
   const W = mL + numBins*(bW+gap)+8, H = cH+mT+mB;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
-  drawGridAndYAxis(svg, maxCount, mL, mT, W, cH);
+  drawGridAndYAxis(svg, maxCount, mL, mT, W, cH, 0, 1);
 
   bins.forEach((cnt, i) => {
     if(cnt === 0) return;
@@ -2330,8 +2352,12 @@ function _renderYearlyComboChart(yrs, col){
   const cumulByYr={};
   months().forEach(ym=>{ cumul+=moSum(ym,m); cumulByYr[ym.slice(0,4)]=cumul; });
   const cumulPts=yrs.map(yr=>({ yr, cumul:cumulByYr[yr]||0 }));
-  const maxBar=Math.max(...data.map(d=>d.val))||1;
-  const maxLine=cumulPts[cumulPts.length-1]?.cumul||1;
+  const barSc=niceScale(globalMax('year'));
+  const maxBar=barSc.max;
+  // 右軸: 左軸と同じ区間数で、累計最大を収める最小の1・2・5刻み
+  const need=globalMax('total')/barSc.n, e=Math.pow(10,Math.floor(Math.log10(need)));
+  const lineStep=[1,2,5,10].map(f=>f*e).find(v=>v>=need-1e-9);
+  const maxLine=lineStep*barSc.n;
 
   const selYr=yrFilterYear();
   const sp=window.innerWidth<560;
@@ -2341,8 +2367,8 @@ function _renderYearlyComboChart(yrs, col){
   const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
 
   // グリッド＋左Y軸
-  for(let i=0;i<=4;i++){
-    const v=maxBar*i/4, y=mT+cH-cH*i/4;
+  for(let i=0;i<=barSc.n;i++){
+    const v=barSc.step*i, y=mT+cH-cH*i/barSc.n;
     svg.append('line').attr('x1',mL).attr('x2',W-mR).attr('y1',y).attr('y2',y)
       .attr('stroke',cv('--grid')).attr('stroke-width',1);
     svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end')
@@ -2350,8 +2376,8 @@ function _renderYearlyComboChart(yrs, col){
       .text(v>=1000?(v/1000).toFixed(1)+'k':Math.round(v));
   }
   // 右Y軸（累計）
-  for(let i=0;i<=4;i++){
-    const v=maxLine*i/4, y=mT+cH-cH*i/4;
+  for(let i=0;i<=barSc.n;i++){
+    const v=lineStep*i, y=mT+cH-cH*i/barSc.n;
     svg.append('text').attr('x',W-mR+8).attr('y',y+4).attr('text-anchor','start')
       .attr('fill',col[m]).attr('font-size',8).attr('opacity',.7)
       .text(v>=1000?(v/1000).toFixed(1)+'k':Math.round(v));
@@ -2621,10 +2647,7 @@ function renderMonSelfChart(mode){
     }];
   }));
 
-  const allVals = [...dkMap.values()];
-  const maxPos = Math.max(...allVals.map(v=>v.self+v.buy), 0.01);
-  const maxNeg = Math.max(...allVals.map(v=>v.sell), 0.01);
-  const maxAbs = Math.max(maxPos, maxNeg);
+  const maxAbs = niceMax(globalMax('day'));
 
   // X軸を月の実日数で固定
   const daysInMonth = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
@@ -2638,22 +2661,7 @@ function renderMonSelfChart(mode){
   const W=contW, H=mT+cH_pos+cH_neg+mB;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
 
-  // 0ライン
-  svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',zeroY).attr('y2',zeroY)
-    .attr('stroke',cv('--text2')).attr('stroke-width',1.5);
-  svg.append('text').attr('x',mL-5).attr('y',zeroY+4).attr('text-anchor','end')
-    .attr('fill',cv('--text2')).attr('font-size',9).text('0');
-
-  // +側グリッド
-  [0.5,1].forEach(r=>{
-    const y=zeroY-cH_pos*r, v=(maxAbs*r).toFixed(1);
-    svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',y).attr('y2',y).attr('stroke',cv('--grid')).attr('stroke-width',1);
-    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text(v);
-  });
-  // -側グリッド
-  const negY=zeroY+cH_neg*0.7, negV=(maxAbs*0.7).toFixed(1);
-  svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',negY).attr('y2',negY).attr('stroke',cv('--grid')).attr('stroke-width',1);
-  svg.append('text').attr('x',mL-5).attr('y',negY+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text('-'+negV);
+  drawPosNegGrid(svg, maxAbs, mL, W, zeroY, cH_pos, cH_neg);
 
   Array.from({length:daysInMonth},(_,i)=>i+1).forEach(dayNum=>{
     const dk=ym+'-'+String(dayNum).padStart(2,'0');
@@ -2740,7 +2748,7 @@ function renderMonBox(){
     });
   });
   if(!allVals.length){ el.innerHTML=empty('データ不足'); return; }
-  const maxV=Math.max(...allVals);
+  const maxV=niceMax(globalMax('day'));
   drawGridAndYAxis(svg,maxV,mL,mT,W,cH,2);
 
   const scaleY=v=>mT+cH-(v/maxV)*cH;
@@ -2827,9 +2835,7 @@ function renderYrSelfChart(mode){
     con:  existMs.includes(ym)?moSum(ym,'con'):0,
     self: existMs.includes(ym)?Math.max(moSum(ym,'con')-moSum(ym,'buy'),0):0,
   }));
-  const maxPos=Math.max(...vals.map(v=>v.self+v.buy),0.01);
-  const maxNeg=Math.max(...vals.map(v=>v.sell),0.01);
-  const maxAbs=Math.max(maxPos,maxNeg);
+  const maxAbs=niceMax(globalMax('month'));
   const n=12,contW=(el.parentElement.clientWidth||window.innerWidth)-8;
   const sp=contW<560;
   const availW=contW-44-8,gap=Math.floor(availW*0.1/n);
@@ -2837,16 +2843,7 @@ function renderYrSelfChart(mode){
   const mL=44,mT=10,mB=28,cH_pos=110,cH_neg=50;
   const zeroY=mT+cH_pos,W=contW,H=mT+cH_pos+cH_neg+mB;
   const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
-  svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',zeroY).attr('y2',zeroY).attr('stroke',cv('--text2')).attr('stroke-width',1.5);
-  svg.append('text').attr('x',mL-5).attr('y',zeroY+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text('0');
-  [0.5,1].forEach(r=>{
-    const y=zeroY-cH_pos*r,v=(maxAbs*r).toFixed(0);
-    svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',y).attr('y2',y).attr('stroke',cv('--grid')).attr('stroke-width',1);
-    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text(v);
-  });
-  const negY=zeroY+cH_neg*0.7;
-  svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',negY).attr('y2',negY).attr('stroke',cv('--grid')).attr('stroke-width',1);
-  svg.append('text').attr('x',mL-5).attr('y',negY+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text('-'+(maxAbs*0.7).toFixed(0));
+  drawPosNegGrid(svg,maxAbs,mL,W,zeroY,cH_pos,cH_neg);
   vals.forEach(({ym,buy,sell,self},i)=>{
     const x=mL+i*(bW+gap);
     if(mode==='self'){
@@ -2903,8 +2900,7 @@ function renderYrBox(){
     return {yr,stats:boxStats(vals,false)};
   }).filter(r=>r.stats);
   if(!stats.length){ el.innerHTML=empty('データ不足'); return; }
-  const allVals=stats.flatMap(r=>[r.stats.p5,r.stats.p95,...r.stats.outliers]);
-  const maxV=Math.max(...allVals)||1;
+  const maxV=niceMax(globalMax('month'));
   const n=stats.length,sp=window.innerWidth<560;
   const ptW=sp?Math.max(40,Math.floor((window.innerWidth-64)/n)):80;
   const bW=Math.max(20,ptW-24);
@@ -2971,7 +2967,7 @@ function renderDayBarChart(){
     const pdk=prevYm+'-'+String(i+1).padStart(2,'0');
     return prevDs.includes(pdk) ? daySum(pdk,dayBarMet) : null;
   });
-  const maxV = Math.max(...vals,...prevVals.filter(v=>v!=null),0.01);
+  const maxV = niceMax(globalMax('day'));
   const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
   const availW = contW-44-8;
   const moW = Math.floor(availW/daysInMonth);
@@ -3073,14 +3069,14 @@ function renderDayCumChart(){
     });
   };
   const cur = cumOf(ym,ds), prev = cumOf(prevYm,prevDs);
-  const maxV = Math.max(...cur,...prev,0.01);
+  const maxV = niceMax(globalMax('month'));
   const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
   const mL=44, mR=48, mT=24, mB=28, cH=160;
   const moW = (contW-mL-mR)/daysInMonth;
   const W=contW, H=cH+mT+mB;
   const px = i=>mL+i*moW+moW/2, py = v=>mT+cH-(v/maxV)*cH;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
-  drawGridAndYAxis(svg, maxV, mL, mT, W-mR+4, cH, maxV>=100?0:1);
+  drawGridAndYAxis(svg, maxV, mL, mT, W-mR+4, cH);
   for(let d=1; d<=daysInMonth; d++){
     if(d===1||d%5===0||d===daysInMonth)
       svg.append('text').attr('x',px(d-1)).attr('y',mT+cH+16).attr('text-anchor','middle')
@@ -3150,8 +3146,7 @@ function renderYrMonBarChart(){
   const hasPrevYr=years().includes(prevYr);
   const prevMs=Array.from({length:12},(_,i)=>prevYr+'-'+String(i+1).padStart(2,'0'));
   const prevVals=hasPrevYr?prevMs.map(ym=>existMs.includes(ym)?moSum(ym,yrMonBarMet):null):[];
-  const allVals=[...vals,...prevVals.filter(v=>v!=null)];
-  const maxV=Math.max(...allVals,0.01);
+  const maxV=niceMax(globalMax('month'));
   // 棒幅: 細め（gap比率大きめ）
   const n=12,mL=44,mT=28,mB=24,cH=160;
   const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
@@ -3263,14 +3258,14 @@ function renderYrCumChart(){
     const pds = moDates(pym).filter(dk=>+dk.slice(8,10)<=lastDay);
     prevAtLast = (li>0?prev[li-1]:0) + pds.reduce((a,dk)=>a+daySum(dk,yrMonBarMet),0);
   }
-  const maxV = Math.max(...cur,...prev,0.01);
+  const maxV = niceMax(globalMax('year'));
   const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
   const mL=44, mR=48, mT=24, mB=24, cH=160;
   const moW = (contW-mL-mR)/12;
   const W=contW, H=cH+mT+mB;
   const px = i=>mL+i*moW+moW/2, py = v=>mT+cH-(v/maxV)*cH;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
-  drawGridAndYAxis(svg, maxV, mL, mT, W-mR+4, cH, maxV>=100?0:1);
+  drawGridAndYAxis(svg, maxV, mL, mT, W-mR+4, cH);
   for(let i=0;i<12;i++)
     svg.append('text').attr('x',px(i)).attr('y',mT+cH+14).attr('text-anchor','middle')
       .attr('fill',cv('--text2')).attr('font-size',9).text((i+1)+'月');
