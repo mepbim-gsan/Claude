@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-09-27.2
+  @version   v06_2026-09-27.3
   @changelog
+    v06_2026-09-27.3 - 分析: 日別TOP15・月別/年別ランキングを4指標併記からボタン切替（発電/売電/買電/消費）に変更
     v06_2026-09-27.2 - Y軸上限を調整: 日/月単位は全期間・4指標の上位2%を除いた値、日次タブは月別時間帯平均の最大値で決定。上限超えは描画領域でクリップし▲表示（累計・年別は実最大値）
     v06_2026-09-27 - Y軸統一: 目盛りを1・2・5刻み（区間4〜6）に変更、全期間・4指標共通の最大値でY軸を固定（月日・指標切替で不変）。対象: 時間帯別・自家消費分析（日/月/年）・日別/月別棒・月内/年内累計・箱ひげ（月/年）・年別集計+累計・季節別・ヒストグラム
-    v06_2026-09-26.4 - ヘッダー右上にバージョン表記を追加（APP_VERSION定数で管理）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -481,16 +481,40 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <p style="font-size:.66rem;color:var(--text2);margin-top:7px" id="hist-note"></p>
   </div>
   <div class="sec">
-    <div class="sec-title" style="margin-bottom:10px">日別 TOP 15</div>
-    <div class="rank-grid" id="day-rank-grid"></div>
+    <div class="sec-hd">
+      <div class="sec-title">日別 TOP 15</div>
+      <div class="mtg" id="day-rank-mtg">
+        <button class="mbtn m-gen" data-m="gen">発電量</button>
+        <button class="mbtn" data-m="sell">売電量</button>
+        <button class="mbtn" data-m="buy">買電量</button>
+        <button class="mbtn" data-m="con">消費量</button>
+      </div>
+    </div>
+    <div id="day-rank-grid"></div>
   </div>
   <div class="sec">
-    <div class="sec-title" style="margin-bottom:10px">月別ランキング</div>
-    <div class="rank-grid" id="mo-rank-grid"></div>
+    <div class="sec-hd">
+      <div class="sec-title">月別ランキング</div>
+      <div class="mtg" id="mo-rank-mtg">
+        <button class="mbtn m-gen" data-m="gen">発電量</button>
+        <button class="mbtn" data-m="sell">売電量</button>
+        <button class="mbtn" data-m="buy">買電量</button>
+        <button class="mbtn" data-m="con">消費量</button>
+      </div>
+    </div>
+    <div id="mo-rank-grid"></div>
   </div>
   <div class="sec">
-    <div class="sec-title" style="margin-bottom:10px">年別ランキング</div>
-    <div class="rank-grid" id="yr-rank-grid"></div>
+    <div class="sec-hd">
+      <div class="sec-title">年別ランキング</div>
+      <div class="mtg" id="yr-rank-mtg">
+        <button class="mbtn m-gen" data-m="gen">発電量</button>
+        <button class="mbtn" data-m="sell">売電量</button>
+        <button class="mbtn" data-m="buy">買電量</button>
+        <button class="mbtn" data-m="con">消費量</button>
+      </div>
+    </div>
+    <div id="yr-rank-grid"></div>
   </div>
 </div>
 
@@ -543,7 +567,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v06_2026-09-27.2';
+const APP_VERSION = 'v06_2026-09-27.3';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -2514,30 +2538,28 @@ function _renderDegradation(yrs, col){
 // ================================================================
 // RENDER: ランキングタブ
 // ================================================================
-function _renderRankPanel(containerId, items, col, labelFn, limit){
+let dayRankMet='gen', moRankMet='gen', yrRankMet='gen';
+function _renderRankPanel(containerId, items, col, labelFn, limit, m){
   const cont = document.getElementById(containerId);
   cont.innerHTML = '';
-  const metrics = ['gen','sell','buy','con'];
   const medals = ['🥇','🥈','🥉'];
 
-  metrics.forEach(m=>{
-    const sorted = [...items].sort((a,b)=>b[m]-a[m]).slice(0, limit||15);
-    const maxV = sorted[0]?.[m] || 1;
-    const mColor = col[m];
-    const panel = document.createElement('div');
-    panel.className = 'rank-panel';
-    panel.innerHTML = `<div class="rank-panel-title" style="color:${mColor}">${ML[m]}</div>
-      <div class="rank-list-new">${sorted.map((d,i)=>`
-        <div class="rank-row-new">
-          <div class="rank-medal">${i<3?medals[i]:''}</div>
-          <div class="rank-no-n" style="${i<3?'color:var(--text);font-weight:700':''}">${i+1}</div>
-          <div class="rank-dt-n">${labelFn(d)}</div>
-          <div class="rank-bw-n"><div class="rank-b-n" style="width:${(d[m]/maxV*100).toFixed(1)}%;background:${mColor}"></div></div>
-          <div class="rank-v-n">${d[m].toFixed(1)} kWh</div>
-        </div>`).join('')}
-      </div>`;
-    cont.appendChild(panel);
-  });
+  const sorted = [...items].sort((a,b)=>b[m]-a[m]).slice(0, limit||15);
+  const maxV = sorted[0]?.[m] || 1;
+  const mColor = col[m];
+  const panel = document.createElement('div');
+  panel.className = 'rank-panel';
+  panel.innerHTML = `<div class="rank-panel-title" style="color:${mColor}">${ML[m]}</div>
+    <div class="rank-list-new">${sorted.map((d,i)=>`
+      <div class="rank-row-new">
+        <div class="rank-medal">${i<3?medals[i]:''}</div>
+        <div class="rank-no-n" style="${i<3?'color:var(--text);font-weight:700':''}">${i+1}</div>
+        <div class="rank-dt-n">${labelFn(d)}</div>
+        <div class="rank-bw-n"><div class="rank-b-n" style="width:${(d[m]/maxV*100).toFixed(1)}%;background:${mColor}"></div></div>
+        <div class="rank-v-n">${d[m].toFixed(1)} kWh</div>
+      </div>`).join('')}
+    </div>`;
+  cont.appendChild(panel);
 }
 
 function renderRankTab(){
@@ -2554,13 +2576,13 @@ function renderRankTab(){
   }
 
   const dayItems = ds.map(dk=>({ dk, gen:daySum(dk,'gen'), sell:daySum(dk,'sell'), buy:daySum(dk,'buy'), con:daySum(dk,'con') }));
-  _renderRankPanel('day-rank-grid', dayItems, col, d=>d.dk, 15);
+  _renderRankPanel('day-rank-grid', dayItems, col, d=>d.dk, 15, dayRankMet);
 
   const moItems = ms.map(ym=>({ ym, gen:moSum(ym,'gen'), sell:moSum(ym,'sell'), buy:moSum(ym,'buy'), con:moSum(ym,'con') }));
-  _renderRankPanel('mo-rank-grid', moItems, col, d=>d.ym, 15);
+  _renderRankPanel('mo-rank-grid', moItems, col, d=>d.ym, 15, moRankMet);
 
   const yrItems = yrs.map(yr=>({ yr, gen:yrSum(yr,'gen'), sell:yrSum(yr,'sell'), buy:yrSum(yr,'buy'), con:yrSum(yr,'con') }));
-  _renderRankPanel('yr-rank-grid', yrItems, col, d=>d.yr+'年', 15);
+  _renderRankPanel('yr-rank-grid', yrItems, col, d=>d.yr+'年', 15, yrRankMet);
 }
 
 // ================================================================
@@ -3568,6 +3590,9 @@ setupMtg('yr-mon-bar-mtg',v=>yrMonBarMet=v,()=>renderYrMonBarChart());
 setupMtg('yr-box-mtg',   v=>yrBoxMet=v,   ()=>renderYrBox());
 setupMtg('hist-mtg',     v=>histMet=v,    ()=>renderHistogram());
 setupMtg('yr-mtg',       v=>yrMet=v,      ()=>_renderYearlyComboChart(years(), colors()));
+setupMtg('day-rank-mtg', v=>dayRankMet=v, ()=>renderRankTab());
+setupMtg('mo-rank-mtg',  v=>moRankMet=v,  ()=>renderRankTab());
+setupMtg('yr-rank-mtg',  v=>yrRankMet=v,  ()=>renderRankTab());
 
 // 月間推移ナビ
 document.getElementById('monprev')?.addEventListener('click',()=>{ monIdx=Math.max(0,monIdx-1); renderAll(); });
