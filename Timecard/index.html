@@ -1185,7 +1185,7 @@ label:first-child{margin-top:0;}
       <input type="hidden" id="new-work-color" value="#4f8ef7">
       <button id="btn-add-work" class="btn btn-ghost btn-full mt-8">＋ WORK追加</button>
       <div class="divider"></div>
-      <div class="work-archive-title">共有（CSV：WORK名・JOBNO・メモ・カテゴリ）</div>
+      <div class="work-archive-title">共有（CSV：WORK名・JOBNO・メモ・カテゴリ・共有ID）</div>
       <div class="row">
         <button id="btn-work-csv-export" class="btn btn-ghost btn-full">📤 共有用エクスポート</button>
         <button id="btn-work-csv-import" class="btn btn-ghost btn-full">📥 共有用インポート</button>
@@ -1237,7 +1237,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.10';
+const APP_VERSION = 'v07_2026-09-29.11';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3455,10 +3455,25 @@ function openCategoryColorModal(id){
   pendingWorkConfirm=()=>resetWorkConfirmButtons();
   openModal('work-confirm-modal');
 }
-// WORK共有用CSV（有効WORKのみ・ID/色は含めない）
+// WORK共有用CSV（有効WORKのみ・内部ID/色は含めない）
 function csvCell(v){v=String(v??'');return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function randomHex(n){const a=new Uint8Array(Math.ceil(n/2));crypto.getRandomValues(a);return [...a].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,n);}
+// 作成者ID：初回にランダム生成して設定に保存（個人情報は含めない・Firebase同期で端末間共通）
+function getCreatorId(){
+  if(!settings.creatorId){settings.creatorId='u'+randomHex(7);saveSettingsStorage();}
+  return settings.creatorId;
+}
+// 共有ID：作成者ID-ランダムUUID（WORKの内部IDとは別管理）
+function newSharedId(){
+  const uuid=crypto.randomUUID?crypto.randomUUID():`${randomHex(8)}-${randomHex(4)}-${randomHex(4)}-${randomHex(4)}-${randomHex(12)}`;
+  return `${getCreatorId()}-${uuid}`;
+}
 function exportWorkCsv(){
-  const rows=[['WORK名','JOBNO','メモ','カテゴリ'],...getActiveWorks().map(w=>[w.name,w.jobNo,w.memo||'',getWorkCategory(w)?.name||''])];
+  const works=getActiveWorks();
+  let assigned=false;
+  works.forEach(w=>{if(!w.sharedId){w.sharedId=newSharedId();assigned=true;}});
+  if(assigned)saveSettingsStorage();
+  const rows=[['WORK名','JOBNO','メモ','カテゴリ','共有ID'],...works.map(w=>[w.name,w.jobNo,w.memo||'',getWorkCategory(w)?.name||'',w.sharedId])];
   const blob=new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n')],{type:'text/csv'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
@@ -3483,17 +3498,18 @@ function decodeCsvBuffer(buf){
   try{return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^\uFEFF/,'');}
   catch(_){return new TextDecoder('shift_jis').decode(buf);}
 }
-// WORK名+JOBNO一致：メモ・カテゴリ上書き・アーカイブ復活／不一致：追加（カテゴリが無ければ作成）。既存WORKは削除しない
+// 共有ID一致（無ければWORK名+JOBNO一致）：WORK名・JOBNO・メモ・カテゴリ上書き・共有ID引継ぎ・アーカイブ復活
+// 不一致：追加（カテゴリが無ければ作成、共有IDは引継ぎ）。既存WORKは削除しない
 function importWorkCsv(text){
   let rows=parseCsv(text);
   if(rows.length&&rows[0][0].trim()==='WORK名')rows=rows.slice(1);
-  const items=rows.map(r=>({name:(r[0]||'').trim(),jobNo:(r[1]||'').trim()||'未定',memo:(r[2]||'').trim(),cat:(r[3]||'').trim()})).filter(x=>x.name);
+  const items=rows.map(r=>({name:(r[0]||'').trim(),jobNo:(r[1]||'').trim()||'未定',memo:(r[2]||'').trim(),cat:(r[3]||'').trim(),sid:(r[4]||'').trim()})).filter(x=>x.name);
   if(!items.length){alert('取り込めるWORKがありません');return;}
-  const findWork=x=>(settings.workItems||[]).find(w=>w.name===x.name&&w.jobNo===x.jobNo);
+  const findWork=x=>(x.sid&&(settings.workItems||[]).find(w=>w.sharedId===x.sid))||(settings.workItems||[]).find(w=>w.name===x.name&&w.jobNo===x.jobNo);
   let add=0,upd=0,revive=0;const seen=new Set();
-  items.forEach(x=>{const k=x.name+'\t'+x.jobNo;if(seen.has(k))return;seen.add(k);const w=findWork(x);if(!w)add++;else{upd++;if(w.archived)revive++;}});
+  items.forEach(x=>{const k=x.sid||(x.name+'\t'+x.jobNo);if(seen.has(k))return;seen.add(k);const w=findWork(x);if(!w)add++;else{upd++;if(w.archived)revive++;}});
   resetWorkConfirmButtons();
-  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うち復活 ${revive}件）\n一致したWORKのメモ・カテゴリは上書きされます。`,()=>{
+  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うち復活 ${revive}件）\n一致したWORKのWORK名・JOBNO・メモ・カテゴリは上書きされます。`,()=>{
     settings.categories=settings.categories||[];settings.workColors=settings.workColors||{};
     items.forEach((x,i)=>{
       let categoryId=null;
@@ -3503,9 +3519,9 @@ function importWorkCsv(text){
         categoryId=c.id;
       }
       const w=findWork(x);
-      if(w){w.memo=x.memo;w.categoryId=categoryId;w.archived=false;return;}
+      if(w){w.name=x.name;w.jobNo=x.jobNo;w.memo=x.memo;w.categoryId=categoryId;w.archived=false;if(x.sid)w.sharedId=x.sid;return;}
       const id='w'+Date.now().toString(36)+i.toString(36);
-      insertWorkSorted({id,name:x.name,jobNo:x.jobNo,memo:x.memo,categoryId,archived:false});
+      insertWorkSorted({id,name:x.name,jobNo:x.jobNo,memo:x.memo,categoryId,archived:false,...(x.sid?{sharedId:x.sid}:{})});
     });
     refreshJobColors();saveSettingsStorage();renderWorkTab();
     showWorkToast(`取り込みました（追加 ${add}件・更新 ${upd}件）`);
