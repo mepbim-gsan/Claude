@@ -1234,7 +1234,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-30';
+const APP_VERSION = 'v07_2026-09-30.2';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3521,7 +3521,7 @@ window.addEventListener('pointerdown',e=>{if(!e.target.closest?.('.work-cell'))h
 let annualJobChartMode='category'; // 'jobno' or 'category'
 let annualBarChart=null, annualPieChart=null, annualSelectedMonth=null;
 let _annualChartData=null;
-let annualPieCategory=null; // 円グラフでドリルダウン中のカテゴリ名（カテゴリモードのみ）
+let annualPieCategory=null; // 円グラフでドリルダウン中のラベル（カテゴリ名またはJOBNO）
 let annualBarPercentMode=false; // Y軸ラベルタップで100%積み上げに切替
 
 function getAnnualJobData(mode){
@@ -3558,7 +3558,9 @@ function getAnnualJobData(mode){
 }
 
 // 指定カテゴリのWORK別集計（monthIdx=null で年間）
-function getAnnualCategoryWorkData(catName,monthIdx){
+// 指定ラベル（カテゴリモード=カテゴリ名／JOBNOモード=JOBNO）に属するWORK別集計
+function getAnnualCategoryWorkData(label,monthIdx){
+  const match=annualJobChartMode==='category'?(w=>getWorkCategoryName(w)===label):(w=>(w.jobNo||'NOJOB')===label);
   const res={};
   for(let mon=1;mon<=12;mon++){
     if(monthIdx!==null&&mon!==monthIdx+1)continue;
@@ -3567,7 +3569,7 @@ function getAnnualCategoryWorkData(catName,monthIdx){
       const ds=`${currentYear}-${String(mon).padStart(2,'0')}-${String(+dkey).padStart(2,'0')}`;
       (logs[dkey]||[]).forEach((wid,slot)=>{
         if(!wid||isWorkCellLocked(ds,slot))return;
-        const w=getWorkById(wid);if(!w||getWorkCategoryName(w)!==catName)return;
+        const w=getWorkById(wid);if(!w||!match(w))return;
         res[wid]=(res[wid]||0)+15;
       });
     }
@@ -3587,14 +3589,13 @@ function _renderAnnualPie(){
   const titleEl=document.getElementById('annual-pie-title');
   const scopeLabel=annualSelectedMonth!==null?monthLabels[annualSelectedMonth]:'年間合計';
   const isCat=annualJobChartMode==='category';
-  if(!isCat)annualPieCategory=null;
   let srcMap,pieColors={};
   if(annualPieCategory){
     // カテゴリ内訳：WORK別、色はカテゴリ色の濃淡
     const byWork=getAnnualCategoryWorkData(annualPieCategory,annualSelectedMonth);
     srcMap={};
     Object.entries(byWork).forEach(([wid,v])=>{const w=getWorkById(wid);const l=w?.name||wid;srcMap[l]=(srcMap[l]||0)+v;});
-    const base=getCategoryColorByName(annualPieCategory);
+    const base=isCat?getCategoryColorByName(annualPieCategory):(colorMap[annualPieCategory]||WORK_COLORS[0]);
     const ls=Object.keys(srcMap).sort((a,b)=>srcMap[b]-srcMap[a]);
     ls.forEach((l,i)=>pieColors[l]=shadeColor(base,ls.length<=1?0:-0.3+0.75*i/(ls.length-1)));
     if(titleEl){
@@ -3609,7 +3610,7 @@ function _renderAnnualPie(){
       months.forEach(m=>Object.entries(m).forEach(([l,v])=>srcMap[l]=(srcMap[l]||0)+v));
     }
     pieColors=colorMap;
-    if(titleEl)titleEl.innerHTML=scopeLabel+(isCat?' <span style="font-size:10px;color:var(--text3);">（カテゴリをタップで内訳）</span>':'');
+    if(titleEl)titleEl.innerHTML=scopeLabel+` <span style="font-size:10px;color:var(--text3);">（${isCat?'カテゴリ':'JOBNO'}をタップで内訳）</span>`;
   }
   const pieLabels=Object.keys(srcMap).filter(l=>srcMap[l]>0).sort((a,b)=>srcMap[b]-srcMap[a]);
   const pieCtx=document.getElementById('annual-job-pie-chart')?.getContext('2d');
@@ -3652,7 +3653,7 @@ function _renderAnnualPie(){
       options:{
         responsive:true,maintainAspectRatio:false,
         onClick:(e,els)=>{
-          if(!isCat||annualPieCategory||!els.length)return;
+          if(annualPieCategory||!els.length)return;
           annualPieCategory=pieLabels[els[0].index];_renderAnnualPie();
         },
         plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed}h`}}}
@@ -3664,7 +3665,7 @@ function _renderAnnualPie(){
     const total=Object.values(srcMap).reduce((s,v)=>s+v,0);
     legendEl.innerHTML=pieLabels.map(l=>{
       const pct=total>0?Math.round((srcMap[l]||0)/total*100):0;
-      const drillable=isCat&&!annualPieCategory;
+      const drillable=!annualPieCategory;
       return `<span style="display:flex;align-items:center;gap:4px;${drillable?'cursor:pointer;':''}"${drillable?` data-pie-cat="${escapeHtml(l)}"`:''}><span style="width:10px;height:10px;border-radius:50%;background:${pieColors[l]};display:inline-block;flex-shrink:0;"></span>${escapeHtml(l)} ${pct}%</span>`;
     }).join('')||'<span style="color:var(--text3);">データがありません</span>';
     legendEl.querySelectorAll('[data-pie-cat]').forEach(el=>el.addEventListener('click',()=>{annualPieCategory=el.dataset.pieCat;_renderAnnualPie();}));
