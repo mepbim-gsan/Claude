@@ -1167,6 +1167,13 @@ label:first-child{margin-top:0;}
       <label>カテゴリ</label><select id="new-work-category"></select>
       <input type="hidden" id="new-work-color" value="#4f8ef7">
       <button id="btn-add-work" class="btn btn-ghost btn-full mt-8">＋ WORK追加</button>
+      <div class="divider"></div>
+      <div class="work-archive-title">共有（CSV：WORK名・JOBNO・メモ・カテゴリ）</div>
+      <div class="row">
+        <button id="btn-work-csv-export" class="btn btn-ghost btn-full">📤 共有用エクスポート</button>
+        <button id="btn-work-csv-import" class="btn btn-ghost btn-full">📥 共有用インポート</button>
+      </div>
+      <input type="file" id="work-csv-input" accept=".csv,text/csv" style="display:none">
     </div>
   </div>
 </div>
@@ -1212,7 +1219,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-28.2';
+const APP_VERSION = 'v07_2026-09-28.3';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3395,6 +3402,63 @@ function openCategoryColorModal(id){
   pendingWorkConfirm=()=>resetWorkConfirmButtons();
   openModal('work-confirm-modal');
 }
+// WORK共有用CSV（有効WORKのみ・ID/色は含めない）
+function csvCell(v){v=String(v??'');return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function exportWorkCsv(){
+  const rows=[['WORK名','JOBNO','メモ','カテゴリ'],...getActiveWorks().map(w=>[w.name,w.jobNo,w.memo||'',getWorkCategory(w)?.name||''])];
+  const blob=new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n')],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`timecard_work_${toDateStr(new Date())}.csv`;
+  a.click();URL.revokeObjectURL(a.href);
+}
+function parseCsv(text){
+  const rows=[];let row=[],cell='',q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){cell+='"';i++;}else q=false;}else cell+=c;}
+    else if(c==='"')q=true;
+    else if(c===','){row.push(cell);cell='';}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell='';}
+    else cell+=c;
+  }
+  if(cell!==''||row.length){row.push(cell);rows.push(row);}
+  return rows.filter(r=>r.some(v=>v.trim()!==''));
+}
+// Excelで保存したShift_JISのCSVにも対応
+function decodeCsvBuffer(buf){
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^\uFEFF/,'');}
+  catch(_){return new TextDecoder('shift_jis').decode(buf);}
+}
+// WORK名+JOBNO一致：メモ・カテゴリ上書き・アーカイブ復活／不一致：追加（カテゴリが無ければ作成）。既存WORKは削除しない
+function importWorkCsv(text){
+  let rows=parseCsv(text);
+  if(rows.length&&rows[0][0].trim()==='WORK名')rows=rows.slice(1);
+  const items=rows.map(r=>({name:(r[0]||'').trim(),jobNo:(r[1]||'').trim()||'未定',memo:(r[2]||'').trim(),cat:(r[3]||'').trim()})).filter(x=>x.name);
+  if(!items.length){alert('取り込めるWORKがありません');return;}
+  const findWork=x=>(settings.workItems||[]).find(w=>w.name===x.name&&w.jobNo===x.jobNo);
+  let add=0,upd=0,revive=0;const seen=new Set();
+  items.forEach(x=>{const k=x.name+'\t'+x.jobNo;if(seen.has(k))return;seen.add(k);const w=findWork(x);if(!w)add++;else{upd++;if(w.archived)revive++;}});
+  resetWorkConfirmButtons();
+  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うち復活 ${revive}件）\n一致したWORKのメモ・カテゴリは上書きされます。`,()=>{
+    settings.categories=settings.categories||[];settings.workColors=settings.workColors||{};
+    items.forEach((x,i)=>{
+      let categoryId=null;
+      if(x.cat){
+        let c=settings.categories.find(c=>c.name===x.cat);
+        if(!c){c={id:newCategoryId(),name:x.cat,color:WORK_COLORS[settings.categories.length%WORK_COLORS.length]};settings.categories.push(c);}
+        categoryId=c.id;
+      }
+      const w=findWork(x);
+      if(w){w.memo=x.memo;w.categoryId=categoryId;w.archived=false;return;}
+      const id='w'+Date.now().toString(36)+i.toString(36);
+      if(!categoryId)settings.workColors[id]=WORK_COLORS[settings.workItems.length%WORK_COLORS.length];
+      settings.workItems.push({id,name:x.name,jobNo:x.jobNo,memo:x.memo,categoryId,archived:false});
+    });
+    refreshJobColors();saveSettingsStorage();renderWorkTab();
+    showWorkToast(`取り込みました（追加 ${add}件・更新 ${upd}件）`);
+  });
+}
 function addWorkItem(){
   const name=document.getElementById('new-work-name').value.trim();
   const jobNo=document.getElementById('new-work-jobno').value.trim()||'未定';
@@ -3874,6 +3938,14 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-work-manage-close')?.addEventListener('click',()=>closeModal('work-manage-modal'));
   document.getElementById('btn-add-work').addEventListener('click',addWorkItem);
   document.getElementById('btn-add-category').addEventListener('click',addCategory);
+  document.getElementById('btn-work-csv-export').addEventListener('click',exportWorkCsv);
+  document.getElementById('btn-work-csv-import').addEventListener('click',()=>document.getElementById('work-csv-input').click());
+  document.getElementById('work-csv-input').addEventListener('change',e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{try{importWorkCsv(decodeCsvBuffer(ev.target.result));}catch(err){alert('読み込みエラー: '+err.message);}e.target.value='';};
+    reader.readAsArrayBuffer(file);
+  });
   document.getElementById('btn-save-work-edit').addEventListener('click',saveWorkEdit);
   document.getElementById('btn-work-confirm-cancel').addEventListener('click',()=>{pendingWorkConfirm=null;closeModal('work-confirm-modal');});
   document.getElementById('btn-work-confirm-ok').addEventListener('click',()=>{const fn=pendingWorkConfirm;pendingWorkConfirm=null;closeModal('work-confirm-modal');if(fn)fn();else resetWorkConfirmButtons();});
