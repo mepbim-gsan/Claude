@@ -1237,7 +1237,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.12';
+const APP_VERSION = 'v07_2026-09-29.13';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3506,10 +3506,16 @@ function importWorkCsv(text){
   const items=rows.map(r=>({name:(r[0]||'').trim(),jobNo:(r[1]||'').trim()||'未定',memo:(r[2]||'').trim(),cat:(r[3]||'').trim(),sid:(r[4]||'').trim()})).filter(x=>x.name);
   if(!items.length){alert('取り込めるWORKがありません');return;}
   const findWork=x=>(x.sid&&(settings.workItems||[]).find(w=>w.sharedId===x.sid))||(settings.workItems||[]).find(w=>w.name===x.name&&w.jobNo===x.jobNo);
-  let add=0,upd=0,revive=0;const seen=new Set();
-  items.forEach(x=>{const k=x.sid||(x.name+'\t'+x.jobNo);if(seen.has(k))return;seen.add(k);const w=findWork(x);if(!w)add++;else{upd++;if(w.archived)revive++;}});
+  // 件数は実際に内容が変わるWORKのみ「更新」、一致して変化なしは「変更なし」
+  let add=0,upd=0,revive=0,same=0;const seen=new Set();
+  items.forEach(x=>{const k=x.sid||(x.name+'\t'+x.jobNo);if(seen.has(k))return;seen.add(k);const w=findWork(x);
+    if(!w){add++;return;}
+    const changed=w.name!==x.name||w.jobNo!==x.jobNo||(w.memo||'')!==x.memo||(getWorkCategory(w)?.name||'')!==x.cat||w.archived||(x.sid&&w.sharedId!==x.sid);
+    if(!changed){same++;return;}
+    upd++;if(w.archived)revive++;});
+  if(!add&&!upd){alert(`変更はありません（一致 ${same}件）`);return;}
   resetWorkConfirmButtons();
-  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うち復活 ${revive}件）\n一致したWORKのWORK名・JOBNO・メモ・カテゴリは上書きされます。`,()=>{
+  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うち復活 ${revive}件）・変更なし ${same}件\n更新するWORKはWORK名・JOBNO・メモ・カテゴリが上書きされます。`,()=>{
     settings.categories=settings.categories||[];settings.workColors=settings.workColors||{};
     let catChanged=false;
     items.forEach((x,i)=>{
