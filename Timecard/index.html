@@ -1158,8 +1158,9 @@ label:first-child{margin-top:0;}
       <div class="modal-handle"></div>
       <div class="modal-title">WORKリスト編集</div>
       <div class="modal-tabs" style="margin:0 0 10px;">
-        <div class="wm-tab active" data-wm-tab="work" role="button" tabindex="0">WORK<span id="wm-count-work"></span></div>
         <div class="wm-tab" data-wm-tab="cat" role="button" tabindex="0">CATEGORY<span id="wm-count-cat"></span></div>
+        <div class="wm-tab active" data-wm-tab="work" role="button" tabindex="0">WORK<span id="wm-count-work"></span></div>
+        <div class="wm-tab" data-wm-tab="arch" role="button" tabindex="0">ARCHIVE<span id="wm-count-arch"></span></div>
       </div>
     </div>
     <div class="work-modal-scroll">
@@ -1170,9 +1171,11 @@ label:first-child{margin-top:0;}
         <button id="btn-add-category" class="btn btn-ghost btn-sm" style="flex-shrink:0;">＋ 追加</button>
       </div>
       </div>
+      <div id="wm-pane-arch" style="display:none;">
+      <div id="work-archive-list"></div>
+      </div>
       <div id="wm-pane-work">
       <div id="work-list"></div>
-      <div id="work-archive-list"></div>
       <div class="divider"></div>
       <div class="row">
         <div><label>WORK名</label><input type="text" id="new-work-name" placeholder="例：設備BIM支援"></div>
@@ -1234,7 +1237,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.9';
+const APP_VERSION = 'v07_2026-09-29.10';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -2752,7 +2755,7 @@ function updateWorkCellVisual(cell,workId){
   const wid=workId||'';
   cell.dataset.workId=wid;
   cell.style.background=wid?getWorkColor(wid):'';
-  cell.textContent=wid?getWorkIndex(wid):'';
+  cell.textContent=wid?(getWorkIndex(wid)||(getWorkById(wid)?'A':'')):''; // アーカイブ済みWORKは「A」
   cell.title=wid?getWorkNameLine(wid):'';
 }
 function setWorkSummaryDay(day){workSummaryDay=day?+day:null;renderWorkGrid();renderWorkSummary();}
@@ -3329,9 +3332,10 @@ function renderWorkList(){
   renderCategoryList();
   const cw=document.getElementById('wm-count-work');if(cw)cw.textContent=active.length;
   const cc=document.getElementById('wm-count-cat');if(cc)cc.textContent=(settings.categories||[]).length;
+  const ca=document.getElementById('wm-count-arch');if(ca)ca.textContent=archived.length;
   const newCatSel=document.getElementById('new-work-category');
   if(newCatSel){const cur=newCatSel.value;newCatSel.innerHTML=categoryOptionsHtml(cur);}
-  if(archiveEl)archiveEl.innerHTML=archived.length?`<div class="work-archive-title">ARCHIVE</div>${archived.map(w=>rowHtml(w,false)).join('')}`:'';
+  if(archiveEl)archiveEl.innerHTML=archived.length?archived.map(w=>rowHtml(w,false)).join(''):'<div style="font-size:13px;color:var(--text2);padding:8px 0;">アーカイブしたWORKはありません</div>';
   let dragId=null;let startX=0;let lastTapId=null;let lastTapAt=0;
   document.querySelectorAll('[data-work-id]').forEach(row=>{
     const id=row.dataset.workId;
@@ -3375,6 +3379,7 @@ function setWorkManageTab(tab){
   document.querySelectorAll('[data-wm-tab]').forEach(t=>t.classList.toggle('active',t.dataset.wmTab===tab));
   document.getElementById('wm-pane-work').style.display=tab==='work'?'':'none';
   document.getElementById('wm-pane-cat').style.display=tab==='cat'?'':'none';
+  document.getElementById('wm-pane-arch').style.display=tab==='arch'?'':'none';
   const sc=document.querySelector('#work-manage-modal .work-modal-scroll');if(sc)sc.scrollTop=0;
 }
 function renderCategoryList(){
