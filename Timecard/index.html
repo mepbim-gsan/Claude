@@ -589,7 +589,10 @@ label:first-child{margin-top:0;}
 .cat-row{display:flex;align-items:center;gap:6px;margin:6px 0;}
 .cat-row input{flex:1;min-width:0;}
 .cat-row .work-dot{width:22px;height:22px;flex-shrink:0;cursor:pointer;}
-.cat-row .cat-count{font-size:11px;color:var(--text3);white-space:nowrap;}
+.cat-row .cat-count{font-size:11px;color:var(--text3);white-space:nowrap;min-width:34px;text-align:right;}
+.wm-tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;background:var(--bg3);color:var(--text2);transition:all .15s;}
+.wm-tab.active{background:var(--accent);color:#fff;}
+.wm-tab span{font-size:11px;opacity:.8;margin-left:4px;}
 .cat-row .work-mini-btn{flex-shrink:0;}
 .job-color-inherit{display:flex;align-items:center;gap:8px;width:100%;margin-top:10px;padding:8px 10px;border-radius:10px;border:2px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;}
 .job-color-inherit.selected{border-color:var(--text);box-shadow:0 0 0 2px var(--accent);}
@@ -1147,16 +1150,20 @@ label:first-child{margin-top:0;}
     <div class="work-modal-fixed-head">
       <div class="modal-handle"></div>
       <div class="modal-title">WORKリスト編集</div>
+      <div class="modal-tabs" style="margin:0 0 10px;">
+        <div class="wm-tab active" data-wm-tab="work" role="button" tabindex="0">WORK<span id="wm-count-work"></span></div>
+        <div class="wm-tab" data-wm-tab="cat" role="button" tabindex="0">CATEGORY<span id="wm-count-cat"></span></div>
+      </div>
     </div>
     <div class="work-modal-scroll">
-      <div class="work-archive-title">CATEGORY</div>
+      <div id="wm-pane-cat" style="display:none;">
       <div id="category-list"></div>
       <div style="display:flex;gap:6px;margin-top:6px;">
         <input type="text" id="new-category-name" placeholder="カテゴリ名" style="flex:1;min-width:0;">
         <button id="btn-add-category" class="btn btn-ghost btn-sm" style="flex-shrink:0;">＋ 追加</button>
       </div>
-      <div class="divider"></div>
-      <div class="work-archive-title">WORK</div>
+      </div>
+      <div id="wm-pane-work">
       <div id="work-list"></div>
       <div id="work-archive-list"></div>
       <div class="divider"></div>
@@ -1174,6 +1181,7 @@ label:first-child{margin-top:0;}
         <button id="btn-work-csv-import" class="btn btn-ghost btn-full">📥 共有用インポート</button>
       </div>
       <input type="file" id="work-csv-input" accept=".csv,text/csv" style="display:none">
+      </div>
     </div>
   </div>
 </div>
@@ -1219,7 +1227,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-28.3';
+const APP_VERSION = 'v07_2026-09-29';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3294,6 +3302,8 @@ function renderWorkList(){
   </div>`;
   el.innerHTML=active.length?active.map(w=>rowHtml(w,true)).join(''):'<div style="font-size:13px;color:var(--text2);padding:8px 0;">有効なWORKがありません</div>';
   renderCategoryList();
+  const cw=document.getElementById('wm-count-work');if(cw)cw.textContent=active.length;
+  const cc=document.getElementById('wm-count-cat');if(cc)cc.textContent=(settings.categories||[]).length;
   const newCatSel=document.getElementById('new-work-category');
   if(newCatSel){const cur=newCatSel.value;newCatSel.innerHTML=categoryOptionsHtml(cur);}
   if(archiveEl)archiveEl.innerHTML=archived.length?`<div class="work-archive-title">ARCHIVE</div>${archived.map(w=>rowHtml(w,false)).join('')}`:'';
@@ -3335,6 +3345,13 @@ function renderColorPalette(containerId,inputId,value){const el=document.getElem
 function renderAddWorkPalette(){renderColorPalette('new-work-color-palette','new-work-color',document.getElementById('new-work-color')?.value||WORK_COLORS[0]);}
 function openWorkEditModal(id){const w=getWorkById(id);if(!w)return;editingWorkId=id;document.getElementById('edit-work-name').value=w.name;document.getElementById('edit-work-jobno').value=w.jobNo;document.getElementById('edit-work-memo').value=w.memo||'';document.getElementById('edit-work-category').innerHTML=categoryOptionsHtml(w.categoryId);openModal('work-edit-modal');}
 function saveWorkEdit(){const w=getWorkById(editingWorkId);if(!w)return;const name=document.getElementById('edit-work-name').value.trim();const jobNo=document.getElementById('edit-work-jobno').value.trim()||'未定';const memo=document.getElementById('edit-work-memo').value.trim();if(!name){alert('WORK名を入力してください');return;}w.name=name;w.jobNo=jobNo;w.memo=memo;w.categoryId=document.getElementById('edit-work-category').value||null;refreshJobColors();saveSettingsStorage();closeModal('work-edit-modal');renderWorkTab();}
+// WORKリスト編集のタブ切替（'work' / 'cat'）
+function setWorkManageTab(tab){
+  document.querySelectorAll('[data-wm-tab]').forEach(t=>t.classList.toggle('active',t.dataset.wmTab===tab));
+  document.getElementById('wm-pane-work').style.display=tab==='work'?'':'none';
+  document.getElementById('wm-pane-cat').style.display=tab==='cat'?'':'none';
+  const sc=document.querySelector('#work-manage-modal .work-modal-scroll');if(sc)sc.scrollTop=0;
+}
 function renderCategoryList(){
   const el=document.getElementById('category-list');if(!el)return;
   const cats=settings.categories||[];
@@ -3930,7 +3947,11 @@ document.addEventListener('DOMContentLoaded',()=>{
     renderWorkTab();
   });
   document.getElementById('work-current-button')?.addEventListener('click',openWorkSelectModal);
-  document.getElementById('btn-open-work-manage')?.addEventListener('click',()=>{renderWorkList();openModal('work-manage-modal');});
+  document.getElementById('btn-open-work-manage')?.addEventListener('click',()=>{renderWorkList();setWorkManageTab('work');openModal('work-manage-modal');});
+  document.querySelectorAll('[data-wm-tab]').forEach(t=>{
+    t.addEventListener('click',()=>setWorkManageTab(t.dataset.wmTab));
+    t.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setWorkManageTab(t.dataset.wmTab);}});
+  });
   document.getElementById('work-modal-search')?.addEventListener('input',e=>{
     renderWorkModalList(e.target.value);
   });
