@@ -976,6 +976,8 @@ label:first-child{margin-top:0;}
         <table class="annual-table">
           <thead><tr>
             <th>月</th>
+            <th style="text-align:right">営業日(日)</th>
+            <th style="text-align:right">実労働日(日)</th>
             <th style="text-align:right">実労働(h)</th>
             <th style="text-align:right">法定限度(h)</th>
             <th style="text-align:right">法定時間外(h)</th>
@@ -987,6 +989,8 @@ label:first-child{margin-top:0;}
           <tbody id="annual-tbody"></tbody>
           <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
             <td>合計</td>
+            <td id="at-biz" style="text-align:right">-</td>
+            <td id="at-workdays" style="text-align:right">-</td>
             <td id="at-actual" style="text-align:right">-</td>
             <td id="at-pres" style="text-align:right">-</td>
             <td id="at-cot" style="text-align:right">-</td>
@@ -1230,7 +1234,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.2';
+const APP_VERSION = 'v07_2026-09-29.4';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3726,13 +3730,14 @@ function renderAnnualJobCharts(){
 function renderAnnualTab(){
   document.getElementById('year-label').textContent=`${currentYear}年`;
   const cm=new Date().getMonth()+1,cy=new Date().getFullYear();
-  let tA=0,tLL=0,tLOT=0,tHol=0,tPaid=0,tComp=0,tRemote=0;
+  let tA=0,tLL=0,tLOT=0,tHol=0,tPaid=0,tComp=0,tRemote=0,tBiz=0,tWorkDays=0;
   const rows=[];
   for(let mon=1;mon<=12;mon++){
     const key=getMonthKey(currentYear,mon),data=monthData[key]||{days:{},schedules:{}};
     const legalLim=calcLegalLimit(currentYear,mon);
     const dim=new Date(currentYear,mon,0).getDate();
-    let actual=0,holWork=0,paid=0,comp=0,remote=0;
+    let actual=0,holWork=0,paid=0,comp=0,remote=0,workDays=0;
+    const biz=getBusinessDays(currentYear,mon).length;
     for(let d=1;d<=dim;d++){
       const obj=(data.days||{})[String(d)];
       if(!obj)continue;
@@ -3743,13 +3748,16 @@ function renderAnnualTab(){
       if(obj.leave==='comp')comp++;
       if(obj.leave==='half')paid+=0.5;
       if(obj.remote&&wm>0)remote++;
+      if(wm>0)workDays++;
     }
     const lot=Math.max(0,actual-legalLim);
-    tA+=actual;tLL+=legalLim;tLOT+=lot;tHol+=holWork;tPaid+=paid;tComp+=comp;tRemote+=remote;
+    tA+=actual;tLL+=legalLim;tLOT+=lot;tHol+=holWork;tPaid+=paid;tComp+=comp;tRemote+=remote;tBiz+=biz;tWorkDays+=workDays;
     const ic=(currentYear===cy&&mon===cm);
     const r=(v)=>`style="text-align:right">${v}`;
     rows.push(`<tr class="${ic?'current-month':''}">
       <td style="white-space:nowrap">${mon}月</td>
+      <td ${r(biz)}</td>
+      <td ${r(workDays>0?workDays:'-')}</td>
       <td ${r(formatHours(actual))}</td>
       <td ${r(formatHours(legalLim))}</td>
       <td style="text-align:right;color:${lot>0?'var(--warn)':'var(--text)'}">${formatHours(lot)}</td>
@@ -3760,6 +3768,8 @@ function renderAnnualTab(){
     </tr>`);
   }
   document.getElementById('annual-tbody').innerHTML=rows.join('');
+  document.getElementById('at-biz').textContent=tBiz;
+  document.getElementById('at-workdays').textContent=tWorkDays>0?tWorkDays:'-';
   document.getElementById('at-actual').textContent=formatHours(tA);
   document.getElementById('at-pres').textContent=formatHours(tLL);
   document.getElementById('at-cot').textContent=formatHours(tLOT);
@@ -3808,13 +3818,13 @@ function exportExcel(){
 
   // 年間サマリシート
   const ws2=[[`${currentYear}年 年間サマリ`],[],
-    ['月','実労働(h)','所定(h)','所定残業(h)','法定残業(h)','有給(日)','代休(日)','テレワーク(日)']];
-  let tA=0,tP=0,tCOT=0,tLOT=0,tPaid=0,tComp=0,tRem=0;
+    ['月','営業日(日)','実労働日(日)','実労働(h)','所定(h)','所定残業(h)','法定残業(h)','有給(日)','代休(日)','テレワーク(日)']];
+  let tA=0,tP=0,tCOT=0,tLOT=0,tPaid=0,tComp=0,tRem=0,tBiz=0,tWd=0;
   for(let mon=1;mon<=12;mon++){
     const mk=getMonthKey(currentYear,mon),md=monthData[mk]||{days:{},schedules:{}};
     const biz=getBusinessDays(currentYear,mon),pres=calcPrescribed(biz);
     const legalLim2=calcLegalLimit(currentYear,mon),dim2=new Date(currentYear,mon,0).getDate();
-    let a=0,p=0,co=0,rem=0;
+    let a=0,p=0,co=0,rem=0,wd=0;
     for(let d=1;d<=dim2;d++){
       const o=(md.days||{})[String(d)];
       if(!o)continue;
@@ -3825,17 +3835,18 @@ function exportExcel(){
       if(o.leave==='comp')co++;
       if(o.leave==='half')p+=0.5;
       if(o.remote&&wm>0)rem++;
+      if(wm>0)wd++;
     }
     const c=Math.max(0,a-pres),l=Math.max(0,a-legalLim2);
-    tA+=a;tP+=pres;tCOT+=c;tLOT+=l;tPaid+=p;tComp+=co;tRem+=rem;
-    ws2.push([`${mon}月`,parseFloat((a/60).toFixed(2)),parseFloat((pres/60).toFixed(2)),
+    tA+=a;tP+=pres;tCOT+=c;tLOT+=l;tPaid+=p;tComp+=co;tRem+=rem;tBiz+=biz.length;tWd+=wd;
+    ws2.push([`${mon}月`,biz.length,wd,parseFloat((a/60).toFixed(2)),parseFloat((pres/60).toFixed(2)),
       parseFloat((c/60).toFixed(2)),parseFloat((l/60).toFixed(2)),p||0,co||0,rem||0]);
   }
   ws2.push([]);
-  ws2.push(['合計',parseFloat((tA/60).toFixed(2)),parseFloat((tP/60).toFixed(2)),
+  ws2.push(['合計',tBiz,tWd,parseFloat((tA/60).toFixed(2)),parseFloat((tP/60).toFixed(2)),
     parseFloat((tCOT/60).toFixed(2)),parseFloat((tLOT/60).toFixed(2)),tPaid,tComp,tRem]);
   const s2=XLSX.utils.aoa_to_sheet(ws2);
-  s2['!cols']=[{wch:6},{wch:12},{wch:10},{wch:14},{wch:12},{wch:8},{wch:8},{wch:12}];
+  s2['!cols']=[{wch:6},{wch:10},{wch:12},{wch:12},{wch:10},{wch:14},{wch:12},{wch:8},{wch:8},{wch:12}];
   XLSX.utils.book_append_sheet(wb,s2,`${currentYear}年サマリ`);
   XLSX.writeFile(wb,`timecard_${currentYear}.xlsx`);
 }
