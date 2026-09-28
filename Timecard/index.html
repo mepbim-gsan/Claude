@@ -1234,7 +1234,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.5';
+const APP_VERSION = 'v07_2026-09-30';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -2662,6 +2662,24 @@ function migrateWorkCategories(){
     if(String(settings.workColors[w.id]||'').toLowerCase()===c.color.toLowerCase())delete settings.workColors[w.id];
   });
 }
+// 新規WORKの挿入位置：同カテゴリの最後（既存の並びは変えない）。
+// 同カテゴリが無ければカテゴリ順で後ろのカテゴリの先頭の前、未分類は末尾
+function insertWorkSorted(item){
+  const arr=settings.workItems;
+  const cats=settings.categories||[];
+  const ci=w=>{const i=cats.findIndex(c=>c.id===w.categoryId);return i<0?Infinity:i;};
+  const target=ci(item);
+  if(target===Infinity){arr.push(item);return;}
+  const same=arr.map((w,i)=>ci(w)===target?i:-1).filter(i=>i>=0);
+  let at;
+  if(same.length){
+    at=same[same.length-1]+1;
+  }else{
+    at=arr.findIndex(w=>{const c=ci(w);return c>target&&c!==Infinity;});
+    if(at<0){const prev=arr.map((w,i)=>ci(w)<target?i:-1).filter(i=>i>=0);at=prev.length?prev[prev.length-1]+1:arr.length;}
+  }
+  arr.splice(at,0,item);
+}
 function categoryOptionsHtml(selId){
   return `<option value="">${UNCAT_NAME}</option>`+(settings.categories||[]).map(c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${escapeHtml(c.name)}</option>`).join('');
 }
@@ -2982,7 +3000,7 @@ function renderWorkModalList(query){
           // 絞り込み中のカテゴリ → WORK名接頭辞と一致する既存カテゴリ → 未分類
           const prefix=(qRaw.match(/^([^_]+)_/)||[])[1];
           const categoryId=getCategoryById(workModalCategory)?.id||(settings.categories||[]).find(c=>c.name===prefix)?.id||null;
-          settings.workItems.push({id,name:qRaw,jobNo,categoryId,archived:false});
+          insertWorkSorted({id,name:qRaw,jobNo,categoryId,archived:false});
           refreshJobColors();
           selectedWorkId=id;
           saveSettingsStorage();
@@ -3475,7 +3493,7 @@ function importWorkCsv(text){
       const w=findWork(x);
       if(w){w.memo=x.memo;w.categoryId=categoryId;w.archived=false;return;}
       const id='w'+Date.now().toString(36)+i.toString(36);
-      settings.workItems.push({id,name:x.name,jobNo:x.jobNo,memo:x.memo,categoryId,archived:false});
+      insertWorkSorted({id,name:x.name,jobNo:x.jobNo,memo:x.memo,categoryId,archived:false});
     });
     refreshJobColors();saveSettingsStorage();renderWorkTab();
     showWorkToast(`取り込みました（追加 ${add}件・更新 ${upd}件）`);
@@ -3488,7 +3506,7 @@ function addWorkItem(){
   const id='w'+Date.now().toString(36);
   const categoryId=document.getElementById('new-work-category')?.value||null;
   settings.workColors=settings.workColors||{};
-  settings.workItems.push({id,name,jobNo,categoryId,archived:false});
+  insertWorkSorted({id,name,jobNo,categoryId,archived:false});
   refreshJobColors();
   selectedWorkId=id;
   saveSettingsStorage();
