@@ -3430,7 +3430,7 @@ function decodeCsvBuffer(buf){
   try{return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^\uFEFF/,'');}
   catch(_){return new TextDecoder('shift_jis').decode(buf);}
 }
-// WORK名+JOBNO一致：メモ上書き・アーカイブ復活／不一致：追加（カテゴリが無ければ作成）。既存WORKは削除しない
+// WORK名+JOBNO一致：メモ・カテゴリ上書き・アーカイブ復活／不一致：追加（カテゴリが無ければ作成）。既存WORKは削除しない
 function importWorkCsv(text){
   let rows=parseCsv(text);
   if(rows.length&&rows[0][0].trim()==='WORK名')rows=rows.slice(1);
@@ -3440,17 +3440,17 @@ function importWorkCsv(text){
   let add=0,upd=0,revive=0;const seen=new Set();
   items.forEach(x=>{const k=x.name+'\t'+x.jobNo;if(seen.has(k))return;seen.add(k);const w=findWork(x);if(!w)add++;else{upd++;if(w.archived)revive++;}});
   resetWorkConfirmButtons();
-  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うち復活 ${revive}件）\n一致したWORKのメモは上書きされます。`,()=>{
+  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うち復活 ${revive}件）\n一致したWORKのメモ・カテゴリは上書きされます。`,()=>{
     settings.categories=settings.categories||[];settings.workColors=settings.workColors||{};
     items.forEach((x,i)=>{
-      const w=findWork(x);
-      if(w){w.memo=x.memo;w.archived=false;return;}
       let categoryId=null;
       if(x.cat){
         let c=settings.categories.find(c=>c.name===x.cat);
         if(!c){c={id:newCategoryId(),name:x.cat,color:WORK_COLORS[settings.categories.length%WORK_COLORS.length]};settings.categories.push(c);}
         categoryId=c.id;
       }
+      const w=findWork(x);
+      if(w){w.memo=x.memo;w.categoryId=categoryId;w.archived=false;return;}
       const id='w'+Date.now().toString(36)+i.toString(36);
       if(!categoryId)settings.workColors[id]=WORK_COLORS[settings.workItems.length%WORK_COLORS.length];
       settings.workItems.push({id,name:x.name,jobNo:x.jobNo,memo:x.memo,categoryId,archived:false});
