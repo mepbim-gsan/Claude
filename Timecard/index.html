@@ -624,6 +624,9 @@ label:first-child{margin-top:0;}
   overflow:hidden!important;
   padding:0!important;
 }
+/* タブ切替で高さが変わりタブ位置が動かないよう固定 */
+.work-manage-sheet{height:92dvh!important;}
+@media(min-width:768px){#work-manage-modal .work-manage-sheet{height:88dvh!important;max-height:88dvh!important;}}
 .work-modal-fixed-head{
   flex:0 0 auto;
   background:var(--bg2);
@@ -1227,7 +1230,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29';
+const APP_VERSION = 'v07_2026-09-29.2';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
