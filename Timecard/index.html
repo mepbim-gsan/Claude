@@ -2662,7 +2662,7 @@ function migrateWorkCategories(){
     if(String(settings.workColors[w.id]||'').toLowerCase()===c.color.toLowerCase())delete settings.workColors[w.id];
   });
 }
-// 新規WORKの挿入位置：同カテゴリ内の名前昇順の位置（既存の並びは変えない）。
+// 新規WORKの挿入位置：同カテゴリの最後（既存の並びは変えない）。
 // 同カテゴリが無ければカテゴリ順で後ろのカテゴリの先頭の前、未分類は末尾
 function insertWorkSorted(item){
   const arr=settings.workItems;
@@ -2673,8 +2673,7 @@ function insertWorkSorted(item){
   const same=arr.map((w,i)=>ci(w)===target?i:-1).filter(i=>i>=0);
   let at;
   if(same.length){
-    const after=same.find(i=>arr[i].name.localeCompare(item.name,'ja',{numeric:true})>0);
-    at=after!==undefined?after:same[same.length-1]+1;
+    at=same[same.length-1]+1;
   }else{
     at=arr.findIndex(w=>{const c=ci(w);return c>target&&c!==Infinity;});
     if(at<0){const prev=arr.map((w,i)=>ci(w)<target?i:-1).filter(i=>i>=0);at=prev.length?prev[prev.length-1]+1:arr.length;}
