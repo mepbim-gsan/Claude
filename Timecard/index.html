@@ -595,6 +595,12 @@ label:first-child{margin-top:0;}
 .wm-tab span{font-size:11px;opacity:.8;margin-left:4px;}
 .cat-row .work-mini-btn{flex-shrink:0;}
 .work-shared-badge{display:inline-block;font-size:10px;font-weight:700;line-height:1.4;padding:0 6px;margin-left:6px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);vertical-align:middle;white-space:nowrap;}
+.work-list-main{position:relative;}
+.work-list-main>.work-list-job{position:absolute;right:0;bottom:0;max-width:40%;}
+.work-list-note{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:84px;}
+.work-list-item>.work-shared-badge{position:absolute;top:8px;right:10px;margin:0;}
+.work-list-item.has-shared .work-list-text{padding-right:44px;}
+.work-modal-item .work-shared-badge{position:absolute;right:7px;bottom:6px;margin:0;}
 .job-color-inherit{display:flex;align-items:center;gap:8px;width:100%;margin-top:10px;padding:8px 10px;border-radius:10px;border:2px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;}
 .job-color-inherit.selected{border-color:var(--text);box-shadow:0 0 0 2px var(--accent);}
 
@@ -1240,7 +1246,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.17';
+const APP_VERSION = 'v07_2026-09-29.20';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -2989,8 +2995,8 @@ function renderWorkModalList(query){
   if(list.length){
     el.innerHTML=list.map(w=>`<button type="button" class="work-modal-item${selectedWorkId===w.id?' selected':''}" data-work-select="${w.id}">
       <span class="work-dot" style="background:${getWorkColor(w.id)}"></span>
-      <span style="min-width:0;overflow:hidden;"><span class="work-modal-item-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</span><span class="work-modal-item-job">${escapeHtml(w.jobNo)}${sharedBadge(w)}</span>${w.memo?`<span style="font-size:11px;color:var(--text3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px;line-height:1.4;">${escapeHtml(w.memo)}</span>`:''}</span>
-      <span class="work-modal-item-mark">${selectedWorkId===w.id?'選択中':'選択'}</span>
+      <span style="min-width:0;overflow:hidden;"><span class="work-modal-item-name">${getWorkIndex(w.id)}. ${escapeHtml(w.name)}</span><span class="work-modal-item-job">${escapeHtml(w.jobNo)}</span>${w.memo?`<span style="font-size:11px;color:var(--text3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px;line-height:1.4;">${escapeHtml(w.memo)}</span>`:''}</span>
+      <span class="work-modal-item-mark">${selectedWorkId===w.id?'選択中':'選択'}</span>${sharedBadge(w)}
     </button>`).join('');
   } else {
     el.innerHTML=`<div style="font-size:13px;color:var(--text2);padding:12px 4px;">${qRaw?'該当するWORKがありません':'有効なWORKがありません'}</div>`
@@ -3315,17 +3321,17 @@ function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;',
 function renderWorkList(){
   const el=document.getElementById('work-list');const archiveEl=document.getElementById('work-archive-list');if(!el)return;ensureWorkDefaults();
   const active=(settings.workItems||[]).filter(w=>!w.archived);const archived=(settings.workItems||[]).filter(w=>w.archived);
-  const rowHtml=(w,activeRow)=>`<div class="work-list-item ${activeRow?'':'work-archived'}" draggable="true" data-work-id="${w.id}">
+  const rowHtml=(w,activeRow)=>`<div class="work-list-item ${activeRow?'':'work-archived'}${isSharedFromOthers(w)?' has-shared':''}" draggable="true" data-work-id="${w.id}">${sharedBadge(w)}
     <div class="work-list-main">
       <span class="work-dot" data-work-color style="background:${getWorkColor(w.id)}" title="色を変更"></span>
       <div class="work-list-text">
         <div class="work-list-title">
           <div class="work-list-name">${getWorkIndex(w.id)?getWorkIndex(w.id)+'. ':''}${escapeHtml(w.name)}</div>
-          <div class="work-list-job">${escapeHtml(w.jobNo)}</div>${sharedBadge(w)}
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${escapeHtml(getWorkCategoryName(w))}</div>
-        ${w.memo?`<div style="font-size:11px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(w.memo)}</div>`:''}
+        <div class="work-list-note" style="margin-top:2px;">${escapeHtml(getWorkCategoryName(w))}</div>
+        ${w.memo?`<div class="work-list-note" style="margin-top:3px;">${escapeHtml(w.memo)}</div>`:''}
       </div>
+      <div class="work-list-job">${escapeHtml(w.jobNo)}</div>
     </div>
     <div class="work-swipe-actions">
       <button class="btn btn-ghost btn-sm work-action-archive" data-work-archive>${activeRow?'アーカイブ':'戻す'}</button>
@@ -3532,7 +3538,7 @@ function decodeCsvBuffer(buf){
   try{return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^\uFEFF/,'');}
   catch(_){return new TextDecoder('shift_jis').decode(buf);}
 }
-// 共有ID一致（無ければWORK名+JOBNO一致）：WORK名・JOBNO・メモ・カテゴリ上書き・共有ID引継ぎ・アーカイブ復活
+// 共有ID一致（無ければWORK名+JOBNO一致）：WORK名・JOBNO・メモ・カテゴリ上書き・共有ID引継ぎ（アーカイブ状態は維持）
 // 不一致：追加（カテゴリが無ければ作成、共有IDは引継ぎ）。既存WORKは削除しない
 function importWorkCsv(text){
   let rows=parseCsv(text);
@@ -3541,15 +3547,15 @@ function importWorkCsv(text){
   if(!items.length){alert('取り込めるWORKがありません');return;}
   const findWork=x=>(x.sid&&(settings.workItems||[]).find(w=>w.sharedId===x.sid))||(settings.workItems||[]).find(w=>w.name===x.name&&w.jobNo===x.jobNo);
   // 件数は実際に内容が変わるWORKのみ「更新」、一致して変化なしは「変更なし」
-  let add=0,upd=0,revive=0,same=0;const seen=new Set();
+  let add=0,upd=0,archUpd=0,same=0;const seen=new Set();
   items.forEach(x=>{const k=x.sid||(x.name+'\t'+x.jobNo);if(seen.has(k))return;seen.add(k);const w=findWork(x);
     if(!w){add++;return;}
-    const changed=w.name!==x.name||w.jobNo!==x.jobNo||(w.memo||'')!==x.memo||(getWorkCategory(w)?.name||'')!==x.cat||w.archived||(x.sid&&w.sharedId!==x.sid);
+    const changed=w.name!==x.name||w.jobNo!==x.jobNo||(w.memo||'')!==x.memo||(getWorkCategory(w)?.name||'')!==x.cat||(x.sid&&w.sharedId!==x.sid);
     if(!changed){same++;return;}
-    upd++;if(w.archived)revive++;});
+    upd++;if(w.archived)archUpd++;});
   if(!add&&!upd){alert(`変更はありません（一致 ${same}件）`);return;}
   resetWorkConfirmButtons();
-  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うち復活 ${revive}件）・変更なし ${same}件\n更新するWORKはWORK名・JOBNO・メモ・カテゴリが上書きされます。`,()=>{
+  showWorkConfirm('WORK共有インポート',`追加 ${add}件・更新 ${upd}件（うちアーカイブ中 ${archUpd}件）・変更なし ${same}件\n更新するWORKはWORK名・JOBNO・メモ・カテゴリが上書きされます。アーカイブ中のWORKはアーカイブのまま更新されます。`,()=>{
     settings.categories=settings.categories||[];settings.workColors=settings.workColors||{};
     let catChanged=false;
     items.forEach((x,i)=>{
@@ -3560,7 +3566,7 @@ function importWorkCsv(text){
         categoryId=c.id;
       }
       const w=findWork(x);
-      if(w){if((w.categoryId||null)!==categoryId)catChanged=true;w.name=x.name;w.jobNo=x.jobNo;w.memo=x.memo;w.categoryId=categoryId;w.archived=false;if(x.sid)w.sharedId=x.sid;return;}
+      if(w){if((w.categoryId||null)!==categoryId)catChanged=true;w.name=x.name;w.jobNo=x.jobNo;w.memo=x.memo;w.categoryId=categoryId;if(x.sid)w.sharedId=x.sid;return;}
       const id='w'+Date.now().toString(36)+i.toString(36);
       insertWorkSorted({id,name:x.name,jobNo:x.jobNo,memo:x.memo,categoryId,archived:false,...(x.sid?{sharedId:x.sid}:{})});
     });
