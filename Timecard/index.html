@@ -595,6 +595,9 @@ label:first-child{margin-top:0;}
 .wm-tab span{font-size:11px;opacity:.8;margin-left:4px;}
 .cat-row .work-mini-btn{flex-shrink:0;}
 .work-shared-badge{display:inline-block;font-size:10px;font-weight:700;line-height:1.4;padding:0 6px;margin-left:6px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);vertical-align:middle;white-space:nowrap;}
+.work-list-main{position:relative;}
+.work-list-main>.work-list-job{position:absolute;right:0;bottom:0;max-width:40%;}
+.work-list-note{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:84px;}
 .work-list-item>.work-shared-badge{position:absolute;top:8px;right:10px;margin:0;}
 .work-list-item.has-shared .work-list-text{padding-right:44px;}
 .work-modal-item .work-shared-badge{position:absolute;right:7px;bottom:6px;margin:0;}
@@ -1243,7 +1246,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.19';
+const APP_VERSION = 'v07_2026-09-29.20';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3324,11 +3327,11 @@ function renderWorkList(){
       <div class="work-list-text">
         <div class="work-list-title">
           <div class="work-list-name">${getWorkIndex(w.id)?getWorkIndex(w.id)+'. ':''}${escapeHtml(w.name)}</div>
-          <div class="work-list-job">${escapeHtml(w.jobNo)}</div>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${escapeHtml(getWorkCategoryName(w))}</div>
-        ${w.memo?`<div style="font-size:11px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(w.memo)}</div>`:''}
+        <div class="work-list-note" style="margin-top:2px;">${escapeHtml(getWorkCategoryName(w))}</div>
+        ${w.memo?`<div class="work-list-note" style="margin-top:3px;">${escapeHtml(w.memo)}</div>`:''}
       </div>
+      <div class="work-list-job">${escapeHtml(w.jobNo)}</div>
     </div>
     <div class="work-swipe-actions">
       <button class="btn btn-ghost btn-sm work-action-archive" data-work-archive>${activeRow?'アーカイブ':'戻す'}</button>
