@@ -1239,7 +1239,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.15';
+const APP_VERSION = 'v07_2026-09-29.16';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -3370,7 +3370,7 @@ function moveWorkBefore(fromId,toId){
 }
 function moveWork(id,delta){const arr=settings.workItems;const activeIdxs=arr.map((w,i)=>!w.archived?i:null).filter(i=>i!==null);const pos=activeIdxs.indexOf(arr.findIndex(w=>w.id===id));if(pos<0)return;const newPos=pos+delta;if(newPos<0||newPos>=activeIdxs.length)return;const i=activeIdxs[pos],j=activeIdxs[newPos];[arr[i],arr[j]]=[arr[j],arr[i]];saveSettingsStorage();renderWorkTab();}
 function toggleWorkArchive(id){const w=getWorkById(id);if(!w)return;w.archived=!w.archived;if(w.archived&&selectedWorkId===id){selectedWorkId=getActiveWorks().find(x=>x.id!==id)?.id||'';clearWorkRangeStart();}saveSettingsStorage();renderWorkTab();}
-function confirmDeleteWork(id){const w=getWorkById(id);if(!w)return;showWorkConfirm('WORK削除',`${w.name} を削除します。\n既に塗ったセルは空になります。`,()=>{const delId=w.id;settings.workItems=settings.workItems.filter(x=>x.id!==delId);for(const md of Object.values(monthData)){if(!md.workLogs)continue;for(const arr of Object.values(md.workLogs)){if(Array.isArray(arr))for(let i=0;i<arr.length;i++)if(arr[i]===delId)arr[i]='';}}ensureWorkDefaults();saveSettingsStorage();saveStorage();clearWorkRangeStart();renderWorkTab();});}
+function confirmDeleteWork(id){const w=getWorkById(id);if(!w)return;const mins=countWorkMinutesAll(id);showWorkConfirm('WORK削除',`${w.name} を削除します。\n`+(mins>0?`このWORKの実績 ${formatHoursMin(mins)}（全期間）は空になります。\n実績を残したい場合は、WORK編集（ダブルタップ）の「他のWORKに統合」を使ってください。`:'このWORKの実績はありません。'),()=>{const delId=w.id;settings.workItems=settings.workItems.filter(x=>x.id!==delId);for(const md of Object.values(monthData)){if(!md.workLogs)continue;for(const arr of Object.values(md.workLogs)){if(Array.isArray(arr))for(let i=0;i<arr.length;i++)if(arr[i]===delId)arr[i]='';}}ensureWorkDefaults();saveSettingsStorage();saveStorage();clearWorkRangeStart();renderWorkTab();});}
 function showWorkConfirm(title,body,onOk){resetWorkConfirmButtons();pendingWorkConfirm=onOk;document.getElementById('work-confirm-title').textContent=title;document.getElementById('work-confirm-body').textContent=body;openModal('work-confirm-modal');}
 function renderColorPalette(containerId,inputId,value){const el=document.getElementById(containerId);const input=document.getElementById(inputId);if(!el||!input)return;input.value=value||input.value||WORK_COLORS[0];el.innerHTML=WORK_COLORS.map(c=>`<button type="button" class="color-swatch${c.toLowerCase()===input.value.toLowerCase()?' selected':''}" data-color="${c}" style="background:${c}" title="${c}"></button>`).join('');el.querySelectorAll('[data-color]').forEach(btn=>btn.addEventListener('click',()=>{input.value=btn.dataset.color;renderColorPalette(containerId,inputId,input.value);}));}
 function renderAddWorkPalette(){renderColorPalette('new-work-color-palette','new-work-color',document.getElementById('new-work-color')?.value||WORK_COLORS[0]);}
