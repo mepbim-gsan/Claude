@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v83
-  @changelog v83: v82で書き出しHTMLが白紙(画像も何も出ない)になる重大バグを修正。原因はexportHtml内に追加したlinkifyText()の正規表現内の「\/」「\-」「\]」が、exportHtmlを組み立てる外側のテンプレートリテラルの文字列評価時に無意味なエスケープとしてバックスラッシュごと消えてしまい(例:\/\/ → //)、書き出し後のファイル内で不正な正規表現リテラルとなってrenderList()実行時に例外が発生、一覧の描画全体(画像含む)が止まっていたこと。該当箇所のバックスラッシュを二重化(\\/など)して外側テンプレートの評価を経ても正しくエスケープが残るよう修正。あわせてPlaywrightで書き出しHTMLを実際にレンダリングして検証したところ、v81で追加した目次パネルがtocPanel.style.display=""ではCSS既定のdisplay:noneを上書きできず一度も表示されていなかった不具合も発覚したため、"block"を明示するよう修正
-  @changelog v82: メモ・見出し内のURLを自動でハイパーリンク化(本体のライトボックスキャプション・書き出しHTMLの一覧/グリッド/ノート形式・書き出しHTML側ライトボックスキャプションの全箇所)。linkifyText()でHTMLエスケープ後にhttp(s)://で始まるURLだけを抽出して<a target="_blank" rel="noopener noreferrer">に変換、文末の句読点・括弧等はリンクに含めないようトリム。既存のtextContent代入をinnerHTML代入に置き換えるため、メモ本文はXSS対策として必ず先にHTMLエスケープしてからリンク化する実装に統一
-  @changelog v81: 書き出しHTMLの「一覧表示」モードに、見出しレコードだけを拾ったNotion風の目次パネルを追加(画面右側にposition:fixedで表示、クリックでその見出し位置へスムーズスクロール)。目次パネル(#tocPanel)は見出しが1件もない場合は非表示、PDF用のグリッド/ノート形式モードや印刷時・狭い画面(1300px以下)でも非表示。ユーザーとの相談の結果、現在地ハイライトなしのシンプルなクリックジャンプのみの仕様に決定
-  ※ v01〜v80の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  @version   v84
+  @changelog v84: ユーザー要望「トリミングの前回の範囲ボタンを、トリミングボタンの横にも追加してほしい」に対応。記録一覧の各行に「✂️トリミング」と並べて「🔁前回の範囲」クイックボタンを新設し、クロップモーダルを開かずに直前の比率をその場で即適用できるようにした(applyLastCropRatio())。従来のモーダル内「前回の範囲」ボタンは選択範囲をプレビューするだけで別途「この範囲でトリミング」を押す必要があったが、このクイックボタンは確定まで一括で行う。lastCropRatioが未設定(まだ一度もトリミングしていない)間は非表示、モーダルで初めてトリミングを確定した瞬間にshowAllCropLastButtons()で全行分をまとめて表示。Playwrightで異なる自然サイズの2画像に対し同一比率が正しくスケールして適用されることを確認済み
+  @changelog v83: v82で書き出しHTMLが白紙(画像も何も出ない)になる重大バグを修正。原因はexportHtml内に追加したlinkifyText()の正規表現内の「\/」「\-」「\]」が、exportHtmlを組み立てる外側のテンプレートリテラルの文字列評価時に無意味なエスケープとしてバックスラッシュごと消えてしまい(例:\/\/ → //)、書き出し後のファイル内で不正な正規表現リテラルとなってrenderList()実行時に例外が発生、一覧の描画全体(画像含む)が止まっていたこと。該当箇所のバックスラッシュを二重化(\\/など)して外側テンプレートの評価を経ても正しくエスケープが残るよう修正
+  @changelog v82: メモ・見出し内のURLを自動でハイパーリンク化(本体のライトボックスキャプション・書き出しHTMLの一覧/グリッド/ノート形式・書き出しHTML側ライトボックスキャプションの全箇所)。linkifyText()でHTMLエスケープ後にhttp(s)://で始まるURLだけを抽出して<a target="_blank" rel="noopener noreferrer">に変換、文末の句読点・括弧等はリンクに含めないようトリム
+  ※ v01〜v81の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -299,7 +299,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v83</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v84</span>
 </header>
 
 <div id="versionModal">
@@ -1116,6 +1116,7 @@
           <textarea placeholder="メモを入力...">${record.memo || ""}</textarea>
           <div class="itemactions">
             <button class="secondary btn-crop">✂️ トリミング</button>
+            <button class="secondary btn-crop-last" style="display:none;" title="直前にトリミングした範囲(比率)を、モーダルを開かずこの画像にそのまま適用します">🔁 前回の範囲</button>
             <button class="icon-btn btn-del" title="削除">🗑</button>
           </div>
         </div>
@@ -1170,6 +1171,11 @@
     requestAnimationFrame(autoGrowTextarea); // 初期表示時、既存メモの内容に合わせて高さを合わせる
     if(cropBtn){
       cropBtn.addEventListener("click", () => openCropModal(record, div.querySelector("img")));
+    }
+    const cropLastBtn = div.querySelector(".btn-crop-last");
+    if(cropLastBtn){
+      cropLastBtn.style.display = lastCropRatio ? "inline-block" : "none";
+      cropLastBtn.addEventListener("click", () => applyLastCropRatio(record, div.querySelector("img")));
     }
     div.querySelector(".btn-del").addEventListener("click", async () => {
       await dbDelete(record.id);
@@ -2482,6 +2488,7 @@
       x: sx / cropImage.naturalWidth, y: sy / cropImage.naturalHeight,
       w: sw / cropImage.naturalWidth, h: sh / cropImage.naturalHeight
     };
+    showAllCropLastButtons(); // 既に表示済みの行の「🔁前回の範囲」ボタンをここで初めて出す
     await dbPut(cropRecord);
     if(cropThumbImg) cropThumbImg.src = newDataURL;
     closeCropModal();
@@ -2510,6 +2517,34 @@
     cropSelection = { x, y, w, h };
     updateCropRectVisual();
   });
+
+  // モーダルを開かず、記録一覧の行から直接「前回の範囲」を適用するためのクイックボタン用。
+  // 比率は元画像サイズ基準で保持されているため、cropStageの表示サイズを介さず直接計算する
+  async function applyLastCropRatio(record, imgEl){
+    if(!lastCropRatio) return;
+    const srcUrl = record.originalDataURL || record.dataURL;
+    const img = new Image();
+    await new Promise((resolve) => { img.onload = resolve; img.src = srcUrl; });
+    const natW = img.naturalWidth, natH = img.naturalHeight;
+    const sw = Math.max(1, Math.round(lastCropRatio.w * natW));
+    const sh = Math.max(1, Math.round(lastCropRatio.h * natH));
+    const sx = Math.max(0, Math.min(Math.round(lastCropRatio.x * natW), natW - sw));
+    const sy = Math.max(0, Math.min(Math.round(lastCropRatio.y * natH), natH - sh));
+
+    workCanvas.width = sw;
+    workCanvas.height = sh;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    const newDataURL = canvasToOptimizedDataURL(workCanvas);
+
+    if(!record.originalDataURL) record.originalDataURL = record.dataURL;
+    record.dataURL = newDataURL;
+    record.cropRect = { x: sx, y: sy, w: sw, h: sh };
+    await dbPut(record);
+    if(imgEl) imgEl.src = newDataURL;
+  }
+  function showAllCropLastButtons(){
+    captureList.querySelectorAll(".btn-crop-last").forEach((btn) => { btn.style.display = "inline-block"; });
+  }
 
   // タイトル・日付: 前回値をlocalStorageに保持し、リロードしても保持されるように
   const TITLE_KEY = "screen-capture-memo-export-title";
@@ -2619,7 +2654,8 @@
     ["v80","ライトボックス画像の右クリックコピーができない不具合を修正"],
     ["v81","書き出しHTMLの一覧表示に見出しの目次パネルを追加"],
     ["v82","メモ・見出し内のURLを自動でハイパーリンク化"],
-    ["v83","書き出しHTMLが白紙になる重大バグを修正(v82の正規表現不具合)"]
+    ["v83","書き出しHTMLが白紙になる重大バグを修正(v82の正規表現不具合)"],
+    ["v84","記録一覧の行に「前回の範囲」クイックトリミングボタンを追加"]
   ];
 
   const verLabel = $("verLabel");
