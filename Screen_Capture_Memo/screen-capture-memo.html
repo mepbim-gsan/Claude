@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v84
-  @changelog v84: ユーザー要望「トリミングの前回の範囲ボタンを、トリミングボタンの横にも追加してほしい」に対応。記録一覧の各行に「✂️トリミング」と並べて「🔁前回の範囲」クイックボタンを新設し、クロップモーダルを開かずに直前の比率をその場で即適用できるようにした(applyLastCropRatio())。従来のモーダル内「前回の範囲」ボタンは選択範囲をプレビューするだけで別途「この範囲でトリミング」を押す必要があったが、このクイックボタンは確定まで一括で行う。lastCropRatioが未設定(まだ一度もトリミングしていない)間は非表示、モーダルで初めてトリミングを確定した瞬間にshowAllCropLastButtons()で全行分をまとめて表示。Playwrightで異なる自然サイズの2画像に対し同一比率が正しくスケールして適用されることを確認済み
-  @changelog v83: v82で書き出しHTMLが白紙(画像も何も出ない)になる重大バグを修正。原因はexportHtml内に追加したlinkifyText()の正規表現内の「\/」「\-」「\]」が、exportHtmlを組み立てる外側のテンプレートリテラルの文字列評価時に無意味なエスケープとしてバックスラッシュごと消えてしまい(例:\/\/ → //)、書き出し後のファイル内で不正な正規表現リテラルとなってrenderList()実行時に例外が発生、一覧の描画全体(画像含む)が止まっていたこと。該当箇所のバックスラッシュを二重化(\\/など)して外側テンプレートの評価を経ても正しくエスケープが残るよう修正
-  @changelog v82: メモ・見出し内のURLを自動でハイパーリンク化(本体のライトボックスキャプション・書き出しHTMLの一覧/グリッド/ノート形式・書き出しHTML側ライトボックスキャプションの全箇所)。linkifyText()でHTMLエスケープ後にhttp(s)://で始まるURLだけを抽出して<a target="_blank" rel="noopener noreferrer">に変換、文末の句読点・括弧等はリンクに含めないようトリム
-  ※ v01〜v81の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  @version   v85
+  @changelog v85: ユーザー要望「見出しボタンの横に、メモボタンをつけたい。相互に切り替えは可能だが、はじめからメモを指定したいことが多い」に対応。「2. キャプチャ」パネルに既存の「📝見出し」と並べて「💬メモ」ボタンを新設し、addCaptureRecord()に第3引数optsを追加してopts.headingを渡すことで、最初からheading:falseの状態(型バッジ「💬 メモ」)でレコードを追加できるようにした。フォーカス移動対策のpointerdown時点でのアンカー検出や、選択行の直後への挿入といった「📝見出し」ボタンの既存挙動はそのまま共有
+  @changelog v84: ユーザー要望「トリミングの前回の範囲ボタンを、トリミングボタンの横にも追加してほしい」に対応。記録一覧の各行に「✂️トリミング」と並べて「🔁前回の範囲」クイックボタンを新設し、クロップモーダルを開かずに直前の比率をその場で即適用できるようにした(applyLastCropRatio())。従来のモーダル内「前回の範囲」ボタンは選択範囲をプレビューするだけで別途「この範囲でトリミング」を押す必要があったが、このクイックボタンは確定まで一括で行う
+  @changelog v83: v82で書き出しHTMLが白紙(画像も何も出ない)になる重大バグを修正。原因はexportHtml内に追加したlinkifyText()の正規表現内の「\/」「\-」「\]」が、exportHtmlを組み立てる外側のテンプレートリテラルの文字列評価時に無意味なエスケープとしてバックスラッシュごと消えてしまい(例:\/\/ → //)、書き出し後のファイル内で不正な正規表現リテラルとなってrenderList()実行時に例外が発生、一覧の描画全体(画像含む)が止まっていたこと
+  ※ v01〜v82の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -299,7 +299,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v84</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v85</span>
 </header>
 
 <div id="versionModal">
@@ -370,6 +370,7 @@
       <button id="btnCapture" disabled>📸 キャプチャ</button>
       <button id="btnPaste" title="クリップボードから貼り付け">📋 貼り付け</button>
       <button id="btnAddNote" title="画像なしの見出し/メモを追加(発表者交代、テーマ変更など)">📝 見出し</button>
+      <button id="btnAddMemo" title="画像なしのメモを、はじめからメモ種別で追加します">💬 メモ</button>
     </div>
     <div class="hint">スクショをコピーした状態で Ctrl+V (⌘+V) でも追加できます／このページにフォーカスがある間は Space キーでもキャプチャできます／記録一覧で行を選択中(枠線表示)は、その行の直後に追加されます</div>
   </div>
@@ -456,6 +457,7 @@
   const btnPaste = $("btnPaste");
   const btnPip = $("btnPip");
   const btnAddNote = $("btnAddNote");
+  const btnAddMemo = $("btnAddMemo");
   const pipHint = $("pipHint");
   const ratioSelect = $("ratioSelect");
   const btnClearAll = $("btnClearAll");
@@ -940,9 +942,10 @@
   // その場でgetFocusedItem()する)。ボタンクリックはclickイベント発火までに
   // ボタン自身へフォーカスが移ってしまい、その時点でgetFocusedItem()しても
   // 選択していた行を検出できないため、pointerdown時点で先に検出して渡す用途
-  async function addCaptureRecord(dataURL, anchorItemOverride){
+  async function addCaptureRecord(dataURL, anchorItemOverride, opts){
     const anchorItem = anchorItemOverride !== undefined ? anchorItemOverride : getFocusedItem();
     const record = { dataURL, memo:"", timestamp: Date.now() };
+    if(opts && opts.heading !== undefined) record.heading = opts.heading;
     const id = await dbAdd(record);
     record.id = id;
     const div = renderItem(record, false, anchorItem);
@@ -959,16 +962,23 @@
     return record;
   }
 
-  // 「📝見出し」ボタンはクリックするとフォーカスがボタン自身へ移ってしまい、
+  // 「📝見出し」「💬メモ」ボタンはクリックするとフォーカスがボタン自身へ移ってしまい、
   // click発火時点でgetFocusedItem()しても選択していた行が検出できなくなるため、
   // フォーカス移動が起きる前のpointerdown時点で先に検出しておく
   let noteInsertAnchor;
-  btnAddNote.addEventListener("pointerdown", () => {
-    noteInsertAnchor = getFocusedItem();
-  });
+  const captureNoteInsertAnchor = () => { noteInsertAnchor = getFocusedItem(); };
+  btnAddNote.addEventListener("pointerdown", captureNoteInsertAnchor);
+  btnAddMemo.addEventListener("pointerdown", captureNoteInsertAnchor);
   btnAddNote.addEventListener("click", async () => {
     const record = await addCaptureRecord(null, noteInsertAnchor);
     // 追加直後にメモ欄へフォーカスしてすぐ入力できるように
+    const div = captureList.querySelector(`.item[data-id="${record.id}"]`);
+    const ta = div && div.querySelector("textarea");
+    if(ta) ta.focus();
+  });
+  btnAddMemo.addEventListener("click", async () => {
+    // 見出しと違い、最初からメモ種別(heading:false)で追加する
+    const record = await addCaptureRecord(null, noteInsertAnchor, { heading: false });
     const div = captureList.querySelector(`.item[data-id="${record.id}"]`);
     const ta = div && div.querySelector("textarea");
     if(ta) ta.focus();
@@ -2655,7 +2665,8 @@
     ["v81","書き出しHTMLの一覧表示に見出しの目次パネルを追加"],
     ["v82","メモ・見出し内のURLを自動でハイパーリンク化"],
     ["v83","書き出しHTMLが白紙になる重大バグを修正(v82の正規表現不具合)"],
-    ["v84","記録一覧の行に「前回の範囲」クイックトリミングボタンを追加"]
+    ["v84","記録一覧の行に「前回の範囲」クイックトリミングボタンを追加"],
+    ["v85","「見出し」の横に「メモ」ボタンを追加し、最初からメモ種別で追加可能に"]
   ];
 
   const verLabel = $("verLabel");
