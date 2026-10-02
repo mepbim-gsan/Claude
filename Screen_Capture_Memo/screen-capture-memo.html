@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v85
+  @version   v86
+  @changelog v86: ユーザー要望「Teams風にメモへ太字・ハイパーリンク等を付けたい」に対応し、Markdown風の軽量記法を実装(保存は引き続きプレーンテキスト)。対応記法は`**太字**`・`==黄色マーカー==`・`[文字]{red/blue/green/black}`(文字色)・`[文字](URL)`(任意文字へのリンク)・裸のURL自動リンク(既存)。メモ欄はふだんプレビュー表示、クリックで編集用textareaに切り替わり、フォーカスを外すと保存してプレビューに戻る(renderMemoMarkdown()/showMemoPreview()/showMemoEditor())。編集中は太字/マーカー/リンク/文字色4色のツールバーをtextarea上にposition:absoluteで重ね表示し、周囲のレイアウトが動かないようにした。リンク付き文字の貼り付けはクリップボードのHTML情報から自動で[文字](URL)に変換(htmlFragmentToMarkdown())。実装前にアーティファクトで対話的なモックアップを作成し、仕様(ツールバーの重ね表示化・マーカー色は黄色固定・文字色は4色のみ・貼り付け時の自動変換)をユーザーと確認してから本実装。本体・書き出しHTML(exportHtml)の両方に適用し、書き出し側は外側テンプレートリテラルでのバックスラッシュ消失(v83の教訓)を踏まえ、プレーンな実装をバックスラッシュ二重化スクリプトで機械的に変換のうえ埋め込み、実際に書き出しHTMLを生成してPlaywrightで表示確認済み
   @changelog v85: ユーザー要望「見出しボタンの横に、メモボタンをつけたい。相互に切り替えは可能だが、はじめからメモを指定したいことが多い」に対応。「2. キャプチャ」パネルに既存の「📝見出し」と並べて「💬メモ」ボタンを新設し、addCaptureRecord()に第3引数optsを追加してopts.headingを渡すことで、最初からheading:falseの状態(型バッジ「💬 メモ」)でレコードを追加できるようにした。フォーカス移動対策のpointerdown時点でのアンカー検出や、選択行の直後への挿入といった「📝見出し」ボタンの既存挙動はそのまま共有
   @changelog v84: ユーザー要望「トリミングの前回の範囲ボタンを、トリミングボタンの横にも追加してほしい」に対応。記録一覧の各行に「✂️トリミング」と並べて「🔁前回の範囲」クイックボタンを新設し、クロップモーダルを開かずに直前の比率をその場で即適用できるようにした(applyLastCropRatio())。従来のモーダル内「前回の範囲」ボタンは選択範囲をプレビューするだけで別途「この範囲でトリミング」を押す必要があったが、このクイックボタンは確定まで一括で行う
-  @changelog v83: v82で書き出しHTMLが白紙(画像も何も出ない)になる重大バグを修正。原因はexportHtml内に追加したlinkifyText()の正規表現内の「\/」「\-」「\]」が、exportHtmlを組み立てる外側のテンプレートリテラルの文字列評価時に無意味なエスケープとしてバックスラッシュごと消えてしまい(例:\/\/ → //)、書き出し後のファイル内で不正な正規表現リテラルとなってrenderList()実行時に例外が発生、一覧の描画全体(画像含む)が止まっていたこと
-  ※ v01〜v82の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v83の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -18,6 +18,10 @@
     --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac; --accent:#4f8cff;
     --danger:#e5484d; --ok:#2fbf71; --disabled-bg:#33384a; --disabled-text:#8a90a0; --secondary-bg:#262b38; --secondary-text:#e6e8ec;
     --img-bg:#000;
+    /* メモ装飾用(ライトボックスキャプション等、常に暗い背景の場所にも使うため、
+       テーマによらず同じ値にして可読性を確保する) */
+    --mark-bg:#fde047; --mark-fg:#1c1f26;
+    --memo-col-red:#e5484d; --memo-col-blue:#3b82f6; --memo-col-green:#2fa360;
   }
   @media (prefers-color-scheme: light){
     :root{
@@ -181,10 +185,14 @@
   }
   .item.item-heading .heading-text{
     font-weight:700; font-size:14px; min-height:32px; background:transparent; border:none;
-    padding:4px 2px;
+    padding:28px 2px 4px;
   }
   .item.item-heading.type-memo{border-left-color:var(--border);}
   .item.item-heading.type-memo .heading-text{font-weight:400; font-size:13px;}
+  .item.item-heading .memoPreview{
+    font-weight:700; font-size:14px; min-height:32px; background:transparent; border:none; padding:4px 2px;
+  }
+  .item.item-heading.type-memo .memoPreview{font-weight:400; font-size:13px;}
   .type-badge{
     cursor:pointer; padding:1px 6px; border-radius:10px; background:var(--surface2);
     border:1px solid var(--border);
@@ -198,10 +206,44 @@
   .item .meta{font-size:11px; color:var(--sub);}
   .item .saveState{color:var(--ok); font-weight:600;}
   .item textarea{
-    background:var(--surface3); color:var(--text); border:1px solid var(--border);
-    border-radius:6px; padding:8px; font-size:13px; resize:vertical; min-height:44px;
+    width:100%; background:var(--surface3); color:var(--text); border:1px solid var(--border);
+    border-radius:6px; padding:28px 8px 8px; font-size:13px; resize:vertical; min-height:44px;
     font-family:inherit; overflow-y:hidden;
   }
+  .item textarea:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .item .memoField{position:relative;}
+  .item .memoToolbar{
+    position:absolute; top:5px; right:5px; left:5px; z-index:2;
+    display:flex; flex-wrap:wrap; justify-content:flex-end; gap:5px;
+    pointer-events:none; /* 空白部分はクリックを透過させ、下のテキストエリアを操作できるようにする */
+  }
+  .item .memoToolbar[hidden]{display:none;}
+  .item .memoToolbar .memoToolBtn, .item .memoToolbar .memoColorDots{pointer-events:auto;}
+  .item .memoToolBtn{
+    background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px;
+    padding:2px 8px; font-size:12px; cursor:pointer; line-height:1.4;
+    box-shadow:0 1px 2px rgba(0,0,0,.18);
+  }
+  .item .memoToolBtn:hover{border-color:var(--accent); color:var(--accent);}
+  .item .memoToolBtn.memoToolBtn-bold{font-weight:700;}
+  .item .memoColorDots{
+    display:flex; align-items:center; gap:4px; background:var(--panel); border:1px solid var(--border);
+    border-radius:14px; padding:3px 6px; box-shadow:0 1px 2px rgba(0,0,0,.18);
+  }
+  .item .memoColorDot{
+    width:13px; height:13px; border-radius:50%; border:1px solid rgba(0,0,0,.3);
+    background:var(--dot); cursor:pointer; padding:0;
+  }
+  .item .memoColorDot:hover{outline:2px solid var(--accent); outline-offset:1px;}
+  .item .memoPreview{
+    min-height:44px; border:1px solid var(--border); border-radius:6px; padding:8px;
+    background:var(--surface3); font-size:13px; line-height:1.5; white-space:pre-wrap;
+    overflow-wrap:anywhere; cursor:text;
+  }
+  .item .memoPreview:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+  .item .memoPreview a{color:var(--accent); text-decoration:underline;}
+  .item .memoPreview mark{background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;}
+  .item .memoPreview .memoPlaceholder{color:var(--sub);}
   .item .itemactions{display:flex; align-items:center; gap:8px;}
   .item .itemactions button{padding:5px 10px; font-size:11px;}
   .item .itemactions .icon-btn{
@@ -232,6 +274,9 @@
     cursor:default; flex-shrink:0;
   }
   #lightboxCaption:empty{display:none;}
+  #lightboxCaption a{color:var(--accent); text-decoration:underline;}
+  #lightboxCaption b{font-weight:700;}
+  #lightboxCaption mark{background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;}
 
   .ver{cursor:pointer;}
   .ver:hover{text-decoration:underline;}
@@ -299,7 +344,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v85</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v86</span>
 </header>
 
 <div id="versionModal">
@@ -971,17 +1016,17 @@
   btnAddMemo.addEventListener("pointerdown", captureNoteInsertAnchor);
   btnAddNote.addEventListener("click", async () => {
     const record = await addCaptureRecord(null, noteInsertAnchor);
-    // 追加直後にメモ欄へフォーカスしてすぐ入力できるように
+    // 追加直後にメモ欄を編集状態にしてすぐ入力できるように(プレビューをクリックしたのと同じ扱い)
     const div = captureList.querySelector(`.item[data-id="${record.id}"]`);
-    const ta = div && div.querySelector("textarea");
-    if(ta) ta.focus();
+    const preview = div && div.querySelector(".memoPreview");
+    if(preview) preview.click();
   });
   btnAddMemo.addEventListener("click", async () => {
     // 見出しと違い、最初からメモ種別(heading:false)で追加する
     const record = await addCaptureRecord(null, noteInsertAnchor, { heading: false });
     const div = captureList.querySelector(`.item[data-id="${record.id}"]`);
-    const ta = div && div.querySelector("textarea");
-    if(ta) ta.focus();
+    const preview = div && div.querySelector(".memoPreview");
+    if(preview) preview.click();
   });
 
   function blobToDataURL(blob){
@@ -1095,6 +1140,21 @@
     if(empty) empty.remove();
   }
 
+  // メモ欄(画像メモ・見出し/メモ共通)のツールバー。太字/マーカー/リンク/文字色4色
+  const MEMO_TOOLBAR_HTML = `
+    <div class="memoToolbar" hidden>
+      <button class="memoToolBtn memoToolBtn-bold" type="button" data-memo-action="bold" title="太字">B</button>
+      <button class="memoToolBtn" type="button" data-memo-action="mark" title="黄色マーカー">🖍</button>
+      <button class="memoToolBtn" type="button" data-memo-action="link" title="リンクを付ける">🔗</button>
+      <span class="memoColorDots">
+        <button class="memoColorDot" type="button" data-memo-color="black" style="--dot:var(--text);" title="黒(標準色)"></button>
+        <button class="memoColorDot" type="button" data-memo-color="red" style="--dot:var(--memo-col-red);" title="赤"></button>
+        <button class="memoColorDot" type="button" data-memo-color="blue" style="--dot:var(--memo-col-blue);" title="青"></button>
+        <button class="memoColorDot" type="button" data-memo-color="green" style="--dot:var(--memo-col-green);" title="緑"></button>
+      </span>
+    </div>
+  `;
+
   function renderItem(record, prepend, afterEl){
     clearEmptyState();
     const div = document.createElement("div");
@@ -1110,7 +1170,11 @@
             <span class="type-badge" title="クリックで見出し/メモを切替">${asHeading ? "📝 見出し" : "💬 メモ"}</span>
             ／ ${fmtTime(record.timestamp)} <span class="saveState"></span>
           </div>
-          <textarea class="heading-text" placeholder="見出し・メモを入力(例: 発表者が交代、テーマが変わった、など)">${record.memo || ""}</textarea>
+          <div class="memoField">
+            ${MEMO_TOOLBAR_HTML}
+            <textarea class="heading-text" placeholder="見出し・メモを入力(例: 発表者が交代、テーマが変わった、など)" hidden>${record.memo || ""}</textarea>
+            <div class="memoPreview" tabindex="0"></div>
+          </div>
           <div class="itemactions">
             <button class="icon-btn btn-del" title="削除">🗑</button>
           </div>
@@ -1123,7 +1187,11 @@
         <img src="${record.dataURL}" alt="capture">
         <div class="itembody">
           <div class="meta">${fmtTime(record.timestamp)} <span class="saveState"></span></div>
-          <textarea placeholder="メモを入力...">${record.memo || ""}</textarea>
+          <div class="memoField">
+            ${MEMO_TOOLBAR_HTML}
+            <textarea placeholder="メモを入力..." hidden>${record.memo || ""}</textarea>
+            <div class="memoPreview" tabindex="0"></div>
+          </div>
           <div class="itemactions">
             <button class="secondary btn-crop">✂️ トリミング</button>
             <button class="secondary btn-crop-last" style="display:none;" title="直前にトリミングした範囲(比率)を、モーダルを開かずこの画像にそのまま適用します">🔁 前回の範囲</button>
@@ -1145,6 +1213,8 @@
     }
     const textarea = div.querySelector("textarea");
     const saveState = div.querySelector(".saveState");
+    const memoToolbar = div.querySelector(".memoToolbar");
+    const memoPreview = div.querySelector(".memoPreview");
     let saveTimer = null;
     const doSave = async () => {
       record.memo = textarea.value;
@@ -1157,16 +1227,45 @@
       textarea.style.height = "auto";
       textarea.style.height = textarea.scrollHeight + "px";
     };
-    // メモ入力のたびdebounce(800ms)で自動保存。ボタン操作は不要
-    textarea.addEventListener("input", () => {
+    // 入力の変化をまとめて扱う(キー入力・貼り付け・ツールバー操作のいずれも通る)
+    const handleMemoChanged = () => {
       autoGrowTextarea();
       clearTimeout(saveTimer);
       saveTimer = setTimeout(doSave, 800);
+    };
+    // ふだんはプレビュー(太字・マーカー・リンク等を反映した表示)、クリックすると
+    // 編集用のテキストエリアに切り替わり、フォーカスを外すと保存してプレビューに戻る
+    const syncMemoPreview = () => {
+      const html = renderMemoMarkdown(textarea.value);
+      memoPreview.innerHTML = html || '<span class="memoPlaceholder">クリックしてメモを入力…</span>';
+    };
+    const showMemoPreview = () => {
+      syncMemoPreview();
+      memoPreview.hidden = false;
+      textarea.hidden = true;
+      memoToolbar.hidden = true;
+    };
+    const showMemoEditor = () => {
+      memoPreview.hidden = true;
+      textarea.hidden = false;
+      memoToolbar.hidden = false;
+      textarea.focus();
+      const len = textarea.value.length;
+      textarea.setSelectionRange(len, len);
+      autoGrowTextarea();
+    };
+    memoPreview.addEventListener("click", showMemoEditor);
+    memoPreview.addEventListener("keydown", (e) => {
+      if(e.key === "Enter" || e.key === " "){ e.preventDefault(); showMemoEditor(); }
     });
-    // フォーカスが外れた時は即保存
+    showMemoPreview(); // 初期状態は「編集していない」= プレビュー表示
+    // メモ入力のたびdebounce(800ms)で自動保存。ボタン操作は不要
+    textarea.addEventListener("input", handleMemoChanged);
+    // フォーカスが外れた時は即保存し、プレビュー表示に戻す
     textarea.addEventListener("blur", () => {
       clearTimeout(saveTimer);
       doSave();
+      showMemoPreview();
     });
     // Escでメモ欄からフォーカスを外す(ライトボックス等の他のEsc処理と競合しないようstopPropagation)。
     // 抜けた後そのままShift+Alt+↑/↓で並び替えできるよう、フォーカスをこの行の⠿ハンドルへ移す
@@ -1178,7 +1277,48 @@
         if(handle) handle.focus();
       }
     });
-    requestAnimationFrame(autoGrowTextarea); // 初期表示時、既存メモの内容に合わせて高さを合わせる
+    // リッチテキスト(リンク付き文字など)の貼り付けは、クリップボードのHTML情報から
+    // <a>タグを拾って[表示文字](URL)記法へ自動変換する。リンクを含まない貼り付けは
+    // ブラウザの既定動作(プレーンテキスト貼り付け)に任せる
+    textarea.addEventListener("paste", (e) => {
+      const html = e.clipboardData && e.clipboardData.getData("text/html");
+      if(!html || !/<a[\s>]/i.test(html)) return;
+      e.preventDefault();
+      const converted = htmlFragmentToMarkdown(html);
+      const start = textarea.selectionStart, end = textarea.selectionEnd;
+      textarea.setRangeText(converted, start, end, "end");
+      handleMemoChanged();
+    });
+    // ツールバーのボタンをクリックした瞬間にtextareaからフォーカスが外れると
+    // blur→プレビュー表示に戻ってしまうため、mousedown時点でpreventDefaultして
+    // フォーカス移動そのものを止める(textareaにフォーカスが残り続ける)
+    memoToolbar.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("mousedown", (e) => e.preventDefault());
+    });
+    memoToolbar.querySelector('[data-memo-action="bold"]').addEventListener("click", () => {
+      wrapMemoSelection(textarea, "**", "**", "太字にする文字");
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="mark"]').addEventListener("click", () => {
+      wrapMemoSelection(textarea, "==", "==", "マーカーにする文字");
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="link"]').addEventListener("click", () => {
+      const start = textarea.selectionStart, end = textarea.selectionEnd;
+      const label = textarea.value.slice(start, end) || "リンク文字";
+      textarea.setRangeText(`[${label}](https://)`, start, end, "end");
+      textarea.focus();
+      handleMemoChanged();
+    });
+    memoToolbar.querySelectorAll(".memoColorDot").forEach((dot) => {
+      dot.addEventListener("click", () => {
+        const start = textarea.selectionStart, end = textarea.selectionEnd;
+        const label = textarea.value.slice(start, end) || "色をつける文字";
+        textarea.setRangeText(`[${label}]{${dot.dataset.memoColor}}`, start, end, "end");
+        textarea.focus();
+        handleMemoChanged();
+      });
+    });
     if(cropBtn){
       cropBtn.addEventListener("click", () => openCropModal(record, div.querySelector("img")));
     }
@@ -1530,7 +1670,7 @@
 <html lang="ja"><head><meta charset="UTF-8">
 <title>${docTitleEsc}</title>
 <style>
-  :root{--bg:#0f1115;--text:#e6e8ec;--sub:#9aa0ac;--panel:#171a21;--border:#2a2e3a;--accent:#4f8cff;}
+  :root{--bg:#0f1115;--text:#e6e8ec;--sub:#9aa0ac;--panel:#171a21;--border:#2a2e3a;--accent:#4f8cff;--mark-bg:#fde047;--mark-fg:#1c1f26;--memo-col-red:#e5484d;--memo-col-blue:#3b82f6;--memo-col-green:#2fa360;}
   @media (prefers-color-scheme: light){
     :root{--bg:#f5f6f8;--text:#1c1f26;--sub:#6b7280;--panel:#ffffff;--border:#d8dbe2;--accent:#3b6fe0;}
   }
@@ -1608,6 +1748,13 @@
     border-left:3px solid var(--accent); white-space:pre-wrap; break-inside:avoid;
   }
   .noteHeading.is-memo{font-weight:400; font-size:9pt; border-left-color:var(--border);}
+
+  .rec-memo a, .recHeading a, .gridMemo a, .gridHeading a, .noteComment a, .noteHeading a, #lightboxCaption a{
+    color:var(--accent); text-decoration:underline;
+  }
+  .rec-memo mark, .recHeading mark, .gridMemo mark, .gridHeading mark, .noteComment mark, .noteHeading mark, #lightboxCaption mark{
+    background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;
+  }
 
   @page{ size:A4; margin:14mm; }
   @media print{
@@ -1696,7 +1843,7 @@
   function openLightbox(src, index){
     lightboxImg.src = src;
     lightboxIndex = (index !== undefined) ? index : IMG_SRC_LIST.indexOf(src);
-    lightboxCaption.innerHTML = linkifyText((IMG_MEMO_LIST[lightboxIndex] || "").trim());
+    lightboxCaption.innerHTML = renderMemoMarkdown((IMG_MEMO_LIST[lightboxIndex] || "").trim());
     lightboxZoom = 1;
     lightboxPanX = 0;
     lightboxPanY = 0;
@@ -1760,20 +1907,32 @@
     return e;
   }
 
-  // メモ・見出し内のURLをリンク化(HTMLエスケープしてから http(s) URLだけを<a>に変換)
-  function linkifyText(text){
+  // メモ内のMarkdown風記法(太字/黄色マーカー/文字色/リンク/裸のURL)をHTMLに変換する。
+  // 必ず先にHTMLエスケープしてから記法を適用することでXSSを防止する
+  function renderMemoMarkdown(text){
     var escaped = (text || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-    return escaped.replace(/(https?:\\/\\/[A-Za-z0-9\\-._~:/?#[\\]@!$&*+,;=%]+)/g, function(url){
+    var html = escaped;
+    html = html.replace(/\\[([^\\]\\n]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, function(_, label, url){
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+    });
+    html = html.replace(/\\[([^\\]\\n]+)\\]\\{(red|blue|green|black)\\}/g, function(_, label, color){
+      if(color === "black") return label;
+      return '<span style="color:var(--memo-col-' + color + ');">' + label + '</span>';
+    });
+    html = html.replace(/==([^=\\n]+)==/g, "<mark>$1</mark>");
+    html = html.replace(/\\*\\*([^*\\n]+)\\*\\*/g, "<b>$1</b>");
+    html = html.replace(/(^|[^"'>])(https?:\\/\\/[A-Za-z0-9\\-._~:/?#[\\]@!$&*+,;=%]+)/g, function(_, pre, url){
       var m = url.match(/[.,;:!?)\\]}]+$/);
       var trail = m ? m[0] : "";
       var core = trail ? url.slice(0, -trail.length) : url;
-      return '<a href="' + core + '" target="_blank" rel="noopener noreferrer">' + core + '</a>' + trail;
+      return pre + '<a href="' + core + '" target="_blank" rel="noopener noreferrer">' + core + '</a>' + trail;
     });
+    return html;
   }
   function elLinked(tag, cls, text){
     var e = document.createElement(tag);
     if(cls) e.className = cls;
-    e.innerHTML = linkifyText(text || "");
+    e.innerHTML = renderMemoMarkdown(text || "");
     return e;
   }
 
@@ -2163,15 +2322,67 @@
   const LIGHTBOX_MAX_UPSCALE = 3;
   // キャプション表示分(最大3行+パディング+隙間)として画像の高さ計算から差し引く概算値
   const LIGHTBOX_CAPTION_RESERVE = 110;
-  // メモ内のURLをリンク化(HTMLエスケープしてから http(s) URLだけを<a>に変換)
-  function linkifyText(text){
+  // メモ内のMarkdown風記法(太字/黄色マーカー/文字色/リンク/裸のURL)をHTMLに変換する。
+  // 必ず先にHTMLエスケープしてから記法を適用することでXSSを防止する
+  function renderMemoMarkdown(text){
     const escaped = (text || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-    return escaped.replace(/(https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]+)/g, (url) => {
+    let html = escaped;
+    // [表示文字](URL)
+    html = html.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    });
+    // [表示文字]{色}(red/blue/green/black。blackは「標準色に戻す」の意味で、
+    // 表示先(記録一覧のプレビュー/常に暗い背景のライトボックスキャプション等)によって
+    // 適切な既定色が異なるため、あえて色を指定せずそのまま周囲に継承させる)
+    html = html.replace(/\[([^\]\n]+)\]\{(red|blue|green|black)\}/g, (_, label, color) => {
+      if(color === "black") return label;
+      return `<span style="color:var(--memo-col-${color});">${label}</span>`;
+    });
+    // ==マーカー==
+    html = html.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
+    // **太字**
+    html = html.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+    // 裸のURL(すでにhref="..."の中にあるものは除外。文末の句読点・括弧等はリンクに含めない)
+    html = html.replace(/(^|[^"'>])(https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]+)/g, (_, pre, url) => {
       const m = url.match(/[.,;:!?)\]}]+$/);
       const trail = m ? m[0] : "";
       const core = trail ? url.slice(0, -trail.length) : url;
-      return `<a href="${core}" target="_blank" rel="noopener noreferrer">${core}</a>${trail}`;
+      return `${pre}<a href="${core}" target="_blank" rel="noopener noreferrer">${core}</a>${trail}`;
     });
+    return html;
+  }
+  // メモ欄ツールバー: 選択範囲を記法で囲む共通ヘルパー
+  function wrapMemoSelection(textarea, before, after, placeholder){
+    const start = textarea.selectionStart, end = textarea.selectionEnd;
+    const selected = textarea.value.slice(start, end) || placeholder;
+    textarea.setRangeText(before + selected + after, start, end, "end");
+    textarea.focus();
+  }
+  // クリップボードのHTML情報(リッチテキストとしてコピーした場合に付随する)から
+  // <a>タグを拾い、[表示文字](URL)記法へ変換する(メモ欄への貼り付け用)
+  function htmlFragmentToMarkdown(html){
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const blockTags = ["P","DIV","LI","TR","H1","H2","H3","H4","H5","H6"];
+    function walk(node){
+      if(node.nodeType === Node.TEXT_NODE) return node.nodeValue;
+      if(node.nodeType !== Node.ELEMENT_NODE) return "";
+      const tag = node.tagName;
+      if(tag === "BR") return "\n";
+      const inner = Array.from(node.childNodes).map(walk).join("");
+      if(tag === "A"){
+        const href = node.getAttribute("href") || "";
+        const label = inner.trim();
+        if(!href || !label) return label;
+        // 表示文字がURLそのものなら、わざわざ[URL](URL)にせず裸のURLのまま返す(既存の自動リンクに任せる)
+        const bare = href.replace(/^https?:\/\//, "");
+        if(label === href || label === bare) return href;
+        return `[${label}](${href})`;
+      }
+      return blockTags.includes(tag) ? inner + "\n" : inner;
+    }
+    const text = Array.from(container.childNodes).map(walk).join("");
+    return text.replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "");
   }
   function fitLightboxImageSize(){
     const natW = lightboxImg.naturalWidth, natH = lightboxImg.naturalHeight;
@@ -2192,7 +2403,7 @@
     const item = imgEl.closest(".item");
     const textarea = item ? item.querySelector("textarea") : null;
     const memo = textarea ? textarea.value : "";
-    lightboxCaption.innerHTML = linkifyText(memo.trim());
+    lightboxCaption.innerHTML = renderMemoMarkdown(memo.trim());
     lightboxImg.style.width = "";
     lightboxImg.style.height = "";
     lightboxImg.onload = fitLightboxImageSize;
@@ -2666,7 +2877,8 @@
     ["v82","メモ・見出し内のURLを自動でハイパーリンク化"],
     ["v83","書き出しHTMLが白紙になる重大バグを修正(v82の正規表現不具合)"],
     ["v84","記録一覧の行に「前回の範囲」クイックトリミングボタンを追加"],
-    ["v85","「見出し」の横に「メモ」ボタンを追加し、最初からメモ種別で追加可能に"]
+    ["v85","「見出し」の横に「メモ」ボタンを追加し、最初からメモ種別で追加可能に"],
+    ["v86","メモに太字・マーカー・文字色・リンク等のMarkdown風記法を追加"]
   ];
 
   const verLabel = $("verLabel");
