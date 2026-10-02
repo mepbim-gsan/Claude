@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v88
-  @changelog v88: ユーザー確認「blackは標準の黒にするって意味なので、文字色設定を外す意味で。ダークモードだとホワイトかな」を受け、applyMemoColor()の黒ボタンの挙動を修正。黒は特定の色を指定するのではなく「色設定を外す(標準色に戻す)」という意味であるべきところ、既に別の色が付いた文字へ黒ボタンを押すと[文字]{black}というタグで囲んでしまう抜け漏れがあったため、常にタグなしのプレーン文字へ戻すよう修正。renderMemoMarkdown()側は元々{black}を色指定せずそのまま返す実装だったため見た目上の実害はなかったが、保存データに不要な{black}タグが残ってしまう問題を解消
-  @changelog v87: ユーザー要望「同じ範囲にもう一度実行したとき外せるように」「[重複して設定、[重複して設定]{red}]{red}のように重複した場合、内側の赤設定を自動で削除したい」に対応。メモ欄ツールバーの太字/マーカー/文字色をトグル式に変更。選択範囲全体がちょうどその記法そのものなら、もう一度押すと記法を外す(toggleWrapMemoSelection())。選択範囲がそれより大きく内側に同じ記法が入れ子で残っている場合は、二重掛けを避けるため先に内側の既存分を剥がしてから全体を掛け直す
-  @changelog v86: ユーザー要望「Teams風にメモへ太字・ハイパーリンク等を付けたい」に対応し、Markdown風の軽量記法を実装(保存は引き続きプレーンテキスト)。対応記法は`**太字**`・`==黄色マーカー==`・`[文字]{red/blue/green/black}`(文字色)・`[文字](URL)`(任意文字へのリンク)・裸のURL自動リンク(既存)
-  ※ v01〜v85の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  @version   v89
+  @changelog v89: ユーザー要望「グリッド形式は、コメントあり、なしを選べるようにしたい」に対応。「PDF用: A4にN枚/ページ」モードのツールバーに「コメント表示」チェックボックスを追加(既定ON、grid表示時のみ出現)。OFFにするとrenderGrid()が各画像セルの.gridMemo(メモ本文)を生成しなくなり、画像と見出し区切りだけのグリッドになる。見出し行はコメントの有無に関わらず常に表示。ノート形式(notes)側のコメントは対象外で変更なし
+  @changelog v88: ユーザー確認「blackは標準の黒にするって意味なので、文字色設定を外す意味で。ダークモードだとホワイトかな」を受け、applyMemoColor()の黒ボタンの挙動を修正。黒は特定の色を指定するのではなく「色設定を外す(標準色に戻す)」という意味であるべきところ、既に別の色が付いた文字へ黒ボタンを押すと[文字]{black}というタグで囲んでしまう抜け漏れがあったため、常にタグなしのプレーン文字へ戻すよう修正
+  @changelog v87: ユーザー要望「同じ範囲にもう一度実行したとき外せるように」「[重複して設定、[重複して設定]{red}]{red}のように重複した場合、内側の赤設定を自動で削除したい」に対応。メモ欄ツールバーの太字/マーカー/文字色をトグル式に変更。選択範囲全体がちょうどその記法そのものなら、もう一度押すと記法を外す(toggleWrapMemoSelection())
+  ※ v01〜v86の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -344,7 +344,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v88</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v89</span>
 </header>
 
 <div id="versionModal">
@@ -1686,6 +1686,7 @@
   }
   .controls .rightGroup{margin-left:auto; display:flex; gap:10px;}
   #perPageWrap{display:none; align-items:center; gap:6px; font-size:12px; color:var(--sub);}
+  #gridCommentWrap{display:none; align-items:center; gap:6px; font-size:12px; color:var(--sub); cursor:pointer;}
 
   main{max-width:900px; margin:0 auto; padding:24px;}
   #docTitle{font-size:18px; margin:0 0 16px; padding-bottom:10px; border-bottom:2px solid var(--border);}
@@ -1796,6 +1797,9 @@
       <option value="6">6</option>
     </select>
   </div>
+  <label id="gridCommentWrap" style="display:none;">
+    <input type="checkbox" id="gridCommentToggle" checked> コメント表示
+  </label>
   <div class="rightGroup">
     <button id="btnTheme" type="button" title="ライト/ダーク切替">🌙</button>
     <button id="btnPrint" type="button">🖨 印刷 / PDF保存</button>
@@ -2011,7 +2015,7 @@
     return el("div", "pageHeaderPrint", text);
   }
 
-  function renderGrid(root, perPage){
+  function renderGrid(root, perPage, showComment){
     // 1列縦積みだと高さがA4に収まりきらずページからあふれるため、
     // 2枚のときのみ1列(縦2枚)、それ以外は2列以上に分けて高さを抑える
     var cols = perPage <= 2 ? 1 : (perPage <= 4 ? 2 : 3);
@@ -2026,7 +2030,7 @@
         if(r.d){
           var cell = el("div", "gridCell");
           cell.appendChild(makeImg(r.d));
-          cell.appendChild(elLinked("div", "gridMemo", r.m || "(メモなし)"));
+          if(showComment) cell.appendChild(elLinked("div", "gridMemo", r.m || "(メモなし)"));
           page.appendChild(cell);
         }else{
           page.appendChild(elLinked("div", r.h === false ? "gridHeading is-memo" : "gridHeading", r.m || ""));
@@ -2061,6 +2065,8 @@
   var layoutSelect = document.getElementById("layoutSelect");
   var perPageWrap = document.getElementById("perPageWrap");
   var perPageSelect = document.getElementById("perPageSelect");
+  var gridCommentWrap = document.getElementById("gridCommentWrap");
+  var gridCommentToggle = document.getElementById("gridCommentToggle");
   var btnPrint = document.getElementById("btnPrint");
   var btnTheme = document.getElementById("btnTheme");
 
@@ -2068,12 +2074,14 @@
     viewRoot.innerHTML = "";
     var mode = layoutSelect.value;
     perPageWrap.style.display = (mode === "grid" || mode === "notes") ? "inline-flex" : "none";
+    gridCommentWrap.style.display = (mode === "grid") ? "inline-flex" : "none";
     if(mode === "list"){ renderList(viewRoot); renderToc(); }
-    else if(mode === "grid"){ renderGrid(viewRoot, parseInt(perPageSelect.value, 10)); hideToc(); }
+    else if(mode === "grid"){ renderGrid(viewRoot, parseInt(perPageSelect.value, 10), gridCommentToggle.checked); hideToc(); }
     else if(mode === "notes"){ renderNotes(viewRoot, parseInt(perPageSelect.value, 10)); hideToc(); }
   }
   layoutSelect.addEventListener("change", render);
   perPageSelect.addEventListener("change", render);
+  gridCommentToggle.addEventListener("change", render);
   render();
 
   function systemTheme(){
@@ -2898,7 +2906,8 @@
     ["v85","「見出し」の横に「メモ」ボタンを追加し、最初からメモ種別で追加可能に"],
     ["v86","メモに太字・マーカー・文字色・リンク等のMarkdown風記法を追加"],
     ["v87","メモ装飾ボタンをトグル式に変更し、入れ子の重複を自動解消"],
-    ["v88","文字色の「黒」ボタンが色タグで囲んでしまう不具合を修正(常にプレーン文字に)"]
+    ["v88","文字色の「黒」ボタンが色タグで囲んでしまう不具合を修正(常にプレーン文字に)"],
+    ["v89","グリッド形式(A4にN枚/ページ)でコメント表示のON/OFFを選択可能に"]
   ];
 
   const verLabel = $("verLabel");
