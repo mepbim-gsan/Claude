@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v86
-  @changelog v86: ユーザー要望「Teams風にメモへ太字・ハイパーリンク等を付けたい」に対応し、Markdown風の軽量記法を実装(保存は引き続きプレーンテキスト)。対応記法は`**太字**`・`==黄色マーカー==`・`[文字]{red/blue/green/black}`(文字色)・`[文字](URL)`(任意文字へのリンク)・裸のURL自動リンク(既存)。メモ欄はふだんプレビュー表示、クリックで編集用textareaに切り替わり、フォーカスを外すと保存してプレビューに戻る(renderMemoMarkdown()/showMemoPreview()/showMemoEditor())。編集中は太字/マーカー/リンク/文字色4色のツールバーをtextarea上にposition:absoluteで重ね表示し、周囲のレイアウトが動かないようにした。リンク付き文字の貼り付けはクリップボードのHTML情報から自動で[文字](URL)に変換(htmlFragmentToMarkdown())。実装前にアーティファクトで対話的なモックアップを作成し、仕様(ツールバーの重ね表示化・マーカー色は黄色固定・文字色は4色のみ・貼り付け時の自動変換)をユーザーと確認してから本実装。本体・書き出しHTML(exportHtml)の両方に適用し、書き出し側は外側テンプレートリテラルでのバックスラッシュ消失(v83の教訓)を踏まえ、プレーンな実装をバックスラッシュ二重化スクリプトで機械的に変換のうえ埋め込み、実際に書き出しHTMLを生成してPlaywrightで表示確認済み
-  @changelog v85: ユーザー要望「見出しボタンの横に、メモボタンをつけたい。相互に切り替えは可能だが、はじめからメモを指定したいことが多い」に対応。「2. キャプチャ」パネルに既存の「📝見出し」と並べて「💬メモ」ボタンを新設し、addCaptureRecord()に第3引数optsを追加してopts.headingを渡すことで、最初からheading:falseの状態(型バッジ「💬 メモ」)でレコードを追加できるようにした。フォーカス移動対策のpointerdown時点でのアンカー検出や、選択行の直後への挿入といった「📝見出し」ボタンの既存挙動はそのまま共有
-  @changelog v84: ユーザー要望「トリミングの前回の範囲ボタンを、トリミングボタンの横にも追加してほしい」に対応。記録一覧の各行に「✂️トリミング」と並べて「🔁前回の範囲」クイックボタンを新設し、クロップモーダルを開かずに直前の比率をその場で即適用できるようにした(applyLastCropRatio())。従来のモーダル内「前回の範囲」ボタンは選択範囲をプレビューするだけで別途「この範囲でトリミング」を押す必要があったが、このクイックボタンは確定まで一括で行う
-  ※ v01〜v83の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  @version   v87
+  @changelog v87: ユーザー要望「同じ範囲にもう一度実行したとき外せるように」「[重複して設定、[重複して設定]{red}]{red}のように重複した場合、内側の赤設定を自動で削除したい」に対応。メモ欄ツールバーの太字/マーカー/文字色をトグル式に変更。選択範囲全体がちょうどその記法そのものなら、もう一度押すと記法を外す(toggleWrapMemoSelection())。選択範囲がそれより大きく内側に同じ記法が入れ子で残っている場合は、二重掛けを避けるため先に内側の既存分を剥がしてから全体を掛け直す。文字色はこのロジックに加え、既存の色と異なる色を選んだ場合はネストさせず置き換える(applyMemoColor())
+  @changelog v86: ユーザー要望「Teams風にメモへ太字・ハイパーリンク等を付けたい」に対応し、Markdown風の軽量記法を実装(保存は引き続きプレーンテキスト)。対応記法は`**太字**`・`==黄色マーカー==`・`[文字]{red/blue/green/black}`(文字色)・`[文字](URL)`(任意文字へのリンク)・裸のURL自動リンク(既存)。メモ欄はふだんプレビュー表示、クリックで編集用textareaに切り替わり、フォーカスを外すと保存してプレビューに戻る(renderMemoMarkdown()/showMemoPreview()/showMemoEditor())。編集中は太字/マーカー/リンク/文字色4色のツールバーをtextarea上にposition:absoluteで重ね表示し、周囲のレイアウトが動かないようにした
+  @changelog v85: ユーザー要望「見出しボタンの横に、メモボタンをつけたい。相互に切り替えは可能だが、はじめからメモを指定したいことが多い」に対応。「2. キャプチャ」パネルに既存の「📝見出し」と並べて「💬メモ」ボタンを新設し、addCaptureRecord()に第3引数optsを追加してopts.headingを渡すことで、最初からheading:falseの状態(型バッジ「💬 メモ」)でレコードを追加できるようにした
+  ※ v01〜v84の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -344,7 +344,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v86</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v87</span>
 </header>
 
 <div id="versionModal">
@@ -1296,11 +1296,11 @@
       btn.addEventListener("mousedown", (e) => e.preventDefault());
     });
     memoToolbar.querySelector('[data-memo-action="bold"]').addEventListener("click", () => {
-      wrapMemoSelection(textarea, "**", "**", "太字にする文字");
+      toggleWrapMemoSelection(textarea, /^\*\*([\s\S]*)\*\*$/, /\*\*([^*]*)\*\*/g, (inner) => `**${inner}**`, "太字にする文字");
       handleMemoChanged();
     });
     memoToolbar.querySelector('[data-memo-action="mark"]').addEventListener("click", () => {
-      wrapMemoSelection(textarea, "==", "==", "マーカーにする文字");
+      toggleWrapMemoSelection(textarea, /^==([\s\S]*)==$/, /==([^=]*)==/g, (inner) => `==${inner}==`, "マーカーにする文字");
       handleMemoChanged();
     });
     memoToolbar.querySelector('[data-memo-action="link"]').addEventListener("click", () => {
@@ -1312,10 +1312,7 @@
     });
     memoToolbar.querySelectorAll(".memoColorDot").forEach((dot) => {
       dot.addEventListener("click", () => {
-        const start = textarea.selectionStart, end = textarea.selectionEnd;
-        const label = textarea.value.slice(start, end) || "色をつける文字";
-        textarea.setRangeText(`[${label}]{${dot.dataset.memoColor}}`, start, end, "end");
-        textarea.focus();
+        applyMemoColor(textarea, dot.dataset.memoColor);
         handleMemoChanged();
       });
     });
@@ -2351,11 +2348,33 @@
     });
     return html;
   }
-  // メモ欄ツールバー: 選択範囲を記法で囲む共通ヘルパー
-  function wrapMemoSelection(textarea, before, after, placeholder){
+  // メモ欄ツールバー: 選択範囲へ記法を適用するトグル式ヘルパー。
+  // 選択範囲全体がちょうどこの記法そのものなら外す(もう一度押すとオフ)。
+  // それ以外の場合、選択範囲の内側に同じ記法の入れ子が残っていると二重掛けになってしまうため、
+  // 先に内側の既存分を剥がしてから改めて全体を掛け直す
+  function toggleWrapMemoSelection(textarea, fullPattern, stripPattern, makeWrapped, placeholder){
     const start = textarea.selectionStart, end = textarea.selectionEnd;
-    const selected = textarea.value.slice(start, end) || placeholder;
-    textarea.setRangeText(before + selected + after, start, end, "end");
+    const selected = textarea.value.slice(start, end);
+    const exact = selected.match(fullPattern);
+    const result = exact ? exact[1] : makeWrapped((selected || placeholder).replace(stripPattern, "$1"));
+    textarea.setRangeText(result, start, end, "end");
+    textarea.focus();
+  }
+  // 文字色ボタン用。同じ色を選択範囲全体へもう一度適用した場合は外し(トグルオフ)、
+  // 別の色を選んだ場合は置き換える。選択範囲の内側に残る色指定も先に剥がしてから掛け直す
+  function applyMemoColor(textarea, color){
+    const start = textarea.selectionStart, end = textarea.selectionEnd;
+    const selected = textarea.value.slice(start, end) || "色をつける文字";
+    const exact = selected.match(/^\[([\s\S]*)\]\{(red|blue|green|black)\}$/);
+    let result;
+    if(exact && exact[2] === color){
+      result = exact[1];
+    }else{
+      const base = exact ? exact[1] : selected;
+      const cleaned = base.replace(/\[([^\]]*)\]\{(?:red|blue|green|black)\}/g, "$1");
+      result = `[${cleaned}]{${color}}`;
+    }
+    textarea.setRangeText(result, start, end, "end");
     textarea.focus();
   }
   // クリップボードのHTML情報(リッチテキストとしてコピーした場合に付随する)から
@@ -2878,7 +2897,8 @@
     ["v83","書き出しHTMLが白紙になる重大バグを修正(v82の正規表現不具合)"],
     ["v84","記録一覧の行に「前回の範囲」クイックトリミングボタンを追加"],
     ["v85","「見出し」の横に「メモ」ボタンを追加し、最初からメモ種別で追加可能に"],
-    ["v86","メモに太字・マーカー・文字色・リンク等のMarkdown風記法を追加"]
+    ["v86","メモに太字・マーカー・文字色・リンク等のMarkdown風記法を追加"],
+    ["v87","メモ装飾ボタンをトグル式に変更し、入れ子の重複を自動解消"]
   ];
 
   const verLabel = $("verLabel");
