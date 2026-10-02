@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v87
-  @changelog v87: ユーザー要望「同じ範囲にもう一度実行したとき外せるように」「[重複して設定、[重複して設定]{red}]{red}のように重複した場合、内側の赤設定を自動で削除したい」に対応。メモ欄ツールバーの太字/マーカー/文字色をトグル式に変更。選択範囲全体がちょうどその記法そのものなら、もう一度押すと記法を外す(toggleWrapMemoSelection())。選択範囲がそれより大きく内側に同じ記法が入れ子で残っている場合は、二重掛けを避けるため先に内側の既存分を剥がしてから全体を掛け直す。文字色はこのロジックに加え、既存の色と異なる色を選んだ場合はネストさせず置き換える(applyMemoColor())
-  @changelog v86: ユーザー要望「Teams風にメモへ太字・ハイパーリンク等を付けたい」に対応し、Markdown風の軽量記法を実装(保存は引き続きプレーンテキスト)。対応記法は`**太字**`・`==黄色マーカー==`・`[文字]{red/blue/green/black}`(文字色)・`[文字](URL)`(任意文字へのリンク)・裸のURL自動リンク(既存)。メモ欄はふだんプレビュー表示、クリックで編集用textareaに切り替わり、フォーカスを外すと保存してプレビューに戻る(renderMemoMarkdown()/showMemoPreview()/showMemoEditor())。編集中は太字/マーカー/リンク/文字色4色のツールバーをtextarea上にposition:absoluteで重ね表示し、周囲のレイアウトが動かないようにした
-  @changelog v85: ユーザー要望「見出しボタンの横に、メモボタンをつけたい。相互に切り替えは可能だが、はじめからメモを指定したいことが多い」に対応。「2. キャプチャ」パネルに既存の「📝見出し」と並べて「💬メモ」ボタンを新設し、addCaptureRecord()に第3引数optsを追加してopts.headingを渡すことで、最初からheading:falseの状態(型バッジ「💬 メモ」)でレコードを追加できるようにした
-  ※ v01〜v84の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  @version   v88
+  @changelog v88: ユーザー確認「blackは標準の黒にするって意味なので、文字色設定を外す意味で。ダークモードだとホワイトかな」を受け、applyMemoColor()の黒ボタンの挙動を修正。黒は特定の色を指定するのではなく「色設定を外す(標準色に戻す)」という意味であるべきところ、既に別の色が付いた文字へ黒ボタンを押すと[文字]{black}というタグで囲んでしまう抜け漏れがあったため、常にタグなしのプレーン文字へ戻すよう修正。renderMemoMarkdown()側は元々{black}を色指定せずそのまま返す実装だったため見た目上の実害はなかったが、保存データに不要な{black}タグが残ってしまう問題を解消
+  @changelog v87: ユーザー要望「同じ範囲にもう一度実行したとき外せるように」「[重複して設定、[重複して設定]{red}]{red}のように重複した場合、内側の赤設定を自動で削除したい」に対応。メモ欄ツールバーの太字/マーカー/文字色をトグル式に変更。選択範囲全体がちょうどその記法そのものなら、もう一度押すと記法を外す(toggleWrapMemoSelection())。選択範囲がそれより大きく内側に同じ記法が入れ子で残っている場合は、二重掛けを避けるため先に内側の既存分を剥がしてから全体を掛け直す
+  @changelog v86: ユーザー要望「Teams風にメモへ太字・ハイパーリンク等を付けたい」に対応し、Markdown風の軽量記法を実装(保存は引き続きプレーンテキスト)。対応記法は`**太字**`・`==黄色マーカー==`・`[文字]{red/blue/green/black}`(文字色)・`[文字](URL)`(任意文字へのリンク)・裸のURL自動リンク(既存)
+  ※ v01〜v85の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -344,7 +344,7 @@
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v87</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v88</span>
 </header>
 
 <div id="versionModal">
@@ -2360,20 +2360,19 @@
     textarea.setRangeText(result, start, end, "end");
     textarea.focus();
   }
-  // 文字色ボタン用。同じ色を選択範囲全体へもう一度適用した場合は外し(トグルオフ)、
+  // 文字色ボタン用。黒は「標準色に戻す(色設定を外す)」という意味なので、
+  // タグで囲まず常にプレーンテキストへ戻す(renderMemoMarkdown側の{black}の扱いと対応)。
+  // 赤/青/緑は、同じ色を選択範囲全体へもう一度適用した場合は外し(トグルオフ)、
   // 別の色を選んだ場合は置き換える。選択範囲の内側に残る色指定も先に剥がしてから掛け直す
   function applyMemoColor(textarea, color){
     const start = textarea.selectionStart, end = textarea.selectionEnd;
     const selected = textarea.value.slice(start, end) || "色をつける文字";
     const exact = selected.match(/^\[([\s\S]*)\]\{(red|blue|green|black)\}$/);
-    let result;
-    if(exact && exact[2] === color){
-      result = exact[1];
-    }else{
-      const base = exact ? exact[1] : selected;
-      const cleaned = base.replace(/\[([^\]]*)\]\{(?:red|blue|green|black)\}/g, "$1");
-      result = `[${cleaned}]{${color}}`;
-    }
+    const base = exact ? exact[1] : selected;
+    const cleaned = base.replace(/\[([^\]]*)\]\{(?:red|blue|green|black)\}/g, "$1");
+    const result = (color === "black" || (exact && exact[2] === color))
+      ? cleaned
+      : `[${cleaned}]{${color}}`;
     textarea.setRangeText(result, start, end, "end");
     textarea.focus();
   }
@@ -2898,7 +2897,8 @@
     ["v84","記録一覧の行に「前回の範囲」クイックトリミングボタンを追加"],
     ["v85","「見出し」の横に「メモ」ボタンを追加し、最初からメモ種別で追加可能に"],
     ["v86","メモに太字・マーカー・文字色・リンク等のMarkdown風記法を追加"],
-    ["v87","メモ装飾ボタンをトグル式に変更し、入れ子の重複を自動解消"]
+    ["v87","メモ装飾ボタンをトグル式に変更し、入れ子の重複を自動解消"],
+    ["v88","文字色の「黒」ボタンが色タグで囲んでしまう不具合を修正(常にプレーン文字に)"]
   ];
 
   const verLabel = $("verLabel");
