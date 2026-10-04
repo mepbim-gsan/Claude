@@ -122,6 +122,7 @@
 
   .shot{margin:10px 0 18px;}
   .shot img{display:block; width:100%; border-radius:8px; border:1px solid var(--border);}
+  .shot figcaption{margin-top:6px; font-size:12px; color:var(--sub); text-align:center;}
   .shot-box{
     border:2px dashed var(--border); border-radius:8px; background:var(--surface2);
     color:var(--sub); font-size:12.5px; text-align:center; padding:36px 16px;
@@ -222,8 +223,13 @@
     <li>ツールバーのボタンは選択範囲に対するトグル式です。すでにその装飾が付いた範囲へもう一度押すと外れます。選択範囲の内側に同じ装飾の入れ子が残っている場合は、重複しないよう自動的に整理されます。</li>
     <li>リンク付きの文字(ブラウザ等でハイパーリンクされた文字列)をコピーしてメモ欄へ貼り付けると、自動で <code>[表示文字](URL)</code> 記法に変換されます。</li>
   </ul>
+  <figure class="shot" data-slot="decoration-preview">
+    <img src="help-images/decoration-preview.png" alt="メモのプレビュー表示(装飾が反映された状態)">
+    <figcaption>プレビュー表示(通常時)</figcaption>
+  </figure>
   <figure class="shot" data-slot="decoration-toolbar">
-    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: decoration-toolbar</b><span>メモ編集中のツールバー(太字/マーカー/文字色/リンク)</span></div>
+    <img src="help-images/decoration-edit.png" alt="メモの編集中、テキスト上に重なって表示される装飾ツールバー">
+    <figcaption>クリックして編集中(ツールバーが重なって表示)</figcaption>
   </figure>
 
   <h2 id="crop">トリミング</h2>
