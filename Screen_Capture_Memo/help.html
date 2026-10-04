@@ -53,7 +53,12 @@
   }
   header a.back:hover{text-decoration:underline;}
 
-  main{padding:24px 20px 60px; max-width:760px; margin:0 auto;}
+  .layout{
+    display:flex; align-items:flex-start; gap:32px;
+    max-width:1040px; margin:0 auto; padding:24px 20px 60px;
+  }
+  .sidebar{position:sticky; top:74px; width:190px; flex:0 0 190px;}
+  main{flex:1; min-width:0; max-width:760px;}
   h2{font-size:17px; margin:40px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border);}
   h2:first-of-type{margin-top:0;}
   h3{font-size:14px; margin:20px 0 8px; color:var(--sub);}
@@ -63,12 +68,20 @@
 
   .toc{
     background:var(--panel); border:1px solid var(--border); border-radius:10px;
-    padding:14px 18px; margin-bottom:8px;
+    padding:14px 16px;
   }
   .toc p{margin:0 0 8px; font-size:12px; font-weight:600; color:var(--sub); letter-spacing:.02em;}
-  .toc ol{columns:2; margin:0; padding-left:18px;}
-  .toc a{color:var(--text); text-decoration:none; font-size:13px;}
+  .toc ol{columns:1; margin:0; padding-left:18px;}
+  .toc li{margin-bottom:8px;}
+  .toc a{color:var(--text); text-decoration:none; font-size:13px; line-height:1.4;}
   .toc a:hover{color:var(--accent); text-decoration:underline;}
+
+  @media (max-width: 880px){
+    .layout{display:block;}
+    .sidebar{position:static; width:auto; margin-bottom:20px;}
+    .toc ol{columns:2;}
+    main{max-width:none;}
+  }
 
   code{
     background:var(--surface2); border:1px solid var(--border); border-radius:4px;
@@ -110,7 +123,8 @@
   <a class="back" href="screen-capture-memo.html">← ツールに戻る</a>
 </header>
 
-<main>
+<div class="layout">
+<aside class="sidebar">
   <nav class="toc">
     <p>目次</p>
     <ol>
@@ -127,7 +141,9 @@
       <li><a href="#browser">対象ブラウザ</a></li>
     </ol>
   </nav>
+</aside>
 
+<main>
   <h2 id="overview">概要</h2>
   <p>
     画面を共有して範囲を固定し、連写キャプチャとメモをその場で記録していくツールです。
@@ -264,6 +280,7 @@
     <code>https://</code> または <code>localhost</code> 等のsecureContextでのみ動作し、社内イントラ等の <code>http://</code> では画面共有機能が使えません。
   </p>
 </main>
+</div>
 
 </body>
 </html>
