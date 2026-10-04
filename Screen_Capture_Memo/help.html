@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Screen Capture Memo ヘルプ</title>
+<script>
+  (function(){
+    try{
+      var theme = localStorage.getItem("screen-capture-memo-theme");
+      if(theme){ document.documentElement.setAttribute("data-theme", theme); }
+    }catch(e){}
+  })();
+</script>
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a;
@@ -17,6 +25,16 @@
       --text:#1c1f26; --sub:#6b7280; --accent:#3b6fe0;
       --col-red:#dc3545; --col-blue:#2f6fed; --col-green:#1f9254;
     }
+  }
+  html[data-theme="light"]{
+    --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --border:#d8dbe2;
+    --text:#1c1f26; --sub:#6b7280; --accent:#3b6fe0;
+    --col-red:#dc3545; --col-blue:#2f6fed; --col-green:#1f9254;
+  }
+  html[data-theme="dark"]{
+    --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a;
+    --text:#e6e8ec; --sub:#9aa0ac; --accent:#4f8cff;
+    --col-red:#ff6b72; --col-blue:#6fa0ff; --col-green:#4ad18b;
   }
   *{box-sizing:border-box;}
   body{
@@ -73,6 +91,16 @@
     padding:10px 14px; font-size:13px; color:var(--sub); margin:0 0 16px;
   }
   .note strong{color:var(--text);}
+
+  .shot{margin:10px 0 18px;}
+  .shot img{display:block; width:100%; border-radius:8px; border:1px solid var(--border);}
+  .shot-box{
+    border:2px dashed var(--border); border-radius:8px; background:var(--surface2);
+    color:var(--sub); font-size:12.5px; text-align:center; padding:36px 16px;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .shot-box .icon{font-size:22px;}
+  .shot-box b{color:var(--text); font-weight:600; font-size:13px;}
 </style>
 </head>
 <body>
@@ -122,6 +150,12 @@
   <div class="note">
     範囲固定と同時に対応ブラウザでは自動的に「常時表示ウィンドウ」(Document Picture-in-Picture)が開き、他のアプリを操作中でも最前面の小窓からワンクリックで撮影できます。
   </div>
+  <figure class="shot" data-slot="capture-range">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: capture-range</b><span>画面共有→範囲固定の様子</span></div>
+  </figure>
+  <figure class="shot" data-slot="capture-pip">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: capture-pip</b><span>常時表示ウィンドウ(PiP)の様子</span></div>
+  </figure>
 
   <h2 id="records">記録の追加(見出し・メモ)</h2>
   <p>
@@ -132,6 +166,9 @@
     <li><strong>💬メモ</strong>: 最初からメモ種別(細字)で追加されます。見出しとして追加したあとでも、行の種別バッジ(📝見出し / 💬メモ)をクリックすればいつでも切り替え可能です</li>
     <li>記録一覧で行を選択中(枠線表示)に追加すると、その行の直後に挿入されます</li>
   </ul>
+  <figure class="shot" data-slot="records-buttons">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: records-buttons</b><span>📝見出し/💬メモボタンと、追加された行の見た目</span></div>
+  </figure>
 
   <h2 id="decoration">メモの装飾記法</h2>
   <p>
@@ -150,6 +187,9 @@
     <li>ツールバーのボタンは選択範囲に対するトグル式です。すでにその装飾が付いた範囲へもう一度押すと外れます。選択範囲の内側に同じ装飾の入れ子が残っている場合は、重複しないよう自動的に整理されます。</li>
     <li>リンク付きの文字(ブラウザ等でハイパーリンクされた文字列)をコピーしてメモ欄へ貼り付けると、自動で <code>[表示文字](URL)</code> 記法に変換されます。</li>
   </ul>
+  <figure class="shot" data-slot="decoration-toolbar">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: decoration-toolbar</b><span>メモ編集中のツールバー(太字/マーカー/文字色/リンク)</span></div>
+  </figure>
 
   <h2 id="crop">トリミング</h2>
   <ul>
@@ -157,6 +197,9 @@
     <li>「元に戻す」でトリミング前の画像に戻せます。</li>
     <li>一度トリミングすると、他の画像の行にも<strong>🔁前回の範囲</strong>ボタンが現れます。これを押すと、モーダルを開かずに直前と同じ比率の範囲をその場で即適用できます。</li>
   </ul>
+  <figure class="shot" data-slot="crop-modal">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: crop-modal</b><span>トリミングモーダルの操作画面</span></div>
+  </figure>
 
   <h2 id="reorder">並び替え</h2>
   <ul>
@@ -171,6 +214,9 @@
     <li>資料タイトル・日付は書き出すHTMLのタイトルとファイル名に使われ、前回入力した値はブラウザに保持されます</li>
     <li><strong>HTML保存</strong>: 記録一覧を自己完結型HTMLとして書き出します</li>
   </ul>
+  <figure class="shot" data-slot="list-ops-toolbar">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: list-ops-toolbar</b><span>記録一覧のツールバー(インポート/全削除/タイトル・日付/HTML保存)</span></div>
+  </figure>
 
   <h2 id="export">書き出しHTMLの表示モード</h2>
   <p>書き出したHTMLを開くと、画面上部のセレクタで3つの表示モードを切り替えられます。</p>
@@ -184,6 +230,15 @@
     画像クリックでの拡大表示・メモの装飾(太字/マーカー/文字色/リンク)は、どのモードでも共通して反映されます。
     「🖨 印刷/PDF保存」ボタンから、ブラウザの印刷機能でPDF化できます。
   </p>
+  <figure class="shot" data-slot="export-list">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: export-list</b><span>一覧表示モード(右側の目次パネル込み)</span></div>
+  </figure>
+  <figure class="shot" data-slot="export-grid">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: export-grid</b><span>PDF用グリッドレイアウト(枚数/ページ・コメント表示)</span></div>
+  </figure>
+  <figure class="shot" data-slot="export-notes">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: export-notes</b><span>PDF用ノート形式レイアウト</span></div>
+  </figure>
 
   <h2 id="lightbox">画像の拡大表示(ライトボックス)</h2>
   <ul>
@@ -193,6 +248,9 @@
     <li>画像を右クリックすれば、ブラウザ標準の「画像をコピー」等のメニューが使えます。</li>
     <li>画像の下に、対応するメモ本文がキャプションとして表示されます(装飾も反映)。</li>
   </ul>
+  <figure class="shot" data-slot="lightbox-view">
+    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: lightbox-view</b><span>ライトボックス拡大表示とキャプション</span></div>
+  </figure>
 
   <h2 id="data">データの保存場所</h2>
   <p>
