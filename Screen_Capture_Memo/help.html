@@ -135,6 +135,8 @@
   .shot{margin:10px 0 18px;}
   .shot img{display:block; width:100%; border-radius:8px; border:1px solid var(--border);}
   .shot figcaption{margin-top:6px; font-size:12px; color:var(--sub); text-align:center;}
+  .shotRow{display:flex; gap:12px; flex-wrap:wrap; margin:10px 0 18px;}
+  .shotRow .shot{flex:1 1 200px; margin:0; min-width:0;}
   .shot-box{
     border:2px dashed var(--border); border-radius:8px; background:var(--surface2);
     color:var(--sub); font-size:12.5px; text-align:center; padding:36px 16px;
@@ -288,15 +290,20 @@
     画像クリックでの拡大表示・メモの装飾(太字/マーカー/文字色/リンク)は、どのモードでも共通して反映されます。
     「🖨 印刷/PDF保存」ボタンから、ブラウザの印刷機能でPDF化できます。
   </p>
-  <figure class="shot" data-slot="export-list">
-    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: export-list</b><span>一覧表示モード(右側の目次パネル込み)</span></div>
-  </figure>
-  <figure class="shot" data-slot="export-grid">
-    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: export-grid</b><span>PDF用グリッドレイアウト(枚数/ページ・コメント表示)</span></div>
-  </figure>
-  <figure class="shot" data-slot="export-notes">
-    <div class="shot-box"><span class="icon">🖼️</span><b>画像待ち: export-notes</b><span>PDF用ノート形式レイアウト</span></div>
-  </figure>
+  <div class="shotRow">
+    <figure class="shot" data-slot="export-list">
+      <img src="help-images/export-list.png" alt="一覧表示モード(右側の目次パネル込み)">
+      <figcaption>一覧表示</figcaption>
+    </figure>
+    <figure class="shot" data-slot="export-grid">
+      <img src="help-images/export-grid.png" alt="PDF用グリッドレイアウト(枚数/ページ・コメント表示)">
+      <figcaption>PDF用: グリッド</figcaption>
+    </figure>
+    <figure class="shot" data-slot="export-notes">
+      <img src="help-images/export-notes.png" alt="PDF用ノート形式レイアウト">
+      <figcaption>PDF用: ノート形式</figcaption>
+    </figure>
+  </div>
 
   <h2 id="lightbox">画像の拡大表示(ライトボックス)</h2>
   <ul>
