@@ -6,7 +6,8 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v89
+  @version   v90
+  @changelog v90: ユーザー要望「ヘルプページを作成して、メインページからリンクで飛ばしたい」に対応。同フォルダに使い方ヘルプページ help.html を新規作成(画面共有キャプチャ・記録タイプ・メモ装飾記法・トリミング・並び替え・HTML保存の3レイアウト・ライトボックス・データ保存先・対象ブラウザを解説)。メインページのヘッダーに「❓ ヘルプ」リンクを追加(新規タブで help.html を開く)
   @changelog v89: ユーザー要望「グリッド形式は、コメントあり、なしを選べるようにしたい」に対応。「PDF用: A4にN枚/ページ」モードのツールバーに「コメント表示」チェックボックスを追加(既定ON、grid表示時のみ出現)。OFFにするとrenderGrid()が各画像セルの.gridMemo(メモ本文)を生成しなくなり、画像と見出し区切りだけのグリッドになる。見出し行はコメントの有無に関わらず常に表示。ノート形式(notes)側のコメントは対象外で変更なし
   @changelog v88: ユーザー確認「blackは標準の黒にするって意味なので、文字色設定を外す意味で。ダークモードだとホワイトかな」を受け、applyMemoColor()の黒ボタンの挙動を修正。黒は特定の色を指定するのではなく「色設定を外す(標準色に戻す)」という意味であるべきところ、既に別の色が付いた文字へ黒ボタンを押すと[文字]{black}というタグで囲んでしまう抜け漏れがあったため、常にタグなしのプレーン文字へ戻すよう修正
   @changelog v87: ユーザー要望「同じ範囲にもう一度実行したとき外せるように」「[重複して設定、[重複して設定]{red}]{red}のように重複した場合、内側の赤設定を自動で削除したい」に対応。メモ欄ツールバーの太字/マーカー/文字色をトグル式に変更。選択範囲全体がちょうどその記法そのものなら、もう一度押すと記法を外す(toggleWrapMemoSelection())
@@ -57,7 +58,13 @@
   }
   header h1{font-size:15px; margin:0; font-weight:600; color:var(--sub); letter-spacing:.02em;}
   .ver{font-size:11px; color:var(--sub);}
-  #btnTheme{padding:6px 10px; font-size:14px; line-height:1; margin-left:auto;}
+  .headerLink{
+    margin-left:auto; color:var(--sub); text-decoration:none; font-size:13px;
+    display:inline-flex; align-items:center; gap:4px; padding:6px 10px;
+    border:1px solid var(--border); border-radius:6px;
+  }
+  .headerLink:hover{color:var(--text); border-color:var(--sub);}
+  #btnTheme{padding:6px 10px; font-size:14px; line-height:1;}
 
   main{padding:20px; max-width:960px; margin:0 auto;}
 
@@ -343,8 +350,9 @@
 
 <header id="appHeader">
   <h1>SCREEN CAPTURE MEMO</h1>
+  <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v89</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v90</span>
 </header>
 
 <div id="versionModal">
@@ -2907,7 +2915,8 @@
     ["v86","メモに太字・マーカー・文字色・リンク等のMarkdown風記法を追加"],
     ["v87","メモ装飾ボタンをトグル式に変更し、入れ子の重複を自動解消"],
     ["v88","文字色の「黒」ボタンが色タグで囲んでしまう不具合を修正(常にプレーン文字に)"],
-    ["v89","グリッド形式(A4にN枚/ページ)でコメント表示のON/OFFを選択可能に"]
+    ["v89","グリッド形式(A4にN枚/ページ)でコメント表示のON/OFFを選択可能に"],
+    ["v90","使い方ヘルプページ(help.html)を追加し、ヘッダーからリンク"]
   ];
 
   const verLabel = $("verLabel");
