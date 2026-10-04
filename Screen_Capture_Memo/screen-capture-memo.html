@@ -6,10 +6,10 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v92
+  @version   v93
+  @changelog v93: ユーザー指摘「上部の帯の位置が考慮されていないね。目次の2を開いたらこうなった」(目次クリックでジャンプした見出しがヘッダーに隠れる/サイドバーの開始位置がズレる不具合)に対応。help.htmlの.sidebarのtop値が74pxの固定値でヘッダーの実高さとズレていたのが原因。メイン画面と同じResizeObserverでヘッダー実高さを--header-h変数に反映する仕組みを導入し、.sidebarのtopとh2のscroll-margin-topをcalc(var(--header-h) + 余白)に変更。Playwrightでヘッダー高さの変数反映、TOCクリック後に見出しがヘッダー直下に正しく表示されることを確認
   @changelog v92: ユーザー要望「パソコンからの利用想定なので、目次を左側に表示して」に対応。help.htmlの目次を本文上部の2カラムボックスから、左側に常時表示される縦1カラムのサイドバー(sticky配置、スクロールしても追従)に変更。画面幅880px以下では従来通り本文上部の2カラム表示にフォールバック
   @changelog v91: ユーザー要望「ヘルプにもライトモード、ダークモード連動してください」「画像が必要な部分を箱抜きしてください」に対応。help.htmlがlocalStorage(screen-capture-memo-theme)を読み取りメイン画面と同じテーマ(data-theme)を適用するよう修正(未設定時はOS設定に追従、既存どおり)。また今後スクリーンショットを差し込めるよう、画面キャプチャ・記録追加・メモ装飾・トリミング・記録一覧操作・書き出しHTMLの3レイアウト・ライトボックスの各節に画像プレースホルダー枠(.shot, data-slot属性)を追加
-  @changelog v90: ユーザー要望「ヘルプページを作成して、メインページからリンクで飛ばしたい」に対応。同フォルダに使い方ヘルプページ help.html を新規作成(画面共有キャプチャ・記録タイプ・メモ装飾記法・トリミング・並び替え・HTML保存の3レイアウト・ライトボックス・データ保存先・対象ブラウザを解説)。メインページのヘッダーに「❓ ヘルプ」リンクを追加(新規タブで help.html を開く)
   @changelog v89: ユーザー要望「グリッド形式は、コメントあり、なしを選べるようにしたい」に対応。「PDF用: A4にN枚/ページ」モードのツールバーに「コメント表示」チェックボックスを追加(既定ON、grid表示時のみ出現)。OFFにするとrenderGrid()が各画像セルの.gridMemo(メモ本文)を生成しなくなり、画像と見出し区切りだけのグリッドになる。見出し行はコメントの有無に関わらず常に表示。ノート形式(notes)側のコメントは対象外で変更なし
   ※ v01〜v88の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
@@ -352,7 +352,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v92</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v93</span>
 </header>
 
 <div id="versionModal">
@@ -2918,7 +2918,8 @@
     ["v89","グリッド形式(A4にN枚/ページ)でコメント表示のON/OFFを選択可能に"],
     ["v90","使い方ヘルプページ(help.html)を追加し、ヘッダーからリンク"],
     ["v91","ヘルプページをライト/ダークモードに連動、画像プレースホルダー枠を追加"],
-    ["v92","ヘルプページの目次をPC向けに左サイドバー表示へ変更"]
+    ["v92","ヘルプページの目次をPC向けに左サイドバー表示へ変更"],
+    ["v93","ヘルプページのサイドバー位置をヘッダー実高さに追従するよう修正"]
   ];
 
   const verLabel = $("verLabel");
