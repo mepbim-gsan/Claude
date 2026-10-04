@@ -111,6 +111,18 @@
   th, td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top;}
   th{color:var(--sub); font-weight:600; font-size:12px;}
 
+  .iconChip{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:22px; border:1px solid var(--border); border-radius:6px;
+    background:var(--surface2); font-size:13px; color:var(--text);
+  }
+  .iconChip-bold{font-weight:700;}
+  .iconDots{display:inline-flex; align-items:center; gap:4px; height:22px;}
+  .iconDots i{
+    width:11px; height:11px; border-radius:50%; background:var(--dot);
+    display:inline-block; border:1px solid rgba(0,0,0,.15);
+  }
+
   mark{background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;}
   .col-red{color:var(--col-red);} .col-blue{color:var(--col-blue);} .col-green{color:var(--col-green);}
 
@@ -212,12 +224,12 @@
     編集中は、テキストの上に太字・マーカー・リンク・文字色のツールバーが重なって表示されます(選択範囲に適用)。
   </p>
   <table>
-    <tr><th>記法</th><th>結果</th></tr>
-    <tr><td><code>**太字**</code></td><td><b>太字</b></td></tr>
-    <tr><td><code>==マーカー==</code></td><td><mark>マーカー</mark>(黄色固定)</td></tr>
-    <tr><td><code>[文字]{red}</code></td><td><span class="col-red">文字</span>(red/blue/green/black。blackは色設定を外す＝標準色に戻す)</td></tr>
-    <tr><td><code>[文字](URL)</code></td><td>任意の文字へのリンク</td></tr>
-    <tr><td>裸のURL</td><td>自動的にリンク化</td></tr>
+    <tr><th></th><th>記法</th><th>結果</th></tr>
+    <tr><td><span class="iconChip iconChip-bold">B</span></td><td><code>**太字**</code></td><td><b>太字</b></td></tr>
+    <tr><td><span class="iconChip">🖍</span></td><td><code>==マーカー==</code></td><td><mark>マーカー</mark>(黄色固定)</td></tr>
+    <tr><td><span class="iconDots"><i style="--dot:var(--text);"></i><i style="--dot:var(--col-red);"></i><i style="--dot:var(--col-blue);"></i><i style="--dot:var(--col-green);"></i></span></td><td><code>[文字]{red}</code></td><td><span class="col-red">文字</span>(red/blue/green/black。blackは色設定を外す＝標準色に戻す)</td></tr>
+    <tr><td><span class="iconChip">🔗</span></td><td><code>[文字](URL)</code></td><td>任意の文字へのリンク</td></tr>
+    <tr><td><span class="iconChip">🔗</span></td><td>裸のURL</td><td>自動的にリンク化</td></tr>
   </table>
   <ul>
     <li>ツールバーのボタンは選択範囲に対するトグル式です。すでにその装飾が付いた範囲へもう一度押すと外れます。選択範囲の内側に同じ装飾の入れ子が残っている場合は、重複しないよう自動的に整理されます。</li>
