@@ -117,6 +117,7 @@
   }
 
   table{width:100%; border-collapse:collapse; margin-bottom:16px; font-size:13px;}
+  .modeTable td:first-child, .modeTable th:first-child{white-space:nowrap; width:1%;}
   th, td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top;}
   th{color:var(--sub); font-weight:600; font-size:12px;}
 
@@ -325,7 +326,7 @@
 <p class="sectionDivider">書き出しHTML</p>
   <h2 id="export">表示モード</h2>
   <p>書き出したHTMLを開くと、画面上部のセレクタで3つの表示モードを切り替えられます。</p>
-  <table>
+  <table class="modeTable">
     <tr><th>モード</th><th>内容</th></tr>
     <tr><td>一覧表示</td><td>縦スクロールの一覧。見出しから自動生成される目次パネルが画面右側に表示されます(画面幅が狭い場合や印刷時は非表示)</td></tr>
     <tr><td>PDF用: A4にN枚/ページ</td><td>印刷・PDF化を想定したグリッドレイアウト。「枚数/ページ」(2・3・4・6)を選べます。「コメント表示」をオフにすると、画像とメモのうちメモ部分だけを非表示にできます(見出しは常に表示)</td></tr>
