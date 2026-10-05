@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v93
+  @version   v94
+  @changelog v94: ユーザー指摘「マーカーに文字色を反映できない」「マーカーのトグルも上手く動かない」の2件に対応。(1)renderMemoMarkdown()で文字色([文字]{色})の処理がマーカー(==文字==)より先に走っていたため、色の<span style="...">が生成する"="がマーカーの正規表現[^=\n]を分断して入れ子を解析できないケースがあり、かつmark要素自体のcolorがハードコードされ色指定を常に上書きしていた。マーカーの処理を文字色より先に行う順序に変更し、色指定をinline styleからclass="memo-col-{色}"に変更のうえ、`.memo-col-{色} mark`/`mark .memo-col-{色}`という入れ子順を問わない上書きルール(!important、既存のmark色指定より詳細度が低いため)を本体・exportHtmlの両<style>に追加し、どちらの入れ子順でも文字色がマーカーの背景色の上に正しく反映されるよう修正。(2)太字/マーカー/取り消し線/下線の共通トグル関数toggleWrapMemoSelection()は、選択範囲の前後にちょうど装飾記号が隣接している(例: ダブルクリックで記号を含まず単語だけを選択した)場合に既存の装飾を検出できず、押すたびに記号が二重三重に増殖する不具合があった(例: `==重要==`の「重要」だけを選択してマーカー再押下→`====重要====`に壊れる)。選択範囲の直前・直後が同じ記号ならそれも含めて剥がすよう修正し、4ボタン(太字/マーカー/取り消し線/下線)全てに適用。Playwrightで両方向の入れ子(色→マーカー/マーカー→色)の文字色反映を本体プレビュー・本体ライトボックス・書き出しHTML一覧・書き出しHTMLライトボックスキャプションの4箇所で確認し、トグルは単語だけ選択した場合を含む既存の重複整理動作に回帰がないことを確認
   @changelog v93: ユーザー要望「取り消し線や下線を装飾として追加しよう」に対応。メモ装飾記法に`~~取り消し線~~`(<s>)と`__下線__`(<u>)を追加。メモ欄ツールバーに「S」(取り消し線)「U」(下線)ボタンを新設し、既存のtoggleWrapMemoSelection()を再利用して太字/マーカーと同じトグル式(同じ記法で囲まれた選択範囲へ再度押すと解除、入れ子の重複は自動整理)で動作するようにした。renderMemoMarkdown()は本体・書き出しHTML(exportHtml)の両方に実装し、exportHtml側はバックスラッシュ二重化の往復検証を経てから組み込み。Playwrightで本体(S/Uボタンでのトグル・保存・プレビュー表示)と書き出しHTML(一覧表示のメモ・ライトボックスキャプション)の両方で取り消し線・下線が正しく反映されることを確認
   @changelog v92: ユーザー要望「HTML書き出しにつけてる目次パネルを改善したい」に対応し、AskUserQuestionで改善内容を確認のうえ2点実装。①現在地ハイライト: IntersectionObserverでスクロール中に画面内にある見出しを検出し、対応する目次リンクに.activeクラス(太字・アクセント色)を付与。②画面幅が狭い時の表示: 幅1300px以下では目次パネルを画面右端の外にスライドして隠し(transform:translateX(100%))、右端の薄いホバー領域(#tocEdgeTrigger)にマウスを乗せる、または右端からのスワイプ(タッチ)で引き出せるようにした(外側クリック/スワイプで戻す/逆向きスワイプでも閉じる)。あわせて書き出しHTMLの<head>にviewportメタタグが無く、スマホで実際には980px相当のレイアウトビューポートになりタッチ座標がずれてスワイプが機能しない不具合を発見・修正。Playwrightで広い画面でのハイライト追従、狭い画面でのホバー開閉、実機相当のタッチイベントでのスワイプ開閉、グリッド/ノートモード切替時の非表示、ダークテーマでの見た目を確認
-  @changelog v91: ユーザー指摘「見出し＞コメント＞キャプチャなのに、HTML出力の並びが違うよ」に対応。原因は、メモ編集の自動保存(doSave)・種別切替・トリミング(適用/元に戻す/前回の範囲)が、行作成時に捕まえた古いrecordオブジェクトでdbPut()していたため、並び替え(ドラッグ/キーボード)がpersistOrderFromDom()で別途DBから取得し直したコピーに設定したorderフィールドを、その後の保存で丸ごと消してしまっていたこと。画面はDOM操作をそのまま表示するため正しく見えるが、書き出しHTMLはDBのorderで再ソートするため食い違っていた。保存直前に現在のDOM位置からorderを補ってから保存する共通関数saveRecordPreservingOrder()を新設し、該当する保存経路(メモ自動保存・見出し/メモ種別切替・トリミング3箇所)全てに適用。あわせてaddCaptureRecord()でorder同期を選択行の有無に関わらず常に行うよう修正。Playwrightで「見出し追加→メモ追加→画像を末尾へ移動→メモ編集」のシナリオを再現し、修正前は書き出しHTMLの順序が画面表示と食い違うこと、修正後は一致することを確認
-  ※ v01〜v90の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v91の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -285,6 +285,14 @@
   #lightboxCaption a{color:var(--accent); text-decoration:underline;}
   #lightboxCaption b{font-weight:700;}
   #lightboxCaption mark{background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;}
+  /* マーカーと文字色を組み合わせた時、入れ子の順序に関わらず文字色を優先させる。
+     mark側の色指定(.memoPreview mark / #lightboxCaption mark)より詳細度が低いため!importantで上書き */
+  .memo-col-red{color:var(--memo-col-red);}
+  .memo-col-blue{color:var(--memo-col-blue);}
+  .memo-col-green{color:var(--memo-col-green);}
+  mark .memo-col-red, .memo-col-red mark{color:var(--memo-col-red) !important;}
+  mark .memo-col-blue, .memo-col-blue mark{color:var(--memo-col-blue) !important;}
+  mark .memo-col-green, .memo-col-green mark{color:var(--memo-col-green) !important;}
 
   .ver{cursor:pointer;}
   .ver:hover{text-decoration:underline;}
@@ -353,7 +361,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v93</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v94</span>
 </header>
 
 <div id="versionModal">
@@ -1309,19 +1317,19 @@
       btn.addEventListener("mousedown", (e) => e.preventDefault());
     });
     memoToolbar.querySelector('[data-memo-action="bold"]').addEventListener("click", () => {
-      toggleWrapMemoSelection(textarea, /^\*\*([\s\S]*)\*\*$/, /\*\*([^*]*)\*\*/g, (inner) => `**${inner}**`, "太字にする文字");
+      toggleWrapMemoSelection(textarea, /^\*\*([\s\S]*)\*\*$/, /\*\*([^*]*)\*\*/g, (inner) => `**${inner}**`, "太字にする文字", "**");
       handleMemoChanged();
     });
     memoToolbar.querySelector('[data-memo-action="strike"]').addEventListener("click", () => {
-      toggleWrapMemoSelection(textarea, /^~~([\s\S]*)~~$/, /~~([^~]*)~~/g, (inner) => `~~${inner}~~`, "取り消し線にする文字");
+      toggleWrapMemoSelection(textarea, /^~~([\s\S]*)~~$/, /~~([^~]*)~~/g, (inner) => `~~${inner}~~`, "取り消し線にする文字", "~~");
       handleMemoChanged();
     });
     memoToolbar.querySelector('[data-memo-action="underline"]').addEventListener("click", () => {
-      toggleWrapMemoSelection(textarea, /^__([\s\S]*)__$/, /__([^_]*)__/g, (inner) => `__${inner}__`, "下線を引く文字");
+      toggleWrapMemoSelection(textarea, /^__([\s\S]*)__$/, /__([^_]*)__/g, (inner) => `__${inner}__`, "下線を引く文字", "__");
       handleMemoChanged();
     });
     memoToolbar.querySelector('[data-memo-action="mark"]').addEventListener("click", () => {
-      toggleWrapMemoSelection(textarea, /^==([\s\S]*)==$/, /==([^=]*)==/g, (inner) => `==${inner}==`, "マーカーにする文字");
+      toggleWrapMemoSelection(textarea, /^==([\s\S]*)==$/, /==([^=]*)==/g, (inner) => `==${inner}==`, "マーカーにする文字", "==");
       handleMemoChanged();
     });
     memoToolbar.querySelector('[data-memo-action="link"]').addEventListener("click", () => {
@@ -1803,6 +1811,12 @@
   .rec-memo mark, .recHeading mark, .gridMemo mark, .gridHeading mark, .noteComment mark, .noteHeading mark, #lightboxCaption mark{
     background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;
   }
+  .memo-col-red{color:var(--memo-col-red);}
+  .memo-col-blue{color:var(--memo-col-blue);}
+  .memo-col-green{color:var(--memo-col-green);}
+  mark .memo-col-red, .memo-col-red mark{color:var(--memo-col-red) !important;}
+  mark .memo-col-blue, .memo-col-blue mark{color:var(--memo-col-blue) !important;}
+  mark .memo-col-green, .memo-col-green mark{color:var(--memo-col-green) !important;}
 
   @page{ size:A4; margin:14mm; }
   @media print{
@@ -1967,11 +1981,11 @@
     html = html.replace(/\\[([^\\]\\n]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, function(_, label, url){
       return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
     });
+    html = html.replace(/==([^=\\n]+)==/g, "<mark>$1</mark>");
     html = html.replace(/\\[([^\\]\\n]+)\\]\\{(red|blue|green|black)\\}/g, function(_, label, color){
       if(color === "black") return label;
-      return '<span style="color:var(--memo-col-' + color + ');">' + label + '</span>';
+      return '<span class="memo-col-' + color + '">' + label + '</span>';
     });
-    html = html.replace(/==([^=\\n]+)==/g, "<mark>$1</mark>");
     html = html.replace(/\\*\\*([^*\\n]+)\\*\\*/g, "<b>$1</b>");
     html = html.replace(/~~([^~\\n]+)~~/g, "<s>$1</s>");
     html = html.replace(/__([^_\\n]+)__/g, "<u>$1</u>");
@@ -2450,15 +2464,18 @@
     html = html.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
       return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
     });
+    // ==マーカー==(文字色との組み合わせ時にマーカー側の正規表現が[文字]{色}が
+    // 生成するinline styleの"="で分断されないよう、文字色より先に処理する)
+    html = html.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
     // [表示文字]{色}(red/blue/green/black。blackは「標準色に戻す」の意味で、
     // 表示先(記録一覧のプレビュー/常に暗い背景のライトボックスキャプション等)によって
-    // 適切な既定色が異なるため、あえて色を指定せずそのまま周囲に継承させる)
+    // 適切な既定色が異なるため、あえて色を指定せずそのまま周囲に継承させる)。
+    // クラス指定にしているのは、マーカーと組み合わせた時にCSS側で
+    // mark内外どちらの入れ子順でも文字色を優先させる上書きルールを書けるようにするため
     html = html.replace(/\[([^\]\n]+)\]\{(red|blue|green|black)\}/g, (_, label, color) => {
       if(color === "black") return label;
-      return `<span style="color:var(--memo-col-${color});">${label}</span>`;
+      return `<span class="memo-col-${color}">${label}</span>`;
     });
-    // ==マーカー==
-    html = html.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
     // **太字**
     html = html.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
     // ~~取り消し線~~
@@ -2478,11 +2495,30 @@
   // 選択範囲全体がちょうどこの記法そのものなら外す(もう一度押すとオフ)。
   // それ以外の場合、選択範囲の内側に同じ記法の入れ子が残っていると二重掛けになってしまうため、
   // 先に内側の既存分を剥がしてから改めて全体を掛け直す
-  function toggleWrapMemoSelection(textarea, fullPattern, stripPattern, makeWrapped, placeholder){
+  function toggleWrapMemoSelection(textarea, fullPattern, stripPattern, makeWrapped, placeholder, delim){
+    const value = textarea.value;
     const start = textarea.selectionStart, end = textarea.selectionEnd;
-    const selected = textarea.value.slice(start, end);
+    const selected = value.slice(start, end);
     const exact = selected.match(fullPattern);
-    const result = exact ? exact[1] : makeWrapped((selected || placeholder).replace(stripPattern, "$1"));
+    if(exact){
+      textarea.setRangeText(exact[1], start, end, "end");
+      textarea.focus();
+      return;
+    }
+    // ダブルクリック等で装飾記号の「内側の単語だけ」が選択されている場合、
+    // 選択範囲の直前・直後に同じ記号が隣接していれば、それも含めて剥がす
+    // (記号そのものを選択範囲に含めないと解除できず、押すたびに記号が増殖してしまうため)
+    if(delim){
+      const dLen = delim.length;
+      const before = value.slice(Math.max(0, start - dLen), start);
+      const after = value.slice(end, end + dLen);
+      if(before === delim && after === delim){
+        textarea.setRangeText(selected, start - dLen, end + dLen, "end");
+        textarea.focus();
+        return;
+      }
+    }
+    const result = makeWrapped((selected || placeholder).replace(stripPattern, "$1"));
     textarea.setRangeText(result, start, end, "end");
     textarea.focus();
   }
@@ -3029,7 +3065,8 @@
     ["v90","使い方ヘルプページ(help.html)を追加し、ヘッダーからリンク"],
     ["v91","並び替え後にメモ編集/トリミングすると書き出しHTMLの順序が画面表示とズレる不具合を修正"],
     ["v92","書き出しHTMLの目次パネルを改善(現在地ハイライト・狭幅時は右端スワイプ/ホバーで表示)"],
-    ["v93","メモ装飾に取り消し線・下線を追加"]
+    ["v93","メモ装飾に取り消し線・下線を追加"],
+    ["v94","マーカー+文字色の組み合わせ表示と装飾トグルボタンの不具合を修正"]
   ];
 
   const verLabel = $("verLabel");
