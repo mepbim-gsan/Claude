@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v92
+  @version   v93
+  @changelog v93: ユーザー要望「取り消し線や下線を装飾として追加しよう」に対応。メモ装飾記法に`~~取り消し線~~`(<s>)と`__下線__`(<u>)を追加。メモ欄ツールバーに「S」(取り消し線)「U」(下線)ボタンを新設し、既存のtoggleWrapMemoSelection()を再利用して太字/マーカーと同じトグル式(同じ記法で囲まれた選択範囲へ再度押すと解除、入れ子の重複は自動整理)で動作するようにした。renderMemoMarkdown()は本体・書き出しHTML(exportHtml)の両方に実装し、exportHtml側はバックスラッシュ二重化の往復検証を経てから組み込み。Playwrightで本体(S/Uボタンでのトグル・保存・プレビュー表示)と書き出しHTML(一覧表示のメモ・ライトボックスキャプション)の両方で取り消し線・下線が正しく反映されることを確認
   @changelog v92: ユーザー要望「HTML書き出しにつけてる目次パネルを改善したい」に対応し、AskUserQuestionで改善内容を確認のうえ2点実装。①現在地ハイライト: IntersectionObserverでスクロール中に画面内にある見出しを検出し、対応する目次リンクに.activeクラス(太字・アクセント色)を付与。②画面幅が狭い時の表示: 幅1300px以下では目次パネルを画面右端の外にスライドして隠し(transform:translateX(100%))、右端の薄いホバー領域(#tocEdgeTrigger)にマウスを乗せる、または右端からのスワイプ(タッチ)で引き出せるようにした(外側クリック/スワイプで戻す/逆向きスワイプでも閉じる)。あわせて書き出しHTMLの<head>にviewportメタタグが無く、スマホで実際には980px相当のレイアウトビューポートになりタッチ座標がずれてスワイプが機能しない不具合を発見・修正。Playwrightで広い画面でのハイライト追従、狭い画面でのホバー開閉、実機相当のタッチイベントでのスワイプ開閉、グリッド/ノートモード切替時の非表示、ダークテーマでの見た目を確認
   @changelog v91: ユーザー指摘「見出し＞コメント＞キャプチャなのに、HTML出力の並びが違うよ」に対応。原因は、メモ編集の自動保存(doSave)・種別切替・トリミング(適用/元に戻す/前回の範囲)が、行作成時に捕まえた古いrecordオブジェクトでdbPut()していたため、並び替え(ドラッグ/キーボード)がpersistOrderFromDom()で別途DBから取得し直したコピーに設定したorderフィールドを、その後の保存で丸ごと消してしまっていたこと。画面はDOM操作をそのまま表示するため正しく見えるが、書き出しHTMLはDBのorderで再ソートするため食い違っていた。保存直前に現在のDOM位置からorderを補ってから保存する共通関数saveRecordPreservingOrder()を新設し、該当する保存経路(メモ自動保存・見出し/メモ種別切替・トリミング3箇所)全てに適用。あわせてaddCaptureRecord()でorder同期を選択行の有無に関わらず常に行うよう修正。Playwrightで「見出し追加→メモ追加→画像を末尾へ移動→メモ編集」のシナリオを再現し、修正前は書き出しHTMLの順序が画面表示と食い違うこと、修正後は一致することを確認
-  @changelog v90: ユーザー要望「ヘルプページを作成して、メインページからリンクで飛ばしたい」に対応。同フォルダに使い方ヘルプページ help.html を新規作成(画面共有キャプチャ・記録タイプ・メモ装飾記法・トリミング・並び替え・HTML保存の3レイアウト・ライトボックス・データ保存先・対象ブラウザを解説)。メインページのヘッダーに「❓ ヘルプ」リンクを追加(新規タブで help.html を開く)
-  ※ v01〜v89の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v90の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -232,6 +232,8 @@
   }
   .item .memoToolBtn:hover{border-color:var(--accent); color:var(--accent);}
   .item .memoToolBtn.memoToolBtn-bold{font-weight:700;}
+  .item .memoToolBtn.memoToolBtn-strike{text-decoration:line-through;}
+  .item .memoToolBtn.memoToolBtn-underline{text-decoration:underline;}
   .item .memoColorDots{
     display:flex; align-items:center; gap:4px; background:var(--panel); border:1px solid var(--border);
     border-radius:14px; padding:3px 6px; box-shadow:0 1px 2px rgba(0,0,0,.18);
@@ -351,7 +353,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v92</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v93</span>
 </header>
 
 <div id="versionModal">
@@ -1149,10 +1151,12 @@
     if(empty) empty.remove();
   }
 
-  // メモ欄(画像メモ・見出し/メモ共通)のツールバー。太字/マーカー/リンク/文字色4色
+  // メモ欄(画像メモ・見出し/メモ共通)のツールバー。太字/取り消し線/下線/マーカー/リンク/文字色4色
   const MEMO_TOOLBAR_HTML = `
     <div class="memoToolbar" hidden>
       <button class="memoToolBtn memoToolBtn-bold" type="button" data-memo-action="bold" title="太字">B</button>
+      <button class="memoToolBtn memoToolBtn-strike" type="button" data-memo-action="strike" title="取り消し線">S</button>
+      <button class="memoToolBtn memoToolBtn-underline" type="button" data-memo-action="underline" title="下線">U</button>
       <button class="memoToolBtn" type="button" data-memo-action="mark" title="黄色マーカー">🖍</button>
       <button class="memoToolBtn" type="button" data-memo-action="link" title="リンクを付ける">🔗</button>
       <span class="memoColorDots">
@@ -1306,6 +1310,14 @@
     });
     memoToolbar.querySelector('[data-memo-action="bold"]').addEventListener("click", () => {
       toggleWrapMemoSelection(textarea, /^\*\*([\s\S]*)\*\*$/, /\*\*([^*]*)\*\*/g, (inner) => `**${inner}**`, "太字にする文字");
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="strike"]').addEventListener("click", () => {
+      toggleWrapMemoSelection(textarea, /^~~([\s\S]*)~~$/, /~~([^~]*)~~/g, (inner) => `~~${inner}~~`, "取り消し線にする文字");
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="underline"]').addEventListener("click", () => {
+      toggleWrapMemoSelection(textarea, /^__([\s\S]*)__$/, /__([^_]*)__/g, (inner) => `__${inner}__`, "下線を引く文字");
       handleMemoChanged();
     });
     memoToolbar.querySelector('[data-memo-action="mark"]').addEventListener("click", () => {
@@ -1961,6 +1973,8 @@
     });
     html = html.replace(/==([^=\\n]+)==/g, "<mark>$1</mark>");
     html = html.replace(/\\*\\*([^*\\n]+)\\*\\*/g, "<b>$1</b>");
+    html = html.replace(/~~([^~\\n]+)~~/g, "<s>$1</s>");
+    html = html.replace(/__([^_\\n]+)__/g, "<u>$1</u>");
     html = html.replace(/(^|[^"'>])(https?:\\/\\/[A-Za-z0-9\\-._~:/?#[\\]@!$&*+,;=%]+)/g, function(_, pre, url){
       var m = url.match(/[.,;:!?)\\]}]+$/);
       var trail = m ? m[0] : "";
@@ -2447,6 +2461,10 @@
     html = html.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
     // **太字**
     html = html.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+    // ~~取り消し線~~
+    html = html.replace(/~~([^~\n]+)~~/g, "<s>$1</s>");
+    // __下線__
+    html = html.replace(/__([^_\n]+)__/g, "<u>$1</u>");
     // 裸のURL(すでにhref="..."の中にあるものは除外。文末の句読点・括弧等はリンクに含めない)
     html = html.replace(/(^|[^"'>])(https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]+)/g, (_, pre, url) => {
       const m = url.match(/[.,;:!?)\]}]+$/);
@@ -3010,7 +3028,8 @@
     ["v89","グリッド形式(A4にN枚/ページ)でコメント表示のON/OFFを選択可能に"],
     ["v90","使い方ヘルプページ(help.html)を追加し、ヘッダーからリンク"],
     ["v91","並び替え後にメモ編集/トリミングすると書き出しHTMLの順序が画面表示とズレる不具合を修正"],
-    ["v92","書き出しHTMLの目次パネルを改善(現在地ハイライト・狭幅時は右端スワイプ/ホバーで表示)"]
+    ["v92","書き出しHTMLの目次パネルを改善(現在地ハイライト・狭幅時は右端スワイプ/ホバーで表示)"],
+    ["v93","メモ装飾に取り消し線・下線を追加"]
   ];
 
   const verLabel = $("verLabel");

@@ -127,6 +127,8 @@
     background:var(--surface2); font-size:13px; color:var(--text);
   }
   .iconChip-bold{font-weight:700;}
+  .iconChip-strike{text-decoration:line-through;}
+  .iconChip-underline{text-decoration:underline;}
   .iconDots{display:inline-flex; align-items:center; gap:4px; height:22px;}
   .iconDots i{
     width:11px; height:11px; border-radius:50%; background:var(--dot);
@@ -255,11 +257,13 @@
 <h2 id="decoration">メモの追加</h2>
   <p>
     メモ欄は、ふだんは装飾を反映したプレビュー表示です。クリックすると編集用のテキストに切り替わり、他の場所をクリックすると保存してプレビューに戻ります。
-    編集中は、テキストの上に太字・マーカー・リンク・文字色のツールバーが重なって表示されます(選択範囲に適用)。
+    編集中は、テキストの上に太字・取り消し線・下線・マーカー・リンク・文字色のツールバーが重なって表示されます(選択範囲に適用)。
   </p>
   <table>
     <tr><th></th><th>記法</th><th>結果</th></tr>
     <tr><td><span class="iconChip iconChip-bold">B</span></td><td><code>**太字**</code></td><td><b>太字</b></td></tr>
+    <tr><td><span class="iconChip iconChip-strike">S</span></td><td><code>~~取り消し線~~</code></td><td><s>取り消し線</s></td></tr>
+    <tr><td><span class="iconChip iconChip-underline">U</span></td><td><code>__下線__</code></td><td><u>下線</u></td></tr>
     <tr><td><span class="iconChip">🖍</span></td><td><code>==マーカー==</code></td><td><mark>マーカー</mark>(黄色固定)</td></tr>
     <tr><td><span class="iconDots"><i style="--dot:var(--text);"></i><i style="--dot:var(--col-red);"></i><i style="--dot:var(--col-blue);"></i><i style="--dot:var(--col-green);"></i></span></td><td><code>[文字]{red}</code></td><td><span class="col-red">文字</span>(red/blue/green/black。blackは色設定を外す＝標準色に戻す)</td></tr>
     <tr><td><span class="iconChip">🔗</span></td><td><code>[文字](URL)</code></td><td>任意の文字へのリンク</td></tr>
@@ -333,7 +337,7 @@
     <tr><td>PDF用: ノート形式</td><td>画像を左、メモを右の広いコメント欄に配置した1行レイアウト(スライド資料のノート表示に近い構成)</td></tr>
   </table>
   <p>
-    画像クリックでの拡大表示・メモの装飾(太字/マーカー/文字色/リンク)は、どのモードでも共通して反映されます。
+    画像クリックでの拡大表示・メモの装飾(太字/取り消し線/下線/マーカー/文字色/リンク)は、どのモードでも共通して反映されます。
     「🖨 印刷/PDF保存」ボタンから、ブラウザの印刷機能でPDF化できます。
   </p>
   <div class="shotRow">
