@@ -7,7 +7,7 @@
 <!--
   @tool      Screen Capture Memo
   @version   v95
-  @changelog v95: ユーザー指摘「文字装飾ツールバーが右上にあるせいで、編集画面に入ったとき先頭行の位置がずれる」に対応。原因は、メモ欄のtextareaがツールバー分の余白をpadding-top(28px)で確保していたのに対し、プレビュー表示(.memoPreview)側のpadding-topは8px(画像付き行)または4px(見出し/メモ行)と異なっており、プレビュー→編集の切替時に先頭行のY座標が20px前後ズレていたこと。当初はツールバーを右下へフロート配置する案で対応したが、ユーザーからSlack風(ツールバーを本文の下に専用行として分離し、区切り線で仕切る)のレイアウト案を提示され比較検討のうえ、そちらへ変更。`.memoToolbar`をtextareaの下にHTML上も実際に続く専用の行として配置(absolute配置をやめ通常のフローに戻す)し、textarea側は上下左右8pxの通常paddingに戻した(ツールバー分の余白確保が不要になったため)。textareaは下辺の角を直角にしてborder-bottomを無くし、ツールバーが上辺に区切り線(border-top)を持つことで、1つの枠に見えるようにした(見出し/メモ行はheading-text自体が枠なしのフラットな見た目のため、ツールバー側も箱にせず区切り線のみに変更)。実装中、textareaに付与していた`display:block`がプレビュー切替用の`hidden`属性のネイティブ非表示を上書きしてしまいプレビューの表示位置がズレる副作用に気づき削除して修正。Playwrightで①画像付き行・見出し行・メモ行のいずれもプレビュー⇔編集切替時の先頭行Y座標が一致すること(差分0)、②複数行入力時や手動リサイズ後もツールバーが本文・リサイズハンドルと重ならない(専用行のため構造的に重なり得ない)こと、③既存のトグル動作(太字/マーカー/取り消し線/下線/文字色)に回帰がないことを確認
+  @changelog v95: ユーザー指摘「文字装飾ツールバーが右上にあるせいで、編集画面に入ったとき先頭行の位置がずれる」に対応。原因は、メモ欄のtextareaがツールバー分の余白をpadding-top(28px)で確保していたのに対し、プレビュー表示(.memoPreview)側のpadding-topは8px(画像付き行)または4px(見出し/メモ行)と異なっており、プレビュー→編集の切替時に先頭行のY座標が20px前後ズレていたこと。当初はツールバーを右下へフロート配置する案で対応したが、ユーザーからSlack風(ツールバーを本文の下に専用行として分離し、区切り線で仕切る)のレイアウト案を提示され比較検討のうえ、そちらへ変更。`.memoToolbar`をtextareaの下にHTML上も実際に続く専用の行として配置(absolute配置をやめ通常のフローに戻す)し、textarea側は上下左右8pxの通常paddingに戻した(ツールバー分の余白確保が不要になったため)。textareaは下辺の角を直角にしてborder-bottomを無くし、ツールバーが上辺に区切り線(border-top)を持つことで、1つの枠に見えるようにした。実装中、textareaに付与していた`display:block`がプレビュー切替用の`hidden`属性のネイティブ非表示を上書きしてしまいプレビューの表示位置がズレる副作用に気づき削除して修正。その後ユーザーから「デザインはフラットの方がよくない？右寄せする必要あるかな？」と指摘を受け、画像付き行のツールバーに付けていた背景色・左右下の枠線・丸角(箱っぽい見た目)を撤去して区切り線のみのフラット表示に統一(見出し/メモ行はもともとフラットだったため統一された)し、ボタンの配置もflex-end(右寄せ)からflex-start(左寄せ)に変更(フロート配置時代の「テキストと被らないよう右に寄せる」制約が専用行化で不要になったため)。Playwrightで①画像付き行・見出し行・メモ行のいずれもプレビュー⇔編集切替時の先頭行Y座標が一致すること(差分0)、②複数行入力時や手動リサイズ後もツールバーが本文・リサイズハンドルと重ならない(専用行のため構造的に重なり得ない)こと、③ライト/ダーク両テーマでフラット統一後の見た目、④既存のトグル動作(太字/マーカー/取り消し線/下線/文字色)に回帰がないことを確認
   @changelog v94: ユーザー指摘「マーカーに文字色を反映できない」「マーカーのトグルも上手く動かない」の2件に対応。(1)renderMemoMarkdown()で文字色([文字]{色})の処理がマーカー(==文字==)より先に走っていたため、色の<span style="...">が生成する"="がマーカーの正規表現[^=\n]を分断して入れ子を解析できないケースがあり、かつmark要素自体のcolorがハードコードされ色指定を常に上書きしていた。マーカーの処理を文字色より先に行う順序に変更し、色指定をinline styleからclass="memo-col-{色}"に変更のうえ、`.memo-col-{色} mark`/`mark .memo-col-{色}`という入れ子順を問わない上書きルール(!important、既存のmark色指定より詳細度が低いため)を本体・exportHtmlの両<style>に追加し、どちらの入れ子順でも文字色がマーカーの背景色の上に正しく反映されるよう修正。(2)太字/マーカー/取り消し線/下線の共通トグル関数toggleWrapMemoSelection()は、選択範囲の前後にちょうど装飾記号が隣接している(例: ダブルクリックで記号を含まず単語だけを選択した)場合に既存の装飾を検出できず、押すたびに記号が二重三重に増殖する不具合があった(例: `==重要==`の「重要」だけを選択してマーカー再押下→`====重要====`に壊れる)。選択範囲の直前・直後が同じ記号ならそれも含めて剥がすよう修正し、4ボタン(太字/マーカー/取り消し線/下線)全てに適用。Playwrightで両方向の入れ子(色→マーカー/マーカー→色)の文字色反映を本体プレビュー・本体ライトボックス・書き出しHTML一覧・書き出しHTMLライトボックスキャプションの4箇所で確認し、トグルは単語だけ選択した場合を含む既存の重複整理動作に回帰がないことを確認
   @changelog v93: ユーザー要望「取り消し線や下線を装飾として追加しよう」に対応。メモ装飾記法に`~~取り消し線~~`(<s>)と`__下線__`(<u>)を追加。メモ欄ツールバーに「S」(取り消し線)「U」(下線)ボタンを新設し、既存のtoggleWrapMemoSelection()を再利用して太字/マーカーと同じトグル式(同じ記法で囲まれた選択範囲へ再度押すと解除、入れ子の重複は自動整理)で動作するようにした。renderMemoMarkdown()は本体・書き出しHTML(exportHtml)の両方に実装し、exportHtml側はバックスラッシュ二重化の往復検証を経てから組み込み。Playwrightで本体(S/Uボタンでのトグル・保存・プレビュー表示)と書き出しHTML(一覧表示のメモ・ライトボックスキャプション)の両方で取り消し線・下線が正しく反映されることを確認
   ※ v01〜v92の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
@@ -222,16 +222,11 @@
      プレビュー表示(.memoPreview)側と同じpadding-topになるため、編集画面に入っても
      先頭行の位置がずれない */
   .item .memoToolbar{
-    display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:5px;
-    background:var(--surface3); border:1px solid var(--border); border-top:1px solid var(--border);
-    border-radius:0 0 6px 6px; padding:4px 6px;
+    display:flex; flex-wrap:wrap; justify-content:flex-start; align-items:center; gap:5px;
+    border-top:1px solid var(--border); padding:4px 8px 0;
   }
   .item .memoToolbar[hidden]{display:none;}
-  .item.item-heading .memoToolbar{
-    /* heading-textは枠なしのフラットな見た目なので、ツールバーも箱にせず区切り線のみ */
-    background:transparent; border:none; border-top:1px solid var(--border); border-radius:0;
-    padding:4px 2px 0;
-  }
+  .item.item-heading .memoToolbar{padding:4px 2px 0;}
   .item .memoToolBtn{
     background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px;
     padding:2px 8px; font-size:12px; cursor:pointer; line-height:1.4;
