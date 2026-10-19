@@ -1071,7 +1071,7 @@ function closeSwipe(wrap){
   if(swipedCard===wrap) swipedCard=null;
 } // 現在スワイプ中のカード // 開いているカードIDを記憶
 
-const APP_VERSION = 'v13_2026-05-10.1'; // ← バージョンはここだけ変更
+const APP_VERSION = 'v14_2026-10-20'; // ← バージョンはここだけ変更
 
 // タスクリンク共有：URLパラメータをsessionStorageに退避（Google認証リダイレクト対策）
 (()=>{
@@ -2667,6 +2667,21 @@ G('btnAddRSub').addEventListener('click',()=>{
   rSubs.push({id:genId(),tx,done:false}); G('rfsubin').value=''; renderRSubs();
 });
 G('rfsubin').addEventListener('keydown',e=>{if(!e.isComposing&&e.key==='Enter')G('btnAddRSub').click();});
+// 複数行ペースト：1行ずつサブタスクに追加（■見出し行は除外・行頭の・を除去）
+function pasteLines(e){
+  const txt=(e.clipboardData||window.clipboardData).getData('text');
+  if(!/\r?\n/.test(txt.trim())) return null;
+  e.preventDefault();
+  return txt.split(/\r?\n/).map(l=>l.trim().replace(/^[・•\-*]\s*/,'')).filter(l=>l&&!l.startsWith('■'));
+}
+G('fsubin').addEventListener('paste',e=>{
+  const ls=pasteLines(e); if(!ls) return;
+  ls.forEach(tx=>mSubs.push({id:genId(),tx,done:false})); renderMSubs(); _saveTDraft();
+});
+G('rfsubin').addEventListener('paste',e=>{
+  const ls=pasteLines(e); if(!ls) return;
+  ls.forEach(tx=>rSubs.push({id:genId(),tx,done:false})); renderRSubs();
+});
 
 // 定型タスクモーダル
 G('btnAddRecur').addEventListener('click',()=>openRModal());
