@@ -6,11 +6,11 @@
 <title>Screen Capture Memo</title>
 <!--
   @tool      Screen Capture Memo
-  @version   v94
+  @version   v95
+  @changelog v95: ユーザー指摘「文字装飾ツールバーが右上にあるせいで、編集画面に入ったとき先頭行の位置がずれる」に対応。原因は、メモ欄のtextareaがツールバー分の余白をpadding-top(28px)で確保していたのに対し、プレビュー表示(.memoPreview)側のpadding-topは8px(画像付き行)または4px(見出し/メモ行)と異なっており、プレビュー→編集の切替時に先頭行のY座標が20px前後ズレていたこと。ツールバー(.memoToolbar)をtop配置からbottom配置(右下寄せ)に変更し、textarea側もpadding-top/bottomを入れ替えて先頭行の余白をプレビューと同じ値に揃え、ツールバー分の余白はpadding-bottom側に移動(画像付き行のtextarea、見出し/メモ行のheading-textの両方に適用)。テキストエリアのネイティブリサイズハンドル(右下)とボタン列が重ならないよう、ツールバーのrightを16pxに調整。Playwrightで①画像付き行・見出し行・メモ行のいずれもプレビュー⇔編集切替時の先頭行Y座標が一致すること(差分0)、②複数行入力時やリサイズ後もツールバーが本文テキストと重ならないこと、③既存のトグル動作(太字/マーカー/取り消し線/下線/文字色)に回帰がないことを確認
   @changelog v94: ユーザー指摘「マーカーに文字色を反映できない」「マーカーのトグルも上手く動かない」の2件に対応。(1)renderMemoMarkdown()で文字色([文字]{色})の処理がマーカー(==文字==)より先に走っていたため、色の<span style="...">が生成する"="がマーカーの正規表現[^=\n]を分断して入れ子を解析できないケースがあり、かつmark要素自体のcolorがハードコードされ色指定を常に上書きしていた。マーカーの処理を文字色より先に行う順序に変更し、色指定をinline styleからclass="memo-col-{色}"に変更のうえ、`.memo-col-{色} mark`/`mark .memo-col-{色}`という入れ子順を問わない上書きルール(!important、既存のmark色指定より詳細度が低いため)を本体・exportHtmlの両<style>に追加し、どちらの入れ子順でも文字色がマーカーの背景色の上に正しく反映されるよう修正。(2)太字/マーカー/取り消し線/下線の共通トグル関数toggleWrapMemoSelection()は、選択範囲の前後にちょうど装飾記号が隣接している(例: ダブルクリックで記号を含まず単語だけを選択した)場合に既存の装飾を検出できず、押すたびに記号が二重三重に増殖する不具合があった(例: `==重要==`の「重要」だけを選択してマーカー再押下→`====重要====`に壊れる)。選択範囲の直前・直後が同じ記号ならそれも含めて剥がすよう修正し、4ボタン(太字/マーカー/取り消し線/下線)全てに適用。Playwrightで両方向の入れ子(色→マーカー/マーカー→色)の文字色反映を本体プレビュー・本体ライトボックス・書き出しHTML一覧・書き出しHTMLライトボックスキャプションの4箇所で確認し、トグルは単語だけ選択した場合を含む既存の重複整理動作に回帰がないことを確認
   @changelog v93: ユーザー要望「取り消し線や下線を装飾として追加しよう」に対応。メモ装飾記法に`~~取り消し線~~`(<s>)と`__下線__`(<u>)を追加。メモ欄ツールバーに「S」(取り消し線)「U」(下線)ボタンを新設し、既存のtoggleWrapMemoSelection()を再利用して太字/マーカーと同じトグル式(同じ記法で囲まれた選択範囲へ再度押すと解除、入れ子の重複は自動整理)で動作するようにした。renderMemoMarkdown()は本体・書き出しHTML(exportHtml)の両方に実装し、exportHtml側はバックスラッシュ二重化の往復検証を経てから組み込み。Playwrightで本体(S/Uボタンでのトグル・保存・プレビュー表示)と書き出しHTML(一覧表示のメモ・ライトボックスキャプション)の両方で取り消し線・下線が正しく反映されることを確認
-  @changelog v92: ユーザー要望「HTML書き出しにつけてる目次パネルを改善したい」に対応し、AskUserQuestionで改善内容を確認のうえ2点実装。①現在地ハイライト: IntersectionObserverでスクロール中に画面内にある見出しを検出し、対応する目次リンクに.activeクラス(太字・アクセント色)を付与。②画面幅が狭い時の表示: 幅1300px以下では目次パネルを画面右端の外にスライドして隠し(transform:translateX(100%))、右端の薄いホバー領域(#tocEdgeTrigger)にマウスを乗せる、または右端からのスワイプ(タッチ)で引き出せるようにした(外側クリック/スワイプで戻す/逆向きスワイプでも閉じる)。あわせて書き出しHTMLの<head>にviewportメタタグが無く、スマホで実際には980px相当のレイアウトビューポートになりタッチ座標がずれてスワイプが機能しない不具合を発見・修正。Playwrightで広い画面でのハイライト追従、狭い画面でのホバー開閉、実機相当のタッチイベントでのスワイプ開閉、グリッド/ノートモード切替時の非表示、ダークテーマでの見た目を確認
-  ※ v01〜v91の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v92の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -191,7 +191,7 @@
   }
   .item.item-heading .heading-text{
     font-weight:700; font-size:14px; min-height:32px; background:transparent; border:none;
-    padding:28px 2px 4px;
+    padding:4px 2px 28px;
   }
   .item.item-heading.type-memo{border-left-color:var(--border);}
   .item.item-heading.type-memo .heading-text{font-weight:400; font-size:13px;}
@@ -213,13 +213,15 @@
   .item .saveState{color:var(--ok); font-weight:600;}
   .item textarea{
     width:100%; background:var(--surface3); color:var(--text); border:1px solid var(--border);
-    border-radius:6px; padding:28px 8px 8px; font-size:13px; resize:vertical; min-height:44px;
+    border-radius:6px; padding:8px 8px 28px; font-size:13px; resize:vertical; min-height:44px;
     font-family:inherit; overflow-y:hidden;
   }
   .item textarea:focus{outline:2px solid var(--accent); outline-offset:1px;}
   .item .memoField{position:relative;}
   .item .memoToolbar{
-    position:absolute; top:5px; right:5px; left:5px; z-index:2;
+    /* プレビュー表示時の先頭行位置(padding-top)と編集時のtextarea側を揃えるため、
+       ツールバーは上ではなく下に配置し、textarea側はpadding-bottomで場所を確保する */
+    position:absolute; bottom:5px; right:16px; left:5px; z-index:2;
     display:flex; flex-wrap:wrap; justify-content:flex-end; gap:5px;
     pointer-events:none; /* 空白部分はクリックを透過させ、下のテキストエリアを操作できるようにする */
   }
@@ -361,7 +363,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v94</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v95</span>
 </header>
 
 <div id="versionModal">
@@ -3066,7 +3068,8 @@
     ["v91","並び替え後にメモ編集/トリミングすると書き出しHTMLの順序が画面表示とズレる不具合を修正"],
     ["v92","書き出しHTMLの目次パネルを改善(現在地ハイライト・狭幅時は右端スワイプ/ホバーで表示)"],
     ["v93","メモ装飾に取り消し線・下線を追加"],
-    ["v94","マーカー+文字色の組み合わせ表示と装飾トグルボタンの不具合を修正"]
+    ["v94","マーカー+文字色の組み合わせ表示と装飾トグルボタンの不具合を修正"],
+    ["v95","メモ装飾ツールバーを右上から右下へ移動し、編集時の先頭行ズレを解消"]
   ];
 
   const verLabel = $("verLabel");
