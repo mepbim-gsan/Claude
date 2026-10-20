@@ -7,7 +7,7 @@
 <!--
   @tool      Screen Capture Memo
   @version   v96
-  @changelog v96: ユーザーからスクロール時の上部ボタン配置(共有パネル・キャプチャパネル・記録一覧見出し)の改善相談を受け、検討の上3点を実装。(1)範囲固定後に折りたたまれる共有パネルがスティッキーでなく、修整のたびスクロールでトップに戻る必要があった不満に対応し、共有パネルも既存の--header-h方式と同じCSS変数積み上げパターンでスティッキー化(ヘッダー直下に固定、キャプチャパネル・記録一覧見出しのtopオフセットも共有パネルの実高さ分ずらす)。(2)共有開始前は比率選択・範囲固定ボタン・常時表示ボタン・ヒント文など「映像が無いと意味を持たない」要素が常時表示され煩雑だった点を、.share-idleクラスによる段階的開示で解消し、未接続時は見出しと「画面共有を開始」ボタンだけのシンプルな表示に簡略化。(3)「画面共有を開始」(常時表示)と「⏹ 共有を停止」(見出し行、disabled切替)の2ボタンを1つのbtnShareToggleへ統合し、接続状態に応じてラベル・色を切り替える方式に変更(開始後も開始ボタンが押せてしまっていた既存の軽微な不具合も解消)。キャンセル時はcatch節のみを通り状態変化が起きないため、ボタン表示は「開始」のまま安全に保たれることをPlaywrightのgetDisplayMediaモック(canvas captureStreamで偽の映像ストリームを返す/rejectしてキャンセルを再現)で確認。あわせてサイドパネルのように幅を狭めて使うと画像とメモが横に圧縮される問題に対応し、@media (max-width:600px)で.itemをflex-direction:columnへ切替(画像を上・メモを下に積む)。Playwrightで①未接続/接続/停止/キャンセルの4状態遷移、②スクロール後も共有パネル・キャプチャパネル・記録一覧見出しが隙間なく連続してスティッキー表示されること、③範囲固定時の自動折りたたみ(既存機能)が新しい統合ボタンと組み合わせても正しく動作すること、④狭い幅(360px)での縦並び切替と広い幅(1200px)での横並び維持、⑤ライト/ダーク両テーマでの見た目、を確認
+  @changelog v96: ユーザーからスクロール時の上部ボタン配置(共有パネル・キャプチャパネル・記録一覧見出し)の改善相談を受け、検討の上3点を実装。(1)範囲固定後に折りたたまれる共有パネルがスティッキーでなく、修整のたびスクロールでトップに戻る必要があった不満に対応し、共有パネルも既存の--header-h方式と同じCSS変数積み上げパターンでスティッキー化(ヘッダー直下に固定、キャプチャパネル・記録一覧見出しのtopオフセットも共有パネルの実高さ分ずらす)。(2)共有開始前は比率選択・範囲固定ボタン・常時表示ボタン・ヒント文など「映像が無いと意味を持たない」要素が常時表示され煩雑だった点を、.share-idleクラスによる段階的開示で解消し、未接続時は見出しと「画面共有を開始」ボタンだけのシンプルな表示に簡略化。(3)「画面共有を開始」(常時表示)と「⏹ 共有を停止」(見出し行、disabled切替)の2ボタンを1つのbtnShareToggleへ統合し、接続状態に応じてラベル・色を切り替える方式に変更(開始後も開始ボタンが押せてしまっていた既存の軽微な不具合も解消)。キャンセル時はcatch節のみを通り状態変化が起きないため、ボタン表示は「開始」のまま安全に保たれることをPlaywrightのgetDisplayMediaモック(canvas captureStreamで偽の映像ストリームを返す/rejectしてキャンセルを再現)で確認。あわせてサイドパネルのように幅を狭めて使うと画像とメモが横に圧縮される問題に対応し、@media (max-width:600px)で.itemをflex-direction:columnへ切替(画像を上・メモを下に積む)。Playwrightで①未接続/接続/停止/キャンセルの4状態遷移、②スクロール後も共有パネル・キャプチャパネル・記録一覧見出しが隙間なく連続してスティッキー表示されること、③範囲固定時の自動折りたたみ(既存機能)が新しい統合ボタンと組み合わせても正しく動作すること、④狭い幅(360px)での縦並び切替と広い幅(1200px)での横並び維持、⑤ライト/ダーク両テーマでの見た目、を確認。続けてユーザーから実際に狭い幅で確認したスクリーンショットとともに「上部に3つのスティッキーがあるのは結構重たい」「HTML保存などが改行してしまうのももったいない」と指摘があり、幅517pxで実測(合計482px/800pxがスティッキー領域)したうえで対応。狭い幅(max-width:600px)では常時表示されているヒント文(キャプチャパネル・記録一覧見出し内の2箇所)を非表示にし、記録一覧の日付・資料タイトル欄をわずかに狭めて折り返し位置を調整することで、折り返した2行目が1ボタンだけで中途半端に余る見た目を緩和(合計393px/800pxまで圧縮)。この検証中、範囲固定(この範囲で固定/全画面で固定)に伴うPiP自動起動(documentPictureInPicture.requestWindow())が未解決のまま残っていると、共有パネルの実高さ監視用ResizeObserverの通知配信が止まり、--share-panel-h CSS変数が古い値のままキャプチャパネル以下のスティッキー位置が大きくズレる(パネル同士が重なって隙間ができる)不具合を発見。ResizeObserverに頼らず、折りたたみ状態(setSharePanelCollapsed)・接続状態(setShareUiConnected)を切り替える関数内で高さを同期的に再計算するよう修正し解消。あわせて狭めた資料タイトル欄でプレースホルダーの途中が不自然に切れていたため、text-overflow:ellipsisを追加して「資料タイ…」と省略記号で終わるよう調整。Playwrightで幅517pxでのスティッキー領域の高さ比較、PiP自動起動を伴う範囲固定後もパネル同士の隙間・重なりが生じないこと、広い幅(1200px)でヒント文や欄幅に影響がないこと、ライト/ダーク両テーマでの見た目を確認
   @changelog v95: ユーザー指摘「文字装飾ツールバーが右上にあるせいで、編集画面に入ったとき先頭行の位置がずれる」に対応。原因は、メモ欄のtextareaがツールバー分の余白をpadding-top(28px)で確保していたのに対し、プレビュー表示(.memoPreview)側のpadding-topは8px(画像付き行)または4px(見出し/メモ行)と異なっており、プレビュー→編集の切替時に先頭行のY座標が20px前後ズレていたこと。当初はツールバーを右下へフロート配置する案で対応したが、ユーザーからSlack風(ツールバーを本文の下に専用行として分離し、区切り線で仕切る)のレイアウト案を提示され比較検討のうえ、そちらへ変更。`.memoToolbar`をtextareaの下にHTML上も実際に続く専用の行として配置(absolute配置をやめ通常のフローに戻す)し、textarea側は上下左右8pxの通常paddingに戻した。続けてユーザーから「デザインはフラットの方がよくない？右寄せする必要あるかな？」と指摘を受け、画像付き行のツールバーに付けていた背景色・左右下の枠線・丸角を撤去して区切り線のみのフラット表示に統一し、ボタンの配置もflex-end(右寄せ)からflex-start(左寄せ)に変更
   @changelog v94: ユーザー指摘「マーカーに文字色を反映できない」「マーカーのトグルも上手く動かない」の2件に対応。(1)renderMemoMarkdown()で文字色([文字]{色})の処理がマーカー(==文字==)より先に走っていたため、色の<span style="...">が生成する"="がマーカーの正規表現[^=\n]を分断して入れ子を解析できないケースがあり、かつmark要素自体のcolorがハードコードされ色指定を常に上書きしていた。マーカーの処理を文字色より先に行う順序に変更し、色指定をinline styleからclass="memo-col-{色}"に変更のうえ、`.memo-col-{色} mark`/`mark .memo-col-{色}`という入れ子順を問わない上書きルール(!important、既存のmark色指定より詳細度が低いため)を本体・exportHtmlの両<style>に追加し、どちらの入れ子順でも文字色がマーカーの背景色の上に正しく反映されるよう修正。(2)太字/マーカー/取り消し線/下線の共通トグル関数toggleWrapMemoSelection()は、選択範囲の前後にちょうど装飾記号が隣接している場合に既存の装飾を検出できず、押すたびに記号が二重三重に増殖する不具合があった。選択範囲の直前・直後が同じ記号ならそれも含めて剥がすよう修正し、4ボタン全てに適用
   ※ v01〜v93の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
@@ -91,6 +91,19 @@
   }
   #captureList{padding-top:14px;}
 
+  /* 狭い幅ではスティッキー領域(共有パネル/キャプチャパネル/記録一覧見出し)が
+     画面の大部分を占めて重くなるため、補助的なヒント文を省略して高さを圧縮する */
+  @media (max-width:600px){
+    #capturePanel .hint,
+    #recordListHeader .hint{
+      display:none;
+    }
+    /* 記録一覧のボタン行: 日付・タイトル欄を少し狭めることで折り返し位置を
+       後ろへずらし、2行目が1ボタンだけで中途半端に余るのを緩和する */
+    #recordActions #exportDate{width:104px;}
+    #recordActions #exportTitle{width:100px;}
+  }
+
   .panel{
     background:var(--panel); border:1px solid var(--border); border-radius:10px;
     padding:16px; margin-bottom:16px;
@@ -144,6 +157,7 @@
   input[type="text"], input[type="date"]{
     background:var(--surface2); color:var(--text); border:1px solid var(--border);
     border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit; width:130px;
+    text-overflow:ellipsis;
   }
   input[type="date"]{width:118px; padding-right:4px;}
   .ratio-label{font-size:12px; color:var(--sub);}
@@ -673,6 +687,7 @@
     sharePanel.classList.toggle("share-idle", !connected);
     btnShareToggle.textContent = connected ? "⏹ 共有を停止" : "画面共有を開始";
     btnShareToggle.classList.toggle("danger", connected);
+    updateSharePanelHeight();
   }
 
   function onShareEnded(){
@@ -968,6 +983,10 @@
     shareHeaderToggle.setAttribute("aria-expanded", String(!collapsed));
     shareToggleBar.textContent = collapsed ? "▼" : "▲";
     shareToggleBar.setAttribute("aria-label", collapsed ? "展開する" : "折りたたむ");
+    // ResizeObserverの通知は、この直後に呼ばれるPiP自動起動(documentPictureInPicture.requestWindow())
+    // が完了するまで配信が止まることがある(環境依存)ため、高さの変化が確定しているこの時点で
+    // 即座に再計算し、--share-panel-hが古い値のまま下のパネルとズレるのを防ぐ
+    updateSharePanelHeight();
   }
 
   function applyFixedRect(rect){
