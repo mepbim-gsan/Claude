@@ -7,7 +7,7 @@
 <!--
   @tool      Screen Capture Memo
   @version   v96
-  @changelog v96: ユーザーからスクロール時の上部ボタン配置(共有パネル・キャプチャパネル・記録一覧見出し)の改善相談を受け、検討の上3点を実装。(1)範囲固定後に折りたたまれる共有パネルがスティッキーでなく、修整のたびスクロールでトップに戻る必要があった不満に対応し、共有パネルも既存の--header-h方式と同じCSS変数積み上げパターンでスティッキー化(ヘッダー直下に固定、キャプチャパネル・記録一覧見出しのtopオフセットも共有パネルの実高さ分ずらす)。(2)共有開始前は比率選択・範囲固定ボタン・常時表示ボタン・ヒント文など「映像が無いと意味を持たない」要素が常時表示され煩雑だった点を、.share-idleクラスによる段階的開示で解消し、未接続時は見出しと「画面共有を開始」ボタンだけのシンプルな表示に簡略化。(3)「画面共有を開始」(常時表示)と「⏹ 共有を停止」(見出し行、disabled切替)の2ボタンを1つのbtnShareToggleへ統合し、接続状態に応じてラベル・色を切り替える方式に変更(開始後も開始ボタンが押せてしまっていた既存の軽微な不具合も解消)。キャンセル時はcatch節のみを通り状態変化が起きないため、ボタン表示は「開始」のまま安全に保たれることをPlaywrightのgetDisplayMediaモック(canvas captureStreamで偽の映像ストリームを返す/rejectしてキャンセルを再現)で確認。あわせてサイドパネルのように幅を狭めて使うと画像とメモが横に圧縮される問題に対応し、@media (max-width:600px)で.itemをflex-direction:columnへ切替(画像を上・メモを下に積む)。Playwrightで①未接続/接続/停止/キャンセルの4状態遷移、②スクロール後も共有パネル・キャプチャパネル・記録一覧見出しが隙間なく連続してスティッキー表示されること、③範囲固定時の自動折りたたみ(既存機能)が新しい統合ボタンと組み合わせても正しく動作すること、④狭い幅(360px)での縦並び切替と広い幅(1200px)での横並び維持、⑤ライト/ダーク両テーマでの見た目、を確認。続けてユーザーから実際に狭い幅で確認したスクリーンショットとともに「上部に3つのスティッキーがあるのは結構重たい」「HTML保存などが改行してしまうのももったいない」と指摘があり、幅517pxで実測(合計482px/800pxがスティッキー領域)したうえで対応。狭い幅(max-width:600px)では常時表示されているヒント文(キャプチャパネル・記録一覧見出し内の2箇所)を非表示にし、記録一覧の日付・資料タイトル欄をわずかに狭めて折り返し位置を調整することで、折り返した2行目が1ボタンだけで中途半端に余る見た目を緩和(合計393px/800pxまで圧縮)。この検証中、範囲固定(この範囲で固定/全画面で固定)に伴うPiP自動起動(documentPictureInPicture.requestWindow())が未解決のまま残っていると、共有パネルの実高さ監視用ResizeObserverの通知配信が止まり、--share-panel-h CSS変数が古い値のままキャプチャパネル以下のスティッキー位置が大きくズレる(パネル同士が重なって隙間ができる)不具合を発見。ResizeObserverに頼らず、折りたたみ状態(setSharePanelCollapsed)・接続状態(setShareUiConnected)を切り替える関数内で高さを同期的に再計算するよう修正し解消。あわせて狭めた資料タイトル欄でプレースホルダーの途中が不自然に切れていたため、text-overflow:ellipsisを追加して「資料タイ…」と省略記号で終わるよう調整。Playwrightで幅517pxでのスティッキー領域の高さ比較、PiP自動起動を伴う範囲固定後もパネル同士の隙間・重なりが生じないこと、広い幅(1200px)でヒント文や欄幅に影響がないこと、ライト/ダーク両テーマでの見た目を確認。続けてユーザー指摘「この範囲で固定が、ウィンドウサイズを小さくすると、キャプチャのサムネイルが小さくなり、『この範囲』がずれてくる」に対応。調査の結果、実際のキャプチャ自体(fixedRect、実解像度の映像ピクセル基準で範囲固定時に一度だけ変換)は影響を受けないが、範囲選択中/固定直後に表示される選択範囲の枠(selRect、selectionは映像の表示座標=CSSピクセル基準で保持)がウィンドウリサイズに追従せず、映像プレビューが拡大縮小されても枠の位置・サイズが古いCSSピクセル値のまま変わらないため、相対的に映像に対してズレて見えることが原因と判明(ユーザー確認「実際にキャプチャ位置はずれてないみたい」でこの切り分けを確認)。selectStageの実表示サイズをResizeObserverで監視し、サイズ変化時にselectionを新旧サイズの比率で再計算して選択枠を追従させるrescaleSelectionToStageSize()を新設。共有パネルの折りたたみ等でselectStageが一時的にdisplay:noneになり幅/高さが0になる遷移(前後どちらか0の場合、拡縮倍率が不定になるため)は除外し、ズレではなく例外的な不定計算を避けるようにした。Playwrightで、範囲選択→ウィンドウリサイズ→固定、という操作順で固定後の範囲サイズが意図通りになること(リサイズしても選択枠が映像上の対象領域に対して追従すること、リサイズ前後での枠位置のズレ(映像幅に対する比率)が修正前は30%超だったのに対し修正後は1%未満であること)、固定後にさらにリサイズしてから再展開しても選択枠の座標がNaN等に壊れないことを確認
+  @changelog v96: ユーザーからスクロール時の上部ボタン配置(共有パネル・キャプチャパネル・記録一覧見出し)の改善相談を受け、検討の上3点を実装。(1)範囲固定後に折りたたまれる共有パネルがスティッキーでなく、修整のたびスクロールでトップに戻る必要があった不満に対応し、共有パネルも既存の--header-h方式と同じCSS変数積み上げパターンでスティッキー化(ヘッダー直下に固定、キャプチャパネル・記録一覧見出しのtopオフセットも共有パネルの実高さ分ずらす)。(2)共有開始前は比率選択・範囲固定ボタン・常時表示ボタン・ヒント文など「映像が無いと意味を持たない」要素が常時表示され煩雑だった点を、.share-idleクラスによる段階的開示で解消し、未接続時は見出しと「画面共有を開始」ボタンだけのシンプルな表示に簡略化。(3)「画面共有を開始」(常時表示)と「⏹ 共有を停止」(見出し行、disabled切替)の2ボタンを1つのbtnShareToggleへ統合し、接続状態に応じてラベル・色を切り替える方式に変更(開始後も開始ボタンが押せてしまっていた既存の軽微な不具合も解消)。キャンセル時はcatch節のみを通り状態変化が起きないため、ボタン表示は「開始」のまま安全に保たれることをPlaywrightのgetDisplayMediaモック(canvas captureStreamで偽の映像ストリームを返す/rejectしてキャンセルを再現)で確認。あわせてサイドパネルのように幅を狭めて使うと画像とメモが横に圧縮される問題に対応し、@media (max-width:600px)で.itemをflex-direction:columnへ切替(画像を上・メモを下に積む)。Playwrightで①未接続/接続/停止/キャンセルの4状態遷移、②スクロール後も共有パネル・キャプチャパネル・記録一覧見出しが隙間なく連続してスティッキー表示されること、③範囲固定時の自動折りたたみ(既存機能)が新しい統合ボタンと組み合わせても正しく動作すること、④狭い幅(360px)での縦並び切替と広い幅(1200px)での横並び維持、⑤ライト/ダーク両テーマでの見た目、を確認。続けてユーザーから実際に狭い幅で確認したスクリーンショットとともに「上部に3つのスティッキーがあるのは結構重たい」「HTML保存などが改行してしまうのももったいない」と指摘があり、幅517pxで実測(合計482px/800pxがスティッキー領域)したうえで対応。狭い幅(max-width:600px)では常時表示されているヒント文(キャプチャパネル・記録一覧見出し内の2箇所)を非表示にし、記録一覧の日付・資料タイトル欄をわずかに狭めて折り返し位置を調整することで、折り返した2行目が1ボタンだけで中途半端に余る見た目を緩和(合計393px/800pxまで圧縮)。この検証中、範囲固定(この範囲で固定/全画面で固定)に伴うPiP自動起動(documentPictureInPicture.requestWindow())が未解決のまま残っていると、共有パネルの実高さ監視用ResizeObserverの通知配信が止まり、--share-panel-h CSS変数が古い値のままキャプチャパネル以下のスティッキー位置が大きくズレる(パネル同士が重なって隙間ができる)不具合を発見。ResizeObserverに頼らず、折りたたみ状態(setSharePanelCollapsed)・接続状態(setShareUiConnected)を切り替える関数内で高さを同期的に再計算するよう修正し解消。あわせて狭めた資料タイトル欄でプレースホルダーの途中が不自然に切れていたため、text-overflow:ellipsisを追加して「資料タイ…」と省略記号で終わるよう調整。Playwrightで幅517pxでのスティッキー領域の高さ比較、PiP自動起動を伴う範囲固定後もパネル同士の隙間・重なりが生じないこと、広い幅(1200px)でヒント文や欄幅に影響がないこと、ライト/ダーク両テーマでの見た目を確認。続けてユーザー指摘「この範囲で固定が、ウィンドウサイズを小さくすると、キャプチャのサムネイルが小さくなり、『この範囲』がずれてくる」に対応。調査の結果、実際のキャプチャ自体(fixedRect、実解像度の映像ピクセル基準で範囲固定時に一度だけ変換)は影響を受けないが、範囲選択中/固定直後に表示される選択範囲の枠(selRect、selectionは映像の表示座標=CSSピクセル基準で保持)がウィンドウリサイズに追従せず、映像プレビューが拡大縮小されても枠の位置・サイズが古いCSSピクセル値のまま変わらないため、相対的に映像に対してズレて見えることが原因と判明(ユーザー確認「実際にキャプチャ位置はずれてないみたい」でこの切り分けを確認)。selectStageの実表示サイズをResizeObserverで監視し、サイズ変化時にselectionを再計算して選択枠を追従させる仕組みを実装。当初は「直前のサイズからの差分」で逐次補正する実装にしたところ、Playwrightで連続的なウィンドウリサイズ(多数の中間リサイズイベントが短時間に発生する状況)を再現したところ再現はしなかったものの、理屈上は中間状態の誤差が掛け算で積み重なり選択範囲が暴走しうる設計上の弱点と判断し、より堅牢な方式に設計し直した。selectionを新規作成・変更する唯一の経路としてsetSelection()を新設し(各種ドラッグ・移動・比率変更・矢印キー操作の5箇所を置き換え)、selectionを設定するたびその時点の(selectStage表示サイズ, selectionの値)の組を不変の「基準」(selectionAnchor)として記録。ResizeObserverのコールバック(rescaleSelectionToStageSize())では、直前の計算結果ではなく常にこの同じ基準から比率を計算し直すため、ResizeObserverが何度発火しても誤差が蓄積しない。共有パネルの折りたたみ等でselectStageが一時的にdisplay:noneになり幅/高さが0になる遷移は拡縮倍率が不定になるため計算をスキップする。Playwrightで、赤い目印領域を描いた偽映像を使い、①範囲選択→ウィンドウリサイズ→固定、という操作順で固定後の範囲サイズが意図通りの300×200pxになること、②リサイズ前後での選択枠位置のズレ(映像幅に対する比率)が修正前は約34%だったのに対し修正後は0.2%未満であること、③最大19段階・短間隔(15ms)で往復を含む不規則なリサイズを連続実行しても選択枠が暴走せず基準の比率(縦横とも約0.2〜0.44)を保ち続けること、④固定後にさらにリサイズしてから再展開しても選択枠の座標がNaN等に壊れないことを確認
   @changelog v95: ユーザー指摘「文字装飾ツールバーが右上にあるせいで、編集画面に入ったとき先頭行の位置がずれる」に対応。原因は、メモ欄のtextareaがツールバー分の余白をpadding-top(28px)で確保していたのに対し、プレビュー表示(.memoPreview)側のpadding-topは8px(画像付き行)または4px(見出し/メモ行)と異なっており、プレビュー→編集の切替時に先頭行のY座標が20px前後ズレていたこと。当初はツールバーを右下へフロート配置する案で対応したが、ユーザーからSlack風(ツールバーを本文の下に専用行として分離し、区切り線で仕切る)のレイアウト案を提示され比較検討のうえ、そちらへ変更。`.memoToolbar`をtextareaの下にHTML上も実際に続く専用の行として配置(absolute配置をやめ通常のフローに戻す)し、textarea側は上下左右8pxの通常paddingに戻した。続けてユーザーから「デザインはフラットの方がよくない？右寄せする必要あるかな？」と指摘を受け、画像付き行のツールバーに付けていた背景色・左右下の枠線・丸角を撤去して区切り線のみのフラット表示に統一し、ボタンの配置もflex-end(右寄せ)からflex-start(左寄せ)に変更
   @changelog v94: ユーザー指摘「マーカーに文字色を反映できない」「マーカーのトグルも上手く動かない」の2件に対応。(1)renderMemoMarkdown()で文字色([文字]{色})の処理がマーカー(==文字==)より先に走っていたため、色の<span style="...">が生成する"="がマーカーの正規表現[^=\n]を分断して入れ子を解析できないケースがあり、かつmark要素自体のcolorがハードコードされ色指定を常に上書きしていた。マーカーの処理を文字色より先に行う順序に変更し、色指定をinline styleからclass="memo-col-{色}"に変更のうえ、`.memo-col-{色} mark`/`mark .memo-col-{色}`という入れ子順を問わない上書きルール(!important、既存のmark色指定より詳細度が低いため)を本体・exportHtmlの両<style>に追加し、どちらの入れ子順でも文字色がマーカーの背景色の上に正しく反映されるよう修正。(2)太字/マーカー/取り消し線/下線の共通トグル関数toggleWrapMemoSelection()は、選択範囲の前後にちょうど装飾記号が隣接している場合に既存の装飾を検出できず、押すたびに記号が二重三重に増殖する不具合があった。選択範囲の直前・直後が同じ記号ならそれも含めて剥がすよう修正し、4ボタン全てに適用
   ※ v01〜v93の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
@@ -702,6 +702,7 @@
     captureStatus.textContent = "共有が切れました";
     // 共有が切れた以上、範囲指定も意味を持たないためクリア
     selection = null;
+    selectionAnchor = null;
     fixedRect = null;
     selRect.style.display = "none";
     selRect.style.width = "0px";
@@ -772,25 +773,37 @@
   // selectionはvideoの表示座標(CSSピクセル)で保持しているため、ウィンドウを
   // リサイズして映像プレビューが拡大縮小されると、選択範囲の表示(selRect)が
   // 実際の映像とズレて見えてしまう(※ fixedRectは実解像度基準で別管理のため、
-  // 固定後のキャプチャ自体はこのズレの影響を受けない)。selectStageの実表示
-  // サイズをResizeObserverで監視し、変化に応じてselectionを比例的に再計算する
-  let lastSelectStageSize = null;
+  // 固定後のキャプチャ自体はこのズレの影響を受けない)。selectionを新しく
+  // 設定するたび、その時点の(selectStage表示サイズ, selectionの値)を不変の
+  // 「基準」として記録しておき(setSelection経由)、ResizeObserverでは常にこの
+  // 基準からの比率で毎回計算し直す。直前のselection値からの差分で逐次補正する
+  // 実装だと、ウィンドウをドラッグで連続的にリサイズした際に大量の中間リサイズ
+  // 通知が発生し、わずかな誤差が掛け算で積み重なって選択範囲が暴走する不具合が
+  // あったため、必ず同じ基準に対して計算することで誤差が蓄積しないようにしている
+  let selectionAnchor = null; // {size:{width,height}, rect:{x,y,w,h}} 設定時点の不変の基準
+  function setSelection(rect){
+    selection = rect;
+    const r = selectStage.getBoundingClientRect();
+    selectionAnchor = (r.width && r.height)
+      ? { size: { width: r.width, height: r.height }, rect: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } }
+      : null;
+    updateSelRectVisual();
+  }
   function rescaleSelectionToStageSize(){
     const r = selectStage.getBoundingClientRect();
-    const prev = lastSelectStageSize;
-    lastSelectStageSize = { width: r.width, height: r.height };
-    // パネルの折りたたみ等でselectStageが一時的にdisplay:noneになると
-    // 幅/高さが0になるため、0を挟む前後の遷移は拡縮倍率が不定になり計算できない
-    // (実際のウィンドウサイズ自体は変わっていないことが多いので、何もせず見送る)
-    if(!prev || !selection || !r.width || !r.height || !prev.width || !prev.height) return;
-    if(prev.width === r.width && prev.height === r.height) return;
-    const scaleX = r.width / prev.width;
-    const scaleY = r.height / prev.height;
+    // パネルの折りたたみ等でselectStageが一時的にdisplay:noneになると幅/高さが
+    // 0になるため、0の時点では計算できず何もしない(実際のウィンドウサイズ自体は
+    // 変わっていないことが多いので、次に有効なサイズへ戻った時にまとめて補正する)
+    if(!selection || !selectionAnchor || !r.width || !r.height) return;
+    const { size, rect } = selectionAnchor;
+    if(size.width === r.width && size.height === r.height) return;
+    const scaleX = r.width / size.width;
+    const scaleY = r.height / size.height;
     selection = {
-      x: selection.x * scaleX,
-      y: selection.y * scaleY,
-      w: selection.w * scaleX,
-      h: selection.h * scaleY
+      x: rect.x * scaleX,
+      y: rect.y * scaleY,
+      w: rect.w * scaleX,
+      h: rect.h * scaleY
     };
     updateSelRectVisual();
   }
@@ -879,8 +892,7 @@
       if(y + h > r.height){ h = r.height - y; if(ratio > 0) w = h * ratio; }
     }
 
-    selection = { x, y, w, h };
-    updateSelRectVisual();
+    setSelection({ x, y, w, h });
   });
 
   selectStage.addEventListener("pointerdown", (e) => {
@@ -924,8 +936,7 @@
       let y = cy - moveOffset.y;
       x = Math.max(0, Math.min(x, r.width - selection.w));
       y = Math.max(0, Math.min(y, r.height - selection.h));
-      selection = { x, y, w: selection.w, h: selection.h };
-      updateSelRectVisual();
+      setSelection({ x, y, w: selection.w, h: selection.h });
       return;
     }
 
@@ -951,11 +962,7 @@
     const x = dx < 0 ? dragStart.x - w : dragStart.x;
     const y = dy < 0 ? dragStart.y - h : dragStart.y;
 
-    selRect.style.left = x + "px";
-    selRect.style.top = y + "px";
-    selRect.style.width = w + "px";
-    selRect.style.height = h + "px";
-    selection = { x, y, w, h };
+    setSelection({ x, y, w, h });
   });
 
   window.addEventListener("pointerup", () => {
@@ -981,8 +988,7 @@
     let y = cy - h / 2;
     x = Math.max(0, Math.min(x, r.width - w));
     y = Math.max(0, Math.min(y, r.height - h));
-    selection = { x, y, w, h };
-    updateSelRectVisual();
+    setSelection({ x, y, w, h });
   });
 
   // 矢印キーで選択範囲を微調整(Shiftで大きく移動)
@@ -1005,8 +1011,7 @@
     if(e.key === "ArrowRight") x += step;
     x = Math.max(0, Math.min(x, r.width - w));
     y = Math.max(0, Math.min(y, r.height - h));
-    selection = { x, y, w, h };
-    updateSelRectVisual();
+    setSelection({ x, y, w, h });
   });
 
   function setSharePanelCollapsed(collapsed){
@@ -1052,6 +1057,7 @@
     if(!video.videoWidth || !video.videoHeight) return;
     // 範囲選択が残っていると全画面固定と矛盾して見えるためクリア
     selection = null;
+    selectionAnchor = null;
     selRect.style.display = "none";
     selRect.style.width = "0px";
     selRect.style.height = "0px";
