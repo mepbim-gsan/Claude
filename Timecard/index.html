@@ -1246,7 +1246,7 @@ label:first-child{margin-top:0;}
 </div>
 
 <script>
-const APP_VERSION = 'v07_2026-09-29.20';
+const APP_VERSION = 'v08_2026-10-27.2';
 const STORAGE_KEY='timecard-data-v1', SETTINGS_KEY='timecard-settings-v1', THEME_KEY='timecard-theme-v1', DIRTY_KEY='timecard-dirty-v1';
 // 予定未入力営業日のデフォルト: 0830-1730、休憩1200-1300 → 実労働7.5h
 const DEFAULT_WORK_MINS = 7.5 * 60; // 450分
@@ -1403,16 +1403,31 @@ function nowHHMM(){
   const n=new Date();
   return `${String(n.getHours()).padStart(2,'0')}${String(n.getMinutes()).padStart(2,'0')}`;
 }
+// 日付をまたいだ継続勤務：前日が出勤済み・退勤未入力で、現在が翌0〜6時（30時まで）
+const OVERNIGHT_LIMIT_HOUR=6;
+function isOvernightContinuation(ds,inVal,outVal){
+  const n=new Date();if(n.getHours()>=OVERNIGHT_LIMIT_HOUR)return false;
+  const y=new Date(n);y.setDate(y.getDate()-1);
+  return ds===toDateStr(y)&&!!inVal&&!outVal;
+}
+// 打刻時刻：前日の継続勤務なら24時間加算（01:50→2550）
+function stampNow(ds){
+  const n=new Date();
+  if(ds!==toDateStr(n))return `${n.getHours()+24}${String(n.getMinutes()).padStart(2,'0')}`;
+  return nowHHMM();
+}
 
 function updateStampButtons(){
   const inVal  = document.getElementById('punch-in').value.trim();
   const outVal = document.getElementById('punch-out').value.trim();
   const today  = toDateStr(new Date());
   const isToday = document.getElementById('punch-date').value === today;
+  // 前日の継続勤務（翌0〜6時）は勤務終了・休憩ボタンを24時超表記で押せる
+  const canStamp = isToday || isOvernightContinuation(document.getElementById('punch-date').value,inVal,outVal);
 
   // 勤務開始: 今日かつ未入力で押せる
   document.getElementById('stamp-in').disabled  = !isToday || !!inVal;
-  document.getElementById('stamp-out').disabled = !isToday || !inVal;
+  document.getElementById('stamp-out').disabled = !canStamp || !inVal;
 
   // 休憩開始ボタン：終了が空の行のうち最も遅い開始時刻を表示
   const openBreaks = breakRows.filter(b => b && b.start && !b.end);
@@ -1436,8 +1451,8 @@ function updateStampButtons(){
     (inVal && openBreaks.length===0 && latestBreakEnd !== null) ? formatTime(latestBreakEnd) : '--:--';
 
   // 退勤済みなら休憩ボタンは無効。休憩中は開始を、休憩中でなければ終了を無効化（二重に休憩を開始できないようにする）
-  document.getElementById('stamp-break-start').disabled = !isToday || !inVal || !!outVal || openBreaks.length>0;
-  document.getElementById('stamp-break-end').disabled   = !isToday || !inVal || !!outVal || openBreaks.length===0;
+  document.getElementById('stamp-break-start').disabled = !canStamp || !inVal || !!outVal || openBreaks.length>0;
+  document.getElementById('stamp-break-end').disabled   = !canStamp || !inVal || !!outVal || openBreaks.length===0;
 
   // 入力済みの時刻を表示
   document.getElementById('stamp-in-time').textContent  = inVal  ? formatTime(parseTime(inVal))  : '--:--';
@@ -1448,7 +1463,7 @@ function updateStampButtons(){
   document.getElementById('stamp-out').classList.toggle('active', !!outVal);
 
   // ライブ更新（出勤済み・退勤未入力・今日）
-  const needLive = isToday && !!inVal && !outVal;
+  const needLive = canStamp && !!inVal && !outVal;
   document.getElementById('live-indicator').style.display = needLive ? 'inline' : 'none';
   if(needLive && !liveTimer){
     liveTimer = setInterval(()=>{ updateDaySummary(true); if(document.getElementById('page-month').classList.contains('active')) renderMonthTab(); }, 60000);
@@ -1547,8 +1562,8 @@ function updateDaySummary(live=false){
   const isToday = ds === today;
   let   usingFallback = false;
   if(inVal && !outVal){
-    if(isToday){
-      outVal = nowHHMM();
+    if(isToday||isOvernightContinuation(ds,inVal,outVal)){
+      outVal = stampNow(ds);
     } else {
       const sched = getSched(ds);
       outVal = sched?.timeOut || settings.presets?.[0]?.timeOut || '1730';
@@ -1621,7 +1636,8 @@ function checkPrevDayDanglingBreak(){
   const t=openBreak.start;
   const ok=confirm(`前日(${prevDs})が退勤未入力で、休憩(${formatTime(parseTime(t))}開始)が終了未入力のままです。\nこの休憩開始時刻を前日の退勤時刻として記録しますか？`);
   if(!ok)return;
-  const breaks=(prevDay.breaks||[]).map(b=>(b===openBreak)?{...b,end:t}:b);
+  // 休憩開始時刻で退勤したとみなし、終了未入力の休憩は削除（開始=終了の0分休憩は勤務時間外判定でエラーになるため）
+  const breaks=(prevDay.breaks||[]).filter(b=>b!==openBreak);
   setDay(prevDs,{...prevDay,timeOut:t,breaks});
   saveStorage();
   const key=getMonthKey(d.getFullYear(),d.getMonth()+1);
@@ -4007,7 +4023,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     autoSavePunch();
   });
   document.getElementById('stamp-out').addEventListener('click',()=>{
-    const t=nowHHMM();
+    const t=stampNow(document.getElementById('punch-date').value);
     document.getElementById('punch-out').value=t;
     document.getElementById('stamp-out-time').textContent=formatTime(parseTime(t));
     document.getElementById('stamp-out').classList.add('active');
@@ -4016,7 +4032,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     autoSavePunch();
   });
   document.getElementById('stamp-break-start').addEventListener('click',()=>{
-    const t=nowHHMM();
+    const t=stampNow(document.getElementById('punch-date').value);
     const target=breakRows.findIndex(b=>b&&!b.start);
     if(target>=0){
       breakRows[target].start=t;
@@ -4030,7 +4046,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     autoSavePunch();
   });
   document.getElementById('stamp-break-end').addEventListener('click',()=>{
-    const t=nowHHMM();
+    const t=stampNow(document.getElementById('punch-date').value);
     const target=breakRows.findIndex(b=>b&&b.start&&!b.end);
     if(target>=0){
       breakRows[target].end=t;
