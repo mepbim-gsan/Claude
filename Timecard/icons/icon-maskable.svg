@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 背景（全面：ホーム画面用、OSが角丸/円に切り抜く） -->
+  <rect width="512" height="512" fill="#1a1d27"/>
+  <g transform="translate(256 256) scale(0.9) translate(-256 -256)">
+  <!-- 時計外円 -->
+  <circle cx="256" cy="256" r="168" fill="none" stroke="#4f8ef7" stroke-width="20"/>
+  <!-- 12・3・6・9時マーク -->
+  <line x1="256" y1="104" x2="256" y2="132" stroke="#4f8ef7" stroke-width="14" stroke-linecap="round"/>
+  <line x1="408" y1="256" x2="380" y2="256" stroke="#4f8ef7" stroke-width="14" stroke-linecap="round"/>
+  <line x1="256" y1="408" x2="256" y2="380" stroke="#4f8ef7" stroke-width="14" stroke-linecap="round"/>
+  <line x1="104" y1="256" x2="132" y2="256" stroke="#4f8ef7" stroke-width="14" stroke-linecap="round"/>
+  <!-- 時針・分針 -->
+  <line x1="256" y1="256" x2="192" y2="204" stroke="#e8eaf0" stroke-width="16" stroke-linecap="round"/>
+  <line x1="256" y1="256" x2="256" y2="144" stroke="#3ecf8e" stroke-width="12" stroke-linecap="round"/>
+  <!-- 中心点 -->
+  <circle cx="256" cy="256" r="10" fill="#4f8ef7"/>
+  </g>
+</svg>
