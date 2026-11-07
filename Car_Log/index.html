@@ -200,6 +200,12 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="chart-wrap" id="odo-chart"></div>
       <div class="chart-tip" id="odo-chart-tip"></div>
     </div>
+    <div class="card">
+      <div class="card-title">累積走行距離 <span class="muted" id="odo-cum-range"></span></div>
+      <div class="chips" id="odo-cum-filter"></div>
+      <div class="chart-wrap" id="odo-cum-chart"></div>
+      <div class="chart-tip" id="odo-cum-tip"></div>
+    </div>
     <div class="chips" id="odo-filter"></div>
     <div class="list" id="odo-list"></div>
   </div>
@@ -298,7 +304,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-07';
+const APP_VERSION = 'v02_2026-11-07';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -325,7 +331,7 @@ function saveData(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(D)); }catch(e){ toast('保存に失敗しました'); }
 }
 
-const state = { page:'home', year:String(new Date().getFullYear()), odoFilter:'all', maintFilter:'all', costFilter:'all' };
+const state = { page:'home', year:String(new Date().getFullYear()), odoFilter:'all', odoRange:'3m', maintFilter:'all', costFilter:'all' };
 
 /* ---------- util ---------- */
 const $ = id => document.getElementById(id);
@@ -438,7 +444,7 @@ function renderYearSelects(){
 function niceMax(v){
   if(v<=0) return 1;
   const p = Math.pow(10, Math.floor(Math.log10(v)));
-  for(const m of [1,2,2.5,5,10]) if(v<=m*p) return m*p;
+  for(const m of [1,2,4,6,8,10]) if(v<=m*p) return m*p;
   return 10*p;
 }
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
@@ -514,6 +520,40 @@ function lineChart(el, tipEl, pts){
     c.addEventListener('click',()=>show(+c.dataset.i));
   });
   tipEl.textContent = `平均 ${fmt(avg,2)} km/L（破線）`;
+}
+
+// 累積走行距離（期間開始=0）
+function cumChart(el, tipEl, pts, t0, t1){
+  const DAY=86400000, days=Math.round((t1-t0)/DAY), step=Math.max(1,Math.ceil(days/150));
+  const data=[];
+  for(let d=0; d<=days; d+=step) data.push(t0+d*DAY);
+  if(data[data.length-1]!==t1) data.push(t1);
+  const base=odoAt(pts,t0);
+  const vals=data.map(t=>({t, v:odoAt(pts,t)-base, odo:odoAt(pts,t)}));
+  const W=Math.max(300, el.clientWidth||640), H=180, mL=44, mR=12, mT=14, mB=24;
+  const max=niceMax(vals[vals.length-1].v), pw=W-mL-mR, ph=H-mT-mB;
+  const X=t=>mL+pw*(t-t0)/(t1-t0), Y=v=>mT+ph-ph*v/max;
+  const grid=cssVar('--border'), txt=cssVar('--text2'), ac=cssVar('--accent');
+  const lbl=t=>{ const d=new Date(t); return (days>400?String(d.getFullYear()).slice(2)+'/':'')+(d.getMonth()+1)+(days>400?'':'/'+d.getDate()); };
+  let svg=`<svg viewBox="0 0 ${W} ${H}">`;
+  for(let i=0;i<=4;i++){ const y=Y(max*i/4); svg+=`<line x1="${mL}" x2="${W-mR}" y1="${y}" y2="${y}" stroke="${grid}"/><text x="${mL-6}" y="${y+4}" font-size="11" fill="${txt}" text-anchor="end">${fmt(max*i/4)}</text>`; }
+  const line=vals.map(p=>X(p.t)+','+Y(p.v)).join(' ');
+  svg+=`<polygon points="${X(t0)},${Y(0)} ${line} ${X(t1)},${Y(0)}" fill="${ac}" opacity=".15"/><polyline points="${line}" fill="none" stroke="${ac}" stroke-width="2.5"/>`;
+  pts.filter(p=>{const t=dateMs(p.date); return t>=t0&&t<=t1;}).forEach(p=>{ svg+=`<circle cx="${X(dateMs(p.date))}" cy="${Y(p.odo-base)}" r="2.5" fill="${ac}"/>`; });
+  for(let i=0;i<=4;i++){ const t=t0+(t1-t0)*i/4; svg+=`<text x="${X(t)}" y="${H-7}" font-size="11" fill="${txt}" text-anchor="${i===0?'start':i===4?'end':'middle'}">${lbl(t)}</text>`; }
+  svg+=`<rect x="${mL}" y="${mT}" width="${pw}" height="${ph}" fill="transparent" id="cum-hit" style="cursor:crosshair"/><line id="cum-cursor" y1="${mT}" y2="${mT+ph}" stroke="${txt}" stroke-dasharray="3 3" style="display:none"/></svg>`;
+  el.innerHTML=svg;
+  const hit=el.querySelector('#cum-hit'), cur=el.querySelector('#cum-cursor'), svgEl=el.querySelector('svg');
+  const show=e=>{
+    const r=svgEl.getBoundingClientRect(), x=(e.clientX-r.left)*W/r.width;
+    const t=t0+(t1-t0)*Math.min(1,Math.max(0,(x-mL)/pw));
+    const p=vals.reduce((a,b)=>Math.abs(b.t-t)<Math.abs(a.t-t)?b:a);
+    cur.setAttribute('x1',X(p.t)); cur.setAttribute('x2',X(p.t)); cur.style.display='';
+    const d=new Date(p.t);
+    tipEl.textContent=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}：累積 ${fmt(p.v)} km（ODO ${fmt(p.odo)} km）`;
+  };
+  hit.addEventListener('mousemove',show); hit.addEventListener('click',show);
+  tipEl.textContent=`期間合計 ${fmt(vals[vals.length-1].v)} km（グラフをタップで詳細）`;
 }
 
 /* ---------- 共通：リスト描画 ---------- */
@@ -734,6 +774,19 @@ function renderOdo(){
   }
   if(pts.length>=2 && labels.length) barChart($('odo-chart'), $('odo-chart-tip'), labels, [{name:'走行', color:'--accent', values:ranges.map(r=>distBetween(pts,r[0],r[1]))}], (v,axis)=>axis?fmt(v):fmt(v)+' km');
   else { $('odo-chart').innerHTML='<div class="empty">ODOの記録が2件以上で表示されます</div>'; $('odo-chart-tip').textContent=''; }
+
+  const RANGES=[['1m','1カ月',1],['3m','3カ月',3],['6m','6カ月',6],['1y','1年',12],['all','全期間',0]];
+  $('odo-cum-filter').innerHTML = RANGES.map(([k,n])=>`<button class="chip ${state.odoRange===k?'active':''}" onclick="state.odoRange='${k}';render()">${n}</button>`).join('');
+  if(pts.length>=2){
+    const t1 = Math.max(dateMs(todayStr()), dateMs(pts[pts.length-1].date));
+    const mo = RANGES.find(r=>r[0]===state.odoRange)[2];
+    let t0;
+    if(mo){ const d=new Date(t1); d.setMonth(d.getMonth()-mo); t0=d.getTime(); }
+    else t0 = dateMs(pts[0].date);
+    const f = t=>{ const d=new Date(t); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; };
+    $('odo-cum-range').textContent = `${f(t0)}〜${f(t1)}`;
+    cumChart($('odo-cum-chart'), $('odo-cum-tip'), pts, t0, t1);
+  }else{ $('odo-cum-chart').innerHTML='<div class="empty">ODOの記録が2件以上で表示されます</div>'; $('odo-cum-tip').textContent=''; $('odo-cum-range').textContent=''; }
 
   const srcName = {odo:'手入力', fuel:'給油', maint:'メンテ', init:'購入時'};
   $('odo-filter').innerHTML = [['all','すべて'],['odo','手入力'],['fuel','給油'],['maint','メンテ']].map(([k,n])=>`<button class="chip ${state.odoFilter===k?'active':''}" onclick="state.odoFilter='${k}';render()">${n}</button>`).join('');
