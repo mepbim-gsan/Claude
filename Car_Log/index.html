@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>カーログ</title>
+<meta name="theme-color" content="#0f1117">
+<style>
+:root{
+  --bg:#0f1117;--bg2:#1a1d27;--bg3:#242736;--border:#2e3247;
+  --accent:#4f8ef7;--success:#3ecf8e;--warn:#f5a623;--danger:#e05252;
+  --text:#e8eaf0;--text2:#8b90a7;--text3:#5a5f7a;
+  --c-fuel:#4f8ef7;--c-maint:#3ecf8e;--c-cost:#f5a623;
+  --nav-h:60px;--radius:12px;
+}
+[data-theme="light"]{
+  --bg:#f4f6fb;--bg2:#ffffff;--bg3:#eef0f7;--border:#d0d5e8;
+  --accent:#2563eb;--success:#16a34a;--warn:#d97706;--danger:#dc2626;
+  --text:#1e2233;--text2:#6b7280;--text3:#9ca3af;
+  --c-fuel:#2563eb;--c-maint:#16a34a;--c-cost:#d97706;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden;}
+button{font-family:inherit;}
+#header{position:sticky;top:0;z-index:50;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:10px 14px;}
+#header .h-title{font-size:16px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#header .h-sub{font-size:11px;color:var(--text2);font-weight:400;margin-left:6px;}
+.app-ver{font-size:10px;color:var(--text3);}
+.icon-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.icon-btn svg{width:18px;height:18px;}
+#app{padding-bottom:calc(var(--nav-h) + 16px);max-width:760px;margin:0 auto;}
+#nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--bg2);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom);}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;}
+.nav-btn.active{color:var(--accent);}
+.nav-btn svg{width:22px;height:22px;}
+.page{display:none;padding:14px;}
+.page.active{display:block;}
+.page-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
+.page-title{font-size:18px;font-weight:700;}
+.year-sel{width:auto;padding:6px 10px;font-size:14px;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
+.card-title{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.08em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+@media(min-width:560px){.kpi-grid{grid-template-columns:repeat(4,1fr);}}
+.kpi{background:var(--bg3);border-radius:10px;padding:10px;}
+.kpi .k-label{font-size:11px;color:var(--text2);}
+.kpi .k-val{font-size:20px;font-weight:700;margin-top:2px;white-space:nowrap;}
+.kpi .k-unit{font-size:11px;color:var(--text2);font-weight:400;margin-left:2px;}
+.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;font-family:inherit;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+textarea{resize:vertical;min-height:60px;}
+.btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+.btn.danger{color:var(--danger);border-color:var(--danger);background:transparent;}
+.btn.sm{padding:5px 10px;font-size:12px;}
+.list{display:flex;flex-direction:column;}
+.list-month{font-size:12px;color:var(--text2);font-weight:600;padding:10px 2px 6px;display:flex;justify-content:space-between;}
+.row{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;display:flex;gap:10px;align-items:center;}
+.row:active{background:var(--bg3);}
+.row .r-date{font-size:12px;color:var(--text2);width:38px;text-align:center;flex-shrink:0;line-height:1.2;}
+.row .r-date b{display:block;font-size:17px;color:var(--text);}
+.row .r-main{flex:1;min-width:0;}
+.row .r-title{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.row .r-sub{font-size:11px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.row .r-right{text-align:right;flex-shrink:0;}
+.row .r-amt{font-size:15px;font-weight:700;}
+.row .r-amt2{font-size:11px;color:var(--text2);margin-top:2px;}
+.badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);margin-right:4px;vertical-align:1px;}
+.badge.fuel{color:var(--c-fuel);border-color:var(--c-fuel);}
+.badge.maint{color:var(--c-maint);border-color:var(--c-maint);}
+.badge.cost{color:var(--c-cost);border-color:var(--c-cost);}
+.badge.warn{color:var(--warn);border-color:var(--warn);}
+.empty{text-align:center;color:var(--text3);font-size:13px;padding:30px 0;}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;scrollbar-width:none;}
+.chip{flex-shrink:0;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:16px;padding:5px 12px;font-size:12px;cursor:pointer;white-space:nowrap;}
+.chip.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.fab{position:fixed;right:18px;bottom:calc(var(--nav-h) + 18px);width:54px;height:54px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:28px;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;z-index:90;display:none;}
+.fab.show{display:block;}
+@media(min-width:800px){.fab{right:calc(50% - 360px);}}
+.chart-wrap{width:100%;overflow:hidden;}
+.chart-wrap svg{display:block;width:100%;height:auto;}
+.chart-tip{font-size:12px;color:var(--text2);min-height:1.4em;margin-top:4px;text-align:center;}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-bottom:6px;}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px;}
+table.tbl td,table.tbl th{padding:7px 4px;border-bottom:1px solid var(--border);}
+table.tbl th{font-size:11px;color:var(--text2);font-weight:600;text-align:left;}
+table.tbl td.num,table.tbl th.num{text-align:right;white-space:nowrap;}
+table.tbl tr.total td{font-weight:700;border-bottom:none;}
+.remind{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;gap:8px;}
+.remind:last-child{border-bottom:none;}
+.remind .rm-left{min-width:0;}
+.remind .rm-sub{font-size:11px;color:var(--text2);}
+.remind .rm-due{font-size:12px;font-weight:700;white-space:nowrap;}
+.due-over{color:var(--danger);} .due-soon{color:var(--warn);} .due-ok{color:var(--success);}
+.odo-big{font-size:30px;font-weight:700;letter-spacing:.02em;}
+.odo-big small{font-size:14px;color:var(--text2);font-weight:400;margin-left:4px;}
+/* sheet */
+#sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;}
+#sheet-bg.show{display:block;}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-height:92dvh;background:var(--bg2);border-radius:16px 16px 0 0;z-index:201;display:none;flex-direction:column;max-width:760px;margin:0 auto;}
+#sheet.show{display:flex;}
+.sh-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);}
+.sh-title{font-size:16px;font-weight:700;}
+.sh-body{padding:14px 16px;overflow-y:auto;flex:1;}
+.sh-foot{display:flex;gap:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--border);}
+.sh-foot .btn{flex:1;padding:11px;}
+.sh-foot .btn.danger{flex:0 0 auto;}
+.fld{margin-bottom:12px;}
+.fld label{display:block;font-size:12px;color:var(--text2);margin-bottom:4px;}
+.fld .hint{font-size:11px;color:var(--text3);margin-top:4px;}
+.fld-row{display:flex;gap:8px;}
+.fld-row>.fld{flex:1;min-width:0;}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;}
+.check input{width:18px;height:18px;}
+.preview{background:var(--bg3);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text2);margin-bottom:12px;}
+.preview b{color:var(--text);}
+.set-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:8px;font-size:14px;}
+.set-row:last-child{border-bottom:none;}
+.cat-item{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
+.cat-item input{padding:6px 10px;font-size:14px;}
+.cat-item .btn{flex-shrink:0;}
+#toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:13px;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;}
+#toast.show{opacity:1;}
+.muted{color:var(--text2);font-size:12px;}
+</style>
+</head>
+<body>
+<div id="header">
+  <div class="h-title" id="h-title">カーログ</div>
+  <span class="app-ver"></span>
+  <button class="icon-btn" id="btn-settings" title="設定" onclick="showPage('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</div>
+
+<div id="app">
+  <!-- ホーム -->
+  <div class="page" id="page-home">
+    <div class="page-header">
+      <div class="page-title">サマリー</div>
+      <select class="year-sel" data-year-sel></select>
+    </div>
+    <div class="card">
+      <div class="card-title">概要</div>
+      <div class="kpi-grid" id="home-kpi"></div>
+    </div>
+    <div class="card" id="home-remind-card">
+      <div class="card-title">次回予定・期限</div>
+      <div id="home-remind"></div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="home-chart-title">月別費用</div>
+      <div class="legend">
+        <span><i style="background:var(--c-fuel)"></i>燃料</span>
+        <span><i style="background:var(--c-maint)"></i>メンテナンス</span>
+        <span><i style="background:var(--c-cost)"></i>その他費用</span>
+      </div>
+      <div class="chart-wrap" id="home-chart"></div>
+      <div class="chart-tip" id="home-chart-tip"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">費用内訳</div>
+      <div id="home-breakdown"></div>
+    </div>
+  </div>
+
+  <!-- 給油 -->
+  <div class="page" id="page-fuel">
+    <div class="page-header">
+      <div class="page-title">給油ログ</div>
+      <select class="year-sel" data-year-sel></select>
+    </div>
+    <div class="card">
+      <div class="kpi-grid" id="fuel-kpi"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">燃費推移 <span class="muted">km/L（満タン法）</span></div>
+      <div class="chart-wrap" id="fuel-chart"></div>
+      <div class="chart-tip" id="fuel-chart-tip"></div>
+    </div>
+    <div class="list" id="fuel-list"></div>
+  </div>
+
+  <!-- ODO -->
+  <div class="page" id="page-odo">
+    <div class="page-header">
+      <div class="page-title">ODOログ</div>
+      <select class="year-sel" data-year-sel></select>
+    </div>
+    <div class="card">
+      <div class="card-title">現在のODO</div>
+      <div class="odo-big" id="odo-current"></div>
+      <div class="muted" id="odo-current-sub" style="margin-top:4px;"></div>
+      <div class="kpi-grid" id="odo-kpi" style="margin-top:12px;"></div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="odo-chart-title">月別走行距離</div>
+      <div class="chart-wrap" id="odo-chart"></div>
+      <div class="chart-tip" id="odo-chart-tip"></div>
+    </div>
+    <div class="chips" id="odo-filter"></div>
+    <div class="list" id="odo-list"></div>
+  </div>
+
+  <!-- メンテ -->
+  <div class="page" id="page-maint">
+    <div class="page-header">
+      <div class="page-title">メンテナンス</div>
+      <select class="year-sel" data-year-sel></select>
+    </div>
+    <div class="card">
+      <div class="kpi-grid" id="maint-kpi"></div>
+    </div>
+    <div class="chips" id="maint-filter"></div>
+    <div class="list" id="maint-list"></div>
+  </div>
+
+  <!-- 費用 -->
+  <div class="page" id="page-cost">
+    <div class="page-header">
+      <div class="page-title">その他費用</div>
+      <select class="year-sel" data-year-sel></select>
+    </div>
+    <div class="card">
+      <div class="kpi-grid" id="cost-kpi"></div>
+    </div>
+    <div class="chips" id="cost-filter"></div>
+    <div class="list" id="cost-list"></div>
+  </div>
+
+  <!-- 設定 -->
+  <div class="page" id="page-settings">
+    <div class="page-header"><div class="page-title">設定</div></div>
+    <div class="card">
+      <div class="card-title">車両情報 <button class="btn sm" onclick="openVehicleSheet()">編集</button></div>
+      <div id="set-vehicle"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">クラウド同期</div>
+      <div class="set-row">
+        <div>Googleログイン<div class="muted">Firebase 連携は次フェーズで対応予定（現在は端末内に保存）</div></div>
+        <button class="btn sm" disabled>準備中</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">表示</div>
+      <div class="set-row">
+        <div>テーマ</div>
+        <select id="set-theme" style="width:auto;" onchange="setTheme(this.value)">
+          <option value="dark">ダーク</option>
+          <option value="light">ライト</option>
+        </select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">メンテナンス区分 <button class="btn sm" onclick="addCat('maintCats')">＋追加</button></div>
+      <div id="set-maint-cats"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">費用区分 <button class="btn sm" onclick="addCat('costCats')">＋追加</button></div>
+      <div id="set-cost-cats"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">データ</div>
+      <div class="set-row"><div>バックアップ（JSON）</div><button class="btn sm" onclick="exportJson()">エクスポート</button></div>
+      <div class="set-row"><div>復元（JSON）<div class="muted">現在のデータは置き換わります</div></div><button class="btn sm" onclick="document.getElementById('import-file').click()">インポート</button></div>
+      <div class="set-row"><div>サンプルデータ投入</div><button class="btn sm" onclick="loadSample()">投入</button></div>
+      <div class="set-row"><div>全データ削除</div><button class="btn sm danger" onclick="clearAll()">削除</button></div>
+      <input type="file" id="import-file" accept=".json,application/json" style="display:none" onchange="importJson(this)">
+    </div>
+    <div class="muted" style="text-align:center;margin-top:8px;">カーログ <span class="app-ver"></span></div>
+  </div>
+</div>
+
+<button class="fab" id="fab" onclick="onFab()">＋</button>
+
+<nav id="nav">
+  <button class="nav-btn" data-page="home" onclick="showPage('home')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>ホーム</button>
+  <button class="nav-btn" data-page="fuel" onclick="showPage('fuel')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"/><path d="M3 21h13"/><path d="M7 7h5v4H7z"/><path d="M15 9h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/></svg>給油</button>
+  <button class="nav-btn" data-page="odo" onclick="showPage('odo')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15a9 9 0 1 1 18 0"/><path d="M12 15l4-5"/><circle cx="12" cy="15" r="1.5"/><path d="M3 19h18"/></svg>ODO</button>
+  <button class="nav-btn" data-page="maint" onclick="showPage('maint')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>メンテ</button>
+  <button class="nav-btn" data-page="cost" onclick="showPage('cost')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></svg>費用</button>
+</nav>
+
+<div id="sheet-bg" onclick="closeSheet()"></div>
+<div id="sheet">
+  <div class="sh-head"><div class="sh-title" id="sh-title"></div><button class="icon-btn" onclick="closeSheet()">✕</button></div>
+  <div class="sh-body" id="sh-body"></div>
+  <div class="sh-foot" id="sh-foot"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const APP_VERSION = 'v01_2026-11-07';
+const STORAGE_KEY = 'carlog-data-v1';
+const THEME_KEY = 'carlog-theme';
+
+const DEFAULT_MAINT_CATS = ['車検','法定点検','オイル交換','オイルフィルター','タイヤ','バッテリー','洗車','手洗い洗車','コーティング','カスタム','修理','消耗品','その他'];
+const DEFAULT_COST_CATS = ['車両購入','任意保険','自賠責保険','自動車税','重量税','駐車場','高速・有料道路','ローン','JAF・会員','その他'];
+const FUEL_TYPES = ['レギュラー','ハイオク','軽油','電気','その他'];
+
+function emptyData(){
+  return {
+    vehicle:{name:'',model:'',year:'',purchaseDate:'',initialOdo:'',fuelType:'レギュラー',tankCapacity:''},
+    fuel:[], odo:[], maint:[], costs:[],
+    maintCats:[...DEFAULT_MAINT_CATS], costCats:[...DEFAULT_COST_CATS]
+  };
+}
+function loadData(){
+  try{
+    const s = localStorage.getItem(STORAGE_KEY);
+    if(!s) return emptyData();
+    return Object.assign(emptyData(), JSON.parse(s));
+  }catch{ return emptyData(); }
+}
+let D = loadData();
+function saveData(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(D)); }catch(e){ toast('保存に失敗しました'); }
+}
+
+const state = { page:'home', year:String(new Date().getFullYear()), odoFilter:'all', maintFilter:'all', costFilter:'all' };
+
+/* ---------- util ---------- */
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => { const n = parseFloat(String(v ?? '').replace(/,/g,'')); return isFinite(n) ? n : null; };
+const fmt = (v, d=0) => v==null || !isFinite(v) ? '—' : Number(v).toLocaleString('ja-JP',{minimumFractionDigits:d,maximumFractionDigits:d});
+const yen = v => v==null ? '—' : '¥' + fmt(Math.round(v));
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+const dateMs = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d).getTime(); };
+const ymOf = s => s.slice(0,7);
+const inYear = s => state.year==='all' || (s && s.slice(0,4)===state.year);
+const byDateDesc = (a,b) => (b.date||'').localeCompare(a.date||'') || (num(b.odo)||0)-(num(a.odo)||0);
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),1800); }
+function daysBetween(a,b){ return Math.round((dateMs(b)-dateMs(a))/86400000); }
+
+/* ---------- 計算 ---------- */
+// 満タン法: 満タン→満タン間の走行距離 / その間の給油量合計
+function calcFuelStats(){
+  const list = D.fuel.filter(f=>num(f.odo)!=null).slice().sort((a,b)=>num(a.odo)-num(b.odo) || a.date.localeCompare(b.date));
+  const res = {};
+  let lastFull = null, acc = 0, prev = null;
+  for(const f of list){
+    const r = { dist: prev ? num(f.odo)-num(prev.odo) : null, eco:null, segKm:null, segL:null };
+    acc += num(f.liters)||0;
+    if(f.full){
+      if(lastFull){
+        const km = num(f.odo)-num(lastFull.odo);
+        if(km>0 && acc>0){ r.eco = km/acc; r.segKm = km; r.segL = acc; }
+      }
+      lastFull = f; acc = 0;
+    }
+    res[f.id] = r; prev = f;
+  }
+  return res;
+}
+
+function odoPoints(){
+  const pts = [];
+  const v = D.vehicle;
+  if(v.purchaseDate && num(v.initialOdo)!=null) pts.push({date:v.purchaseDate, odo:num(v.initialOdo), src:'init', id:'init'});
+  D.odo.forEach(o=>{ if(num(o.odo)!=null) pts.push({date:o.date, odo:num(o.odo), src:'odo', id:o.id, memo:o.memo}); });
+  D.fuel.forEach(f=>{ if(num(f.odo)!=null) pts.push({date:f.date, odo:num(f.odo), src:'fuel', id:f.id}); });
+  D.maint.forEach(m=>{ if(num(m.odo)!=null) pts.push({date:m.date, odo:num(m.odo), src:'maint', id:m.id, memo:m.title}); });
+  pts.sort((a,b)=>a.date.localeCompare(b.date) || a.odo-b.odo);
+  return pts;
+}
+// 日付境界のODOを線形補間（範囲外は端点）
+function odoAt(pts, t){
+  if(!pts.length) return null;
+  const ts = pts.map(p=>dateMs(p.date));
+  if(t<=ts[0]) return pts[0].odo;
+  if(t>=ts[ts.length-1]) return pts[pts.length-1].odo;
+  for(let i=1;i<pts.length;i++){
+    if(t<=ts[i]){
+      const t0=ts[i-1], t1=ts[i];
+      if(t1===t0) return pts[i].odo;
+      return pts[i-1].odo + (pts[i].odo-pts[i-1].odo)*(t-t0)/(t1-t0);
+    }
+  }
+  return pts[pts.length-1].odo;
+}
+function distBetween(pts, t0, t1){
+  if(pts.length<2) return 0;
+  return Math.max(0, odoAt(pts,t1)-odoAt(pts,t0));
+}
+function currentOdo(){
+  const pts = odoPoints();
+  if(!pts.length) return null;
+  return pts.reduce((m,p)=>p.odo>m.odo?p:m, pts[0]);
+}
+
+function costEntries(){
+  const e = [];
+  D.fuel.forEach(f=>{ const a=num(f.total); if(a) e.push({date:f.date, group:'fuel', cat:'燃料', amount:a, initial:false}); });
+  D.maint.forEach(m=>{ const a=num(m.cost); if(a) e.push({date:m.date, group:'maint', cat:m.category||'その他', amount:a, initial:false}); });
+  D.costs.forEach(c=>{ const a=num(c.amount); if(a) e.push({date:c.date, group:'cost', cat:c.category||'その他', amount:a, initial:!!c.initial}); });
+  return e;
+}
+
+function periodRange(){
+  if(state.year==='all'){
+    const all = [...D.fuel,...D.odo,...D.maint,...D.costs].map(x=>x.date).filter(Boolean);
+    if(D.vehicle.purchaseDate) all.push(D.vehicle.purchaseDate);
+    if(!all.length) return null;
+    all.sort();
+    return {t0:dateMs(all[0]), t1:Math.max(dateMs(all[all.length-1]), dateMs(todayStr()))};
+  }
+  const y = +state.year;
+  return {t0:new Date(y,0,1).getTime(), t1:new Date(y+1,0,1).getTime()};
+}
+
+/* ---------- 年セレクト ---------- */
+function yearsInData(){
+  const s = new Set([String(new Date().getFullYear())]);
+  [...D.fuel,...D.odo,...D.maint,...D.costs].forEach(x=>{ if(x.date) s.add(x.date.slice(0,4)); });
+  return [...s].sort().reverse();
+}
+function renderYearSelects(){
+  const ys = yearsInData();
+  if(state.year!=='all' && !ys.includes(state.year)) state.year = ys[0];
+  const html = ys.map(y=>`<option value="${y}">${y}年</option>`).join('') + '<option value="all">全期間</option>';
+  document.querySelectorAll('[data-year-sel]').forEach(sel=>{
+    sel.innerHTML = html; sel.value = state.year;
+    sel.onchange = () => { state.year = sel.value; render(); };
+  });
+}
+
+/* ---------- チャート（SVG） ---------- */
+function niceMax(v){
+  if(v<=0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for(const m of [1,2,2.5,5,10]) if(v<=m*p) return m*p;
+  return 10*p;
+}
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+function barChart(el, tipEl, labels, series, unitFmt){
+  const W=Math.max(300, el.clientWidth||640), H=200, mL=44, mR=8, mT=14, mB=24;
+  const totals = labels.map((_,i)=>series.reduce((s,se)=>s+(se.values[i]||0),0));
+  const max = niceMax(Math.max(...totals,0));
+  const pw = W-mL-mR, ph = H-mT-mB, bw = pw/labels.length;
+  let svg = `<svg viewBox="0 0 ${W} ${H}">`;
+  const grid = cssVar('--border'), txt = cssVar('--text2');
+  for(let i=0;i<=4;i++){
+    const y = mT + ph - ph*i/4;
+    svg += `<line x1="${mL}" x2="${W-mR}" y1="${y}" y2="${y}" stroke="${grid}" stroke-width="1"/>`;
+    svg += `<text x="${mL-6}" y="${y+4}" font-size="11" fill="${txt}" text-anchor="end">${unitFmt(max*i/4, true)}</text>`;
+  }
+  labels.forEach((lb,i)=>{
+    let y = mT+ph;
+    const x = mL + bw*i + bw*0.18, w = bw*0.64;
+    series.forEach(se=>{
+      const v = se.values[i]||0; if(!v) return;
+      const h = ph*v/max; y -= h;
+      svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${cssVar(se.color)}" rx="2"/>`;
+    });
+    svg += `<rect x="${mL+bw*i}" y="${mT}" width="${bw}" height="${ph}" fill="transparent" data-i="${i}" style="cursor:pointer"/>`;
+    if(labels.length<=16 || i%Math.ceil(labels.length/12)===0)
+      svg += `<text x="${mL+bw*i+bw/2}" y="${H-7}" font-size="11" fill="${txt}" text-anchor="middle">${esc(lb)}</text>`;
+  });
+  svg += '</svg>';
+  el.innerHTML = svg;
+  const show = i => {
+    const parts = series.filter(se=>se.values[i]).map(se=>`${se.name} ${unitFmt(se.values[i])}`);
+    tipEl.textContent = `${labels[i]}：${unitFmt(totals[i])}` + (series.length>1 && parts.length ? `（${parts.join(' / ')}）` : '');
+  };
+  el.querySelectorAll('rect[data-i]').forEach(r=>{
+    r.addEventListener('mouseenter',()=>show(+r.dataset.i));
+    r.addEventListener('click',()=>show(+r.dataset.i));
+  });
+  tipEl.textContent = 'バーをタップで詳細';
+}
+
+function lineChart(el, tipEl, pts){
+  if(pts.length<1){ el.innerHTML = '<div class="empty">満タン給油が2回以上で表示されます</div>'; tipEl.textContent=''; return; }
+  const W=Math.max(300, el.clientWidth||640), H=180, mL=36, mR=12, mT=14, mB=24;
+  const vals = pts.map(p=>p.v);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = Math.max((hi-lo)*0.15, 1);
+  lo = Math.max(0, Math.floor(lo-pad)); hi = Math.ceil(hi+pad);
+  const pw=W-mL-mR, ph=H-mT-mB;
+  const X = i => mL + (pts.length===1 ? pw/2 : pw*i/(pts.length-1));
+  const Y = v => mT + ph - ph*(v-lo)/(hi-lo);
+  const grid = cssVar('--border'), txt = cssVar('--text2'), ac = cssVar('--c-fuel');
+  let svg = `<svg viewBox="0 0 ${W} ${H}">`;
+  for(let i=0;i<=4;i++){
+    const v = lo+(hi-lo)*i/4, y=Y(v);
+    svg += `<line x1="${mL}" x2="${W-mR}" y1="${y}" y2="${y}" stroke="${grid}"/>`;
+    svg += `<text x="${mL-6}" y="${y+4}" font-size="11" fill="${txt}" text-anchor="end">${fmt(v,1)}</text>`;
+  }
+  const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+  svg += `<line x1="${mL}" x2="${W-mR}" y1="${Y(avg)}" y2="${Y(avg)}" stroke="${txt}" stroke-dasharray="4 4"/>`;
+  svg += `<polyline fill="none" stroke="${ac}" stroke-width="2.5" points="${pts.map((p,i)=>X(i)+','+Y(p.v)).join(' ')}"/>`;
+  const step = Math.ceil(pts.length/8);
+  pts.forEach((p,i)=>{
+    svg += `<circle cx="${X(i)}" cy="${Y(p.v)}" r="4" fill="${ac}"/>`;
+    svg += `<circle cx="${X(i)}" cy="${Y(p.v)}" r="14" fill="transparent" data-i="${i}" style="cursor:pointer"/>`;
+    if(i%step===0 || i===pts.length-1) svg += `<text x="${X(i)}" y="${H-7}" font-size="11" fill="${txt}" text-anchor="middle">${p.label}</text>`;
+  });
+  svg += '</svg>';
+  el.innerHTML = svg;
+  const show = i => { const p=pts[i]; tipEl.textContent = `${p.date}：${fmt(p.v,2)} km/L（${fmt(p.km,0)} km / ${fmt(p.l,2)} L）`; };
+  el.querySelectorAll('circle[data-i]').forEach(c=>{
+    c.addEventListener('mouseenter',()=>show(+c.dataset.i));
+    c.addEventListener('click',()=>show(+c.dataset.i));
+  });
+  tipEl.textContent = `平均 ${fmt(avg,2)} km/L（破線）`;
+}
+
+/* ---------- 共通：リスト描画 ---------- */
+function groupedList(items, rowFn, sumFn){
+  if(!items.length) return '<div class="empty">記録がありません<br>右下の ＋ から追加できます</div>';
+  let html='', cur='';
+  const groups = {};
+  items.forEach(it=>{ (groups[ymOf(it.date)] ||= []).push(it); });
+  Object.keys(groups).sort().reverse().forEach(ym=>{
+    const [y,m] = ym.split('-');
+    html += `<div class="list-month"><span>${y}年${+m}月</span><span>${sumFn?sumFn(groups[ym]):''}</span></div>`;
+    groups[ym].forEach(it=>{ html += rowFn(it); });
+  });
+  return html;
+}
+function dateCell(s){ const [y,m,d]=s.split('-'); const w='日月火水木金土'[new Date(+y,+m-1,+d).getDay()]; return `<div class="r-date"><b>${+d}</b>${w}</div>`; }
+function kpi(label, val, unit, sub){ return `<div class="kpi"><div class="k-label">${label}</div><div class="k-val">${val}<span class="k-unit">${unit||''}</span></div>${sub?`<div class="k-sub">${sub}</div>`:''}</div>`; }
+function chipsHtml(cats, cur, key){
+  return ['all',...cats].map(c=>`<button class="chip ${cur===c?'active':''}" onclick="state.${key}='${esc(c)}';render()">${c==='all'?'すべて':esc(c)}</button>`).join('');
+}
+
+/* ---------- ホーム ---------- */
+function renderHome(){
+  const entries = costEntries().filter(e=>inYear(e.date));
+  const sum = g => entries.filter(e=>!g||e.group===g).reduce((s,e)=>s+e.amount,0);
+  const total = sum(), running = entries.filter(e=>!e.initial).reduce((s,e)=>s+e.amount,0);
+  const pts = odoPoints(), rng = periodRange();
+  const dist = rng ? distBetween(pts, rng.t0, rng.t1) : 0;
+  const fs = calcFuelStats();
+  let km=0, l=0;
+  D.fuel.filter(f=>inYear(f.date)).forEach(f=>{ const r=fs[f.id]; if(r&&r.eco){ km+=r.segKm; l+=r.segL; } });
+  const cur = currentOdo();
+  $('home-kpi').innerHTML =
+    kpi('費用合計', yen(total), '', running!==total ? `維持費 ${yen(running)}` : '') +
+    kpi('走行距離', fmt(dist), 'km', cur ? `ODO ${fmt(cur.odo)} km` : '') +
+    kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L') +
+    kpi('維持費/km', dist ? fmt(running/dist,1) : '—', '円', dist ? `燃料費/km ${fmt(sum('fuel')/dist,1)}円` : '');
+
+  renderReminders();
+
+  // 月別費用
+  let labels=[], keys=[];
+  if(state.year==='all'){
+    const ys = [...new Set(costEntries().map(e=>e.date.slice(0,4)))].sort();
+    keys = ys; labels = ys.map(y=>y.slice(2)+'年');
+    $('home-chart-title').textContent = '年別費用';
+  }else{
+    keys = Array.from({length:12},(_,i)=>state.year+'-'+String(i+1).padStart(2,'0'));
+    labels = keys.map((_,i)=>(i+1)+'月');
+    $('home-chart-title').textContent = '月別費用';
+  }
+  const kOf = e => state.year==='all' ? e.date.slice(0,4) : ymOf(e.date);
+  const series = [['fuel','燃料','--c-fuel'],['maint','メンテ','--c-maint'],['cost','その他','--c-cost']].map(([g,n,c])=>({
+    name:n, color:c, values: keys.map(k=>entries.filter(e=>e.group===g && kOf(e)===k).reduce((s,e)=>s+e.amount,0))
+  }));
+  if(keys.length) barChart($('home-chart'), $('home-chart-tip'), labels, series, (v,axis)=>axis ? (v>=10000 ? fmt(v/10000, v%10000?1:0)+'万' : fmt(v)) : yen(v));
+  else { $('home-chart').innerHTML='<div class="empty">データがありません</div>'; $('home-chart-tip').textContent=''; }
+
+  // 内訳
+  const cats = {};
+  entries.forEach(e=>{ const k=e.group+'|'+e.cat; (cats[k] ||= {group:e.group, cat:e.cat, amount:0, n:0}); cats[k].amount+=e.amount; cats[k].n++; });
+  const order = {fuel:0, maint:1, cost:2}, gName = {fuel:'燃料',maint:'メンテ',cost:'費用'};
+  const rows = Object.values(cats).sort((a,b)=>order[a.group]-order[b.group] || b.amount-a.amount);
+  $('home-breakdown').innerHTML = rows.length ? `<table class="tbl"><tr><th>区分</th><th class="num">件数</th><th class="num">金額</th><th class="num">比率</th></tr>` +
+    rows.map(r=>`<tr><td><span class="badge ${r.group}">${gName[r.group]}</span>${esc(r.cat)}</td><td class="num">${r.n}</td><td class="num">${yen(r.amount)}</td><td class="num">${fmt(r.amount/total*100,1)}%</td></tr>`).join('') +
+    `<tr class="total"><td>合計</td><td class="num">${entries.length}</td><td class="num">${yen(total)}</td><td class="num"></td></tr></table>` : '<div class="empty">データがありません</div>';
+}
+
+function renderReminders(){
+  const today = todayStr(), cur = currentOdo();
+  const items = [];
+  // メンテ：区分ごとに最新の記録の次回予定のみ
+  const latest = {};
+  D.maint.slice().sort(byDateDesc).forEach(m=>{ const k=m.category||'その他'; if(!latest[k]) latest[k]=m; });
+  Object.values(latest).forEach(m=>{
+    if(!m.nextDate && num(m.nextOdo)==null) return;
+    const days = m.nextDate ? daysBetween(today, m.nextDate) : null;
+    const km = num(m.nextOdo)!=null && cur ? num(m.nextOdo)-cur.odo : null;
+    items.push({kind:'maint', id:m.id, title:m.category + (m.title?`（${m.title}）`:''), date:m.nextDate, odo:num(m.nextOdo), days, km});
+  });
+  D.costs.forEach(c=>{
+    if(!c.until) return;
+    const newer = D.costs.some(o=>o!==c && o.category===c.category && o.until && o.until>c.until);
+    if(newer) return;
+    items.push({kind:'cost', id:c.id, title:c.category + (c.title?`（${c.title}）`:'') + ' 期限', date:c.until, days:daysBetween(today,c.until), km:null});
+  });
+  const score = it => Math.min(it.days ?? 1e9, it.km!=null ? it.km/30 : 1e9);
+  items.sort((a,b)=>score(a)-score(b));
+  $('home-remind').innerHTML = items.length ? items.map(it=>{
+    const over = (it.days!=null && it.days<0) || (it.km!=null && it.km<0);
+    const soon = !over && ((it.days!=null && it.days<=30) || (it.km!=null && it.km<=500));
+    const cls = over ? 'due-over' : soon ? 'due-soon' : 'due-ok';
+    const parts = [];
+    if(it.days!=null) parts.push(it.days<0 ? `${-it.days}日超過` : `あと${it.days}日`);
+    if(it.km!=null) parts.push(it.km<0 ? `${fmt(-it.km)}km超過` : `あと${fmt(it.km)}km`);
+    const sub = [it.date, it.odo!=null?fmt(it.odo)+' km':''].filter(Boolean).join(' / ');
+    return `<div class="remind" onclick="${it.kind==='maint'?'openMaintSheet':'openCostSheet'}('${it.id}')"><div class="rm-left"><div>${esc(it.title)}</div><div class="rm-sub">${sub}</div></div><div class="rm-due ${cls}">${parts.join(' / ')}</div></div>`;
+  }).join('') : '<div class="muted">メンテナンスの「次回予定」や費用の「期限」を入力すると表示されます</div>';
+}
+
+/* ---------- 給油 ---------- */
+function renderFuel(){
+  const fs = calcFuelStats();
+  const list = D.fuel.filter(f=>inYear(f.date)).sort(byDateDesc);
+  let km=0,l=0,cost=0,liters=0;
+  list.forEach(f=>{ const r=fs[f.id]; if(r&&r.eco){km+=r.segKm;l+=r.segL;} cost+=num(f.total)||0; liters+=num(f.liters)||0; });
+  const ecos = list.map(f=>fs[f.id]?.eco).filter(Boolean);
+  const priced = list.filter(f=>num(f.liters) && num(f.total));
+  const avgPrice = priced.length ? priced.reduce((s,f)=>s+num(f.total),0)/priced.reduce((s,f)=>s+num(f.liters),0) : null;
+  $('fuel-kpi').innerHTML =
+    kpi('平均燃費', l?fmt(km/l,2):'—', 'km/L', ecos.length?`最高 ${fmt(Math.max(...ecos),1)} / 最低 ${fmt(Math.min(...ecos),1)}`:'') +
+    kpi('給油回数', list.length, '回', `${fmt(liters,1)} L`) +
+    kpi('燃料費', yen(cost), '', km ? `${fmt(cost/km,1)} 円/km` : '') +
+    kpi('平均単価', avgPrice?fmt(avgPrice,1):'—', '円/L');
+
+  const chartPts = list.slice().reverse().filter(f=>fs[f.id]?.eco).map(f=>{ const r=fs[f.id]; return {v:r.eco, km:r.segKm, l:r.segL, date:f.date, label:f.date.slice(5).replace('-','/')}; });
+  lineChart($('fuel-chart'), $('fuel-chart-tip'), chartPts);
+
+  $('fuel-list').innerHTML = groupedList(list, f=>{
+    const r = fs[f.id] || {};
+    const sub = [num(f.odo)!=null?`ODO ${fmt(num(f.odo))}`:'', r.dist!=null?`+${fmt(r.dist)}km`:'', f.station].filter(Boolean).join(' · ');
+    return `<div class="row" onclick="openFuelSheet('${f.id}')">${dateCell(f.date)}
+      <div class="r-main"><div class="r-title">${f.full?'':'<span class="badge warn">部分</span>'}${fmt(num(f.liters),2)} L <span class="muted">@${fmt(num(f.unitPrice),1)}円 ${esc(f.fuelType||'')}</span></div><div class="r-sub">${esc(sub)}</div></div>
+      <div class="r-right"><div class="r-amt">${yen(num(f.total))}</div><div class="r-amt2">${r.eco?fmt(r.eco,2)+' km/L':''}</div></div></div>`;
+  }, g=>yen(g.reduce((s,f)=>s+(num(f.total)||0),0)));
+}
+
+function openFuelSheet(id){
+  const f = id ? D.fuel.find(x=>x.id===id) : null;
+  const last = D.fuel.slice().sort(byDateDesc)[0];
+  const v = f || {date:todayStr(), odo:'', liters:'', unitPrice: last?.unitPrice||'', total:'', full:true, fuelType: D.vehicle.fuelType||'レギュラー', station: last?.station||'', memo:''};
+  openSheet(f?'給油を編集':'給油を記録', `
+    <div class="fld-row">
+      <div class="fld"><label>日付</label><input type="date" id="f-date" value="${esc(v.date)}"></div>
+      <div class="fld"><label>ODO（km）</label><input type="text" inputmode="decimal" id="f-odo" value="${esc(v.odo)}" placeholder="${currentOdo()?fmt(currentOdo().odo):''}"></div>
+    </div>
+    <div id="f-preview" class="preview"></div>
+    <div class="fld-row">
+      <div class="fld"><label>給油量（L）</label><input type="text" inputmode="decimal" id="f-liters" value="${esc(v.liters)}"></div>
+      <div class="fld"><label>単価（円/L）</label><input type="text" inputmode="decimal" id="f-price" value="${esc(v.unitPrice)}"></div>
+    </div>
+    <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="f-total" value="${esc(v.total)}"><div class="hint">給油量×単価で自動計算。金額を入力すると単価を逆算</div></div>
+    <div class="fld"><label class="check"><input type="checkbox" id="f-full" ${v.full?'checked':''}>満タン給油（燃費計算に使用）</label></div>
+    <div class="fld-row">
+      <div class="fld"><label>油種</label><select id="f-type">${FUEL_TYPES.map(t=>`<option ${t===v.fuelType?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="fld"><label>スタンド</label><input type="text" id="f-station" value="${esc(v.station)}"></div>
+    </div>
+    <div class="fld"><label>メモ</label><input type="text" id="f-memo" value="${esc(v.memo)}"></div>
+  `, () => {
+    const rec = { id: f?.id || uid(), date:$('f-date').value, odo:$('f-odo').value.trim(), liters:$('f-liters').value.trim(),
+      unitPrice:$('f-price').value.trim(), total:$('f-total').value.trim(), full:$('f-full').checked,
+      fuelType:$('f-type').value, station:$('f-station').value.trim(), memo:$('f-memo').value.trim() };
+    if(!rec.date) return '日付を入力してください';
+    if(!num(rec.liters)) return '給油量を入力してください';
+    if(!num(rec.total) && num(rec.unitPrice)) rec.total = String(Math.round(num(rec.liters)*num(rec.unitPrice)));
+    upsert(D.fuel, rec);
+  }, f ? () => remove(D.fuel, f.id) : null);
+
+  const L=$('f-liters'), P=$('f-price'), T=$('f-total');
+  const calcTotal = () => { if(num(L.value) && num(P.value)) T.value = Math.round(num(L.value)*num(P.value)); };
+  L.oninput = () => { calcTotal(); fuelPreview(f); };
+  P.oninput = calcTotal;
+  T.oninput = () => { if(num(L.value) && num(T.value)) P.value = (num(T.value)/num(L.value)).toFixed(1); };
+  $('f-odo').oninput = () => fuelPreview(f);
+  $('f-date').oninput = () => fuelPreview(f);
+  fuelPreview(f);
+}
+function fuelPreview(f){
+  const odo = num($('f-odo').value), el = $('f-preview');
+  const prevs = D.fuel.filter(x=>x!==f && num(x.odo)!=null && (odo==null ? x.date<=$('f-date').value : num(x.odo)<odo)).sort((a,b)=>num(b.odo)-num(a.odo));
+  const prev = prevs[0];
+  if(!prev){ el.innerHTML = '前回の給油記録なし'; return; }
+  let html = `前回 ${prev.date} / ODO ${fmt(num(prev.odo))} km`;
+  if(odo!=null){
+    const d = odo - num(prev.odo);
+    html += ` → 走行 <b>${fmt(d)} km</b>`;
+    const lastFull = prevs.find(x=>x.full);
+    const lit = num($('f-liters').value);
+    if(lastFull && lit && $('f-full').checked){
+      const between = prevs.filter(x=>num(x.odo)>num(lastFull.odo)).reduce((s,x)=>s+(num(x.liters)||0),0);
+      const eco = (odo-num(lastFull.odo))/(between+lit);
+      if(eco>0) html += ` / 燃費 <b>${fmt(eco,2)} km/L</b>`;
+    }
+    if(d<0) html += ' <span class="due-over">（前回より小さい値です）</span>';
+  }
+  el.innerHTML = html;
+}
+
+/* ---------- ODO ---------- */
+function renderOdo(){
+  const pts = odoPoints(), cur = currentOdo();
+  $('odo-current').innerHTML = cur ? `${fmt(cur.odo)}<small>km</small>` : '—';
+  $('odo-current-sub').textContent = cur ? `${cur.date} 時点` : 'ODOを記録すると表示されます';
+  const rng = periodRange();
+  const dist = rng ? distBetween(pts, rng.t0, rng.t1) : 0;
+  let months = 0;
+  if(pts.length>=2){
+    const first = dateMs(pts[0].date), last = dateMs(pts[pts.length-1].date);
+    const t0 = Math.max(first, rng.t0), t1 = Math.min(last, rng.t1);
+    months = Math.max(0,(t1-t0)/86400000/30.44);
+  }
+  const totalDist = pts.length>=2 ? pts[pts.length-1].odo - pts[0].odo : 0;
+  $('odo-kpi').innerHTML =
+    kpi(state.year==='all'?'期間走行':'年間走行', fmt(dist), 'km') +
+    kpi('月平均', months>=0.5 ? fmt(dist/months) : '—', 'km/月') +
+    kpi('記録数', pts.filter(p=>inYear(p.date)).length, '件') +
+    kpi('累計走行', fmt(totalDist), 'km', D.vehicle.initialOdo ? `購入時 ${fmt(num(D.vehicle.initialOdo))} km` : '');
+
+  let labels, ranges;
+  if(state.year==='all'){
+    const ys = [...new Set(pts.map(p=>p.date.slice(0,4)))].sort();
+    labels = ys.map(y=>y.slice(2)+'年'); ranges = ys.map(y=>[new Date(+y,0,1).getTime(), new Date(+y+1,0,1).getTime()]);
+    $('odo-chart-title').textContent = '年別走行距離';
+  }else{
+    const y = +state.year;
+    labels = Array.from({length:12},(_,i)=>(i+1)+'月'); ranges = labels.map((_,i)=>[new Date(y,i,1).getTime(), new Date(y,i+1,1).getTime()]);
+    $('odo-chart-title').textContent = '月別走行距離';
+  }
+  if(pts.length>=2 && labels.length) barChart($('odo-chart'), $('odo-chart-tip'), labels, [{name:'走行', color:'--accent', values:ranges.map(r=>distBetween(pts,r[0],r[1]))}], (v,axis)=>axis?fmt(v):fmt(v)+' km');
+  else { $('odo-chart').innerHTML='<div class="empty">ODOの記録が2件以上で表示されます</div>'; $('odo-chart-tip').textContent=''; }
+
+  const srcName = {odo:'手入力', fuel:'給油', maint:'メンテ', init:'購入時'};
+  $('odo-filter').innerHTML = [['all','すべて'],['odo','手入力'],['fuel','給油'],['maint','メンテ']].map(([k,n])=>`<button class="chip ${state.odoFilter===k?'active':''}" onclick="state.odoFilter='${k}';render()">${n}</button>`).join('');
+  const withDelta = pts.map((p,i)=>({...p, delta: i ? p.odo-pts[i-1].odo : null, days: i ? daysBetween(pts[i-1].date,p.date) : null}));
+  const list = withDelta.filter(p=>inYear(p.date) && (state.odoFilter==='all' || p.src===state.odoFilter || p.src==='init' && state.odoFilter==='all')).reverse();
+  $('odo-list').innerHTML = groupedList(list, p=>{
+    const cls = {odo:'',fuel:'fuel',maint:'maint',init:'cost'}[p.src];
+    const click = p.src==='odo' ? `openOdoSheet('${p.id}')` : p.src==='fuel' ? `openFuelSheet('${p.id}')` : p.src==='maint' ? `openMaintSheet('${p.id}')` : 'openVehicleSheet()';
+    return `<div class="row" onclick="${click}">${dateCell(p.date)}
+      <div class="r-main"><div class="r-title"><span class="badge ${cls}">${srcName[p.src]}</span>${fmt(p.odo)} km</div><div class="r-sub">${esc(p.memo||'')}</div></div>
+      <div class="r-right"><div class="r-amt" style="font-size:13px">${p.delta!=null?(p.delta>=0?'+':'')+fmt(p.delta)+' km':''}</div><div class="r-amt2">${p.days?p.days+'日':''}</div></div></div>`;
+  }, g=>{ const s=g.reduce((a,p)=>a+(p.delta||0),0); return s?`+${fmt(s)} km`:''; });
+}
+
+function openOdoSheet(id){
+  const o = id ? D.odo.find(x=>x.id===id) : null;
+  const v = o || {date:todayStr(), odo:'', memo:''};
+  const cur = currentOdo();
+  openSheet(o?'ODOを編集':'ODOを記録', `
+    <div class="fld"><label>日付</label><input type="date" id="o-date" value="${esc(v.date)}"></div>
+    <div class="fld"><label>ODO（km）</label><input type="text" inputmode="decimal" id="o-odo" value="${esc(v.odo)}" placeholder="${cur?fmt(cur.odo):''}">
+      <div class="hint">${cur?`現在の最大値：${fmt(cur.odo)} km（${cur.date}）`:''}</div></div>
+    <div class="fld"><label>メモ</label><input type="text" id="o-memo" value="${esc(v.memo)}" placeholder="例：月末記録、旅行 など"></div>
+    <div class="muted">給油・メンテナンスで入力したODOも自動でこのログに反映されます</div>
+  `, () => {
+    const rec = {id:o?.id||uid(), date:$('o-date').value, odo:$('o-odo').value.trim(), memo:$('o-memo').value.trim()};
+    if(!rec.date) return '日付を入力してください';
+    if(num(rec.odo)==null) return 'ODOを入力してください';
+    upsert(D.odo, rec);
+  }, o ? () => remove(D.odo, o.id) : null);
+}
+
+/* ---------- メンテナンス ---------- */
+function renderMaint(){
+  const list = D.maint.filter(m=>inYear(m.date) && (state.maintFilter==='all' || m.category===state.maintFilter)).sort(byDateDesc);
+  const all = D.maint.filter(m=>inYear(m.date));
+  const total = list.reduce((s,m)=>s+(num(m.cost)||0),0);
+  const wash = all.filter(m=>/洗車/.test(m.category||'')).length;
+  const lastOil = D.maint.filter(m=>m.category==='オイル交換').sort(byDateDesc)[0];
+  const cur = currentOdo();
+  $('maint-kpi').innerHTML =
+    kpi('件数', list.length, '件') +
+    kpi('費用', yen(total)) +
+    kpi('洗車回数', wash, '回', '洗車・手洗い洗車') +
+    kpi('前回オイル交換', lastOil ? lastOil.date.slice(2).replace(/-/g,'/') : '—', '', lastOil && num(lastOil.odo)!=null && cur ? `以降 ${fmt(cur.odo-num(lastOil.odo))} km` : '');
+  const used = [...new Set(all.map(m=>m.category))];
+  const cats = D.maintCats.filter(c=>used.includes(c)).concat(used.filter(c=>!D.maintCats.includes(c)));
+  $('maint-filter').innerHTML = chipsHtml(cats, state.maintFilter, 'maintFilter');
+  $('maint-list').innerHTML = groupedList(list, m=>{
+    const sub = [num(m.odo)!=null?`ODO ${fmt(num(m.odo))}`:'', m.shop, m.nextDate||num(m.nextOdo)!=null?'次回予定あり':''].filter(Boolean).join(' · ');
+    return `<div class="row" onclick="openMaintSheet('${m.id}')">${dateCell(m.date)}
+      <div class="r-main"><div class="r-title"><span class="badge maint">${esc(m.category)}</span>${esc(m.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
+      <div class="r-right"><div class="r-amt">${num(m.cost)?yen(num(m.cost)):'<span class="muted">—</span>'}</div></div></div>`;
+  }, g=>yen(g.reduce((s,m)=>s+(num(m.cost)||0),0)));
+}
+
+function openMaintSheet(id){
+  const m = id ? D.maint.find(x=>x.id===id) : null;
+  const v = m || {date:todayStr(), odo:'', category: state.maintFilter!=='all'?state.maintFilter:D.maintCats[0], title:'', cost:'', shop:'', memo:'', nextDate:'', nextOdo:''};
+  const cats = D.maintCats.includes(v.category) ? D.maintCats : [v.category, ...D.maintCats];
+  openSheet(m?'メンテナンスを編集':'メンテナンスを記録', `
+    <div class="fld-row">
+      <div class="fld"><label>日付</label><input type="date" id="m-date" value="${esc(v.date)}"></div>
+      <div class="fld"><label>区分</label><select id="m-cat">${cats.map(c=>`<option ${c===v.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+    </div>
+    <div class="fld"><label>内容</label><input type="text" id="m-title" value="${esc(v.title)}" placeholder="例：0W-20 4L、ガラスコーティング"></div>
+    <div class="fld-row">
+      <div class="fld"><label>費用（円）</label><input type="text" inputmode="numeric" id="m-cost" value="${esc(v.cost)}"></div>
+      <div class="fld"><label>ODO（km）</label><input type="text" inputmode="decimal" id="m-odo" value="${esc(v.odo)}"></div>
+    </div>
+    <div class="fld"><label>店舗・場所</label><input type="text" id="m-shop" value="${esc(v.shop)}" placeholder="例：ディーラー、自宅"></div>
+    <div class="fld"><label>メモ</label><textarea id="m-memo">${esc(v.memo)}</textarea></div>
+    <div class="card-title" style="margin-top:4px;">次回予定（任意）</div>
+    <div class="fld-row">
+      <div class="fld"><label>次回予定日</label><input type="date" id="m-ndate" value="${esc(v.nextDate)}"></div>
+      <div class="fld"><label>次回ODO（km）</label><input type="text" inputmode="decimal" id="m-nodo" value="${esc(v.nextOdo)}"></div>
+    </div>
+    <div class="hint muted" style="margin-top:-6px;">同じ区分の最新記録の予定がホームに表示されます</div>
+  `, () => {
+    const rec = {id:m?.id||uid(), date:$('m-date').value, category:$('m-cat').value, title:$('m-title').value.trim(), cost:$('m-cost').value.trim(),
+      odo:$('m-odo').value.trim(), shop:$('m-shop').value.trim(), memo:$('m-memo').value.trim(), nextDate:$('m-ndate').value, nextOdo:$('m-nodo').value.trim()};
+    if(!rec.date) return '日付を入力してください';
+    upsert(D.maint, rec);
+  }, m ? () => remove(D.maint, m.id) : null);
+}
+
+/* ---------- その他費用 ---------- */
+function renderCost(){
+  const all = D.costs.filter(c=>inYear(c.date));
+  const list = all.filter(c=>state.costFilter==='all' || c.category===state.costFilter).sort(byDateDesc);
+  const total = list.reduce((s,c)=>s+(num(c.amount)||0),0);
+  const initial = list.filter(c=>c.initial).reduce((s,c)=>s+(num(c.amount)||0),0);
+  const ins = all.filter(c=>/保険/.test(c.category||'')).reduce((s,c)=>s+(num(c.amount)||0),0);
+  const tax = all.filter(c=>/税/.test(c.category||'')).reduce((s,c)=>s+(num(c.amount)||0),0);
+  $('cost-kpi').innerHTML =
+    kpi('合計', yen(total), '', `${list.length}件`) +
+    kpi('初期費用', yen(initial), '', '維持費から除外') +
+    kpi('保険', yen(ins)) +
+    kpi('税金', yen(tax));
+  const used = [...new Set(all.map(c=>c.category))];
+  const cats = D.costCats.filter(c=>used.includes(c)).concat(used.filter(c=>!D.costCats.includes(c)));
+  $('cost-filter').innerHTML = chipsHtml(cats, state.costFilter, 'costFilter');
+  $('cost-list').innerHTML = groupedList(list, c=>{
+    const sub = [c.until?`期限 ${c.until}`:'', c.memo].filter(Boolean).join(' · ');
+    return `<div class="row" onclick="openCostSheet('${c.id}')">${dateCell(c.date)}
+      <div class="r-main"><div class="r-title"><span class="badge cost">${esc(c.category)}</span>${c.initial?'<span class="badge">初期</span>':''}${esc(c.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
+      <div class="r-right"><div class="r-amt">${yen(num(c.amount))}</div></div></div>`;
+  }, g=>yen(g.reduce((s,c)=>s+(num(c.amount)||0),0)));
+}
+
+function openCostSheet(id){
+  const c = id ? D.costs.find(x=>x.id===id) : null;
+  const def = state.costFilter!=='all' ? state.costFilter : D.costCats[0];
+  const v = c || {date:todayStr(), category:def, title:'', amount:'', initial: /購入/.test(def), until:'', memo:''};
+  const cats = D.costCats.includes(v.category) ? D.costCats : [v.category, ...D.costCats];
+  openSheet(c?'費用を編集':'費用を記録', `
+    <div class="fld-row">
+      <div class="fld"><label>日付</label><input type="date" id="c-date" value="${esc(v.date)}"></div>
+      <div class="fld"><label>区分</label><select id="c-cat">${cats.map(x=>`<option ${x===v.category?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
+    </div>
+    <div class="fld"><label>内容</label><input type="text" id="c-title" value="${esc(v.title)}" placeholder="例：車両本体、オプション、年間保険料"></div>
+    <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="c-amount" value="${esc(v.amount)}"></div>
+    <div class="fld"><label class="check"><input type="checkbox" id="c-initial" ${v.initial?'checked':''}>初期費用（車両購入など。維持費/kmの計算から除外）</label></div>
+    <div class="fld"><label>期限・満了日（任意）</label><input type="date" id="c-until" value="${esc(v.until)}"><div class="hint">保険の満期・車検期限など。ホームに残り日数を表示</div></div>
+    <div class="fld"><label>メモ</label><textarea id="c-memo">${esc(v.memo)}</textarea></div>
+  `, () => {
+    const rec = {id:c?.id||uid(), date:$('c-date').value, category:$('c-cat').value, title:$('c-title').value.trim(), amount:$('c-amount').value.trim(),
+      initial:$('c-initial').checked, until:$('c-until').value, memo:$('c-memo').value.trim()};
+    if(!rec.date) return '日付を入力してください';
+    if(!num(rec.amount)) return '金額を入力してください';
+    upsert(D.costs, rec);
+  }, c ? () => remove(D.costs, c.id) : null);
+  if(!c) $('c-cat').onchange = e => { $('c-initial').checked = /購入/.test(e.target.value); };
+}
+
+/* ---------- 設定 ---------- */
+function renderSettings(){
+  const v = D.vehicle;
+  const rows = [['車両名',v.name],['車種・グレード',v.model],['年式',v.year],['購入日',v.purchaseDate],['購入時ODO',v.initialOdo?fmt(num(v.initialOdo))+' km':''],['油種',v.fuelType],['タンク容量',v.tankCapacity?v.tankCapacity+' L':'']];
+  $('set-vehicle').innerHTML = rows.map(([k,x])=>`<div class="set-row"><div class="muted">${k}</div><div>${esc(x)||'<span class="muted">未設定</span>'}</div></div>`).join('');
+  $('set-theme').value = document.documentElement.dataset.theme;
+  const catHtml = key => D[key].map((c,i)=>`<div class="cat-item">
+      <input type="text" value="${esc(c)}" onchange="renameCat('${key}',${i},this.value)">
+      <button class="btn sm" onclick="moveCat('${key}',${i},-1)" ${i?'':'disabled'}>↑</button>
+      <button class="btn sm" onclick="moveCat('${key}',${i},1)" ${i<D[key].length-1?'':'disabled'}>↓</button>
+      <button class="btn sm danger" onclick="delCat('${key}',${i})">✕</button></div>`).join('');
+  $('set-maint-cats').innerHTML = catHtml('maintCats');
+  $('set-cost-cats').innerHTML = catHtml('costCats');
+}
+function openVehicleSheet(){
+  const v = D.vehicle;
+  openSheet('車両情報', `
+    <div class="fld"><label>車両名（表示名）</label><input type="text" id="v-name" value="${esc(v.name)}" placeholder="例：マイカー"></div>
+    <div class="fld-row">
+      <div class="fld"><label>車種・グレード</label><input type="text" id="v-model" value="${esc(v.model)}"></div>
+      <div class="fld"><label>年式</label><input type="text" inputmode="numeric" id="v-year" value="${esc(v.year)}" placeholder="2024"></div>
+    </div>
+    <div class="fld-row">
+      <div class="fld"><label>購入日</label><input type="date" id="v-pdate" value="${esc(v.purchaseDate)}"></div>
+      <div class="fld"><label>購入時ODO（km）</label><input type="text" inputmode="decimal" id="v-iodo" value="${esc(v.initialOdo)}"></div>
+    </div>
+    <div class="fld-row">
+      <div class="fld"><label>油種</label><select id="v-fuel">${FUEL_TYPES.map(t=>`<option ${t===v.fuelType?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="fld"><label>タンク容量（L）</label><input type="text" inputmode="decimal" id="v-tank" value="${esc(v.tankCapacity)}"></div>
+    </div>
+    <div class="muted">購入日・購入時ODOはODOログの起点として使用します</div>
+  `, () => {
+    D.vehicle = {name:$('v-name').value.trim(), model:$('v-model').value.trim(), year:$('v-year').value.trim(), purchaseDate:$('v-pdate').value,
+      initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim()};
+  });
+}
+function addCat(key){ D[key].push('新しい区分'); saveData(); render(); }
+function renameCat(key,i,val){
+  val = val.trim(); if(!val) { render(); return; }
+  const old = D[key][i]; D[key][i] = val;
+  const arr = key==='maintCats' ? D.maint : D.costs;
+  arr.forEach(r=>{ if(r.category===old) r.category=val; });
+  saveData(); render();
+}
+function moveCat(key,i,d){ const a=D[key]; [a[i],a[i+d]]=[a[i+d],a[i]]; saveData(); render(); }
+function delCat(key,i){
+  const arr = key==='maintCats' ? D.maint : D.costs;
+  const n = arr.filter(r=>r.category===D[key][i]).length;
+  if(!confirm(`「${D[key][i]}」を削除しますか？` + (n?`\n（使用中の記録 ${n}件は区分名がそのまま残ります）`:''))) return;
+  D[key].splice(i,1); saveData(); render();
+}
+function setTheme(t){ document.documentElement.dataset.theme=t; try{localStorage.setItem(THEME_KEY,t);}catch{} render(); }
+function exportJson(){
+  const blob = new Blob([JSON.stringify({app:'carlog', version:APP_VERSION, exportedAt:new Date().toISOString(), data:D}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `carlog_${todayStr()}.json`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+function importJson(input){
+  const file = input.files[0]; if(!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const j = JSON.parse(r.result); const d = j.data || j;
+      if(!Array.isArray(d.fuel)) throw 0;
+      if(!confirm('現在のデータを置き換えて復元しますか？')) return;
+      D = Object.assign(emptyData(), d); saveData(); render(); toast('復元しました');
+    }catch{ toast('読み込めないファイルです'); }
+    input.value='';
+  };
+  r.readAsText(file);
+}
+function clearAll(){
+  if(!confirm('すべての記録と設定を削除しますか？（元に戻せません）')) return;
+  D = emptyData(); saveData(); render(); toast('削除しました');
+}
+function loadSample(){
+  if((D.fuel.length||D.maint.length||D.costs.length||D.odo.length) && !confirm('現在のデータを置き換えてサンプルを投入しますか？')) return;
+  const d = emptyData();
+  const y = new Date().getFullYear();
+  d.vehicle = {name:'マイカー', model:'コンパクトSUV', year:String(y-2), purchaseDate:`${y-2}-04-10`, initialOdo:'12', fuelType:'レギュラー', tankCapacity:'45'};
+  d.costs.push({id:uid(), date:`${y-2}-04-10`, category:'車両購入', title:'車両本体＋諸費用', amount:'2850000', initial:true, until:'', memo:''});
+  let odo = 12, t = new Date(y-2,3,20);
+  const end = new Date();
+  let i = 0;
+  while(t < end){
+    odo += 380 + Math.round(Math.random()*180);
+    const liters = (odo % 7 === 0) ? 18 + Math.random()*5 : 30 + Math.random()*8;
+    const price = 165 + Math.round(Math.random()*12);
+    const ds = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+    d.fuel.push({id:uid(), date:ds, odo:String(odo), liters:liters.toFixed(2), unitPrice:String(price), total:String(Math.round(liters*price)), full: odo % 7 !== 0, fuelType:'レギュラー', station:i%3?'セルフA':'B石油', memo:''});
+    if(i%3===1) d.maint.push({id:uid(), date:ds, odo:String(odo), category:i%6===1?'手洗い洗車':'洗車', title:'', cost:i%6===1?'2500':'800', shop:'', memo:'', nextDate:'', nextOdo:''});
+    if(t.getDate()>20) d.odo.push({id:uid(), date:ds.slice(0,8)+'28', odo:String(odo+60), memo:'月末記録'});
+    t = new Date(t.getTime() + (12+Math.round(Math.random()*8))*86400000); i++;
+  }
+  const lastOdo = odo;
+  d.maint.push({id:uid(), date:`${y-1}-04-15`, odo:String(Math.round(lastOdo*0.5)), category:'法定点検', title:'12ヶ月点検', cost:'15400', shop:'ディーラー', memo:'', nextDate:'', nextOdo:''});
+  d.maint.push({id:uid(), date:`${y}-03-05`, odo:String(Math.round(lastOdo*0.85)), category:'オイル交換', title:'0W-20 4L', cost:'5500', shop:'ディーラー', memo:'', nextDate:`${y}-09-05`, nextOdo:String(Math.round(lastOdo*0.85)+5000)});
+  d.maint.push({id:uid(), date:`${y-1}-11-20`, odo:String(Math.round(lastOdo*0.7)), category:'タイヤ', title:'スタッドレス交換', cost:'4400', shop:'カー用品店', memo:'', nextDate:'', nextOdo:''});
+  d.maint.push({id:uid(), date:`${y-1}-06-01`, odo:String(Math.round(lastOdo*0.55)), category:'カスタム', title:'ドラレコ取付', cost:'38000', shop:'カー用品店', memo:'', nextDate:'', nextOdo:''});
+  d.maint.push({id:uid(), date:`${y-2}-05-10`, odo:'900', category:'コーティング', title:'ガラスコーティング', cost:'66000', shop:'専門店', memo:'', nextDate:`${y+1}-05-10`, nextOdo:''});
+  for(let k=y-2;k<=y;k++){
+    d.costs.push({id:uid(), date:`${k}-04-08`, category:'任意保険', title:'年間保険料', amount:String(62000-(k-y+2)*4000), initial:false, until:`${k+1}-04-09`, memo:''});
+    d.costs.push({id:uid(), date:`${k}-05-20`, category:'自動車税', title:'', amount:'30500', initial:false, until:'', memo:''});
+  }
+  d.costs.push({id:uid(), date:`${y-2}-04-10`, category:'自賠責保険', title:'37ヶ月', amount:'24190', initial:true, until:`${y+1}-05-10`, memo:''});
+  D = d; saveData(); state.year = String(y); render(); toast('サンプルを投入しました');
+}
+
+/* ---------- 共通：シート ---------- */
+let _sheetSave = null;
+function openSheet(title, body, onSave, onDelete){
+  $('sh-title').textContent = title;
+  $('sh-body').innerHTML = body;
+  $('sh-foot').innerHTML = (onDelete?'<button class="btn danger" id="sh-del">削除</button>':'') + '<button class="btn" onclick="closeSheet()">キャンセル</button><button class="btn primary" id="sh-save">保存</button>';
+  $('sh-save').onclick = () => {
+    const err = onSave();
+    if(err){ toast(err); return; }
+    saveData(); closeSheet(); render(); toast('保存しました');
+  };
+  if(onDelete) $('sh-del').onclick = () => { if(!confirm('この記録を削除しますか？')) return; onDelete(); saveData(); closeSheet(); render(); toast('削除しました'); };
+  $('sheet').classList.add('show'); $('sheet-bg').classList.add('show');
+  $('sh-body').scrollTop = 0;
+}
+function closeSheet(){ $('sheet').classList.remove('show'); $('sheet-bg').classList.remove('show'); }
+function upsert(arr, rec){ const i = arr.findIndex(x=>x.id===rec.id); if(i>=0) arr[i]=rec; else arr.push(rec); }
+function remove(arr, id){ const i = arr.findIndex(x=>x.id===id); if(i>=0) arr.splice(i,1); }
+
+/* ---------- ナビ ---------- */
+const FAB_ACTION = {home:()=>openFuelSheet(), fuel:()=>openFuelSheet(), odo:()=>openOdoSheet(), maint:()=>openMaintSheet(), cost:()=>openCostSheet()};
+function onFab(){ FAB_ACTION[state.page]?.(); }
+function showPage(p){
+  state.page = p;
+  document.querySelectorAll('.page').forEach(el=>el.classList.toggle('active', el.id==='page-'+p));
+  document.querySelectorAll('.nav-btn').forEach(el=>el.classList.toggle('active', el.dataset.page===p));
+  $('fab').classList.toggle('show', !!FAB_ACTION[p]);
+  window.scrollTo(0,0);
+  render();
+}
+function render(){
+  const v = D.vehicle;
+  $('h-title').innerHTML = esc(v.name || 'カーログ') + (v.model?`<span class="h-sub">${esc(v.model)}</span>`:'');
+  renderYearSelects();
+  ({home:renderHome, fuel:renderFuel, odo:renderOdo, maint:renderMaint, cost:renderCost, settings:renderSettings})[state.page]();
+}
+
+document.querySelectorAll('.app-ver').forEach(el=>el.textContent=APP_VERSION);
+try{ const t = localStorage.getItem(THEME_KEY); if(t) document.documentElement.dataset.theme = t; }catch{}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheet(); });
+let _rz; window.addEventListener('resize', ()=>{ clearTimeout(_rz); _rz=setTimeout(render,200); });
+showPage('home');
+</script>
+</body>
+</html>
