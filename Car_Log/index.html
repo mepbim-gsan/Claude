@@ -429,7 +429,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-09.5';
+const APP_VERSION = 'v07_2026-11-09.6';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1406,7 +1406,8 @@ function openInitList(){
      <div class="muted" style="margin-top:8px;">納車日（${esc(V.info.purchaseDate)||'未設定'}）の費用として集計し、維持費/kmからは除外します</div>`);
 }
 function vehicleListHtml(onclick){
-  return D.vehicles.map(v=>`<div class="set-row" style="cursor:pointer" onclick="${onclick}('${v.id}')">
+  // サンプル車は常に一番下（それ以外は登録順）
+  return [...D.vehicles].sort((a,b)=>(a.sample?1:0)-(b.sample?1:0)).map(v=>`<div class="set-row" style="cursor:pointer" onclick="${onclick}('${v.id}')">
     <div><span style="color:var(--accent);display:inline-block;width:18px;">${v.id===D.curId?'●':''}</span>${carIco(v.info.color)} ${esc(v.info.name||'（名称未設定）')}${v.sample?' <span class="badge warn">サンプル</span>':''}<div class="muted" style="margin-left:18px;">${esc([v.info.model, v.info.year?v.info.year+'年式':''].filter(Boolean).join(' / '))}</div></div>
     <div class="muted" style="white-space:nowrap;font-size:11px;">給油${v.fuel.length} / メンテ${v.maint.length}</div></div>`).join('');
 }
@@ -1452,7 +1453,7 @@ function openVehicleSheet(isNew){
       initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim(),
       color:(document.querySelector('#v-colors .swatch.active')||{}).dataset?.color || CAR_COLORS[0][1]};
     if(!info.name) return '車両名を入力してください';
-    if(isNew){ const nv = newVehicle(info); D.vehicles.push(nv); D.curId = nv.id; syncV(); Object.assign(state, {year:String(new Date().getFullYear()), odoRange:'year'}); }
+    if(isNew){ const nv = newVehicle(info); const si = D.vehicles.findIndex(x=>x.sample); if(si>=0) D.vehicles.splice(si,0,nv); else D.vehicles.push(nv); D.curId = nv.id; syncV(); Object.assign(state, {year:String(new Date().getFullYear()), odoRange:'year'}); }
     else V.info = info;
   }, canDel ? deleteVehicle : null);
 }
