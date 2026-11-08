@@ -419,7 +419,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-08.7';
+const APP_VERSION = 'v07_2026-11-08.8';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1044,7 +1044,7 @@ function renderFuel(){
     const r = fs[f.id] || {};
     const sub = [num(f.odo)!=null?`ODO ${fmt(num(f.odo))}`:'', r.dist!=null?`+${fmt(r.dist)}km`:'', f.station].filter(Boolean).join(' · ');
     return `<div class="row" onclick="openFuelSheet('${f.id}')">${dateCell(f.date)}
-      <div class="r-main"><div class="r-title">${f.full?'':'<span class="badge warn">部分</span>'}${fmt(num(f.liters),2)} L <span class="muted">@${fmt(num(f.unitPrice),1)}円 ${esc(f.fuelType||'')}</span></div><div class="r-sub">${esc(sub)}</div></div>
+      <div class="r-main"><div class="r-title">${f.full?'':'<span class="badge warn">部分</span>'}${fmt(num(f.liters),2)} L <span class="muted">@${fmt(num(f.unitPrice),1)}円</span>${f.fuelType && f.fuelType!==(V.info.fuelType||'レギュラー') ? ` <span class="badge">${esc(f.fuelType)}</span>` : ''}</div><div class="r-sub">${esc(sub)}</div></div>
       <div class="r-right"><div class="r-amt">${yen(num(f.total))}</div><div class="r-amt2">${r.eco?fmt(r.eco,2)+' km/L':''}</div></div></div>`;
   }, g=>yen(g.reduce((s,f)=>s+(num(f.total)||0),0)));
 }
@@ -1066,7 +1066,6 @@ function openFuelSheet(id){
     <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="f-total" value="${esc(v.total)}"><div class="hint">給油量×単価で自動計算。金額を入力すると単価を逆算</div></div>
     <div class="fld"><label class="check"><input type="checkbox" id="f-full" ${v.full?'checked':''}>満タン給油（燃費計算に使用）</label></div>
     <div class="fld-row">
-      <div class="fld"><label>油種</label><select id="f-type">${FUEL_TYPES.map(t=>`<option ${t===v.fuelType?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="fld"><label>スタンド</label><input type="text" id="f-station" value="${esc(v.station)}" list="f-station-list"><datalist id="f-station-list">${topStations(10).map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
     </div>
     ${topStations(3).length ? `<div class="chips" style="margin-top:-6px;">${topStations(3).map(x=>`<button type="button" class="chip" onclick="$('f-station').value=this.textContent">${esc(x)}</button>`).join('')}</div>` : ''}
@@ -1074,7 +1073,8 @@ function openFuelSheet(id){
   `, () => {
     const rec = { id: f?.id || uid(), date:$('f-date').value, odo:$('f-odo').value.trim(), liters:$('f-liters').value.trim(),
       unitPrice:$('f-price').value.trim(), total:$('f-total').value.trim(), full:$('f-full').checked,
-      fuelType:$('f-type').value, station:$('f-station').value.trim(), memo:$('f-memo').value.trim() };
+      fuelType: v.fuelType || V.info.fuelType || 'レギュラー',   // 油種は車両情報で設定（既存記録は元の値を維持）
+      station:$('f-station').value.trim(), memo:$('f-memo').value.trim() };
     if(!rec.date) return '日付を入力してください';
     if(!num(rec.liters)) return '給油量を入力してください';
     if(!num(rec.total) && num(rec.unitPrice)) rec.total = String(Math.round(num(rec.liters)*num(rec.unitPrice)));
