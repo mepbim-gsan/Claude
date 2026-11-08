@@ -419,7 +419,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-08.2';
+const APP_VERSION = 'v07_2026-11-08.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1411,18 +1411,22 @@ function clearAll(){
 function buildSample(){
   const d = newVehicle();
   d.sample = true;
-  const y = new Date().getFullYear();
-  d.info = {name:'サンプル', model:'コンパクトSUV', year:String(y-2), purchaseDate:`${y-2}-04-10`, initialOdo:'12', fuelType:'レギュラー', tankCapacity:'45', color:'#a8adb7'};
-  [['車両本体','',2650000],['オプション・付属品','ナビ・ETC・マット',280000],['値引き','',-150000],['環境性能割','',27000],['自動車重量税','3年分',24600],['自賠責保険','37ヶ月',24190],['自動車税（月割）','',23000],['リサイクル料金','',11000],['登録・納車費用','',60000]]
+  const y = new Date().getFullYear(), today = todayStr();
+  const Y0 = y-4;                                   // 約4年前の4月に納車
+  const ymd = t => t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  const at = (yy,mm,dd) => ymd(new Date(yy,mm-1,dd));
+  d.info = {name:'サンプル', model:'コンパクトSUV', year:String(Y0), purchaseDate:at(Y0,4,10), initialOdo:'12', fuelType:'レギュラー', tankCapacity:'45', color:'#a8adb7'};
+  [['車両本体','',2650000],['値引き','',-150000],['環境性能割','',27000],['自動車重量税','3年分',24600],['自賠責保険','37ヶ月',24190],['自動車税（月割）','',23000],['リサイクル料金','',11000],['登録・納車費用','',60000],['オプション・付属品','ナビ・ETC・マット',280000],['コーティング','ガラスコーティング',66000]]
     .forEach(([c,t,a])=>d.initCosts.push({id:uid(), category:c, title:t, amount:String(a), memo:''}));
-  let odo = 12, t = new Date(y-2,3,20);
+
+  // 給油（12〜20日ごと、約9,000km/年）・洗車
+  let odo = 12, t = new Date(Y0,3,20), i = 0;
   const end = new Date();
-  let i = 0;
   while(t < end){
     odo += 380 + Math.round(Math.random()*180);
     const liters = (odo % 7 === 0) ? 18 + Math.random()*5 : 30 + Math.random()*8;
-    const price = 165 + Math.round(Math.random()*12);
-    const ds = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+    const price = 160 + Math.round(Math.random()*16);
+    const ds = ymd(t);
     d.fuel.push({id:uid(), date:ds, odo:String(odo), liters:liters.toFixed(2), unitPrice:String(price), total:String(Math.round(liters*price)), full: odo % 7 !== 0, fuelType:'レギュラー', station:i%3?'セルフA':'B石油', memo:''});
     if(i%3===1) d.maint.push({id:uid(), date:ds, odo:String(odo), category:i%6===1?'手洗い洗車':'洗車', title:'', cost:i%6===1?'2500':'800', shop:'', memo:'', nextDate:'', nextOdo:''});
     t = new Date(t.getTime() + (12+Math.round(Math.random()*8))*86400000); i++;
@@ -1430,25 +1434,52 @@ function buildSample(){
   // メンテのODOは給油記録から日付で補間（グラフ上で点がずれないように）
   const fp = [{date:d.info.purchaseDate, odo:12}, ...d.fuel.map(f=>({date:f.date, odo:+f.odo}))];
   const odoOn = ds => String(Math.round(odoAt(fp, dateMs(ds))));
-  for(let m=new Date(y-2,4,28); m.getTime()<=dateMs(fp[fp.length-1].date); m.setMonth(m.getMonth()+1)){
-    const ds = m.getFullYear()+'-'+String(m.getMonth()+1).padStart(2,'0')+'-28';
-    d.odo.push({id:uid(), date:ds, odo:odoOn(ds), memo:'月末記録'});
+  for(let m=new Date(Y0,4,28); m.getTime()<=dateMs(fp[fp.length-1].date); m.setMonth(m.getMonth()+1)){
+    const ds = ymd(m); d.odo.push({id:uid(), date:ds, odo:odoOn(ds), memo:'月末記録'});
   }
-  [[`${y-2}-05-10`,'コーティング','ガラスコーティング','66000','専門店',`${y+1}-05-10`,0],
-   [`${y-1}-04-15`,'法定点検','12ヶ月点検','15400','ディーラー','',0],
-   [`${y-1}-06-01`,'カスタム','ドラレコ取付','38000','カー用品店','',0],
-   [`${y-1}-11-20`,'タイヤ','スタッドレス交換','4400','カー用品店','',0],
-   [`${y}-03-05`,'オイル交換','0W-20 4L','5500','ディーラー',`${y}-09-05`,5000]
-  ].forEach(([ds,cat,title,cost,shop,nd,nk])=>{
+  const M = [];   // [日付, 区分, 内容, 費用, 店舗, 次回予定日, 次回ODO加算, メモ]
+  // 法定点検・車検（新車: 初回車検3年、以後2年ごと。車検のない年は12ヶ月点検）
+  for(let k=1;k<=6;k++){
+    const yy = Y0+k, ds = at(yy,4,5);
+    if(k===3 || k===5) M.push([ds,'車検', k===3?'初回車検（24ヶ月点検含む）':'車検（24ヶ月点検含む）','52800','ディーラー', at(yy+2,4,9), 0, '整備・代行料・印紙代（重量税・自賠責は費用に記録）']);
+    else M.push([ds,'法定点検','12ヶ月点検','15400','ディーラー','',0,'']);
+  }
+  // オイル交換（半年ごと）・フィルター（1年ごと）
+  for(let k=0;k<12;k++){
+    const dt = new Date(Y0,4+k*6,15);
+    M.push([ymd(dt),'オイル交換','0W-20 4L','5500','ディーラー', ymd(new Date(Y0,4+(k+1)*6,15)), 6000,'']);
+    if(k%2===1) M.push([ymd(dt),'オイルフィルター','','1650','ディーラー','',0,'']);
+  }
+  // 季節・消耗品・カスタム・修理
+  for(let yy=Y0; yy<=y; yy++){
+    M.push([at(yy,11,20),'タイヤ','スタッドレスに交換','4400','カー用品店','',0,'']);
+    M.push([at(yy+1,4,2),'タイヤ','夏タイヤに交換','4400','カー用品店','',0,'']);
+    M.push([at(yy,6,20),'消耗品','ワイパーゴム交換','2800','カー用品店','',0,'']);
+    if(yy>Y0) M.push([at(yy,5,10),'コーティング','メンテナンス','11000','専門店', at(yy+1,5,10),0,'']);
+  }
+  M.push([at(Y0,11,10),'タイヤ','スタッドレスタイヤ購入（ホイール付）','98000','カー用品店','',0,'']);
+  M.push([at(Y0+1,6,1),'カスタム','ドラレコ取付','38000','カー用品店','',0,'']);
+  M.push([at(Y0+2,9,12),'修理','バンパー擦り傷補修','27500','板金工場','',0,'駐車場で擦った']);
+  M.push([at(Y0+3,10,8),'バッテリー','バッテリー交換','18700','カー用品店','',0,'']);
+  M.push([at(Y0+4,7,3),'カスタム','フロアマット交換','15800','通販','',0,'']);
+  M.filter(m=>m[0]<=today).forEach(([ds,cat,title,cost,shop,nd,nk,memo])=>{
     const o = odoOn(ds);
-    d.maint.push({id:uid(), date:ds, odo:o, category:cat, title, cost, shop, memo:'', nextDate:nd, nextOdo:nk?String(+o+nk):''});
+    d.maint.push({id:uid(), date:ds, odo:o, category:cat, title, cost, shop, memo, nextDate:nd, nextOdo:nk?String(+o+nk):''});
   });
-  for(let k=y-2;k<=y;k++){
-    d.costs.push({id:uid(), date:`${k}-04-08`, category:'任意保険', title:'年間保険料', amount:String(62000-(k-y+2)*4000), until:`${k+1}-04-09`, memo:''});
-    d.costs.push({id:uid(), date:`${k}-05-20`, category:'自動車税（種別割）', title:'', amount:'30500', until:'', memo:''});
-    d.costs.push({id:uid(), date:`${k}-06-01`, category:'ロードサービス・会員', title:'年会費', amount:'4000', until:`${k+1}-05-31`, memo:''});
-    d.costs.push({id:uid(), date:`${k}-08-12`, category:'高速・有料道路', title:'帰省', amount:'8640', until:'', memo:''});
+  // 費用（保険・税金・車検時の法定費用・ロードサービス・高速）
+  const C = [];
+  for(let yy=Y0; yy<=y; yy++){
+    C.push([at(yy,4,10),'任意保険','年間保険料', 68000-(yy-Y0)*5000, at(yy+1,4,9)]);
+    if(yy>Y0) C.push([at(yy,5,20),'自動車税（種別割）','',30500,'']);
+    C.push([at(yy,6,1),'ロードサービス・会員','年会費',4000, at(yy+1,5,31)]);
+    C.push([at(yy,8,12),'高速・有料道路','帰省',8640,'']);
+    C.push([at(yy,12,29),'高速・有料道路','年末帰省',9120,'']);
   }
+  [3,5].forEach(k=>{
+    C.push([at(Y0+k,4,5),'自動車重量税','車検（2年分）',24600,'']);
+    C.push([at(Y0+k,4,5),'自賠責保険','車検（24ヶ月）',17650, at(Y0+k+2,4,9)]);
+  });
+  C.filter(c=>c[0]<=today).forEach(([ds,cat,title,amt,until])=>d.costs.push({id:uid(), date:ds, category:cat, title, amount:String(amt), until:until||'', memo:''}));
   return d;
 }
 function rebuildSample(){
