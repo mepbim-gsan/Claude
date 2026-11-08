@@ -5,6 +5,88 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>CarLog</title>
 <meta name="theme-color" content="#0f1117">
+<link rel="manifest" href="./manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+<script type="module">
+// Firebase（Googleログイン＋Firestore同期）。未設定・未ログインでも端末内保存で動作する
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const CONFIG_KEY = 'firebase-config-v1';   // 同一サイトの他ツールと共通
+const FIRESTORE_DOC = 'carlog-main';
+const C = window._cloud = { configured:false, projectId:'', user:null, status:'', push(){}, login(){}, logout(){} };
+const refresh = () => window.renderCloud && window.renderCloud();
+const setStatus = t => { C.status = t; refresh(); };
+
+let cfg = null;
+try { cfg = JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null'); } catch {}
+if (cfg && cfg.apiKey) {
+  try { start(cfg); } catch (e) { console.error(e); setStatus('Firebase の初期化に失敗しました'); }
+}
+refresh();
+
+function start(cfg) {
+  const app = initializeApp(cfg), auth = getAuth(app), db = getFirestore(app);
+  C.configured = true; C.projectId = cfg.projectId || '';
+  let ref = null, unsub = null, lastJson = null, timer = null;
+
+  C.login = async () => {
+    try {
+      const pv = new GoogleAuthProvider(); pv.setCustomParameters({ prompt:'select_account' });
+      await signInWithPopup(auth, pv);
+    } catch (e) { console.error(e); setStatus('ログインエラー: ' + (e.code || e.message)); }
+  };
+  C.logout = async () => { await signOut(auth); };
+  const write = async json => {
+    lastJson = json;
+    setStatus('保存中…');
+    try { await setDoc(ref, { json, updatedAt: Date.now() }); setStatus('同期済み'); }
+    catch (e) { console.error(e); setStatus('保存エラー: ' + (e.code || e.message)); }
+  };
+  C.push = () => {
+    if (!ref) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => { const j = window.cloudJson(); if (j !== lastJson) write(j); }, 800);
+  };
+
+  onAuthStateChanged(auth, async user => {
+    if (unsub) { unsub(); unsub = null; }
+    if (!user) { C.user = null; ref = null; lastJson = null; setStatus(''); return; }
+    C.user = { name: user.displayName || '', email: user.email || '' };
+    ref = doc(db, 'users', user.uid, 'data', FIRESTORE_DOC);
+    setStatus('同期を確認中…');
+    try {
+      const snap = await getDoc(ref);
+      const local = window.cloudJson();
+      if (!snap.exists()) {
+        await write(local);                      // 初回：この端末のデータをアップロード
+      } else {
+        const remote = snap.data().json;
+        const dirty = !!localStorage.getItem('carlog-dirty');
+        if (dirty && remote !== local) {
+          const choice = await window.askSyncChoice();
+          if (choice === 'cancel') { await signOut(auth); return; }
+          if (choice === 'local') await write(local);
+          else { lastJson = remote; window.applyCloudJson(remote); }
+        } else if (remote !== local) { lastJson = remote; window.applyCloudJson(remote); }
+        else lastJson = remote;
+      }
+      localStorage.removeItem('carlog-dirty');
+      setStatus('同期済み');
+      unsub = onSnapshot(ref, s => {
+        if (s.metadata.hasPendingWrites || !s.exists()) return;
+        const j = s.data().json;
+        if (j && j !== lastJson) { lastJson = j; window.applyCloudJson(j); setStatus('同期済み'); }
+      }, e => { console.error(e); setStatus('同期エラー: ' + (e.code || e.message)); });
+    } catch (e) { console.error(e); setStatus('同期エラー: ' + (e.code || e.message)); }
+  });
+}
+</script>
 <style>
 :root{
   --bg:#0f1117;--bg2:#1a1d27;--bg3:#242736;--border:#2e3247;
@@ -273,10 +355,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
     </div>
     <div class="card">
       <div class="card-title">クラウド同期</div>
-      <div class="set-row">
-        <div>Googleログイン<div class="muted">Firebase 連携は次フェーズで対応予定（現在は端末内に保存）</div></div>
-        <button class="btn sm" disabled>準備中</button>
-      </div>
+      <div id="set-cloud"></div>
     </div>
     <div class="card">
       <div class="card-title">表示</div>
@@ -336,7 +415,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v05_2026-11-08.2';
+const APP_VERSION = 'v06_2026-11-08';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -400,8 +479,79 @@ function migrate(raw){
 }
 let D, V;   // D=全データ, V=表示中の車両（起動時に初期化）
 function syncV(){ V = D.vehicles.find(v=>v.id===D.curId) || D.vehicles[0]; D.curId = V.id; }
-function saveData(){
+const DIRTY_KEY = 'carlog-dirty';   // 未ログイン中に編集した印（ログイン時の確認に使用）
+function saveLocal(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(D)); }catch(e){ toast('保存に失敗しました'); }
+}
+function saveData(){
+  saveLocal();
+  if(window._cloud && window._cloud.user) window._cloud.push();
+  else { try{ localStorage.setItem(DIRTY_KEY,'1'); }catch{} }
+}
+// クラウド保存対象: サンプル車と表示中の車両（curId）は端末ごとに持つため除外
+function cloudJson(){
+  return JSON.stringify({catsVer:D.catsVer, vehicles:D.vehicles.filter(v=>!v.sample), maintCats:D.maintCats, costCats:D.costCats, initCats:D.initCats});
+}
+function applyCloudJson(json){
+  const samples = D.vehicles.filter(v=>v.sample), cur = D.curId;
+  const d = migrate(JSON.parse(json));
+  d.vehicles = d.vehicles.filter(v=>!v.sample).concat(samples.length ? samples : [buildSample()]);
+  d.curId = d.vehicles.some(v=>v.id===cur) ? cur : d.vehicles[0].id;
+  D = d; syncV(); saveLocal(); render();
+}
+function askSyncChoice(){
+  return new Promise(resolve=>{
+    let done = false;
+    const xBtn = document.querySelector('#sheet .sh-head .icon-btn');
+    const pick = v => { if(done) return; done = true; $('sheet-bg').onclick = closeSheet; xBtn.style.display = ''; closeSheet(); resolve(v); };
+    window._syncPick = pick;
+    openSheet('同期するデータを選択', `
+      <div class="muted" style="margin-bottom:12px;">ログインしていない間にこの端末で編集したデータがあり、クラウドのデータと異なります。</div>
+      <button class="btn primary" style="width:100%;margin-bottom:8px;" onclick="_syncPick('cloud')">クラウドのデータを使う<div style="font-size:11px;font-weight:400;">この端末のデータは置き換わります</div></button>
+      <button class="btn" style="width:100%;margin-bottom:8px;" onclick="_syncPick('local')">この端末のデータでクラウドを上書き<div class="muted" style="font-size:11px;">他の端末のデータも置き換わります</div></button>
+      <button class="btn" style="width:100%;" onclick="_syncPick('cancel')">ログインをやめる</button>`);
+    $('sheet-bg').onclick = () => pick('cancel');
+    xBtn.style.display = 'none';
+    $('sh-foot').innerHTML = '';
+  });
+}
+// 設定「クラウド同期」
+function parseFirebaseConfig(text){
+  try{ return JSON.parse(text.trim()); }catch{}
+  try{
+    const m = text.replace(/\/\/.*$/gm,'').match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0].replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":').replace(/'/g,'"').replace(/,\s*\}/,'}')) : null;
+  }catch{ return null; }
+}
+function saveFirebaseConfig(){
+  const cfg = parseFirebaseConfig($('fb-config').value||'');
+  if(!cfg || !cfg.apiKey){ toast('Firebase config を読み取れませんでした'); return; }
+  try{ localStorage.setItem('firebase-config-v1', JSON.stringify(cfg)); }catch{}
+  location.reload();
+}
+function clearFirebaseConfig(){
+  if(!confirm('Firebase の設定を削除しますか？\n（同じサイトの他のツールの設定も消えます）')) return;
+  try{ localStorage.removeItem('firebase-config-v1'); }catch{}
+  location.reload();
+}
+function renderCloud(){
+  const el = $('set-cloud'); if(!el) return;
+  const C = window._cloud;
+  if(!C){ el.innerHTML = '<div class="muted">Firebase を読み込めません（オフライン、または読み込み中）</div>'; return; }
+  const cfgText = (()=>{ try{ return localStorage.getItem('firebase-config-v1')||''; }catch{ return ''; } })();
+  const cfgArea = `<details style="margin-top:10px;"><summary class="muted" style="cursor:pointer;">Firebase 設定${C.configured?'（'+esc(C.projectId)+'）':''}</summary>
+    <textarea id="fb-config" style="margin-top:8px;height:120px;font-family:monospace;font-size:12px;" placeholder="Firebase の config をここに貼り付け">${esc(cfgText?JSON.stringify(JSON.parse(cfgText),null,2):'')}</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn sm primary" onclick="saveFirebaseConfig()">保存して再読み込み</button>${C.configured?'<button class="btn sm danger" onclick="clearFirebaseConfig()">削除</button>':''}</div>
+    <div class="muted" style="margin-top:6px;">同じサイトの他のツール（タイムカード等）と共通の設定です</div></details>`;
+  if(!C.configured){
+    el.innerHTML = `<div class="muted">Firebase の設定をすると、Googleログインでスマホ・PC間の同期ができます（未設定でも端末内に保存して使えます）</div>` + cfgArea.replace('<details ','<details open ');
+    return;
+  }
+  const st = C.status ? `<div class="muted" style="margin-top:4px;color:${/エラー/.test(C.status)?'var(--danger)':'var(--text2)'}">${esc(C.status)}</div>` : '';
+  el.innerHTML = C.user
+    ? `<div class="set-row"><div>${esc(C.user.name||C.user.email)}<div class="muted">${esc(C.user.email)}</div>${st}</div><button class="btn sm" onclick="_cloud.logout()">ログアウト</button></div>
+       <div class="muted">サンプル車は同期しません（各端末で自動生成）</div>${cfgArea}`
+    : `<div class="set-row"><div>Googleログイン<div class="muted">ログインするとスマホ・PC間で同期します</div>${st}</div><button class="btn sm primary" onclick="_cloud.login()">ログイン</button></div>${cfgArea}`;
 }
 
 const state = { page:'home', year:String(new Date().getFullYear()), odoFilter:'all', odoRange:'year', maintFilter:'all', costFilter:'all' };
@@ -1075,6 +1225,7 @@ function openCostSheet(id){
 
 /* ---------- 設定 ---------- */
 function renderSettings(){
+  renderCloud();
   const v = V.info;
   const rows = [['車両名',v.name],['車種・グレード',v.model],['年式',v.year],['納車日',v.purchaseDate],['納車時ODO',v.initialOdo?fmt(num(v.initialOdo))+' km':''],['油種',v.fuelType],['タンク容量',v.tankCapacity?v.tankCapacity+' L':'']];
   $('set-vehicles').innerHTML = vehicleListHtml('switchVehicle');
@@ -1301,6 +1452,11 @@ try{ const t = localStorage.getItem(THEME_KEY); if(t) document.documentElement.d
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheet(); });
 let _rz; window.addEventListener('resize', ()=>{ clearTimeout(_rz); _rz=setTimeout(render,200); });
 showPage('home');
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('SW registration failed:', err)); });
+}
 </script>
 </body>
 </html>
