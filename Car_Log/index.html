@@ -10,14 +10,14 @@
   --bg:#0f1117;--bg2:#1a1d27;--bg3:#242736;--border:#2e3247;
   --accent:#4f8ef7;--success:#3ecf8e;--warn:#f5a623;--danger:#e05252;
   --text:#e8eaf0;--text2:#8b90a7;--text3:#5a5f7a;
-  --c-fuel:#4f8ef7;--c-maint:#3ecf8e;--c-cost:#f5a623;
+  --c-fuel:#4f8ef7;--c-maint:#3ecf8e;--c-cost:#f5a623;--c-init:#a78bfa;
   --nav-h:60px;--radius:12px;
 }
 [data-theme="light"]{
   --bg:#f4f6fb;--bg2:#ffffff;--bg3:#eef0f7;--border:#d0d5e8;
   --accent:#2563eb;--success:#16a34a;--warn:#d97706;--danger:#dc2626;
   --text:#1e2233;--text2:#6b7280;--text3:#9ca3af;
-  --c-fuel:#2563eb;--c-maint:#16a34a;--c-cost:#d97706;
+  --c-fuel:#2563eb;--c-maint:#16a34a;--c-cost:#d97706;--c-init:#7c3aed;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden;}
@@ -70,6 +70,7 @@ textarea{resize:vertical;min-height:60px;}
 .badge.fuel{color:var(--c-fuel);border-color:var(--c-fuel);}
 .badge.maint{color:var(--c-maint);border-color:var(--c-maint);}
 .badge.cost{color:var(--c-cost);border-color:var(--c-cost);}
+.badge.init{color:var(--c-init);border-color:var(--c-init);}
 .badge.warn{color:var(--warn);border-color:var(--warn);}
 .empty{text-align:center;color:var(--text3);font-size:13px;padding:30px 0;}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;scrollbar-width:none;}
@@ -156,6 +157,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
         <span><i style="background:var(--c-fuel)"></i>燃料</span>
         <span><i style="background:var(--c-maint)"></i>メンテナンス</span>
         <span><i style="background:var(--c-cost)"></i>その他費用</span>
+        <span><i style="background:var(--c-init)"></i>初期費用</span>
       </div>
       <div class="chart-wrap" id="home-chart"></div>
       <div class="chart-tip" id="home-chart-tip"></div>
@@ -244,6 +246,10 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div id="set-vehicle"></div>
     </div>
     <div class="card">
+      <div class="card-title">購入時の費用（初期費用） <button class="btn sm" onclick="openInitSheet()">＋追加</button></div>
+      <div id="set-init"></div>
+    </div>
+    <div class="card">
       <div class="card-title">クラウド同期</div>
       <div class="set-row">
         <div>Googleログイン<div class="muted">Firebase 連携は次フェーズで対応予定（現在は端末内に保存）</div></div>
@@ -267,6 +273,10 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
     <div class="card">
       <div class="card-title">費用区分 <button class="btn sm" onclick="addCat('costCats')">＋追加</button></div>
       <div id="set-cost-cats"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">初期費用区分 <button class="btn sm" onclick="addCat('initCats')">＋追加</button></div>
+      <div id="set-init-cats"></div>
     </div>
     <div class="card">
       <div class="card-title">データ</div>
@@ -304,27 +314,37 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v02_2026-11-07';
+const APP_VERSION = 'v03_2026-11-08';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
 const DEFAULT_MAINT_CATS = ['車検','法定点検','オイル交換','オイルフィルター','タイヤ','バッテリー','洗車','手洗い洗車','コーティング','カスタム','修理','消耗品','その他'];
-const DEFAULT_COST_CATS = ['車両購入','任意保険','自賠責保険','自動車税','重量税','駐車場','高速・有料道路','ローン','JAF・会員','その他'];
+const DEFAULT_COST_CATS = ['任意保険','自賠責保険','自動車税','重量税','駐車場','高速・有料道路','ローン','JAF・会員','その他'];
+const DEFAULT_INIT_CATS = ['車両本体','オプション・付属品','値引き','下取り','環境性能割','自動車重量税','自賠責保険','自動車税（月割）','リサイクル料金','登録・納車費用','その他'];
 const FUEL_TYPES = ['レギュラー','ハイオク','軽油','電気','その他'];
 
 function emptyData(){
   return {
     vehicle:{name:'',model:'',year:'',purchaseDate:'',initialOdo:'',fuelType:'レギュラー',tankCapacity:''},
-    fuel:[], odo:[], maint:[], costs:[],
-    maintCats:[...DEFAULT_MAINT_CATS], costCats:[...DEFAULT_COST_CATS]
+    fuel:[], odo:[], maint:[], costs:[], initCosts:[],
+    maintCats:[...DEFAULT_MAINT_CATS], costCats:[...DEFAULT_COST_CATS], initCats:[...DEFAULT_INIT_CATS]
   };
 }
 function loadData(){
   try{
     const s = localStorage.getItem(STORAGE_KEY);
     if(!s) return emptyData();
-    return Object.assign(emptyData(), JSON.parse(s));
+    return migrate(Object.assign(emptyData(), JSON.parse(s)));
   }catch{ return emptyData(); }
+}
+// 旧形式: 費用の initial フラグ → 初期費用リストへ移行
+function migrate(d){
+  d.costs.filter(c=>c.initial).forEach(c=>{
+    d.initCosts.push({id:c.id, category:c.category, title:c.title||'', amount:c.amount, memo:c.memo||''});
+    if(!d.initCats.includes(c.category)) d.initCats.push(c.category);
+  });
+  d.costs = d.costs.filter(c=>!c.initial);
+  return d;
 }
 let D = loadData();
 function saveData(){
@@ -339,7 +359,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num = v => { const n = parseFloat(String(v ?? '').replace(/,/g,'')); return isFinite(n) ? n : null; };
 const fmt = (v, d=0) => v==null || !isFinite(v) ? '—' : Number(v).toLocaleString('ja-JP',{minimumFractionDigits:d,maximumFractionDigits:d});
-const yen = v => v==null ? '—' : '¥' + fmt(Math.round(v));
+const yen = v => v==null ? '—' : (v<0?'-':'') + '¥' + fmt(Math.abs(Math.round(v)));
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 const dateMs = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d).getTime(); };
 const ymOf = s => s.slice(0,7);
@@ -408,7 +428,8 @@ function costEntries(){
   const e = [];
   D.fuel.forEach(f=>{ const a=num(f.total); if(a) e.push({date:f.date, group:'fuel', cat:'燃料', amount:a, initial:false}); });
   D.maint.forEach(m=>{ const a=num(m.cost); if(a) e.push({date:m.date, group:'maint', cat:m.category||'その他', amount:a, initial:false}); });
-  D.costs.forEach(c=>{ const a=num(c.amount); if(a) e.push({date:c.date, group:'cost', cat:c.category||'その他', amount:a, initial:!!c.initial}); });
+  D.costs.forEach(c=>{ const a=num(c.amount); if(a) e.push({date:c.date, group:'cost', cat:c.category||'その他', amount:a, initial:false}); });
+  D.initCosts.forEach(c=>{ const a=num(c.amount); if(a) e.push({date:D.vehicle.purchaseDate||'', group:'init', cat:c.category||'その他', amount:a, initial:true}); });
   return e;
 }
 
@@ -597,7 +618,7 @@ function renderHome(){
   // 月別費用
   let labels=[], keys=[];
   if(state.year==='all'){
-    const ys = [...new Set(costEntries().map(e=>e.date.slice(0,4)))].sort();
+    const ys = [...new Set(costEntries().map(e=>e.date.slice(0,4)).filter(Boolean))].sort();
     keys = ys; labels = ys.map(y=>y.slice(2)+'年');
     $('home-chart-title').textContent = '年別費用';
   }else{
@@ -606,7 +627,7 @@ function renderHome(){
     $('home-chart-title').textContent = '月別費用';
   }
   const kOf = e => state.year==='all' ? e.date.slice(0,4) : ymOf(e.date);
-  const series = [['fuel','燃料','--c-fuel'],['maint','メンテ','--c-maint'],['cost','その他','--c-cost']].map(([g,n,c])=>({
+  const series = [['fuel','燃料','--c-fuel'],['maint','メンテ','--c-maint'],['cost','その他','--c-cost'],['init','初期','--c-init']].map(([g,n,c])=>({
     name:n, color:c, values: keys.map(k=>entries.filter(e=>e.group===g && kOf(e)===k).reduce((s,e)=>s+e.amount,0))
   }));
   if(keys.length) barChart($('home-chart'), $('home-chart-tip'), labels, series, (v,axis)=>axis ? (v>=10000 ? fmt(v/10000, v%10000?1:0)+'万' : fmt(v)) : yen(v));
@@ -615,7 +636,7 @@ function renderHome(){
   // 内訳
   const cats = {};
   entries.forEach(e=>{ const k=e.group+'|'+e.cat; (cats[k] ||= {group:e.group, cat:e.cat, amount:0, n:0}); cats[k].amount+=e.amount; cats[k].n++; });
-  const order = {fuel:0, maint:1, cost:2}, gName = {fuel:'燃料',maint:'メンテ',cost:'費用'};
+  const order = {fuel:0, maint:1, cost:2, init:3}, gName = {fuel:'燃料',maint:'メンテ',cost:'費用',init:'初期'};
   const rows = Object.values(cats).sort((a,b)=>order[a.group]-order[b.group] || b.amount-a.amount);
   $('home-breakdown').innerHTML = rows.length ? `<table class="tbl"><tr><th>区分</th><th class="num">件数</th><th class="num">金額</th><th class="num">比率</th></tr>` +
     rows.map(r=>`<tr><td><span class="badge ${r.group}">${gName[r.group]}</span>${esc(r.cat)}</td><td class="num">${r.n}</td><td class="num">${yen(r.amount)}</td><td class="num">${fmt(r.amount/total*100,1)}%</td></tr>`).join('') +
@@ -878,12 +899,12 @@ function renderCost(){
   const all = D.costs.filter(c=>inYear(c.date));
   const list = all.filter(c=>state.costFilter==='all' || c.category===state.costFilter).sort(byDateDesc);
   const total = list.reduce((s,c)=>s+(num(c.amount)||0),0);
-  const initial = list.filter(c=>c.initial).reduce((s,c)=>s+(num(c.amount)||0),0);
+  const road = all.filter(c=>/駐車|高速|有料/.test(c.category||'')).reduce((s,c)=>s+(num(c.amount)||0),0);
   const ins = all.filter(c=>/保険/.test(c.category||'')).reduce((s,c)=>s+(num(c.amount)||0),0);
   const tax = all.filter(c=>/税/.test(c.category||'')).reduce((s,c)=>s+(num(c.amount)||0),0);
   $('cost-kpi').innerHTML =
     kpi('合計', yen(total), '', `${list.length}件`) +
-    kpi('初期費用', yen(initial), '', '維持費から除外') +
+    kpi('駐車場・道路', yen(road)) +
     kpi('保険', yen(ins)) +
     kpi('税金', yen(tax));
   const used = [...new Set(all.map(c=>c.category))];
@@ -892,7 +913,7 @@ function renderCost(){
   $('cost-list').innerHTML = groupedList(list, c=>{
     const sub = [c.until?`期限 ${c.until}`:'', c.memo].filter(Boolean).join(' · ');
     return `<div class="row" onclick="openCostSheet('${c.id}')">${dateCell(c.date)}
-      <div class="r-main"><div class="r-title"><span class="badge cost">${esc(c.category)}</span>${c.initial?'<span class="badge">初期</span>':''}${esc(c.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
+      <div class="r-main"><div class="r-title"><span class="badge cost">${esc(c.category)}</span>${esc(c.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
       <div class="r-right"><div class="r-amt">${yen(num(c.amount))}</div></div></div>`;
   }, g=>yen(g.reduce((s,c)=>s+(num(c.amount)||0),0)));
 }
@@ -900,7 +921,7 @@ function renderCost(){
 function openCostSheet(id){
   const c = id ? D.costs.find(x=>x.id===id) : null;
   const def = state.costFilter!=='all' ? state.costFilter : D.costCats[0];
-  const v = c || {date:todayStr(), category:def, title:'', amount:'', initial: /購入/.test(def), until:'', memo:''};
+  const v = c || {date:todayStr(), category:def, title:'', amount:'', until:'', memo:''};
   const cats = D.costCats.includes(v.category) ? D.costCats : [v.category, ...D.costCats];
   openSheet(c?'費用を編集':'費用を記録', `
     <div class="fld-row">
@@ -909,17 +930,14 @@ function openCostSheet(id){
     </div>
     <div class="fld"><label>内容</label><input type="text" id="c-title" value="${esc(v.title)}" placeholder="例：車両本体、オプション、年間保険料"></div>
     <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="c-amount" value="${esc(v.amount)}"></div>
-    <div class="fld"><label class="check"><input type="checkbox" id="c-initial" ${v.initial?'checked':''}>初期費用（車両購入など。維持費/kmの計算から除外）</label></div>
     <div class="fld"><label>期限・満了日（任意）</label><input type="date" id="c-until" value="${esc(v.until)}"><div class="hint">保険の満期・車検期限など。ホームに残り日数を表示</div></div>
     <div class="fld"><label>メモ</label><textarea id="c-memo">${esc(v.memo)}</textarea></div>
   `, () => {
-    const rec = {id:c?.id||uid(), date:$('c-date').value, category:$('c-cat').value, title:$('c-title').value.trim(), amount:$('c-amount').value.trim(),
-      initial:$('c-initial').checked, until:$('c-until').value, memo:$('c-memo').value.trim()};
+    const rec = {id:c?.id||uid(), date:$('c-date').value, category:$('c-cat').value, title:$('c-title').value.trim(), amount:$('c-amount').value.trim(), until:$('c-until').value, memo:$('c-memo').value.trim()};
     if(!rec.date) return '日付を入力してください';
     if(!num(rec.amount)) return '金額を入力してください';
     upsert(D.costs, rec);
   }, c ? () => remove(D.costs, c.id) : null);
-  if(!c) $('c-cat').onchange = e => { $('c-initial').checked = /購入/.test(e.target.value); };
 }
 
 /* ---------- 設定 ---------- */
@@ -935,6 +953,14 @@ function renderSettings(){
       <button class="btn sm danger" onclick="delCat('${key}',${i})">✕</button></div>`).join('');
   $('set-maint-cats').innerHTML = catHtml('maintCats');
   $('set-cost-cats').innerHTML = catHtml('costCats');
+  $('set-init-cats').innerHTML = catHtml('initCats');
+  const order = c => { const i = D.initCats.indexOf(c.category); return i<0 ? 999 : i; };
+  const ic = D.initCosts.slice().sort((a,b)=>order(a)-order(b));
+  const itot = ic.reduce((s,c)=>s+(num(c.amount)||0),0);
+  $('set-init').innerHTML = ic.length ? ic.map(c=>`<div class="set-row" style="cursor:pointer" onclick="openInitSheet('${c.id}')"><div><span class="badge init">${esc(c.category)}</span>${esc(c.title)}</div><div>${yen(num(c.amount))}</div></div>`).join('') +
+    `<div class="set-row" style="font-weight:700"><div>合計</div><div>${yen(itot)}</div></div>` +
+    `<div class="muted" style="margin-top:6px;">購入日（${esc(D.vehicle.purchaseDate)||'未設定'}）の費用として集計し、維持費/kmからは除外します</div>`
+    : '<div class="muted">車両本体・重量税・自賠責など、購入時の費用を登録します（維持費/kmの計算から除外）</div>';
 }
 function openVehicleSheet(){
   const v = D.vehicle;
@@ -958,17 +984,34 @@ function openVehicleSheet(){
       initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim()};
   });
 }
+function openInitSheet(id){
+  const c = id ? D.initCosts.find(x=>x.id===id) : null;
+  const v = c || {category:D.initCats[0], title:'', amount:'', memo:''};
+  const cats = D.initCats.includes(v.category) ? D.initCats : [v.category, ...D.initCats];
+  openSheet(c?'初期費用を編集':'初期費用を追加', `
+    <div class="fld"><label>区分</label><select id="i-cat">${cats.map(x=>`<option ${x===v.category?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
+    <div class="fld"><label>内容</label><input type="text" id="i-title" value="${esc(v.title)}" placeholder="例：ナビ・ETC、37ヶ月"></div>
+    <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="i-amount" value="${esc(v.amount)}"><div class="hint">値引き・下取りはマイナスで入力（例：-150000）</div></div>
+    <div class="fld"><label>メモ</label><input type="text" id="i-memo" value="${esc(v.memo)}"></div>
+    ${D.vehicle.purchaseDate?'':'<div class="muted due-soon">車両情報の購入日が未設定のため、年別の集計には含まれません（全期間のみ）</div>'}
+  `, () => {
+    const rec = {id:c?.id||uid(), category:$('i-cat').value, title:$('i-title').value.trim(), amount:$('i-amount').value.trim(), memo:$('i-memo').value.trim()};
+    if(!num(rec.amount)) return '金額を入力してください';
+    upsert(D.initCosts, rec);
+  }, c ? () => remove(D.initCosts, c.id) : null);
+}
+const CAT_RECORDS = {maintCats:()=>D.maint, costCats:()=>D.costs, initCats:()=>D.initCosts};
 function addCat(key){ D[key].push('新しい区分'); saveData(); render(); }
 function renameCat(key,i,val){
   val = val.trim(); if(!val) { render(); return; }
   const old = D[key][i]; D[key][i] = val;
-  const arr = key==='maintCats' ? D.maint : D.costs;
+  const arr = CAT_RECORDS[key]();
   arr.forEach(r=>{ if(r.category===old) r.category=val; });
   saveData(); render();
 }
 function moveCat(key,i,d){ const a=D[key]; [a[i],a[i+d]]=[a[i+d],a[i]]; saveData(); render(); }
 function delCat(key,i){
-  const arr = key==='maintCats' ? D.maint : D.costs;
+  const arr = CAT_RECORDS[key]();
   const n = arr.filter(r=>r.category===D[key][i]).length;
   if(!confirm(`「${D[key][i]}」を削除しますか？` + (n?`\n（使用中の記録 ${n}件は区分名がそのまま残ります）`:''))) return;
   D[key].splice(i,1); saveData(); render();
@@ -987,7 +1030,7 @@ function importJson(input){
       const j = JSON.parse(r.result); const d = j.data || j;
       if(!Array.isArray(d.fuel)) throw 0;
       if(!confirm('現在のデータを置き換えて復元しますか？')) return;
-      D = Object.assign(emptyData(), d); saveData(); render(); toast('復元しました');
+      D = migrate(Object.assign(emptyData(), d)); saveData(); render(); toast('復元しました');
     }catch{ toast('読み込めないファイルです'); }
     input.value='';
   };
@@ -1002,7 +1045,8 @@ function loadSample(){
   const d = emptyData();
   const y = new Date().getFullYear();
   d.vehicle = {name:'マイカー', model:'コンパクトSUV', year:String(y-2), purchaseDate:`${y-2}-04-10`, initialOdo:'12', fuelType:'レギュラー', tankCapacity:'45'};
-  d.costs.push({id:uid(), date:`${y-2}-04-10`, category:'車両購入', title:'車両本体＋諸費用', amount:'2850000', initial:true, until:'', memo:''});
+  [['車両本体','',2650000],['オプション・付属品','ナビ・ETC・マット',280000],['値引き','',-150000],['環境性能割','',27000],['自動車重量税','3年分',24600],['自賠責保険','37ヶ月',24190],['自動車税（月割）','',23000],['リサイクル料金','',11000],['登録・納車費用','',60000]]
+    .forEach(([c,t,a])=>d.initCosts.push({id:uid(), category:c, title:t, amount:String(a), memo:''}));
   let odo = 12, t = new Date(y-2,3,20);
   const end = new Date();
   let i = 0;
@@ -1023,10 +1067,9 @@ function loadSample(){
   d.maint.push({id:uid(), date:`${y-1}-06-01`, odo:String(Math.round(lastOdo*0.55)), category:'カスタム', title:'ドラレコ取付', cost:'38000', shop:'カー用品店', memo:'', nextDate:'', nextOdo:''});
   d.maint.push({id:uid(), date:`${y-2}-05-10`, odo:'900', category:'コーティング', title:'ガラスコーティング', cost:'66000', shop:'専門店', memo:'', nextDate:`${y+1}-05-10`, nextOdo:''});
   for(let k=y-2;k<=y;k++){
-    d.costs.push({id:uid(), date:`${k}-04-08`, category:'任意保険', title:'年間保険料', amount:String(62000-(k-y+2)*4000), initial:false, until:`${k+1}-04-09`, memo:''});
-    d.costs.push({id:uid(), date:`${k}-05-20`, category:'自動車税', title:'', amount:'30500', initial:false, until:'', memo:''});
+    d.costs.push({id:uid(), date:`${k}-04-08`, category:'任意保険', title:'年間保険料', amount:String(62000-(k-y+2)*4000), until:`${k+1}-04-09`, memo:''});
+    d.costs.push({id:uid(), date:`${k}-05-20`, category:'自動車税', title:'', amount:'30500', until:'', memo:''});
   }
-  d.costs.push({id:uid(), date:`${y-2}-04-10`, category:'自賠責保険', title:'37ヶ月', amount:'24190', initial:true, until:`${y+1}-05-10`, memo:''});
   D = d; saveData(); state.year = String(y); render(); toast('サンプルを投入しました');
 }
 
