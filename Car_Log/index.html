@@ -419,7 +419,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-08.3';
+const APP_VERSION = 'v07_2026-11-08.4';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -707,12 +707,12 @@ function renderYearSelects(){
     sel.innerHTML = html; sel.value = state.year;
     sel.onchange = () => setYear(sel.value);
   });
-  // ‹ = 前の年（古い）/ › = 次の年（新しい）。全期間のときは無効
-  const i = ys.indexOf(state.year);
+  // ‹ / › で 古い年 … 最新年 → 全期間 の順に移動
+  const seq = ys.slice().reverse().concat('all'), i = seq.indexOf(state.year);
   document.querySelectorAll('[data-year-step]').forEach(btn=>{
-    const step = +btn.dataset.yearStep, j = i - step;
-    btn.disabled = i<0 || j<0 || j>=ys.length;
-    btn.onclick = () => { if(!btn.disabled) setYear(ys[j]); };
+    const j = i + (+btn.dataset.yearStep);
+    btn.disabled = i<0 || j<0 || j>=seq.length;
+    btn.onclick = () => { if(!btn.disabled) setYear(seq[j]); };
   });
 }
 
