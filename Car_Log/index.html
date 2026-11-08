@@ -429,7 +429,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-09.4';
+const APP_VERSION = 'v07_2026-11-09.5';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1264,6 +1264,9 @@ function openMaintSheet(id){
     </div>
     <div class="fld"><label>店舗・場所</label><input type="text" id="m-shop" value="${esc(v.shop)}" placeholder="例：ディーラー、自宅" list="m-shop-list">${suggestHtml('m-shop', topValues(V.maint, 'shop', 10))}</div>
     <div class="fld"><label>メモ</label><textarea id="m-memo">${esc(v.memo)}</textarea></div>
+    ${m ? '' : `<div class="fld" id="m-with-wrap"><label>同時に実施した作業（✅ で0円の記録を追加）</label>
+      <div class="chips" id="m-with" style="flex-wrap:wrap;">${D.maintCats.filter(c=>!WITH_PARENT.includes(c)).map(c=>`<button type="button" class="chip" data-cat="${esc(c)}" onclick="this.classList.toggle('active');this.textContent=(this.classList.contains('active')?'✅ ':'')+this.dataset.cat">${esc(c)}</button>`).join('')}</div>
+      <div class="hint">日付・ODO・店舗は同じで追加。次回予定は前回の同じ区分の記録と同じ間隔で入ります</div></div>`}
     <div class="card-title" style="margin-top:4px;">次回予定（任意）</div>
     <div class="fld-row">
       <div class="fld"><label>次回予定日</label><input type="date" id="m-ndate" value="${esc(v.nextDate)}"></div>
@@ -1275,7 +1278,35 @@ function openMaintSheet(id){
       odo:$('m-odo').value.trim(), shop:$('m-shop').value.trim(), memo:$('m-memo').value.trim(), nextDate:$('m-ndate').value, nextOdo:$('m-nodo').value.trim()};
     if(!rec.date) return '日付を入力してください';
     upsert(V.maint, rec);
+    // 車検・法定点検と同時に実施した作業を0円の記録として追加
+    if(!m && WITH_PARENT.includes(rec.category)){
+      document.querySelectorAll('#m-with .chip.active').forEach(b=>{
+        const c = {id:uid(), date:rec.date, odo:rec.odo, category:b.dataset.cat, title:'', cost:'', shop:rec.shop, memo:`${rec.category}時に実施`, nextDate:'', nextOdo:''};
+        Object.assign(c, nextLikePrev(c));
+        V.maint.push(c);
+      });
+    }
   }, m ? () => remove(V.maint, m.id) : null);
+  // 区分が車検・法定点検のときだけ「同時に実施した作業」を表示
+  if(!m){
+    const sync = () => { $('m-with-wrap').style.display = WITH_PARENT.includes($('m-cat').value) ? '' : 'none'; };
+    $('m-cat').addEventListener('change', sync); sync();
+  }
+}
+const WITH_PARENT = ['車検','法定点検'];
+// 次回予定を「前回の同じ区分の記録で設定した間隔」と同じにする（前回に予定が無ければ空欄）
+function nextLikePrev(rec){
+  const prev = V.maint.filter(x=>x!==rec && x.category===rec.category && x.date<=rec.date && (x.nextDate || num(x.nextOdo)!=null)).sort(byDateDesc)[0];
+  const r = {nextDate:'', nextOdo:''};
+  if(!prev) return r;
+  if(prev.nextDate){
+    const [py,pm,pd] = prev.date.split('-').map(Number), [ny,nm,nd] = prev.nextDate.split('-').map(Number), [ry,rm,rd] = rec.date.split('-').map(Number);
+    // 前回が「○カ月後の同じ日」なら月単位で、そうでなければ日数で同じ間隔
+    const d = pd===nd ? new Date(ry, rm-1 + (ny-py)*12 + (nm-pm), rd) : new Date(dateMs(rec.date) + (dateMs(prev.nextDate) - dateMs(prev.date)));
+    r.nextDate = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  if(num(prev.nextOdo)!=null && num(prev.odo)!=null && num(rec.odo)!=null) r.nextOdo = String(num(rec.odo) + (num(prev.nextOdo) - num(prev.odo)));
+  return r;
 }
 
 /* ---------- その他費用 ---------- */
