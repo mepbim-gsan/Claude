@@ -132,7 +132,8 @@ button{font-family:inherit;}
 .kpi .k-label{font-size:11px;color:var(--text2);}
 .kpi .k-val{font-size:20px;font-weight:700;margin-top:2px;white-space:nowrap;}
 .kpi .k-unit{font-size:11px;color:var(--text2);font-weight:400;margin-left:2px;}
-.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;min-height:1.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kpi .k-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .kpi .k-val,.kpi .k-sub{text-align:right;}
 input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;font-family:inherit;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
@@ -420,7 +421,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-09.2';
+const APP_VERSION = 'v07_2026-11-09.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -939,7 +940,7 @@ function groupedList(items, rowFn, sumFn){
   return html;
 }
 function dateCell(s){ const [y,m,d]=s.split('-'); const w='日月火水木金土'[new Date(+y,+m-1,+d).getDay()]; return `<div class="r-date"><b>${+d}</b>${w}</div>`; }
-function kpi(label, val, unit, sub){ return `<div class="kpi"><div class="k-label">${label}</div><div class="k-val">${val}<span class="k-unit">${unit||''}</span></div>${sub?`<div class="k-sub">${sub}</div>`:''}</div>`; }
+function kpi(label, val, unit, sub){ return `<div class="kpi"><div class="k-label">${label}</div><div class="k-val">${val}<span class="k-unit">${unit||''}</span></div><div class="k-sub">${sub||''}</div></div>`; }   // 補足が無くても行を確保してカードの高さをそろえる
 function chipsHtml(cats, cur, key){
   return ['all',...cats].map(c=>`<button class="chip ${cur===c?'active':''}" onclick="state.${key}='${esc(c)}';render()">${c==='all'?'すべて':esc(c)}</button>`).join('');
 }
