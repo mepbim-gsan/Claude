@@ -327,7 +327,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v04_2026-11-08';
+const APP_VERSION = 'v04_2026-11-08.2';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -375,7 +375,7 @@ function saveData(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(D)); }catch(e){ toast('保存に失敗しました'); }
 }
 
-const state = { page:'home', year:String(new Date().getFullYear()), odoFilter:'all', odoRange:'3m', maintFilter:'all', costFilter:'all' };
+const state = { page:'home', year:String(new Date().getFullYear()), odoFilter:'all', odoRange:'year', maintFilter:'all', costFilter:'all' };
 
 /* ---------- util ---------- */
 const $ = id => document.getElementById(id);
@@ -481,7 +481,7 @@ function renderYearSelects(){
   const html = ys.map(y=>`<option value="${y}">${y}年</option>`).join('') + '<option value="all">全期間</option>';
   document.querySelectorAll('[data-year-sel]').forEach(sel=>{
     sel.innerHTML = html; sel.value = state.year;
-    sel.onchange = () => { state.year = sel.value; render(); };
+    sel.onchange = () => { state.year = sel.value; state.odoRange = state.year==='all' ? 'all' : 'year'; render(); };
   });
 }
 
@@ -604,11 +604,40 @@ function cumChart(el, tipEl, pts, t0, t1){
   tipEl.textContent=`期間合計 ${fmt(vals[vals.length-1].v)} km（グラフをタップで詳細）`;
 }
 
-// 累積走行距離: プリセット（1カ月〜全期間）＋つまみ2つのスライダーで任意期間
-const CUM_RANGES=[['1m','1カ月',1],['3m','3カ月',3],['6m','6カ月',6],['1y','1年',12],['all','全期間',0]];
+// 累積走行距離: 年フィルタ（year）を起点に、プリセット・保険年度（ins）・スライダー（custom）で期間変更
+const CUM_RANGES=[['1m','1カ月',1],['3m','3カ月',3],['6m','6カ月',6],['1y','直近1年',12],['ins','保険年度',-1],['all','全期間',0]];
 const DAY_MS = 86400000;
+// 最新の任意保険の記録（開始日〜期限、期限なしは1年）
+function insuranceTerm(){
+  const today = todayStr();
+  const list = D.costs.filter(c=>/任意保険/.test(c.category||'') && c.date).sort(byDateDesc);
+  const c = list.find(x=>x.date<=today) || list[list.length-1];
+  if(!c) return null;
+  const t0 = dateMs(c.date);
+  let t1;
+  if(c.until && c.until>c.date) t1 = dateMs(c.until);
+  else { const d=new Date(t0); d.setFullYear(d.getFullYear()+1); t1 = d.getTime()-DAY_MS; }
+  return {t0, t1, rec:c};
+}
+// 保険年度の走行距離と満期までの予測（現在のペースで延長）
+function insKpi(pts){
+  const ins = insuranceTerm();
+  if(!ins || pts.length<2) return kpi('記録数', pts.filter(p=>inYear(p.date)).length, '件');
+  const now = dateMs(todayStr()), end = Math.min(now, ins.t1);
+  const done = end>=ins.t0 ? distBetween(pts, ins.t0, end) : 0;
+  const f = t=>{ const d=new Date(t); return `${d.getMonth()+1}/${d.getDate()}`; };
+  let sub;
+  if(now>=ins.t1) sub = `${f(ins.t0)}〜${f(ins.t1)}（満了）`;
+  else{
+    const el = Math.max(1, (now-ins.t0)/DAY_MS), tot = (ins.t1-ins.t0)/DAY_MS + 1;
+    sub = `満期${f(ins.t1)}予測 ${fmt(done/el*tot)} km`;
+  }
+  return kpi('保険年度走行', fmt(done), 'km', sub);
+}
 function renderCum(pts){
-  $('odo-cum-filter').innerHTML = CUM_RANGES.map(([k,n])=>`<button class="chip ${state.odoRange===k?'active':''}" onclick="state.odoRange='${k}';render()">${n}</button>`).join('');
+  const ins = insuranceTerm();
+  if(state.odoRange==='ins' && !ins) state.odoRange = 'all';
+  $('odo-cum-filter').innerHTML = CUM_RANGES.filter(r=>r[0]!=='ins'||ins).map(([k,n])=>`<button class="chip ${state.odoRange===k?'active':''}" onclick="state.odoRange='${k}';render()">${n}</button>`).join('');
   if(pts.length<2){
     $('odo-cum-chart').innerHTML='<div class="empty">ODOの記録が2件以上で表示されます</div>'; $('odo-cum-tip').textContent=''; $('odo-cum-range').textContent='';
     $('cum-slider').style.display='none'; return;
@@ -620,10 +649,17 @@ function renderCum(pts){
   if(state.odoRange==='custom' && state.cumRange){
     t0 = Math.max(minT, state.cumRange[0]); t1 = Math.min(maxT, state.cumRange[1]);
     if(t1-t0 < DAY_MS){ t0 = minT; t1 = maxT; }
+  }else if(state.odoRange==='year' && state.year!=='all'){
+    const y = +state.year;
+    t0 = Math.max(minT, new Date(y,0,1).getTime()); t1 = Math.min(maxT, new Date(y,11,31).getTime());
+    if(t1-t0 < DAY_MS){ t0 = minT; t1 = maxT; }
+  }else if(state.odoRange==='ins' && ins){
+    t0 = Math.max(minT, ins.t0); t1 = Math.min(maxT, ins.t1);
+    if(t1-t0 < DAY_MS){ t0 = minT; t1 = maxT; }
   }else{
     t1 = maxT;
-    const mo = (CUM_RANGES.find(r=>r[0]===state.odoRange)||CUM_RANGES[4])[2];
-    if(mo){ const d=new Date(t1); d.setMonth(d.getMonth()-mo); t0=Math.max(minT, d.getTime()); } else t0 = minT;
+    const mo = (CUM_RANGES.find(r=>r[0]===state.odoRange)||CUM_RANGES[CUM_RANGES.length-1])[2];
+    if(mo>0){ const d=new Date(t1); d.setMonth(d.getMonth()-mo); t0=Math.max(minT, d.getTime()); } else t0 = minT;
   }
   const S=$('cum-s'), E=$('cum-e');
   [S,E].forEach(el=>{ el.min=0; el.max=maxD; });
@@ -851,7 +887,7 @@ function renderOdo(){
   $('odo-kpi').innerHTML =
     kpi(state.year==='all'?'期間走行':'年間走行', fmt(dist), 'km') +
     kpi('月平均', months>=0.5 ? fmt(dist/months) : '—', 'km/月') +
-    kpi('記録数', pts.filter(p=>inYear(p.date)).length, '件') +
+    insKpi(pts) +
     kpi('累計走行', fmt(totalDist), 'km', D.vehicle.initialOdo ? `購入時 ${fmt(num(D.vehicle.initialOdo))} km` : '');
 
   let labels, ranges;
