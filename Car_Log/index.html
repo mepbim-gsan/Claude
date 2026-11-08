@@ -213,8 +213,8 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 #toast.show{opacity:1;}
 .muted{color:var(--text2);font-size:12px;}
 .car-ico{display:inline-block;vertical-align:-4px;flex-shrink:0;}
-.swatches{display:flex;flex-wrap:wrap;gap:8px;}
-.swatch{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text2);background:var(--bg3);border:2px solid transparent;border-radius:10px;padding:6px 4px 4px;cursor:pointer;width:60px;}
+.swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;}
+.swatch{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text2);background:var(--bg3);border:2px solid transparent;border-radius:10px;padding:6px 0 4px;cursor:pointer;min-width:0;white-space:nowrap;letter-spacing:-.02em;}
 .swatch.active{border-color:var(--accent);color:var(--text);}
 .dual-range{position:relative;height:30px;margin:4px 6px 0 44px;}
 .dr-track,.dr-fill{position:absolute;top:13px;height:4px;border-radius:2px;}
@@ -419,7 +419,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-08.5';
+const APP_VERSION = 'v07_2026-11-08.6';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -430,10 +430,12 @@ const CATS_VER = 3;
 // 車両の色（アイコン用）
 const CAR_COLORS = [['ブルー','#4f8ef7'],['ホワイト','#f2f3f5'],['シルバー','#a8adb7'],['グレー','#6b7280'],['ブラック','#2b2d33'],['レッド','#e05252'],['ネイビー','#2f4a8a'],['グリーン','#3ecf8e'],['イエロー','#f5c542'],['オレンジ','#f5a623'],['ブラウン','#8b5e3c'],['パープル','#a78bfa']];
 const ICON_BG = '#1a1d27';
-function isDarkColor(hex){ const n=parseInt(hex.slice(1),16); const r=n>>16&255,g=n>>8&255,b=n&255; return (0.299*r+0.587*g+0.114*b) < 80; }
+function colorLum(hex){ const n=parseInt(hex.slice(1),16); return 0.299*(n>>16&255)+0.587*(n>>8&255)+0.114*(n&255); }
+function isDarkColor(hex){ return colorLum(hex) < 80; }
 // 車の図形（icons/icon.svg と同じ形）。win=窓・タイヤの色
 function carShape(color, win){
-  const edge = isDarkColor(color) ? ` stroke="#8b90a7" stroke-width="6"` : '';
+  // 暗い色・白に近い色は輪郭線を付けて背景（ダーク／ライト）に埋もれないように
+  const edge = (isDarkColor(color) || colorLum(color) > 225) ? ` stroke="#8b90a7" stroke-width="6"` : '';
   return `<g transform="translate(256 270)">
     <path d="M-170 30 L-170 -10 Q-170 -30 -150 -34 L-110 -42 L-70 -100 Q-60 -114 -42 -114 L70 -114 Q88 -114 100 -100 L140 -46 L160 -42 Q176 -38 176 -20 L176 30 Q176 44 162 44 L-156 44 Q-170 44 -170 30 Z" fill="${color}"${edge}/>
     <path d="M-92 -46 L-60 -94 Q-56 -98 -50 -98 L-6 -98 L-6 -46 Z" fill="${win}"/>
