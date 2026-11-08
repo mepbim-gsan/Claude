@@ -20,6 +20,7 @@
   --c-fuel:#2563eb;--c-maint:#16a34a;--c-cost:#d97706;--c-init:#7c3aed;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
+html{scrollbar-gutter:stable;}
 body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden;}
 button{font-family:inherit;}
 #header{position:sticky;top:0;z-index:50;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:10px 14px;}
@@ -327,7 +328,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v04_2026-11-08.2';
+const APP_VERSION = 'v04_2026-11-08.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
