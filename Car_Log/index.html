@@ -419,7 +419,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-08.8';
+const APP_VERSION = 'v07_2026-11-08.9';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1066,9 +1066,8 @@ function openFuelSheet(id){
     <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="f-total" value="${esc(v.total)}"><div class="hint">給油量×単価で自動計算。金額を入力すると単価を逆算</div></div>
     <div class="fld"><label class="check"><input type="checkbox" id="f-full" ${v.full?'checked':''}>満タン給油（燃費計算に使用）</label></div>
     <div class="fld-row">
-      <div class="fld"><label>スタンド</label><input type="text" id="f-station" value="${esc(v.station)}" list="f-station-list"><datalist id="f-station-list">${topStations(10).map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
+      <div class="fld"><label>スタンド</label><input type="text" id="f-station" value="${esc(v.station)}" list="f-station-list">${suggestHtml('f-station', topStations(10))}</div>
     </div>
-    ${topStations(3).length ? `<div class="chips" style="margin-top:-6px;">${topStations(3).map(x=>`<button type="button" class="chip" onclick="$('f-station').value=this.textContent">${esc(x)}</button>`).join('')}</div>` : ''}
     <div class="fld"><label>メモ</label><input type="text" id="f-memo" value="${esc(v.memo)}"></div>
   `, () => {
     const rec = { id: f?.id || uid(), date:$('f-date').value, odo:$('f-odo').value.trim(), liters:$('f-liters').value.trim(),
@@ -1090,11 +1089,17 @@ function openFuelSheet(id){
   $('f-date').oninput = () => fuelPreview(f);
   fuelPreview(f);
 }
-// よく使うスタンド（2回以上登録したもの、回数の多い順）
-function topStations(n){
+// よく使う値（2回以上登録したもの、回数の多い順）: スタンド・メンテの店舗
+function topValues(list, key, n){
   const c = {};
-  V.fuel.forEach(f=>{ const s=(f.station||'').trim(); if(s) c[s]=(c[s]||0)+1; });
+  list.forEach(r=>{ const s=(r[key]||'').trim(); if(s) c[s]=(c[s]||0)+1; });
   return Object.keys(c).filter(k=>c[k]>=2).sort((a,b)=>c[b]-c[a]).slice(0,n);
+}
+const topStations = n => topValues(V.fuel, 'station', n);
+// 入力欄の候補（datalist）＋上位3件のボタン
+function suggestHtml(inputId, vals){
+  return `<datalist id="${inputId}-list">${vals.slice(0,10).map(x=>`<option value="${esc(x)}">`).join('')}</datalist>` +
+    (vals.length ? `<div class="chips" style="margin-top:6px;margin-bottom:0;">${vals.slice(0,3).map(x=>`<button type="button" class="chip" onclick="$('${inputId}').value=this.textContent">${esc(x)}</button>`).join('')}</div>` : '');
 }
 function fuelPreview(f){
   const odo = num($('f-odo').value), el = $('f-preview');
@@ -1221,7 +1226,7 @@ function openMaintSheet(id){
       <div class="fld"><label>費用（円）</label><input type="text" inputmode="numeric" id="m-cost" value="${esc(v.cost)}"></div>
       <div class="fld"><label>ODO（km）</label><input type="text" inputmode="decimal" id="m-odo" value="${esc(v.odo)}"></div>
     </div>
-    <div class="fld"><label>店舗・場所</label><input type="text" id="m-shop" value="${esc(v.shop)}" placeholder="例：ディーラー、自宅"></div>
+    <div class="fld"><label>店舗・場所</label><input type="text" id="m-shop" value="${esc(v.shop)}" placeholder="例：ディーラー、自宅" list="m-shop-list">${suggestHtml('m-shop', topValues(V.maint, 'shop', 10))}</div>
     <div class="fld"><label>メモ</label><textarea id="m-memo">${esc(v.memo)}</textarea></div>
     <div class="card-title" style="margin-top:4px;">次回予定（任意）</div>
     <div class="fld-row">
