@@ -419,14 +419,14 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-08.4';
+const APP_VERSION = 'v07_2026-11-08.5';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
-const DEFAULT_MAINT_CATS = ['車検','法定点検','オイル交換','オイルフィルター','タイヤ','バッテリー','洗車','手洗い洗車','コーティング','カスタム','修理','消耗品','その他'];
+const DEFAULT_MAINT_CATS = ['車検','法定点検','オイル交換','オイルフィルター','タイヤ','バッテリー','洗車','コーティング','カスタム','修理','消耗品','その他'];
 const DEFAULT_COST_CATS = ['任意保険','自動車税（種別割）','自賠責保険','自動車重量税','駐車場','高速・有料道路','ローン返済','ロードサービス・会員','その他'];
 const DEFAULT_INIT_CATS = ['車両本体','値引き','下取り','環境性能割','自動車重量税','自賠責保険','自動車税（月割）','リサイクル料金','登録・納車費用','オプション・付属品','メンテナンスパック','延長保証','コーティング','その他'];
-const CATS_VER = 2;
+const CATS_VER = 3;
 // 車両の色（アイコン用）
 const CAR_COLORS = [['ブルー','#4f8ef7'],['ホワイト','#f2f3f5'],['シルバー','#a8adb7'],['グレー','#6b7280'],['ブラック','#2b2d33'],['レッド','#e05252'],['ネイビー','#2f4a8a'],['グリーン','#3ecf8e'],['イエロー','#f5c542'],['オレンジ','#f5a623'],['ブラウン','#8b5e3c'],['パープル','#a78bfa']];
 const ICON_BG = '#1a1d27';
@@ -516,6 +516,13 @@ function migrate(raw){
     d.costCats = [...DEFAULT_COST_CATS, ...cc.filter(c=>!DEFAULT_COST_CATS.includes(c))];
     d.initCats = [...DEFAULT_INIT_CATS, ...d.initCats.filter(c=>!DEFAULT_INIT_CATS.includes(c))];
     d.catsVer = 2;
+  }
+  if(d.catsVer < 3){
+    // 「手洗い洗車」を「洗車」に統合（内容が空なら「手洗い」と残す）
+    d.vehicles.forEach(v=>v.maint.forEach(m=>{ if(m.category==='手洗い洗車'){ m.category='洗車'; if(!m.title) m.title='手洗い'; } }));
+    d.maintCats = d.maintCats.filter(c=>c!=='手洗い洗車');
+    if(!d.maintCats.includes('洗車')) d.maintCats.unshift('洗車');
+    d.catsVer = 3;
   }
   if(!d.vehicles.length) d.vehicles.push(newVehicle({name:'マイカー'}));
   if(!d.vehicles.some(v=>v.id===d.curId)) d.curId = d.vehicles[0].id;
@@ -1178,7 +1185,7 @@ function renderMaint(){
   $('maint-kpi').innerHTML =
     kpi('件数', list.length, '件') +
     kpi('費用', yen(total)) +
-    kpi('洗車回数', wash, '回', '洗車・手洗い洗車') +
+    kpi('洗車回数', wash, '回') +
     kpi('前回オイル交換', lastOil ? lastOil.date.slice(2).replace(/-/g,'/') : '—', '', lastOil && num(lastOil.odo)!=null && cur ? `以降 ${fmt(cur.odo-num(lastOil.odo))} km` : '');
   const used = [...new Set(all.map(m=>m.category))];
   const cats = D.maintCats.filter(c=>used.includes(c)).concat(used.filter(c=>!D.maintCats.includes(c)));
@@ -1428,7 +1435,10 @@ function buildSample(){
     const price = 160 + Math.round(Math.random()*16);
     const ds = ymd(t);
     d.fuel.push({id:uid(), date:ds, odo:String(odo), liters:liters.toFixed(2), unitPrice:String(price), total:String(Math.round(liters*price)), full: odo % 7 !== 0, fuelType:'レギュラー', station:i%3?'セルフA':'B石油', memo:''});
-    if(i%3===1) d.maint.push({id:uid(), date:ds, odo:String(odo), category:i%6===1?'手洗い洗車':'洗車', title:'', cost:i%6===1?'2500':'800', shop:'', memo:'', nextDate:'', nextOdo:''});
+    if(i%3===1){   // 洗車: 洗車機 / 自宅で手洗い（0円）/ ときどき専門店
+      const [title, cost, shop] = i%24===1 ? ['手洗い（専門店）','3300','洗車専門店'] : i%6===4 ? ['手洗い','','自宅'] : ['洗車機','800','セルフA'];
+      d.maint.push({id:uid(), date:ds, odo:String(odo), category:'洗車', title, cost, shop, memo:'', nextDate:'', nextOdo:''});
+    }
     t = new Date(t.getTime() + (12+Math.round(Math.random()*8))*86400000); i++;
   }
   // メンテのODOは給油記録から日付で補間（グラフ上で点がずれないように）
@@ -1462,6 +1472,9 @@ function buildSample(){
   M.push([at(Y0+2,9,12),'修理','バンパー擦り傷補修','27500','板金工場','',0,'駐車場で擦った']);
   M.push([at(Y0+3,10,8),'バッテリー','バッテリー交換','18700','カー用品店','',0,'']);
   M.push([at(Y0+4,7,3),'カスタム','フロアマット交換','15800','通販','',0,'']);
+  M.push([at(Y0,4,20),'その他','車内用ゴミ箱','1980','カー用品店','',0,'']);
+  M.push([at(Y0+2,3,15),'その他','芳香剤','880','カー用品店','',0,'']);
+  M.push([at(Y0+3,10,1),'その他','洗車用シャンプー・クロス','2480','カー用品店','',0,'']);
   M.filter(m=>m[0]<=today).forEach(([ds,cat,title,cost,shop,nd,nk,memo])=>{
     const o = odoOn(ds);
     d.maint.push({id:uid(), date:ds, odo:o, category:cat, title, cost, shop, memo, nextDate:nd, nextOdo:nk?String(+o+nk):''});
