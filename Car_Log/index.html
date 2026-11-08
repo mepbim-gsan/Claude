@@ -136,6 +136,7 @@ button{font-family:inherit;}
 .kpi .k-val,.kpi .k-sub{text-align:right;}
 input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;font-family:inherit;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+input[inputmode=numeric],input[inputmode=decimal]{text-align:right;}
 textarea{resize:vertical;min-height:60px;}
 .btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
@@ -419,7 +420,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-08.9';
+const APP_VERSION = 'v07_2026-11-09';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1081,7 +1082,7 @@ function openFuelSheet(id){
   }, f ? () => remove(V.fuel, f.id) : null);
 
   const L=$('f-liters'), P=$('f-price'), T=$('f-total');
-  const calcTotal = () => { if(num(L.value) && num(P.value)) T.value = Math.round(num(L.value)*num(P.value)); };
+  const calcTotal = () => { if(num(L.value) && num(P.value)){ T.value = Math.round(num(L.value)*num(P.value)); fmtNumInput(T); } };
   L.oninput = () => { calcTotal(); fuelPreview(f); };
   P.oninput = calcTotal;
   T.oninput = () => { if(num(L.value) && num(T.value)) P.value = (num(T.value)/num(L.value)).toFixed(1); };
@@ -1349,7 +1350,7 @@ function openVehicleSheet(isNew){
     <div class="fld"><label>車両名（表示名）</label><input type="text" id="v-name" value="${esc(v.name)}" placeholder="例：マイカー"></div>
     <div class="fld-row">
       <div class="fld"><label>車種・グレード</label><input type="text" id="v-model" value="${esc(v.model)}"></div>
-      <div class="fld"><label>年式</label><input type="text" inputmode="numeric" id="v-year" value="${esc(v.year)}" placeholder="2024"></div>
+      <div class="fld"><label>年式</label><input type="text" inputmode="numeric" data-nofmt="1" id="v-year" value="${esc(v.year)}" placeholder="2024"></div>
     </div>
     <div class="fld-row">
       <div class="fld"><label>納車日</label><input type="date" id="v-pdate" value="${esc(v.purchaseDate)}"></div>
@@ -1519,9 +1520,25 @@ function rebuildSample(){
 
 /* ---------- 共通：シート ---------- */
 let _sheetSave = null;
+// 数値入力欄: 表示中は3桁区切り、入力中（フォーカス時）は区切りなし。保存前に区切りを除去
+function fmtNumInput(el){
+  if(document.activeElement === el || el.dataset.nofmt) return;
+  const v = el.value.replace(/,/g,'').trim();
+  const m = v.match(/^(-?)(\d+)(\.\d*)?$/);
+  if(m) el.value = m[1] + Number(m[2]).toLocaleString('en-US') + (m[3]||'');
+}
+const numInputs = () => document.querySelectorAll('#sh-body input[inputmode=numeric], #sh-body input[inputmode=decimal]');
+document.addEventListener('focusin', e=>{
+  const el = e.target;
+  if(!(el.matches && el.matches('#sh-body input[inputmode]')) || !el.value.includes(',')) return;
+  el.value = el.value.replace(/,/g,'');
+  el.select();   // 区切りを外した後は全選択（そのまま上書き入力できる）
+});
+document.addEventListener('focusout', e=>{ if(e.target.matches && e.target.matches('#sh-body input[inputmode]')) setTimeout(()=>fmtNumInput(e.target), 0); });
 function openSheet(title, body, onSave, onDelete){
   $('sh-title').textContent = title;
   $('sh-body').innerHTML = body;
+  numInputs().forEach(fmtNumInput);
   if(!onSave){
     $('sh-foot').innerHTML = '<button class="btn" onclick="closeSheet()">閉じる</button>';
     $('sheet').classList.add('show'); $('sheet-bg').classList.add('show'); $('sh-body').scrollTop = 0;
@@ -1529,7 +1546,9 @@ function openSheet(title, body, onSave, onDelete){
   }
   $('sh-foot').innerHTML = (onDelete?'<button class="btn danger" id="sh-del">削除</button>':'') + '<button class="btn" onclick="closeSheet()">キャンセル</button><button class="btn primary" id="sh-save">保存</button>';
   $('sh-save').onclick = () => {
+    numInputs().forEach(el=>{ el.value = el.value.replace(/,/g,''); });
     const err = onSave();
+    if(err) numInputs().forEach(fmtNumInput);
     if(err){ toast(err); return; }
     saveData(); closeSheet(); render(); toast('保存しました');
   };
