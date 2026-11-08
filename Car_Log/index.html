@@ -328,7 +328,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v04_2026-11-08.5';
+const APP_VERSION = 'v04_2026-11-08.6';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -719,7 +719,7 @@ function renderHome(){
     kpi('費用合計', yen(total), '', running!==total ? `維持費 ${yen(running)}` : '') +
     kpi('走行距離', fmt(dist), 'km', cur ? `ODO ${fmt(cur.odo)} km` : '') +
     kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L') +
-    kpi('燃料費/km', dist ? fmt(sum('fuel')/dist,1) : '—', '円', dist ? `維持費/km ${fmt(running/dist,1)}円` : '');
+    kpi('維持費/km', dist ? fmt(running/dist,1) : '—', '円', dist ? `燃料費/km ${fmt(sum('fuel')/dist,1)}円` : '');
 
   renderReminders();
 
