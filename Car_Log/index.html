@@ -314,7 +314,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v03_2026-11-08.2';
+const APP_VERSION = 'v03_2026-11-08.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -473,25 +473,28 @@ function renderYearSelects(){
 }
 
 /* ---------- チャート（SVG） ---------- */
-function niceMax(v){
-  if(v<=0) return 1;
-  const p = Math.pow(10, Math.floor(Math.log10(v)));
-  for(const m of [1,2,4,6,8,10]) if(v<=m*p) return m*p;
-  return 10*p;
+// Y軸: 刻み 1・2・2.5・5×10^n、目盛り数5以下で最小の上限
+function niceScale(v){
+  if(!(v>0)) return {max:1, step:0.25, n:4};
+  const raw = v/5, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  let step = 10*p;
+  for(const m of [1,2,2.5,5,10]) if(m*p>=raw){ step = m*p; break; }
+  const n = Math.max(1, Math.ceil(v/step - 1e-9));
+  return {max:step*n, step, n};
 }
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 
 function barChart(el, tipEl, labels, series, unitFmt){
   const W=Math.max(300, el.clientWidth||640), H=200, mL=44, mR=8, mT=14, mB=24;
   const totals = labels.map((_,i)=>series.reduce((s,se)=>s+(se.values[i]||0),0));
-  const max = niceMax(Math.max(...totals,0));
+  const {max, n:nT} = niceScale(Math.max(...totals,0));
   const pw = W-mL-mR, ph = H-mT-mB, bw = pw/labels.length;
   let svg = `<svg viewBox="0 0 ${W} ${H}">`;
   const grid = cssVar('--border'), txt = cssVar('--text2');
-  for(let i=0;i<=4;i++){
-    const y = mT + ph - ph*i/4;
+  for(let i=0;i<=nT;i++){
+    const y = mT + ph - ph*i/nT;
     svg += `<line x1="${mL}" x2="${W-mR}" y1="${y}" y2="${y}" stroke="${grid}" stroke-width="1"/>`;
-    svg += `<text x="${mL-6}" y="${y+4}" font-size="11" fill="${txt}" text-anchor="end">${unitFmt(max*i/4, true)}</text>`;
+    svg += `<text x="${mL-6}" y="${y+4}" font-size="11" fill="${txt}" text-anchor="end">${unitFmt(max*i/nT, true)}</text>`;
   }
   labels.forEach((lb,i)=>{
     let y = mT+ph;
@@ -563,12 +566,12 @@ function cumChart(el, tipEl, pts, t0, t1){
   const base=odoAt(pts,t0);
   const vals=data.map(t=>({t, v:odoAt(pts,t)-base, odo:odoAt(pts,t)}));
   const W=Math.max(300, el.clientWidth||640), H=180, mL=44, mR=12, mT=14, mB=24;
-  const max=niceMax(vals[vals.length-1].v), pw=W-mL-mR, ph=H-mT-mB;
+  const {max, n:nT}=niceScale(vals[vals.length-1].v), pw=W-mL-mR, ph=H-mT-mB;
   const X=t=>mL+pw*(t-t0)/(t1-t0), Y=v=>mT+ph-ph*v/max;
   const grid=cssVar('--border'), txt=cssVar('--text2'), ac=cssVar('--accent');
   const lbl=t=>{ const d=new Date(t); return (days>400?String(d.getFullYear()).slice(2)+'/':'')+(d.getMonth()+1)+(days>400?'':'/'+d.getDate()); };
   let svg=`<svg viewBox="0 0 ${W} ${H}">`;
-  for(let i=0;i<=4;i++){ const y=Y(max*i/4); svg+=`<line x1="${mL}" x2="${W-mR}" y1="${y}" y2="${y}" stroke="${grid}"/><text x="${mL-6}" y="${y+4}" font-size="11" fill="${txt}" text-anchor="end">${fmt(max*i/4)}</text>`; }
+  for(let i=0;i<=nT;i++){ const y=Y(max*i/nT); svg+=`<line x1="${mL}" x2="${W-mR}" y1="${y}" y2="${y}" stroke="${grid}"/><text x="${mL-6}" y="${y+4}" font-size="11" fill="${txt}" text-anchor="end">${fmt(max*i/nT)}</text>`; }
   const line=vals.map(p=>X(p.t)+','+Y(p.v)).join(' ');
   svg+=`<polygon points="${X(t0)},${Y(0)} ${line} ${X(t1)},${Y(0)}" fill="${ac}" opacity=".15"/><polyline points="${line}" fill="none" stroke="${ac}" stroke-width="2.5"/>`;
   pts.filter(p=>{const t=dateMs(p.date); return t>=t0&&t<=t1;}).forEach(p=>{ svg+=`<circle cx="${X(dateMs(p.date))}" cy="${Y(p.odo-base)}" r="2.5" fill="${ac}"/>`; });
@@ -1068,15 +1071,24 @@ function loadSample(){
     const ds = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
     d.fuel.push({id:uid(), date:ds, odo:String(odo), liters:liters.toFixed(2), unitPrice:String(price), total:String(Math.round(liters*price)), full: odo % 7 !== 0, fuelType:'レギュラー', station:i%3?'セルフA':'B石油', memo:''});
     if(i%3===1) d.maint.push({id:uid(), date:ds, odo:String(odo), category:i%6===1?'手洗い洗車':'洗車', title:'', cost:i%6===1?'2500':'800', shop:'', memo:'', nextDate:'', nextOdo:''});
-    if(t.getDate()>20) d.odo.push({id:uid(), date:ds.slice(0,8)+'28', odo:String(odo+60), memo:'月末記録'});
     t = new Date(t.getTime() + (12+Math.round(Math.random()*8))*86400000); i++;
   }
-  const lastOdo = odo;
-  d.maint.push({id:uid(), date:`${y-1}-04-15`, odo:String(Math.round(lastOdo*0.5)), category:'法定点検', title:'12ヶ月点検', cost:'15400', shop:'ディーラー', memo:'', nextDate:'', nextOdo:''});
-  d.maint.push({id:uid(), date:`${y}-03-05`, odo:String(Math.round(lastOdo*0.85)), category:'オイル交換', title:'0W-20 4L', cost:'5500', shop:'ディーラー', memo:'', nextDate:`${y}-09-05`, nextOdo:String(Math.round(lastOdo*0.85)+5000)});
-  d.maint.push({id:uid(), date:`${y-1}-11-20`, odo:String(Math.round(lastOdo*0.7)), category:'タイヤ', title:'スタッドレス交換', cost:'4400', shop:'カー用品店', memo:'', nextDate:'', nextOdo:''});
-  d.maint.push({id:uid(), date:`${y-1}-06-01`, odo:String(Math.round(lastOdo*0.55)), category:'カスタム', title:'ドラレコ取付', cost:'38000', shop:'カー用品店', memo:'', nextDate:'', nextOdo:''});
-  d.maint.push({id:uid(), date:`${y-2}-05-10`, odo:'900', category:'コーティング', title:'ガラスコーティング', cost:'66000', shop:'専門店', memo:'', nextDate:`${y+1}-05-10`, nextOdo:''});
+  // メンテのODOは給油記録から日付で補間（グラフ上で点がずれないように）
+  const fp = [{date:d.vehicle.purchaseDate, odo:12}, ...d.fuel.map(f=>({date:f.date, odo:+f.odo}))];
+  const odoOn = ds => String(Math.round(odoAt(fp, dateMs(ds))));
+  for(let m=new Date(y-2,4,28); m.getTime()<=dateMs(fp[fp.length-1].date); m.setMonth(m.getMonth()+1)){
+    const ds = m.getFullYear()+'-'+String(m.getMonth()+1).padStart(2,'0')+'-28';
+    d.odo.push({id:uid(), date:ds, odo:odoOn(ds), memo:'月末記録'});
+  }
+  [[`${y-2}-05-10`,'コーティング','ガラスコーティング','66000','専門店',`${y+1}-05-10`,0],
+   [`${y-1}-04-15`,'法定点検','12ヶ月点検','15400','ディーラー','',0],
+   [`${y-1}-06-01`,'カスタム','ドラレコ取付','38000','カー用品店','',0],
+   [`${y-1}-11-20`,'タイヤ','スタッドレス交換','4400','カー用品店','',0],
+   [`${y}-03-05`,'オイル交換','0W-20 4L','5500','ディーラー',`${y}-09-05`,5000]
+  ].forEach(([ds,cat,title,cost,shop,nd,nk])=>{
+    const o = odoOn(ds);
+    d.maint.push({id:uid(), date:ds, odo:o, category:cat, title, cost, shop, memo:'', nextDate:nd, nextOdo:nk?String(+o+nk):''});
+  });
   for(let k=y-2;k<=y;k++){
     d.costs.push({id:uid(), date:`${k}-04-08`, category:'任意保険', title:'年間保険料', amount:String(62000-(k-y+2)*4000), until:`${k+1}-04-09`, memo:''});
     d.costs.push({id:uid(), date:`${k}-05-20`, category:'自動車税（種別割）', title:'', amount:'30500', until:'', memo:''});
