@@ -132,7 +132,8 @@ button{font-family:inherit;}
 .kpi .k-label{font-size:11px;color:var(--text2);}
 .kpi .k-val{font-size:20px;font-weight:700;margin-top:2px;white-space:nowrap;}
 .kpi .k-unit{font-size:11px;color:var(--text2);font-weight:400;margin-left:2px;}
-.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;min-height:1.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kpi .k-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .kpi .k-val,.kpi .k-sub{text-align:right;}
 input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;font-family:inherit;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
@@ -420,7 +421,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-09';
+const APP_VERSION = 'v07_2026-11-09.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -939,7 +940,7 @@ function groupedList(items, rowFn, sumFn){
   return html;
 }
 function dateCell(s){ const [y,m,d]=s.split('-'); const w='日月火水木金土'[new Date(+y,+m-1,+d).getDay()]; return `<div class="r-date"><b>${+d}</b>${w}</div>`; }
-function kpi(label, val, unit, sub){ return `<div class="kpi"><div class="k-label">${label}</div><div class="k-val">${val}<span class="k-unit">${unit||''}</span></div>${sub?`<div class="k-sub">${sub}</div>`:''}</div>`; }
+function kpi(label, val, unit, sub){ return `<div class="kpi"><div class="k-label">${label}</div><div class="k-val">${val}<span class="k-unit">${unit||''}</span></div><div class="k-sub">${sub||''}</div></div>`; }   // 補足が無くても行を確保してカードの高さをそろえる
 function chipsHtml(cats, cur, key){
   return ['all',...cats].map(c=>`<button class="chip ${cur===c?'active':''}" onclick="state.${key}='${esc(c)}';render()">${c==='all'?'すべて':esc(c)}</button>`).join('');
 }
@@ -1197,11 +1198,23 @@ function renderMaint(){
   const wash = all.filter(m=>/洗車/.test(m.category||'')).length;
   const lastOil = V.maint.filter(m=>m.category==='オイル交換').sort(byDateDesc)[0];
   const cur = currentOdo();
-  $('maint-kpi').innerHTML =
-    kpi('件数', list.length, '件') +
-    kpi('費用', yen(total)) +
-    kpi('洗車回数', wash, '回') +
-    kpi('前回オイル交換', lastOil ? lastOil.date.slice(2).replace(/-/g,'/') : '—', '', lastOil && num(lastOil.odo)!=null && cur ? `以降 ${fmt(cur.odo-num(lastOil.odo))} km` : '');
+  const sinceKm = m => m && num(m.odo)!=null && cur ? `以降 ${fmt(cur.odo-num(m.odo))} km` : '';
+  const shortDate = m => m ? m.date.slice(2).replace(/-/g,'/') : '—';
+  if(state.maintFilter==='all'){
+    $('maint-kpi').innerHTML =
+      kpi('件数', list.length, '件') +
+      kpi('費用', yen(total)) +
+      kpi('洗車回数', wash, '回') +
+      kpi('前回オイル交換', shortDate(lastOil), '', sinceKm(lastOil));
+  }else{
+    // 区分で絞り込み中: その区分の合計・件数・1件平均・前回
+    const paid = list.filter(m=>num(m.cost));
+    $('maint-kpi').innerHTML =
+      kpi('合計', yen(total)) +
+      kpi('件数', list.length, '件') +
+      kpi('1件平均', paid.length ? yen(total/paid.length) : '—', '', paid.length!==list.length ? `費用あり ${paid.length}件` : '') +
+      kpi('前回', shortDate(list[0]), '', sinceKm(list[0]));
+  }
   const used = [...new Set(all.map(m=>m.category))];
   const cats = D.maintCats.filter(c=>used.includes(c)).concat(used.filter(c=>!D.maintCats.includes(c)));
   $('maint-filter').innerHTML = chipsHtml(cats, state.maintFilter, 'maintFilter');
@@ -1244,18 +1257,36 @@ function openMaintSheet(id){
 }
 
 /* ---------- その他費用 ---------- */
+// 平均の分母にする月数: 選択期間のうち、納車日（未設定なら最初の記録）から今日までの範囲
+function periodMonths(list){
+  const rng = periodRange(); if(!rng) return 1;
+  const firstRec = list.map(x=>x.date).filter(Boolean).sort()[0];
+  const startD = V.info.purchaseDate || firstRec;
+  const start = Math.max(rng.t0, startD ? dateMs(startD) : rng.t0);
+  const end = Math.min(rng.t1, dateMs(todayStr()) + 86400000);
+  return Math.max(1, Math.round((end-start)/86400000/30.44));
+}
 function renderCost(){
   const all = V.costs.filter(c=>inYear(c.date));
   const list = all.filter(c=>state.costFilter==='all' || c.category===state.costFilter).sort(byDateDesc);
   const total = list.reduce((s,c)=>s+(num(c.amount)||0),0);
-  const road = all.filter(c=>/駐車|高速|有料/.test(c.category||'')).reduce((s,c)=>s+(num(c.amount)||0),0);
-  const ins = all.filter(c=>/保険/.test(c.category||'')).reduce((s,c)=>s+(num(c.amount)||0),0);
-  const tax = all.filter(c=>/税/.test(c.category||'')).reduce((s,c)=>s+(num(c.amount)||0),0);
-  $('cost-kpi').innerHTML =
-    kpi('合計', yen(total), '', `${list.length}件`) +
-    kpi('駐車場・道路', yen(road)) +
-    kpi('保険', yen(ins)) +
-    kpi('税金', yen(tax));
+  if(state.costFilter==='all'){
+    // すべて: 合計＋金額の多い区分の上位3つ
+    const byCat = {};
+    all.forEach(c=>{ byCat[c.category] = (byCat[c.category]||0) + (num(c.amount)||0); });
+    const top = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    $('cost-kpi').innerHTML = kpi('合計', yen(total), '', `${list.length}件`) +
+      top.map(([c,a])=>kpi(esc(c), yen(a), '', total ? `${fmt(a/total*100,0)}%` : '')).join('');
+  }else{
+    // 区分で絞り込み中: 合計・件数・1件平均・月平均（全期間で1年以上なら年平均）
+    const months = periodMonths(list);
+    const avg = months>=12 && state.year==='all' ? ['年平均', total/(months/12)] : ['月平均', total/Math.max(1,months)];
+    $('cost-kpi').innerHTML =
+      kpi('合計', yen(total)) +
+      kpi('件数', list.length, '件') +
+      kpi('1件平均', list.length ? yen(total/list.length) : '—') +
+      kpi(avg[0], list.length ? yen(avg[1]) : '—');
+  }
   const used = [...new Set(all.map(c=>c.category))];
   const cats = D.costCats.filter(c=>used.includes(c)).concat(used.filter(c=>!D.costCats.includes(c)));
   $('cost-filter').innerHTML = chipsHtml(cats, state.costFilter, 'costFilter');
