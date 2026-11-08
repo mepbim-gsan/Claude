@@ -39,6 +39,9 @@ button{font-family:inherit;}
 .page-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
 .page-title{font-size:18px;font-weight:700;}
 .year-sel{width:auto;padding:6px 10px;font-size:14px;}
+.year-nav{display:flex;align-items:center;gap:6px;}
+.yn-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;}
+.yn-btn:disabled{opacity:.35;cursor:default;}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
 .card-title{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.08em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
 .kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
@@ -152,7 +155,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
   <div class="page" id="page-home">
     <div class="page-header">
       <div class="page-title">サマリー</div>
-      <select class="year-sel" data-year-sel></select>
+      <div class="year-nav"><button class="yn-btn" data-year-step="-1" aria-label="前の年">‹</button><select class="year-sel" data-year-sel></select><button class="yn-btn" data-year-step="1" aria-label="次の年">›</button></div>
     </div>
     <div class="card">
       <div class="card-title">概要</div>
@@ -183,7 +186,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
   <div class="page" id="page-fuel">
     <div class="page-header">
       <div class="page-title">給油ログ</div>
-      <select class="year-sel" data-year-sel></select>
+      <div class="year-nav"><button class="yn-btn" data-year-step="-1" aria-label="前の年">‹</button><select class="year-sel" data-year-sel></select><button class="yn-btn" data-year-step="1" aria-label="次の年">›</button></div>
     </div>
     <div class="card">
       <div class="kpi-grid" id="fuel-kpi"></div>
@@ -200,7 +203,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
   <div class="page" id="page-odo">
     <div class="page-header">
       <div class="page-title">ODOログ</div>
-      <select class="year-sel" data-year-sel></select>
+      <div class="year-nav"><button class="yn-btn" data-year-step="-1" aria-label="前の年">‹</button><select class="year-sel" data-year-sel></select><button class="yn-btn" data-year-step="1" aria-label="次の年">›</button></div>
     </div>
     <div class="card">
       <div class="card-title">現在のODO</div>
@@ -231,7 +234,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
   <div class="page" id="page-maint">
     <div class="page-header">
       <div class="page-title">メンテナンス</div>
-      <select class="year-sel" data-year-sel></select>
+      <div class="year-nav"><button class="yn-btn" data-year-step="-1" aria-label="前の年">‹</button><select class="year-sel" data-year-sel></select><button class="yn-btn" data-year-step="1" aria-label="次の年">›</button></div>
     </div>
     <div class="card">
       <div class="kpi-grid" id="maint-kpi"></div>
@@ -244,7 +247,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
   <div class="page" id="page-cost">
     <div class="page-header">
       <div class="page-title">その他費用</div>
-      <select class="year-sel" data-year-sel></select>
+      <div class="year-nav"><button class="yn-btn" data-year-step="-1" aria-label="前の年">‹</button><select class="year-sel" data-year-sel></select><button class="yn-btn" data-year-step="1" aria-label="次の年">›</button></div>
     </div>
     <div class="card">
       <div class="kpi-grid" id="cost-kpi"></div>
@@ -329,7 +332,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v04_2026-11-08.7';
+const APP_VERSION = 'v04_2026-11-08.8';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -477,13 +480,21 @@ function yearsInData(){
   [...D.fuel,...D.odo,...D.maint,...D.costs].forEach(x=>{ if(x.date) s.add(x.date.slice(0,4)); });
   return [...s].sort().reverse();
 }
+function setYear(y){ state.year = y; state.odoRange = y==='all' ? 'all' : 'year'; render(); }
 function renderYearSelects(){
   const ys = yearsInData();
   if(state.year!=='all' && !ys.includes(state.year)) state.year = ys[0];
   const html = ys.map(y=>`<option value="${y}">${y}年</option>`).join('') + '<option value="all">全期間</option>';
   document.querySelectorAll('[data-year-sel]').forEach(sel=>{
     sel.innerHTML = html; sel.value = state.year;
-    sel.onchange = () => { state.year = sel.value; state.odoRange = state.year==='all' ? 'all' : 'year'; render(); };
+    sel.onchange = () => setYear(sel.value);
+  });
+  // ‹ = 前の年（古い）/ › = 次の年（新しい）。全期間のときは無効
+  const i = ys.indexOf(state.year);
+  document.querySelectorAll('[data-year-step]').forEach(btn=>{
+    const step = +btn.dataset.yearStep, j = i - step;
+    btn.disabled = i<0 || j<0 || j>=ys.length;
+    btn.onclick = () => { if(!btn.disabled) setYear(ys[j]); };
   });
 }
 
