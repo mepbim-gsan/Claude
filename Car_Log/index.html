@@ -177,6 +177,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px;}
 table.tbl td,table.tbl th{padding:7px 4px;border-bottom:1px solid var(--border);}
 table.tbl th{font-size:11px;color:var(--text2);font-weight:600;text-align:left;}
 table.tbl td.num,table.tbl th.num{text-align:right;white-space:nowrap;}
+table.tbl tr.grp{cursor:pointer;}
+table.tbl tr.grp td{font-weight:600;}
+table.tbl tr.sub td{font-size:12px;color:var(--text2);}
+table.tbl tr.sub td:first-child{padding-left:30px;}
+.tw{display:inline-block;width:14px;color:var(--text3);}
+.gdot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
+.ratio-bar{display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--bg3);}
+.ratio-bar div{display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;white-space:nowrap;overflow:hidden;font-weight:600;}
 table.tbl tr.total td{font-weight:700;border-bottom:none;}
 .remind{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;gap:8px;}
 .remind:last-child{border-bottom:none;}
@@ -421,7 +429,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-09.3';
+const APP_VERSION = 'v07_2026-11-09.4';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -985,11 +993,25 @@ function renderHome(){
   // 内訳
   const cats = {};
   entries.forEach(e=>{ const k=e.group+'|'+e.cat; (cats[k] ||= {group:e.group, cat:e.cat, amount:0, n:0}); cats[k].amount+=e.amount; cats[k].n++; });
-  const order = {fuel:0, maint:1, cost:2, init:3}, gName = {fuel:'燃料',maint:'メンテ',cost:'費用',init:'初期'};
-  const rows = Object.values(cats).sort((a,b)=>order[a.group]-order[b.group] || b.amount-a.amount);
-  $('home-breakdown').innerHTML = rows.length ? `<table class="tbl"><tr><th>区分</th><th class="num">件数</th><th class="num">金額</th><th class="num">比率</th></tr>` +
-    rows.map(r=>`<tr><td><span class="badge ${r.group}">${gName[r.group]}</span>${esc(r.cat)}</td><td class="num">${r.n}</td><td class="num">${yen(r.amount)}</td><td class="num">${fmt(r.amount/total*100,1)}%</td></tr>`).join('') +
-    `<tr class="total"><td>合計</td><td class="num">${entries.length}</td><td class="num">${yen(total)}</td><td class="num"></td></tr></table>` : '<div class="empty">データがありません</div>';
+  // 中項目（燃料・メンテ・その他費用・初期費用）＋折りたたみ明細。比率は維持費（初期費用を除く）基準
+  const GROUPS = [['fuel','燃料','燃料'],['maint','メンテナンス','メンテ'],['cost','その他費用','費用'],['init','初期費用','初期']];
+  const pct = a => running ? fmt(a/running*100,1)+'%' : '—';
+  if(!entries.length){ $('home-breakdown').innerHTML = '<div class="empty">データがありません</div>'; return; }
+  const gs = GROUPS.map(([g,name,short])=>{
+    const items = Object.values(cats).filter(r=>r.group===g).sort((a,b)=>b.amount-a.amount);
+    return {g, name, short, items, amount:items.reduce((s,r)=>s+r.amount,0), n:items.reduce((s,r)=>s+r.n,0)};
+  }).filter(x=>x.items.length);
+  // 維持費の100%積み上げ横棒
+  const bar = running ? `<div class="ratio-bar">${gs.filter(x=>x.g!=='init' && x.amount>0).map(x=>{
+      const w = x.amount/running*100;
+      return `<div style="width:${w}%;background:var(--c-${x.g})" title="${x.name} ${fmt(w,1)}%">${w>=14?`${x.short} ${fmt(w,0)}%`:w>=7?`${fmt(w,0)}%`:''}</div>`;
+    }).join('')}</div><div class="muted" style="margin:4px 0 8px;">比率は維持費（${yen(running)}）に対する割合${gs.some(x=>x.g==='init')?'。初期費用は含めない':''}</div>` : '';
+  const open = state.bdOpen || (state.bdOpen = {});
+  $('home-breakdown').innerHTML = bar + `<table class="tbl"><tr><th>区分</th><th class="num">件数</th><th class="num">金額</th><th class="num">比率</th></tr>` +
+    gs.map(x=>`<tr class="grp" onclick="state.bdOpen['${x.g}']=!state.bdOpen['${x.g}'];renderHome()"><td><span class="tw">${open[x.g]?'▾':'▸'}</span><i class="gdot" style="background:var(--c-${x.g})"></i>${x.name}</td><td class="num">${x.n}</td><td class="num">${yen(x.amount)}</td><td class="num">${x.g==='init'?'':pct(x.amount)}</td></tr>` +
+      (open[x.g] ? x.items.map(r=>`<tr class="sub"><td>${esc(r.cat)}</td><td class="num">${r.n}</td><td class="num">${yen(r.amount)}</td><td class="num">${x.g==='init'?'':pct(r.amount)}</td></tr>`).join('') : '')).join('') +
+    `<tr class="total"><td>維持費 計</td><td class="num">${entries.filter(e=>!e.initial).length}</td><td class="num">${yen(running)}</td><td class="num">${running?'100%':''}</td></tr>` +
+    (running!==total ? `<tr class="total"><td>総額（初期費用含む）</td><td class="num">${entries.length}</td><td class="num">${yen(total)}</td><td class="num"></td></tr>` : '') + `</table>`;
 }
 
 function renderReminders(){
