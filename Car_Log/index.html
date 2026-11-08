@@ -8,9 +8,9 @@
 <link rel="manifest" href="./manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
-<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="./icons/icon.svg" id="fav-svg">
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" id="fav-png">
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" id="apple-icon">
 <script type="module">
 // Firebase（Googleログイン＋Firestore同期）。未設定・未ログインでも端末内保存で動作する
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -212,6 +212,10 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 #toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:13px;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;}
 #toast.show{opacity:1;}
 .muted{color:var(--text2);font-size:12px;}
+.car-ico{display:inline-block;vertical-align:-4px;flex-shrink:0;}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;}
+.swatch{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text2);background:var(--bg3);border:2px solid transparent;border-radius:10px;padding:6px 4px 4px;cursor:pointer;width:60px;}
+.swatch.active{border-color:var(--accent);color:var(--text);}
 .dual-range{position:relative;height:30px;margin:4px 6px 0 44px;}
 .dr-track,.dr-fill{position:absolute;top:13px;height:4px;border-radius:2px;}
 .dr-track{left:0;right:0;background:var(--bg3);}
@@ -415,7 +419,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v06_2026-11-08';
+const APP_VERSION = 'v07_2026-11-08';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -423,12 +427,52 @@ const DEFAULT_MAINT_CATS = ['車検','法定点検','オイル交換','オイル
 const DEFAULT_COST_CATS = ['任意保険','自動車税（種別割）','自賠責保険','自動車重量税','駐車場','高速・有料道路','ローン返済','ロードサービス・会員','その他'];
 const DEFAULT_INIT_CATS = ['車両本体','値引き','下取り','環境性能割','自動車重量税','自賠責保険','自動車税（月割）','リサイクル料金','登録・納車費用','オプション・付属品','メンテナンスパック','延長保証','コーティング','その他'];
 const CATS_VER = 2;
+// 車両の色（アイコン用）
+const CAR_COLORS = [['ブルー','#4f8ef7'],['ホワイト','#f2f3f5'],['シルバー','#a8adb7'],['グレー','#6b7280'],['ブラック','#2b2d33'],['レッド','#e05252'],['ネイビー','#2f4a8a'],['グリーン','#3ecf8e'],['イエロー','#f5c542'],['オレンジ','#f5a623'],['ブラウン','#8b5e3c'],['パープル','#a78bfa']];
+const ICON_BG = '#1a1d27';
+function isDarkColor(hex){ const n=parseInt(hex.slice(1),16); const r=n>>16&255,g=n>>8&255,b=n&255; return (0.299*r+0.587*g+0.114*b) < 80; }
+// 車の図形（icons/icon.svg と同じ形）。win=窓・タイヤの色
+function carShape(color, win){
+  const edge = isDarkColor(color) ? ` stroke="#8b90a7" stroke-width="6"` : '';
+  return `<g transform="translate(256 270)">
+    <path d="M-170 30 L-170 -10 Q-170 -30 -150 -34 L-110 -42 L-70 -100 Q-60 -114 -42 -114 L70 -114 Q88 -114 100 -100 L140 -46 L160 -42 Q176 -38 176 -20 L176 30 Q176 44 162 44 L-156 44 Q-170 44 -170 30 Z" fill="${color}"${edge}/>
+    <path d="M-92 -46 L-60 -94 Q-56 -98 -50 -98 L-6 -98 L-6 -46 Z" fill="${win}"/>
+    <path d="M10 -46 L10 -98 L66 -98 Q72 -98 76 -94 L112 -46 Z" fill="${win}"/>
+    <circle cx="-100" cy="44" r="42" fill="${win}"/><circle cx="-100" cy="44" r="26" fill="#e8eaf0"/>
+    <circle cx="108" cy="44" r="42" fill="${win}"/><circle cx="108" cy="44" r="26" fill="#e8eaf0"/></g>`;
+}
+// 画面内の小アイコン（背景なし）
+function carIco(color, size=22){
+  return `<svg class="car-ico" viewBox="76 148 362 216" width="${Math.round(size*362/216)}" height="${size}">${carShape(color||CAR_COLORS[0][1], 'var(--bg2)')}</svg>`;
+}
+// アプリアイコン（rounded=タブ用の角丸、false=ホーム画面用の全面塗り・縮小）
+function appIconSvg(color, rounded){
+  const body = rounded ? carShape(color, ICON_BG) + '<rect x="96" y="390" width="320" height="18" rx="9" fill="#f5a623"/>'
+    : `<g transform="translate(256 256) scale(0.82) translate(-256 -256)">${carShape(color, ICON_BG)}<rect x="96" y="390" width="320" height="18" rx="9" fill="#f5a623"/></g>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512"${rounded?' rx="96"':''} fill="${ICON_BG}"/>${body}</svg>`;
+}
+// タブのアイコン・iPhone のホーム画面アイコン（追加時点の色）を表示中の車両の色に
+let _iconColor = null;
+function updateAppIcons(){
+  const color = V.info.color || CAR_COLORS[0][1];
+  if(color === _iconColor) return;
+  _iconColor = color;
+  const url = svg => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  $('fav-svg').href = url(appIconSvg(color, true));
+  const toPng = (svg, n, cb) => {
+    const img = new Image();
+    img.onload = () => { const c=document.createElement('canvas'); c.width=c.height=n; c.getContext('2d').drawImage(img,0,0,n,n); try{ cb(c.toDataURL('image/png')); }catch{} };
+    img.src = url(svg);
+  };
+  toPng(appIconSvg(color, true), 32, d=>{ $('fav-png').href = d; });
+  toPng(appIconSvg(color, false), 180, d=>{ $('apple-icon').href = d; });
+}
 const FUEL_TYPES = ['レギュラー','ハイオク','軽油','電気','その他'];
 
 // データ: { vehicles:[{id, info, fuel, odo, maint, costs, initCosts, sample}], curId, 区分（全車両共通） }
 function newVehicle(info){
   return {id:uid(), sample:false,
-    info:Object.assign({name:'',model:'',year:'',purchaseDate:'',initialOdo:'',fuelType:'レギュラー',tankCapacity:''}, info||{}),
+    info:Object.assign({name:'',model:'',year:'',purchaseDate:'',initialOdo:'',fuelType:'レギュラー',tankCapacity:'',color:CAR_COLORS[0][1]}, info||{}),
     fuel:[], odo:[], maint:[], costs:[], initCosts:[]};
 }
 function emptyData(){
@@ -1228,8 +1272,10 @@ function renderSettings(){
   renderCloud();
   const v = V.info;
   const rows = [['車両名',v.name],['車種・グレード',v.model],['年式',v.year],['納車日',v.purchaseDate],['納車時ODO',v.initialOdo?fmt(num(v.initialOdo))+' km':''],['油種',v.fuelType],['タンク容量',v.tankCapacity?v.tankCapacity+' L':'']];
+  const colorName = (CAR_COLORS.find(c=>c[1]===v.color)||['—'])[0];
   $('set-vehicles').innerHTML = vehicleListHtml('switchVehicle');
-  $('set-vehicle').innerHTML = rows.map(([k,x])=>`<div class="set-row"><div class="muted">${k}</div><div>${esc(x)||'<span class="muted">未設定</span>'}</div></div>`).join('');
+  $('set-vehicle').innerHTML = rows.map(([k,x])=>`<div class="set-row"><div class="muted">${k}</div><div>${esc(x)||'<span class="muted">未設定</span>'}</div></div>`).join('')
+    + `<div class="set-row"><div class="muted">色</div><div>${carIco(v.color)} ${esc(colorName)}</div></div>`;
   $('set-theme').value = document.documentElement.dataset.theme;
   const catHtml = key => D[key].map((c,i)=>`<div class="cat-item">
       <input type="text" value="${esc(c)}" onchange="renameCat('${key}',${i},this.value)">
@@ -1249,7 +1295,7 @@ function renderSettings(){
 }
 function vehicleListHtml(onclick){
   return D.vehicles.map(v=>`<div class="set-row" style="cursor:pointer" onclick="${onclick}('${v.id}')">
-    <div><span style="color:var(--accent);display:inline-block;width:18px;">${v.id===D.curId?'●':''}</span>${esc(v.info.name||'（名称未設定）')}${v.sample?' <span class="badge warn">サンプル</span>':''}<div class="muted" style="margin-left:18px;">${esc([v.info.model, v.info.year?v.info.year+'年式':''].filter(Boolean).join(' / '))}</div></div>
+    <div><span style="color:var(--accent);display:inline-block;width:18px;">${v.id===D.curId?'●':''}</span>${carIco(v.info.color)} ${esc(v.info.name||'（名称未設定）')}${v.sample?' <span class="badge warn">サンプル</span>':''}<div class="muted" style="margin-left:18px;">${esc([v.info.model, v.info.year?v.info.year+'年式':''].filter(Boolean).join(' / '))}</div></div>
     <div class="muted" style="white-space:nowrap;font-size:11px;">給油${v.fuel.length} / メンテ${v.maint.length}</div></div>`).join('');
 }
 function switchVehicle(id){
@@ -1286,10 +1332,13 @@ function openVehicleSheet(isNew){
       <div class="fld"><label>油種</label><select id="v-fuel">${FUEL_TYPES.map(t=>`<option ${t===v.fuelType?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="fld"><label>タンク容量（L）</label><input type="text" inputmode="decimal" id="v-tank" value="${esc(v.tankCapacity)}"></div>
     </div>
+    <div class="fld"><label>車の色（アイコン）</label><div class="swatches" id="v-colors">${CAR_COLORS.map(([n,c])=>`<div class="swatch ${c===(v.color||CAR_COLORS[0][1])?'active':''}" data-color="${c}" onclick="document.querySelectorAll('#v-colors .swatch').forEach(e=>e.classList.toggle('active', e===this))">${carIco(c,18)}${n}</div>`).join('')}</div>
+      <div class="hint">iPhone のホーム画面アイコンは、追加した時点の色になります（変更後は追加し直し）。Android のホーム画面アイコンは変わりません</div></div>
     <div class="muted">納車日・納車時ODOはODOログの起点、納車日は購入時の費用の集計日として使用します</div>
   `, () => {
     const info = {name:$('v-name').value.trim(), model:$('v-model').value.trim(), year:$('v-year').value.trim(), purchaseDate:$('v-pdate').value,
-      initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim()};
+      initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim(),
+      color:(document.querySelector('#v-colors .swatch.active')||{}).dataset?.color || CAR_COLORS[0][1]};
     if(!info.name) return '車両名を入力してください';
     if(isNew){ const nv = newVehicle(info); D.vehicles.push(nv); D.curId = nv.id; syncV(); Object.assign(state, {year:String(new Date().getFullYear()), odoRange:'year'}); }
     else V.info = info;
@@ -1356,7 +1405,7 @@ function buildSample(){
   const d = newVehicle();
   d.sample = true;
   const y = new Date().getFullYear();
-  d.info = {name:'サンプル', model:'コンパクトSUV', year:String(y-2), purchaseDate:`${y-2}-04-10`, initialOdo:'12', fuelType:'レギュラー', tankCapacity:'45'};
+  d.info = {name:'サンプル', model:'コンパクトSUV', year:String(y-2), purchaseDate:`${y-2}-04-10`, initialOdo:'12', fuelType:'レギュラー', tankCapacity:'45', color:'#a8adb7'};
   [['車両本体','',2650000],['オプション・付属品','ナビ・ETC・マット',280000],['値引き','',-150000],['環境性能割','',27000],['自動車重量税','3年分',24600],['自賠責保険','37ヶ月',24190],['自動車税（月割）','',23000],['リサイクル料金','',11000],['登録・納車費用','',60000]]
     .forEach(([c,t,a])=>d.initCosts.push({id:uid(), category:c, title:t, amount:String(a), memo:''}));
   let odo = 12, t = new Date(y-2,3,20);
@@ -1441,7 +1490,8 @@ function showPage(p){
 function render(){
   const v = V.info;
   const sub = [v.name, v.model].filter(Boolean).join(' ');
-  $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${esc(sub||'（名称未設定）')} ▾</span>`;
+  $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${carIco(v.color,16)} ${esc(sub||'（名称未設定）')} ▾</span>`;
+  updateAppIcons();
   renderYearSelects();
   ({home:renderHome, fuel:renderFuel, odo:renderOdo, maint:renderMaint, cost:renderCost, settings:renderSettings})[state.page]();
 }
