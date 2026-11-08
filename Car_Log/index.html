@@ -336,7 +336,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v05_2026-11-08';
+const APP_VERSION = 'v05_2026-11-08.2';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -925,7 +925,7 @@ function renderOdo(){
     kpi(state.year==='all'?'期間走行':'年間走行', fmt(dist), 'km') +
     kpi('月平均', months>=0.5 ? fmt(dist/months) : '—', 'km/月') +
     insKpi(pts) +
-    kpi('累計走行', fmt(totalDist), 'km', V.info.initialOdo ? `購入時 ${fmt(num(V.info.initialOdo))} km` : '');
+    kpi('累計走行', fmt(totalDist), 'km', V.info.initialOdo ? `納車時 ${fmt(num(V.info.initialOdo))} km` : '');
 
   let labels, ranges;
   if(state.year==='all'){
@@ -942,7 +942,7 @@ function renderOdo(){
 
   renderCum(pts);
 
-  const srcName = {odo:'手入力', fuel:'給油', maint:'メンテ', init:'購入時'};
+  const srcName = {odo:'手入力', fuel:'給油', maint:'メンテ', init:'納車時'};
   $('odo-filter').innerHTML = [['all','すべて'],['odo','手入力'],['fuel','給油'],['maint','メンテ']].map(([k,n])=>`<button class="chip ${state.odoFilter===k?'active':''}" onclick="state.odoFilter='${k}';render()">${n}</button>`).join('');
   const withDelta = pts.map((p,i)=>({...p, delta: i ? p.odo-pts[i-1].odo : null, days: i ? daysBetween(pts[i-1].date,p.date) : null}));
   const list = withDelta.filter(p=>inYear(p.date) && (state.odoFilter==='all' || p.src===state.odoFilter || p.src==='init' && state.odoFilter==='all')).reverse();
@@ -1076,7 +1076,7 @@ function openCostSheet(id){
 /* ---------- 設定 ---------- */
 function renderSettings(){
   const v = V.info;
-  const rows = [['車両名',v.name],['車種・グレード',v.model],['年式',v.year],['購入日',v.purchaseDate],['購入時ODO',v.initialOdo?fmt(num(v.initialOdo))+' km':''],['油種',v.fuelType],['タンク容量',v.tankCapacity?v.tankCapacity+' L':'']];
+  const rows = [['車両名',v.name],['車種・グレード',v.model],['年式',v.year],['納車日',v.purchaseDate],['納車時ODO',v.initialOdo?fmt(num(v.initialOdo))+' km':''],['油種',v.fuelType],['タンク容量',v.tankCapacity?v.tankCapacity+' L':'']];
   $('set-vehicles').innerHTML = vehicleListHtml('switchVehicle');
   $('set-vehicle').innerHTML = rows.map(([k,x])=>`<div class="set-row"><div class="muted">${k}</div><div>${esc(x)||'<span class="muted">未設定</span>'}</div></div>`).join('');
   $('set-theme').value = document.documentElement.dataset.theme;
@@ -1093,7 +1093,7 @@ function renderSettings(){
   const itot = ic.reduce((s,c)=>s+(num(c.amount)||0),0);
   $('set-init').innerHTML = ic.length ? ic.map(c=>`<div class="set-row" style="cursor:pointer" onclick="openInitSheet('${c.id}')"><div><span class="badge init">${esc(c.category)}</span>${esc(c.title)}</div><div>${yen(num(c.amount))}</div></div>`).join('') +
     `<div class="set-row" style="font-weight:700"><div>合計</div><div>${yen(itot)}</div></div>` +
-    `<div class="muted" style="margin-top:6px;">購入日（${esc(V.info.purchaseDate)||'未設定'}）の費用として集計し、維持費/kmからは除外します</div>`
+    `<div class="muted" style="margin-top:6px;">納車日（${esc(V.info.purchaseDate)||'未設定'}）の費用として集計し、維持費/kmからは除外します</div>`
     : '<div class="muted">車両本体・重量税・自賠責など、購入時の費用を登録します（維持費/kmの計算から除外）</div>';
 }
 function vehicleListHtml(onclick){
@@ -1128,14 +1128,14 @@ function openVehicleSheet(isNew){
       <div class="fld"><label>年式</label><input type="text" inputmode="numeric" id="v-year" value="${esc(v.year)}" placeholder="2024"></div>
     </div>
     <div class="fld-row">
-      <div class="fld"><label>購入日</label><input type="date" id="v-pdate" value="${esc(v.purchaseDate)}"></div>
-      <div class="fld"><label>購入時ODO（km）</label><input type="text" inputmode="decimal" id="v-iodo" value="${esc(v.initialOdo)}"></div>
+      <div class="fld"><label>納車日</label><input type="date" id="v-pdate" value="${esc(v.purchaseDate)}"></div>
+      <div class="fld"><label>納車時ODO（km）</label><input type="text" inputmode="decimal" id="v-iodo" value="${esc(v.initialOdo)}"></div>
     </div>
     <div class="fld-row">
       <div class="fld"><label>油種</label><select id="v-fuel">${FUEL_TYPES.map(t=>`<option ${t===v.fuelType?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="fld"><label>タンク容量（L）</label><input type="text" inputmode="decimal" id="v-tank" value="${esc(v.tankCapacity)}"></div>
     </div>
-    <div class="muted">購入日・購入時ODOはODOログの起点として使用します</div>
+    <div class="muted">納車日・納車時ODOはODOログの起点、納車日は購入時の費用の集計日として使用します</div>
   `, () => {
     const info = {name:$('v-name').value.trim(), model:$('v-model').value.trim(), year:$('v-year').value.trim(), purchaseDate:$('v-pdate').value,
       initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim()};
@@ -1153,7 +1153,7 @@ function openInitSheet(id){
     <div class="fld"><label>内容</label><input type="text" id="i-title" value="${esc(v.title)}" placeholder="例：ナビ・ETC、37ヶ月"></div>
     <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="i-amount" value="${esc(v.amount)}"><div class="hint">値引き・下取りはマイナスで入力（例：-150000）</div></div>
     <div class="fld"><label>メモ</label><input type="text" id="i-memo" value="${esc(v.memo)}"></div>
-    ${V.info.purchaseDate?'':'<div class="muted due-soon">車両情報の購入日が未設定のため、年別の集計には含まれません（全期間のみ）</div>'}
+    ${V.info.purchaseDate?'':'<div class="muted due-soon">車両情報の納車日が未設定のため、年別の集計には含まれません（全期間のみ）</div>'}
   `, () => {
     const rec = {id:c?.id||uid(), category:$('i-cat').value, title:$('i-title').value.trim(), amount:$('i-amount').value.trim(), memo:$('i-memo').value.trim()};
     if(!num(rec.amount)) return '金額を入力してください';
