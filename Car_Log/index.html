@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>カーログ</title>
+<title>CarLog</title>
 <meta name="theme-color" content="#0f1117">
 <style>
 :root{
@@ -139,7 +139,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 </head>
 <body>
 <div id="header">
-  <div class="h-title" id="h-title">カーログ</div>
+  <div class="h-title" id="h-title">CarLog</div>
   <span class="app-ver"></span>
   <button class="icon-btn" id="btn-settings" title="設定" onclick="showPage('settings')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -300,7 +300,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="set-row"><div>全データ削除</div><button class="btn sm danger" onclick="clearAll()">削除</button></div>
       <input type="file" id="import-file" accept=".json,application/json" style="display:none" onchange="importJson(this)">
     </div>
-    <div class="muted" style="text-align:center;margin-top:8px;">カーログ <span class="app-ver"></span></div>
+    <div class="muted" style="text-align:center;margin-top:8px;">CarLog <span class="app-ver"></span></div>
   </div>
 </div>
 
@@ -328,7 +328,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v04_2026-11-08.3';
+const APP_VERSION = 'v04_2026-11-08.4';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1213,7 +1213,8 @@ function showPage(p){
 }
 function render(){
   const v = D.vehicle;
-  $('h-title').innerHTML = esc(v.name || 'カーログ') + (v.model?`<span class="h-sub">${esc(v.model)}</span>`:'');
+  const sub = [v.name, v.model].filter(Boolean).join(' ');
+  $('h-title').innerHTML = 'CarLog' + (sub?`<span class="h-sub">${esc(sub)}</span>`:'');
   renderYearSelects();
   ({home:renderHome, fuel:renderFuel, odo:renderOdo, maint:renderMaint, cost:renderCost, settings:renderSettings})[state.page]();
 }
