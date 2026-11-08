@@ -314,19 +314,20 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v03_2026-11-08';
+const APP_VERSION = 'v03_2026-11-08.2';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
 const DEFAULT_MAINT_CATS = ['車検','法定点検','オイル交換','オイルフィルター','タイヤ','バッテリー','洗車','手洗い洗車','コーティング','カスタム','修理','消耗品','その他'];
-const DEFAULT_COST_CATS = ['任意保険','自賠責保険','自動車税','重量税','駐車場','高速・有料道路','ローン','JAF・会員','その他'];
-const DEFAULT_INIT_CATS = ['車両本体','オプション・付属品','値引き','下取り','環境性能割','自動車重量税','自賠責保険','自動車税（月割）','リサイクル料金','登録・納車費用','その他'];
+const DEFAULT_COST_CATS = ['任意保険','自動車税（種別割）','自賠責保険','自動車重量税','駐車場','高速・有料道路','ローン返済','ロードサービス・会員','その他'];
+const DEFAULT_INIT_CATS = ['車両本体','値引き','下取り','環境性能割','自動車重量税','自賠責保険','自動車税（月割）','リサイクル料金','登録・納車費用','オプション・付属品','メンテナンスパック','延長保証','コーティング','その他'];
+const CATS_VER = 2;
 const FUEL_TYPES = ['レギュラー','ハイオク','軽油','電気','その他'];
 
 function emptyData(){
   return {
     vehicle:{name:'',model:'',year:'',purchaseDate:'',initialOdo:'',fuelType:'レギュラー',tankCapacity:''},
-    fuel:[], odo:[], maint:[], costs:[], initCosts:[],
+    catsVer:CATS_VER, fuel:[], odo:[], maint:[], costs:[], initCosts:[],
     maintCats:[...DEFAULT_MAINT_CATS], costCats:[...DEFAULT_COST_CATS], initCats:[...DEFAULT_INIT_CATS]
   };
 }
@@ -334,7 +335,8 @@ function loadData(){
   try{
     const s = localStorage.getItem(STORAGE_KEY);
     if(!s) return emptyData();
-    return migrate(Object.assign(emptyData(), JSON.parse(s)));
+    const raw = JSON.parse(s); if(!raw.catsVer) raw.catsVer = 1;
+    return migrate(Object.assign(emptyData(), raw));
   }catch{ return emptyData(); }
 }
 // 旧形式: 費用の initial フラグ → 初期費用リストへ移行
@@ -344,6 +346,15 @@ function migrate(d){
     if(!d.initCats.includes(c.category)) d.initCats.push(c.category);
   });
   d.costs = d.costs.filter(c=>!c.initial);
+  if((d.catsVer||1) < 2){
+    // 区分名の統一・並び順を新しい初期値に（独自追加の区分は末尾に残す）
+    const ren = {'自動車税':'自動車税（種別割）','重量税':'自動車重量税','ローン':'ローン返済','JAF・会員':'ロードサービス・会員'};
+    d.costs.forEach(c=>{ if(ren[c.category]) c.category = ren[c.category]; });
+    const cc = d.costCats.map(c=>ren[c]||c);
+    d.costCats = [...DEFAULT_COST_CATS, ...cc.filter(c=>!DEFAULT_COST_CATS.includes(c))];
+    d.initCats = [...DEFAULT_INIT_CATS, ...d.initCats.filter(c=>!DEFAULT_INIT_CATS.includes(c))];
+    d.catsVer = 2;
+  }
   return d;
 }
 let D = loadData();
@@ -1068,7 +1079,9 @@ function loadSample(){
   d.maint.push({id:uid(), date:`${y-2}-05-10`, odo:'900', category:'コーティング', title:'ガラスコーティング', cost:'66000', shop:'専門店', memo:'', nextDate:`${y+1}-05-10`, nextOdo:''});
   for(let k=y-2;k<=y;k++){
     d.costs.push({id:uid(), date:`${k}-04-08`, category:'任意保険', title:'年間保険料', amount:String(62000-(k-y+2)*4000), until:`${k+1}-04-09`, memo:''});
-    d.costs.push({id:uid(), date:`${k}-05-20`, category:'自動車税', title:'', amount:'30500', until:'', memo:''});
+    d.costs.push({id:uid(), date:`${k}-05-20`, category:'自動車税（種別割）', title:'', amount:'30500', until:'', memo:''});
+    d.costs.push({id:uid(), date:`${k}-06-01`, category:'ロードサービス・会員', title:'年会費', amount:'4000', until:`${k+1}-05-31`, memo:''});
+    d.costs.push({id:uid(), date:`${k}-08-12`, category:'高速・有料道路', title:'帰省', amount:'8640', until:'', memo:''});
   }
   D = d; saveData(); state.year = String(y); render(); toast('サンプルを投入しました');
 }
