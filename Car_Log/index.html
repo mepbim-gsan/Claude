@@ -125,6 +125,15 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 #toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:13px;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;}
 #toast.show{opacity:1;}
 .muted{color:var(--text2);font-size:12px;}
+.dual-range{position:relative;height:30px;margin:4px 6px 0 44px;}
+.dr-track,.dr-fill{position:absolute;top:13px;height:4px;border-radius:2px;}
+.dr-track{left:0;right:0;background:var(--bg3);}
+.dr-fill{background:var(--accent);}
+.dual-range input[type=range]{position:absolute;left:0;top:0;width:100%;height:30px;margin:0;padding:0;background:none;border:none;-webkit-appearance:none;appearance:none;pointer-events:none;}
+.dual-range input[type=range]::-webkit-slider-runnable-track{background:transparent;height:30px;}
+.dual-range input[type=range]::-moz-range-track{background:transparent;}
+.dual-range input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;width:22px;height:22px;margin-top:4px;border-radius:50%;background:#fff;border:3px solid var(--accent);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3);}
+.dual-range input[type=range]::-moz-range-thumb{pointer-events:auto;width:16px;height:16px;border-radius:50%;background:#fff;border:3px solid var(--accent);cursor:pointer;}
 </style>
 </head>
 <body>
@@ -206,6 +215,10 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="card-title">累積走行距離 <span class="muted" id="odo-cum-range"></span></div>
       <div class="chips" id="odo-cum-filter"></div>
       <div class="chart-wrap" id="odo-cum-chart"></div>
+      <div class="dual-range" id="cum-slider">
+        <div class="dr-track"></div><div class="dr-fill" id="cum-fill"></div>
+        <input type="range" id="cum-s" step="1" aria-label="開始日"><input type="range" id="cum-e" step="1" aria-label="終了日">
+      </div>
       <div class="chart-tip" id="odo-cum-tip"></div>
     </div>
     <div class="chips" id="odo-filter"></div>
@@ -314,7 +327,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v03_2026-11-08.3';
+const APP_VERSION = 'v04_2026-11-08';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -591,6 +604,50 @@ function cumChart(el, tipEl, pts, t0, t1){
   tipEl.textContent=`期間合計 ${fmt(vals[vals.length-1].v)} km（グラフをタップで詳細）`;
 }
 
+// 累積走行距離: プリセット（1カ月〜全期間）＋つまみ2つのスライダーで任意期間
+const CUM_RANGES=[['1m','1カ月',1],['3m','3カ月',3],['6m','6カ月',6],['1y','1年',12],['all','全期間',0]];
+const DAY_MS = 86400000;
+function renderCum(pts){
+  $('odo-cum-filter').innerHTML = CUM_RANGES.map(([k,n])=>`<button class="chip ${state.odoRange===k?'active':''}" onclick="state.odoRange='${k}';render()">${n}</button>`).join('');
+  if(pts.length<2){
+    $('odo-cum-chart').innerHTML='<div class="empty">ODOの記録が2件以上で表示されます</div>'; $('odo-cum-tip').textContent=''; $('odo-cum-range').textContent='';
+    $('cum-slider').style.display='none'; return;
+  }
+  $('cum-slider').style.display='';
+  const minT = dateMs(pts[0].date), maxT = Math.max(dateMs(todayStr()), dateMs(pts[pts.length-1].date));
+  const maxD = Math.round((maxT-minT)/DAY_MS);
+  let t0, t1;
+  if(state.odoRange==='custom' && state.cumRange){
+    t0 = Math.max(minT, state.cumRange[0]); t1 = Math.min(maxT, state.cumRange[1]);
+    if(t1-t0 < DAY_MS){ t0 = minT; t1 = maxT; }
+  }else{
+    t1 = maxT;
+    const mo = (CUM_RANGES.find(r=>r[0]===state.odoRange)||CUM_RANGES[4])[2];
+    if(mo){ const d=new Date(t1); d.setMonth(d.getMonth()-mo); t0=Math.max(minT, d.getTime()); } else t0 = minT;
+  }
+  const S=$('cum-s'), E=$('cum-e');
+  [S,E].forEach(el=>{ el.min=0; el.max=maxD; });
+  S.value = Math.round((t0-minT)/DAY_MS); E.value = Math.round((t1-minT)/DAY_MS);
+  const draw = () => {
+    const a = minT + (+S.value)*DAY_MS, b = minT + (+E.value)*DAY_MS;
+    const f = t=>{ const d=new Date(t); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; };
+    $('odo-cum-range').textContent = `${f(a)}〜${f(b)}`;
+    $('cum-fill').style.left = `calc(11px + (100% - 22px) * ${S.value/maxD})`; $('cum-fill').style.width = `calc((100% - 22px) * ${(E.value-S.value)/maxD})`;
+    cumChart($('odo-cum-chart'), $('odo-cum-tip'), pts, a, b);
+  };
+  const onSlide = which => {
+    const gap = Math.min(7, maxD);
+    if(+E.value - +S.value < gap){ if(which==='s') S.value = +E.value - gap; else E.value = +S.value + gap; }
+    state.odoRange = 'custom'; state.cumRange = [minT + (+S.value)*DAY_MS, minT + (+E.value)*DAY_MS];
+    document.querySelectorAll('#odo-cum-filter .chip').forEach(c=>c.classList.remove('active'));
+    draw();
+  };
+  S.oninput = () => onSlide('s'); E.oninput = () => onSlide('e');
+  // 両つまみが右端で重なった場合に開始側を操作できるよう前面に
+  S.style.zIndex = +S.value > maxD-2 ? 3 : 1; E.style.zIndex = 2;
+  draw();
+}
+
 /* ---------- 共通：リスト描画 ---------- */
 function groupedList(items, rowFn, sumFn){
   if(!items.length) return '<div class="empty">記録がありません<br>右下の ＋ から追加できます</div>';
@@ -810,18 +867,7 @@ function renderOdo(){
   if(pts.length>=2 && labels.length) barChart($('odo-chart'), $('odo-chart-tip'), labels, [{name:'走行', color:'--accent', values:ranges.map(r=>distBetween(pts,r[0],r[1]))}], (v,axis)=>axis?fmt(v):fmt(v)+' km');
   else { $('odo-chart').innerHTML='<div class="empty">ODOの記録が2件以上で表示されます</div>'; $('odo-chart-tip').textContent=''; }
 
-  const RANGES=[['1m','1カ月',1],['3m','3カ月',3],['6m','6カ月',6],['1y','1年',12],['all','全期間',0]];
-  $('odo-cum-filter').innerHTML = RANGES.map(([k,n])=>`<button class="chip ${state.odoRange===k?'active':''}" onclick="state.odoRange='${k}';render()">${n}</button>`).join('');
-  if(pts.length>=2){
-    const t1 = Math.max(dateMs(todayStr()), dateMs(pts[pts.length-1].date));
-    const mo = RANGES.find(r=>r[0]===state.odoRange)[2];
-    let t0;
-    if(mo){ const d=new Date(t1); d.setMonth(d.getMonth()-mo); t0=d.getTime(); }
-    else t0 = dateMs(pts[0].date);
-    const f = t=>{ const d=new Date(t); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; };
-    $('odo-cum-range').textContent = `${f(t0)}〜${f(t1)}`;
-    cumChart($('odo-cum-chart'), $('odo-cum-tip'), pts, t0, t1);
-  }else{ $('odo-cum-chart').innerHTML='<div class="empty">ODOの記録が2件以上で表示されます</div>'; $('odo-cum-tip').textContent=''; $('odo-cum-range').textContent=''; }
+  renderCum(pts);
 
   const srcName = {odo:'手入力', fuel:'給油', maint:'メンテ', init:'購入時'};
   $('odo-filter').innerHTML = [['all','すべて'],['odo','手入力'],['fuel','給油'],['maint','メンテ']].map(([k,n])=>`<button class="chip ${state.odoFilter===k?'active':''}" onclick="state.odoFilter='${k}';render()">${n}</button>`).join('');
