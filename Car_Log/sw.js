@@ -1,4 +1,4 @@
-const CACHE_NAME = 'carlog-v1';
+const CACHE_NAME = 'carlog-v2';
 const ENTRY_HTML = './index.html';
 
 // ネットワーク優先で取得するリソース（更新頻度が高いもの）
@@ -60,9 +60,11 @@ self.addEventListener('fetch', e => {
     url.includes('manifest.json') ||
     NETWORK_FIRST_PATTERNS.some(p => p.test(url));
 
+  // HTML・manifest は HTTP キャッシュ（GitHub Pages は最大10分）を使わずサーバーに確認する
+  const isAppFile = e.request.mode === 'navigate' || url.endsWith(ENTRY_HTML.slice(1)) || url.includes('manifest.json');
   if (isNetworkFirst) {
     e.respondWith(
-      fetch(e.request)
+      (isAppFile ? fetch(url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(e.request))
         .then(res => {
           if (res && res.status === 200 && res.type !== 'opaque') {
             const clone = res.clone();
