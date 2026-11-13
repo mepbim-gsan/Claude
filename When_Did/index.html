@@ -5,6 +5,83 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>いつやった？</title>
 <meta name="theme-color" content="#0f1117">
+<script type="module">
+// Firebase（Googleログイン＋Firestore）で家族共有。ふたりのタスクと同じ Firebase 設定・同じコレクションの別ドキュメントを使う
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const CONFIG_KEY = 'couple-tasks-firebase-config-v1';   // ふたりのタスクと共通
+const C = window._cloud = { configured:false, projectId:'', user:null, status:'', push(){}, login(){}, logout(){} };
+const refresh = () => window.renderCloud && window.renderCloud();
+const setStatus = t => { C.status = t; refresh(); };
+
+let cfg = null;
+try { cfg = JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null'); } catch {}
+if (cfg && cfg.apiKey) {
+  try { start(cfg); } catch (e) { console.error(e); setStatus('Firebase の初期化に失敗しました'); }
+}
+refresh();
+
+function start(cfg) {
+  const app = initializeApp(cfg), auth = getAuth(app), db = getFirestore(app);
+  C.configured = true; C.projectId = cfg.projectId || '';
+  const ref = doc(db, 'couple-tasks', 'itsuyatta');
+  let active = false, unsub = null, lastJson = null, timer = null;
+
+  C.login = async () => {
+    try {
+      const pv = new GoogleAuthProvider(); pv.setCustomParameters({ prompt:'select_account' });
+      await signInWithPopup(auth, pv);
+    } catch (e) { console.error(e); setStatus('ログインエラー: ' + (e.code || e.message)); }
+  };
+  C.logout = async () => { await signOut(auth); };
+  const write = async json => {
+    lastJson = json;
+    setStatus('保存中…');
+    try { await setDoc(ref, { json, updatedAt: Date.now() }); setStatus('同期済み'); }
+    catch (e) { console.error(e); setStatus('保存エラー: ' + (e.code || e.message)); }
+  };
+  C.push = () => {
+    if (!active) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => { const j = window.cloudJson(); if (j !== lastJson) write(j); }, 800);
+  };
+
+  onAuthStateChanged(auth, async user => {
+    if (unsub) { unsub(); unsub = null; }
+    active = false;
+    if (!user) { C.user = null; lastJson = null; setStatus(''); return; }
+    C.user = { name: user.displayName || '', email: user.email || '' };
+    setStatus('同期を確認中…');
+    try {
+      const snap = await getDoc(ref);
+      const local = window.cloudJson();
+      if (!snap.exists()) {
+        await write(local);                      // 初回：この端末のデータをアップロード
+      } else {
+        const remote = snap.data().json;
+        const dirty = !!localStorage.getItem('itsuyatta-dirty');
+        if (dirty && remote !== local && window.hasLocalData()) {
+          const choice = await window.askSyncChoice();
+          if (choice === 'cancel') { await signOut(auth); return; }
+          if (choice === 'local') await write(local);
+          else { lastJson = remote; window.applyCloudJson(remote); }
+        } else if (remote !== local) { lastJson = remote; window.applyCloudJson(remote); }
+        else lastJson = remote;
+      }
+      localStorage.removeItem('itsuyatta-dirty');
+      active = true;
+      setStatus('同期済み');
+      unsub = onSnapshot(ref, s => {
+        if (s.metadata.hasPendingWrites || !s.exists()) return;
+        const j = s.data().json;
+        if (j && j !== lastJson) { lastJson = j; window.applyCloudJson(j); setStatus('同期済み'); }
+      }, e => { console.error(e); setStatus('同期エラー: ' + (e.code || e.message)); });
+    } catch (e) { console.error(e); setStatus('同期エラー: ' + (e.code || e.message)); }
+  });
+}
+</script>
 <style>
 :root{
   --bg:#0f1117;--bg2:#1a1d27;--bg3:#242736;--border:#2e3247;
@@ -133,6 +210,7 @@ textarea{resize:vertical;min-height:70px;}
 <body>
 <div id="header">
   <div class="h-title">いつやった？<span class="h-sub" id="h-sub"></span></div>
+  <span id="h-cloud" title="クラウド同期中"></span>
   <span class="app-ver"></span>
   <div id="sample-bar"><span>サンプル表示中（変更は保存されません）</span><button class="btn sm" onclick="exitSample()">終了</button></div>
 </div>
@@ -187,6 +265,10 @@ textarea{resize:vertical;min-height:70px;}
       </div>
     </div>
     <div class="card">
+      <div class="card-title">家族共有（クラウド同期）</div>
+      <div id="cloud-body"></div>
+    </div>
+    <div class="card">
       <div class="card-title">データ</div>
       <div class="set-row"><span>バックアップ（JSON）</span><button class="btn sm" onclick="exportJson()">書き出し</button></div>
       <div class="set-row"><span>復元（JSON）</span><button class="btn sm" onclick="$('import-file').click()">読み込み</button></div>
@@ -221,7 +303,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13.9';
+const APP_VERSION = 'v02_2026-11-13';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -276,7 +358,67 @@ function loadData(){
 }
 // サンプル表示中は保存しない（本来のデータはそのまま）
 let sampleMode = false;
-function saveData(){ if(sampleMode) return; try { localStorage.setItem(DATA_KEY, JSON.stringify(D)); } catch { toast('保存に失敗しました'); } }
+function saveData(){
+  if(sampleMode) return;
+  try { localStorage.setItem(DATA_KEY, JSON.stringify(D)); } catch { toast('保存に失敗しました'); }
+  const c = window._cloud;
+  if(c && c.user) c.push(); else try { localStorage.setItem('itsuyatta-dirty', '1'); } catch {}
+}
+/* ---------- クラウド同期（module から呼ばれる） ---------- */
+// サンプル表示中もクラウドには本来のデータを渡す
+window.cloudJson = () => JSON.stringify(sampleMode ? (loadData() || emptyData()) : D);
+window.hasLocalData = () => (loadData() || emptyData()).items.length > 0;
+let pendingCloud = null, savedInSheet = false;
+window.applyCloudJson = j => {
+  try { localStorage.setItem(DATA_KEY, j); } catch {}
+  if(sampleMode) return;
+  // 編集中のシートが古いデータを参照しないよう、閉じるまで反映を待つ
+  if($('sheet').classList.contains('show')){ pendingCloud = j; return; }
+  D = Object.assign(emptyData(), JSON.parse(j)); render();
+};
+let syncResolve = null;
+window.askSyncChoice = () => new Promise(res => {
+  syncResolve = res;
+  const pick = v => { syncResolve = null; closeSheet(); res(v); };
+  openSheet('同期するデータの選択', `<div style="font-size:14px;line-height:1.7">この端末で編集したデータとクラウドのデータが異なります。どちらを使いますか？</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+      <button class="btn primary" id="sc-cloud">クラウドのデータを使う（この端末の変更は破棄）</button>
+      <button class="btn" id="sc-local">この端末のデータでクラウドを上書き</button>
+      <button class="btn" id="sc-cancel">ログインをやめる</button></div>`);
+  $('sh-foot').innerHTML = '';
+  $('sc-cloud').onclick = () => pick('cloud');
+  $('sc-local').onclick = () => { if(confirm('家族が記録したクラウドのデータは上書きされます。よろしいですか？')) pick('local'); };
+  $('sc-cancel').onclick = () => pick('cancel');
+});
+window.renderCloud = () => {
+  const el = $('cloud-body'); if(!el) return;
+  const c = window._cloud || {};
+  if(!c.configured){
+    el.innerHTML = `<div class="muted" style="line-height:1.7">ふたりのタスクと同じ Firebase を使います。ふたりのタスクを同じブラウザで設定済みなら、再読み込みで使えるようになります。<br>未設定の場合は firebaseConfig を貼り付けてください（ふたりのタスクの設定も同じものになります）。</div>
+      <textarea id="cfg-input" rows="6" style="margin-top:8px;font-family:monospace;font-size:12px" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", ... }'></textarea>
+      <button class="btn sm primary" style="margin-top:8px" onclick="saveFirebaseConfig()">保存して再読み込み</button>`;
+    return;
+  }
+  el.innerHTML = c.user
+    ? `<div class="set-row"><span>${esc(c.user.name || c.user.email)}<div class="muted">${esc(c.user.email)}</div></span><button class="btn sm" onclick="window._cloud.logout()">ログアウト</button></div>
+       <div class="set-row"><span>状態</span><span class="muted">${esc(c.status)}</span></div>`
+    : `<div class="set-row"><span>Googleでログインすると家族とデータを共有します<div class="muted">プロジェクト: ${esc(c.projectId)}</div></span><button class="btn sm primary" onclick="window._cloud.login()">ログイン</button></div>
+       ${c.status ? `<div class="muted">${esc(c.status)}</div>` : ''}`;
+  $('h-cloud').textContent = c.user ? (/エラー/.test(c.status) ? '⚠' : '☁') : '';
+};
+function parseFirebaseConfig(text){
+  try { return JSON.parse(text); } catch {}
+  try {
+    const m = text.replace(/\/\/.*$/gm, '').match(/\{[\s\S]*\}/); if(!m) return null;
+    return JSON.parse(m[0].replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":').replace(/'/g, '"').replace(/,\s*}/, '}'));
+  } catch { return null; }
+}
+function saveFirebaseConfig(){
+  const cfg = parseFirebaseConfig(val('cfg-input'));
+  if(!cfg || !cfg.apiKey || !cfg.projectId) return toast('firebaseConfig を読み取れません');
+  try { localStorage.setItem('couple-tasks-firebase-config-v1', JSON.stringify(cfg)); } catch {}
+  location.reload();
+}
 function getMe(){ let m = ''; try { m = localStorage.getItem(ME_KEY) || ''; } catch {} return D.members.includes(m) ? m : (D.members[0] || ''); }
 const tagById = id => D.tags.find(t => t.id === id);
 const itemById = id => D.items.find(x => x.id === id);
@@ -449,13 +591,23 @@ function openSheet(title, body, opt = {}){
   } else foot.push(`<button class="btn" id="sh-cancel">${back ? '戻る' : '閉じる'}</button>`);
   $('sh-foot').innerHTML = foot.join('');
   $('sh-cancel').onclick = () => back ? back() : closeSheet();
-  const done = msg => { saveData(); render(); if(back) back(); else closeSheet(); toast(msg); };
+  const done = msg => { savedInSheet = true; saveData(); render(); if(back) back(); else closeSheet(); toast(msg); };
   if(opt.onSave) $('sh-save').onclick = () => { const err = opt.onSave(); if(err){ toast(err); return; } done('保存しました'); };
   if(opt.onDelete) $('sh-del').onclick = () => { if(opt.onDelete() === false) return; done('削除しました'); };
   $('sheet').classList.add('show'); $('sheet-bg').classList.add('show');
   $('sh-body').scrollTop = 0;
 }
-function closeSheet(){ $('sheet').classList.remove('show'); $('sheet-bg').classList.remove('show'); }
+function closeSheet(){
+  $('sheet').classList.remove('show'); $('sheet-bg').classList.remove('show');
+  if(pendingCloud){
+    // シートで保存した場合はクラウドもこの端末の内容で上書き済みなので、待っていた分は破棄
+    if(!savedInSheet){ D = Object.assign(emptyData(), JSON.parse(pendingCloud)); render(); }
+    pendingCloud = null;
+  }
+  savedInSheet = false;
+  // 同期の選択中に閉じたら「ログインをやめる」扱い
+  if(syncResolve){ const r = syncResolve; syncResolve = null; r('cancel'); }
+}
 const val = id => ($(id).value || '').trim();
 const memberOptions = cur => {
   const list = D.members.includes(cur) || !cur ? D.members : [...D.members, cur];
@@ -659,7 +811,7 @@ function importJson(input){
     D = Object.assign(emptyData(), d); saveData(); render(); toast('復元しました');
   }).catch(() => toast('読み込めないファイルです'));
 }
-function clearAll(){ if(sampleMode) return toast('サンプル表示を終了してから操作してください'); if(!confirm('すべての項目・記録・タグを削除しますか？（元に戻せません）')) return; D = emptyData(); saveData(); state.tag = state.histTag = ''; render(); toast('削除しました'); }
+function clearAll(){ if(sampleMode) return toast('サンプル表示を終了してから操作してください'); if(!confirm('すべての項目・記録・タグを削除しますか？（元に戻せません）' + (window._cloud && window._cloud.user ? '\n家族共有中のため、家族の端末からも削除されます。' : ''))) return; D = emptyData(); saveData(); state.tag = state.histTag = ''; render(); toast('削除しました'); }
 
 /* ---------- サンプル ---------- */
 function buildSample(){
@@ -724,6 +876,7 @@ function render(){
   $('btn-sample').textContent = sampleMode ? '終了' : '開始';
   $('h-sub').textContent = getMe() ? '記録者: ' + getMe() : '';
   ({ list: renderList, history: renderHistory, settings: renderSettings })[state.page]();
+  window.renderCloud();
 }
 
 D = loadData();

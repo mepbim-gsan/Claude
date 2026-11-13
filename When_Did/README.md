@@ -13,6 +13,9 @@
 - **設定**: 記録者（この端末の記録者）、タグ（年度管理 ON/OFF）、年度の開始月、テーマ、JSONバックアップ/復元
 - **サンプルモード**: サンプルデータを一時的に表示（変更は保存されず、自分のデータはそのまま）
 
-## データ
-- 端末内（localStorage `itsuyatta-data-v1`）に保存。この端末の記録者は `itsuyatta-me`
-- Firebase による家族共有は今後対応予定
+## データ・家族共有
+- 端末内（localStorage `itsuyatta-data-v1`）に保存。未ログインでも使える。この端末の記録者は `itsuyatta-me`
+- 設定「家族共有」で Googleログインすると、Firestore（`couple-tasks/itsuyatta`）で家族とデータを共有・リアルタイム同期
+  - Firebase 設定は「ふたりのタスク」と共通（同じブラウザで設定済みならそのまま使える）。Firestore ルールも ふたりのタスク の `couple-tasks/{doc}` のままでよい
+  - 未ログイン中に編集したデータがクラウドと異なる場合、ログイン時にどちらを使うか選択
+  - Googleログインは GitHub Pages（承認済みドメイン）でのみ動作
