@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>いつやった？</title>
 <meta name="theme-color" content="#0f1117">
+<link rel="manifest" href="./manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
 <script type="module">
 // Firebase（Googleログイン＋Firestore）で家族共有。ふたりのタスクと同じ Firebase 設定・同じコレクションの別ドキュメントを使う
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -303,7 +309,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v02_2026-11-13';
+const APP_VERSION = 'v03_2026-11-13';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -885,6 +891,11 @@ document.querySelectorAll('.app-ver').forEach(el => el.textContent = APP_VERSION
 try { const t = localStorage.getItem(THEME_KEY); if(t) document.documentElement.dataset.theme = t; } catch {}
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closeSheet(); });
 showPage('list');
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('SW registration failed:', err)); });
+}
 </script>
 </body>
 </html>
