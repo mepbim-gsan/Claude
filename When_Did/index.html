@@ -221,7 +221,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13.4';
+const APP_VERSION = 'v01_2026-11-13.5';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -381,11 +381,13 @@ function renderList(){
 function quickDo(itemId, placeId){
   const it = itemById(itemId);
   const pn = placeName(it, placeId);
-  // 同じ場所・同じ日の記録は1件まで。記録済みならもう一度タップで取り消せる
+  // 同じ場所・同じ日の記録は1件まで。記録済みならもう一度タップで今日の記録を取り消す
   const done = it.logs.find(l => l.placeId === placeId && l.date === today());
   if(done){
-    toast(`${it.name}${pn ? '（' + pn + '）' : ''} は今日記録済みです`, '取り消す', () => {
-      it.logs = it.logs.filter(l => l.id !== done.id); saveData(); render(); toast('取り消しました');
+    it.logs = it.logs.filter(l => l.id !== done.id);
+    saveData(); render();
+    toast(`${it.name}${pn ? '（' + pn + '）' : ''} の今日の記録を取り消しました`, '元に戻す', () => {
+      it.logs.push(done); saveData(); render(); toast('元に戻しました');
     });
     return;
   }
