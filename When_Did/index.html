@@ -22,11 +22,15 @@ html{scrollbar-gutter:stable;}
 body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden;}
 button{font-family:inherit;}
 a{color:var(--accent);}
-#header{position:sticky;top:0;z-index:50;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:10px 14px;}
+#header{position:sticky;top:0;z-index:50;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;}
 #header .h-title{font-size:16px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #header .h-sub{font-size:11px;color:var(--text2);font-weight:400;margin-left:6px;}
 .app-ver{font-size:10px;color:var(--text3);}
-#app{padding-bottom:calc(var(--nav-h) + 16px);max-width:760px;margin:0 auto;}
+#sample-bar{display:none;align-items:center;gap:8px;padding:6px 14px;flex-basis:100%;margin:2px -14px -10px;background:var(--warn);color:#fff;font-size:12px;font-weight:600;}
+#sample-bar span{flex:1;}
+#sample-bar .btn{background:#fff;color:#000;border:none;}
+body.sample #sample-bar{display:flex;}
+#app{padding-bottom:calc(var(--nav-h) + 90px);max-width:760px;margin:0 auto;}
 #nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--bg2);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom);}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;}
 .nav-btn.active{color:var(--accent);}
@@ -130,6 +134,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="header">
   <div class="h-title">いつやった？<span class="h-sub" id="h-sub"></span></div>
   <span class="app-ver"></span>
+  <div id="sample-bar"><span>サンプル表示中（変更は保存されません）</span><button class="btn sm" onclick="exitSample()">終了</button></div>
 </div>
 
 <div id="app">
@@ -185,7 +190,7 @@ textarea{resize:vertical;min-height:70px;}
       <div class="card-title">データ</div>
       <div class="set-row"><span>バックアップ（JSON）</span><button class="btn sm" onclick="exportJson()">書き出し</button></div>
       <div class="set-row"><span>復元（JSON）</span><button class="btn sm" onclick="$('import-file').click()">読み込み</button></div>
-      <div class="set-row"><span>サンプルデータ</span><button class="btn sm" onclick="loadSample()">読み込む</button></div>
+      <div class="set-row"><span>サンプルを見る（保存しない）</span><button class="btn sm" id="btn-sample" onclick="toggleSample()">開始</button></div>
       <div class="set-row"><span>すべてのデータ</span><button class="btn sm danger" onclick="clearAll()">削除</button></div>
       <input type="file" id="import-file" accept=".json,application/json" style="display:none" onchange="importJson(this)">
     </div>
@@ -216,7 +221,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13.3';
+const APP_VERSION = 'v01_2026-11-13.4';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -269,7 +274,9 @@ function loadData(){
   try { const d = JSON.parse(localStorage.getItem(DATA_KEY) || 'null'); if(d && d.items) return Object.assign(emptyData(), d); } catch {}
   return null;
 }
-function saveData(){ try { localStorage.setItem(DATA_KEY, JSON.stringify(D)); } catch { toast('保存に失敗しました'); } }
+// サンプル表示中は保存しない（本来のデータはそのまま）
+let sampleMode = false;
+function saveData(){ if(sampleMode) return; try { localStorage.setItem(DATA_KEY, JSON.stringify(D)); } catch { toast('保存に失敗しました'); } }
 function getMe(){ let m = ''; try { m = localStorage.getItem(ME_KEY) || ''; } catch {} return D.members.includes(m) ? m : (D.members[0] || ''); }
 const tagById = id => D.tags.find(t => t.id === id);
 const itemById = id => D.items.find(x => x.id === id);
@@ -344,7 +351,7 @@ function renderList(){
   } else $('fy-card').innerHTML = '';
 
   if(!items.length){
-    $('item-list').innerHTML = `<div class="empty">${D.items.length ? 'このタグの項目はありません' : '右下の＋から項目を追加してください<br>（設定からサンプルデータも読み込めます）'}</div>`;
+    $('item-list').innerHTML = `<div class="empty">${D.items.length ? 'このタグの項目はありません' : '右下の＋から項目を追加してください<br><br><button class="btn sm" onclick="startSample()">サンプルを見る</button>'}</div>`;
     return;
   }
   $('item-list').innerHTML = items.map(it => {
@@ -618,7 +625,7 @@ function renameMember(i, v){
   saveData(); renderSettings();
 }
 function delMember(i){ if(!confirm(`「${D.members[i]}」を記録者から外しますか？（過去の記録の名前は残ります）`)) return; D.members.splice(i, 1); saveData(); renderSettings(); }
-function setMe(v, quiet){ try { localStorage.setItem(ME_KEY, v); } catch {} if(!quiet) toast('この端末の記録者を変更しました'); }
+function setMe(v, quiet){ if(sampleMode) return; try { localStorage.setItem(ME_KEY, v); } catch {} if(!quiet) toast('この端末の記録者を変更しました'); }
 function addTag(){ const n = prompt('タグ名'); if(!n || !n.trim()) return; D.tags.push({ id: uid(), name: n.trim(), fy: false }); saveData(); renderSettings(); }
 function renameTag(i, v){ if(!v.trim()) return renderSettings(); D.tags[i].name = v.trim(); saveData(); }
 function delTag(i){
@@ -636,6 +643,7 @@ function exportJson(){
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 function importJson(input){
+  if(sampleMode){ input.value = ''; return toast('サンプル表示を終了してから復元してください'); }
   const f = input.files[0]; input.value = ''; if(!f) return;
   f.text().then(txt => {
     const d = JSON.parse(txt); if(!d || !Array.isArray(d.items)) throw 0;
@@ -643,7 +651,7 @@ function importJson(input){
     D = Object.assign(emptyData(), d); saveData(); render(); toast('復元しました');
   }).catch(() => toast('読み込めないファイルです'));
 }
-function clearAll(){ if(!confirm('すべての項目・記録・タグを削除しますか？（元に戻せません）')) return; D = emptyData(); saveData(); state.tag = state.histTag = ''; render(); toast('削除しました'); }
+function clearAll(){ if(sampleMode) return toast('サンプル表示を終了してから操作してください'); if(!confirm('すべての項目・記録・タグを削除しますか？（元に戻せません）')) return; D = emptyData(); saveData(); state.tag = state.histTag = ''; render(); toast('削除しました'); }
 
 /* ---------- サンプル ---------- */
 function buildSample(){
@@ -676,10 +684,15 @@ function buildSample(){
   add({ name: '照明カバー', tagIds: [tags.year.id], logs: [L('', 400, me)] });
   return { fyStart: 4, members: [me, pt], tags: Object.values(tags), items };
 }
-function loadSample(){
-  if(D.items.length && !confirm('現在のデータをサンプルデータで置き換えますか？')) return;
-  D = buildSample(); saveData(); state.tag = state.histTag = ''; render(); toast('サンプルを読み込みました');
+function startSample(){
+  sampleMode = true; D = buildSample(); state.tag = state.histTag = '';
+  document.body.classList.add('sample'); showPage('list'); toast('サンプルを表示しています');
 }
+function exitSample(){
+  sampleMode = false; D = loadData() || emptyData(); state.tag = state.histTag = '';
+  document.body.classList.remove('sample'); showPage('list'); toast('サンプル表示を終了しました');
+}
+function toggleSample(){ sampleMode ? exitSample() : startSample(); }
 
 /* ---------- 共通 ---------- */
 function toast(msg, actLabel, act){
@@ -700,12 +713,13 @@ function showPage(p){
   render();
 }
 function render(){
+  $('btn-sample').textContent = sampleMode ? '終了' : '開始';
   $('h-sub').textContent = getMe() ? '記録者: ' + getMe() : '';
   ({ list: renderList, history: renderHistory, settings: renderSettings })[state.page]();
 }
 
 D = loadData();
-if(!D){ D = buildSample(); saveData(); }
+if(!D) D = emptyData();
 document.querySelectorAll('.app-ver').forEach(el => el.textContent = APP_VERSION);
 try { const t = localStorage.getItem(THEME_KEY); if(t) document.documentElement.dataset.theme = t; } catch {}
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closeSheet(); });
