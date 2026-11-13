@@ -221,7 +221,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13.6';
+const APP_VERSION = 'v01_2026-11-13.7';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -472,6 +472,7 @@ function openItem(id){
     it.interval ? ['目安', ivText(it.interval)] : null,
     it.model ? ['型番', esc(it.model)] : null,
     safeUrl ? ['購入先', `<a href="${esc(safeUrl)}" target="_blank" rel="noopener">${esc(safeUrl)}</a>`] : null,
+    it.note ? ['備考', `<div style="white-space:pre-wrap">${esc(it.note)}</div>`] : null,
   ].filter(Boolean);
   const places = placesOf(it).map(p => {
     const s = placeStatus(it, p.id);
@@ -568,7 +569,8 @@ function openItemEdit(id){
         <select id="f-ivu">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}" ${(iv ? iv.u : 'm')===k?'selected':''}>${v}ごと</option>`).join('')}</select></div>
       <div class="hint">入力すると次回までのカウントダウンを表示します</div></div>
     <div class="fld"><label>型番（任意）</label><input type="text" id="f-model" value="${it ? esc(it.model) : ''}"></div>
-    <div class="fld"><label>購入先リンク（任意）</label><input type="url" id="f-url" value="${it ? esc(it.url) : ''}" placeholder="https://"></div>`, {
+    <div class="fld"><label>購入先リンク（任意）</label><input type="url" id="f-url" value="${it ? esc(it.url) : ''}" placeholder="https://"></div>
+    <div class="fld"><label>備考（任意）</label><textarea id="f-note" rows="3" placeholder="例：手順・注意点・必要な道具">${it ? esc(it.note || '') : ''}</textarea></div>`, {
     back: it ? () => openItem(it.id) : null,
     onSave: () => {
       const name = val('f-name'); if(!name) return '項目名を入力してください';
@@ -585,7 +587,7 @@ function openItemEdit(id){
         if(places.length) it.logs.forEach(l => { if(!l.placeId) l.placeId = places[0].id; });
         else it.logs.forEach(l => { l.placeId = ''; });
       }
-      Object.assign(rec, { name, tagIds: [...editTags], places, interval: n > 0 ? { n, u: val('f-ivu') } : null, model: val('f-model'), url: val('f-url') });
+      Object.assign(rec, { name, tagIds: [...editTags], places, interval: n > 0 ? { n, u: val('f-ivu') } : null, model: val('f-model'), url: val('f-url'), note: val('f-note') });
       if(!it) D.items.push(rec);
     },
     onDelete: it ? () => { if(!confirm(`「${it.name}」を削除しますか？\n実施記録・メモもすべて削除されます。`)) return false; D.items = D.items.filter(x => x.id !== it.id); } : null,
@@ -666,7 +668,7 @@ function buildSample(){
   const L = (pid, days, by) => ({ id: uid(), placeId: pid, date: ago(days), by });
   const items = [];
   const add = o => items.push(Object.assign({ id: uid(), tagIds: [], places: [], interval: null, model: '', url: '', logs: [], memos: [] }, o));
-  add({ name: 'ロボット掃除機 紙パック交換', tagIds: [tags.filter.id], interval: { n: 2, u: 'm' }, model: 'XX-PACK-01（3枚入）', url: 'https://example.com/',
+  add({ name: 'ロボット掃除機 紙パック交換', tagIds: [tags.filter.id], interval: { n: 2, u: 'm' }, model: 'XX-PACK-01（3枚入）', url: 'https://example.com/', note: '本体のダストボックスも一緒に水洗いする',
     logs: [L('', 70, me), L('', 132, pt)], memos: [{ id: uid(), date: ago(132), by: pt, text: '純正品から互換品に変更。問題なし' }] });
   const toilet = P('1F', '2F');
   add({ name: 'トイレ換気扇フィルター', tagIds: [tags.filter.id], places: toilet, interval: { n: 6, u: 'm' }, model: 'FL-200',
