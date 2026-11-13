@@ -221,7 +221,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13.8';
+const APP_VERSION = 'v01_2026-11-13.9';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -280,10 +280,10 @@ function saveData(){ if(sampleMode) return; try { localStorage.setItem(DATA_KEY,
 function getMe(){ let m = ''; try { m = localStorage.getItem(ME_KEY) || ''; } catch {} return D.members.includes(m) ? m : (D.members[0] || ''); }
 const tagById = id => D.tags.find(t => t.id === id);
 const itemById = id => D.items.find(x => x.id === id);
-// 場所なしの項目は場所ID '' の1件として扱う
+// 内訳（画面上の呼び方。データ上は places）なしの項目は場所ID '' の1件として扱う
 const placesOf = it => it.places.length ? it.places : [{ id:'', name:'' }];
 const placeName = (it, pid) => (it.places.find(p => p.id === pid) || {}).name || '';
-// 場所名の列幅：全項目で最長の場所名に合わせ、記録の位置を揃える（半角は0.6文字分）。場所なしの項目も同じ幅を空ける
+// 内訳名の列幅：全項目で最長の内訳名に合わせ、記録の位置を揃える（半角は0.6文字分）。内訳なしの項目も同じ幅を空ける
 const nameW = () => Math.max(3, ...D.items.flatMap(it => it.places.map(p => [...p.name].reduce((w, c) => w + (c.charCodeAt(0) < 256 ? 0.6 : 1), 0)))) + 0.3;
 const ivText = iv => iv ? `${iv.n}${UNITS[iv.u]}ごと` : '';
 
@@ -384,7 +384,7 @@ function renderList(){
 function quickDo(itemId, placeId){
   const it = itemById(itemId);
   const pn = placeName(it, placeId);
-  // 同じ場所・同じ日の記録は1件まで。記録済みならもう一度タップで今日の記録を取り消す
+  // 同じ内訳・同じ日の記録は1件まで。記録済みならもう一度タップで今日の記録を取り消す
   const done = it.logs.find(l => l.placeId === placeId && l.date === today());
   if(done){
     it.logs = it.logs.filter(l => l.id !== done.id);
@@ -514,7 +514,7 @@ function openLogEdit(itemId, logId, fromItem){
   const pls = placesOf(it);
   openSheet(l ? '実施記録を編集' : '実施を記録', `
     <div class="fld"><label>項目</label><div>${esc(it.name)}</div></div>
-    ${it.places.length ? `<div class="fld"><label>場所</label><select id="f-place">${pls.map(p => `<option value="${p.id}" ${l && l.placeId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+    ${it.places.length ? `<div class="fld"><label>内訳</label><select id="f-place">${pls.map(p => `<option value="${p.id}" ${l && l.placeId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>` : ''}
     <div class="fld-row">
       <div class="fld"><label>実施日</label><input type="date" id="f-date" value="${l ? l.date : today()}"></div>
       <div class="fld"><label>記録者</label><select id="f-by">${memberOptions(l ? l.by : getMe())}</select></div>
@@ -563,9 +563,9 @@ function openItemEdit(id){
     <div class="fld"><label>項目名</label><input type="text" id="f-name" value="${it ? esc(it.name) : ''}" placeholder="例：換気扇フィルター交換"></div>
     <div class="fld"><label>タグ</label><div class="chips" id="f-tags" style="flex-wrap:wrap"></div>
       <div class="list-item" style="margin-top:6px"><input type="text" id="f-newtag" placeholder="新しいタグ"><button class="btn sm" onclick="addTagInline()">追加</button></div></div>
-    <div class="fld"><label>場所（複数ある場合）</label><div id="f-places">${(it ? it.places : []).map(placeInput).join('')}</div>
-      <button class="btn sm" onclick="$('f-places').insertAdjacentHTML('beforeend', placeInput({id:'',name:''}))">＋ 場所を追加</button>
-      <div class="hint">例：1F／2F、リビング／寝室。場所ごとに実施日を記録します。空なら1か所として扱います</div></div>
+    <div class="fld"><label>内訳（複数ある場合）</label><div id="f-places">${(it ? it.places : []).map(placeInput).join('')}</div>
+      <button class="btn sm" onclick="$('f-places').insertAdjacentHTML('beforeend', placeInput({id:'',name:''}))">＋ 内訳を追加</button>
+      <div class="hint">例：1F／2F、リビング／寝室、コンロ／換気扇／流し台。内訳ごとに実施日を記録します。空なら1つとして扱います</div></div>
     <div class="fld"><label>目安の間隔（任意）</label>
       <div class="fld-row"><input type="text" inputmode="numeric" id="f-ivn" value="${iv ? iv.n : ''}" placeholder="なし">
         <select id="f-ivu">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}" ${(iv ? iv.u : 'm')===k?'selected':''}>${v}ごと</option>`).join('')}</select></div>
@@ -580,11 +580,11 @@ function openItemEdit(id){
       const placeEls = [...document.querySelectorAll('#f-places .list-item')];
       const places = placeEls.map(el => ({ id: el.dataset.id || uid(), name: el.querySelector('input').value.trim() })).filter(p => p.name);
       const rec = it || { id: uid(), logs: [], memos: [] };
-      // 場所なし→ありに変えた場合、既存記録は1つ目の場所へ。場所を削除した場合、その記録も削除
+      // 内訳なし→ありに変えた場合、既存記録は1つ目の内訳へ。内訳を削除した場合、その記録も削除
       if(it){
         const ids = new Set(places.map(p => p.id));
         const lost = it.logs.filter(l => l.placeId && !ids.has(l.placeId)).length;
-        if(lost && !confirm(`削除した場所の実施記録 ${lost}件 も削除されます。よろしいですか？`)) return '保存を中止しました';
+        if(lost && !confirm(`削除した内訳の実施記録 ${lost}件 も削除されます。よろしいですか？`)) return '保存を中止しました';
         it.logs = it.logs.filter(l => !l.placeId || ids.has(l.placeId));
         if(places.length) it.logs.forEach(l => { if(!l.placeId) l.placeId = places[0].id; });
         else it.logs.forEach(l => { l.placeId = ''; });
@@ -596,7 +596,7 @@ function openItemEdit(id){
   });
   renderEditTags();
 }
-function placeInput(p){ return `<div class="list-item" data-id="${p.id}"><input type="text" value="${esc(p.name)}" placeholder="場所名"><button class="btn sm danger" onclick="this.parentNode.remove()">✕</button></div>`; }
+function placeInput(p){ return `<div class="list-item" data-id="${p.id}"><input type="text" value="${esc(p.name)}" placeholder="内訳名"><button class="btn sm danger" onclick="this.parentNode.remove()">✕</button></div>`; }
 function renderEditTags(){
   $('f-tags').innerHTML = D.tags.length ? D.tags.map(t => `<button class="chip ${editTags.includes(t.id)?'active':''}" onclick="toggleEditTag('${t.id}')">${esc(t.name)}</button>`).join('') : '<span class="muted">タグはまだありません</span>';
 }
