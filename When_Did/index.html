@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>いつやった？</title>
+<meta name="theme-color" content="#0f1117">
+<style>
+:root{
+  --bg:#0f1117;--bg2:#1a1d27;--bg3:#242736;--border:#2e3247;
+  --accent:#4f8ef7;--success:#3ecf8e;--warn:#f5a623;--danger:#e05252;
+  --text:#e8eaf0;--text2:#8b90a7;--text3:#5a5f7a;
+  --nav-h:60px;--radius:12px;
+}
+[data-theme="light"]{
+  --bg:#f4f6fb;--bg2:#ffffff;--bg3:#eef0f7;--border:#d0d5e8;
+  --accent:#2563eb;--success:#16a34a;--warn:#d97706;--danger:#dc2626;
+  --text:#1e2233;--text2:#6b7280;--text3:#9ca3af;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scrollbar-gutter:stable;}
+body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden;}
+button{font-family:inherit;}
+a{color:var(--accent);}
+#header{position:sticky;top:0;z-index:50;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:10px 14px;}
+#header .h-title{font-size:16px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#header .h-sub{font-size:11px;color:var(--text2);font-weight:400;margin-left:6px;}
+.app-ver{font-size:10px;color:var(--text3);}
+#app{padding-bottom:calc(var(--nav-h) + 16px);max-width:760px;margin:0 auto;}
+#nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--bg2);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom);}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;}
+.nav-btn.active{color:var(--accent);}
+.nav-btn svg{width:22px;height:22px;}
+.page{display:none;padding:14px;}
+.page.active{display:block;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
+.card-title{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.08em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;font-family:inherit;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+input[inputmode=numeric]{text-align:right;}
+textarea{resize:vertical;min-height:70px;}
+.btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+.btn.danger{color:var(--danger);border-color:var(--danger);background:transparent;}
+.btn.sm{padding:5px 10px;font-size:12px;}
+.empty{text-align:center;color:var(--text3);font-size:13px;padding:30px 0;}
+.muted{color:var(--text2);font-size:12px;}
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;flex:1;min-width:0;}
+.chip{flex-shrink:0;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:16px;padding:5px 12px;font-size:12px;cursor:pointer;white-space:nowrap;}
+.chip.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
+.seg button{background:none;border:none;color:var(--text2);font-size:12px;padding:6px 10px;cursor:pointer;}
+.seg button.active{background:var(--accent);color:#fff;}
+.badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);margin-right:4px;vertical-align:1px;white-space:nowrap;}
+.badge.ok{color:var(--success);border-color:var(--success);}
+.badge.ng{color:var(--danger);border-color:var(--danger);}
+.due-over{color:var(--danger);} .due-soon{color:var(--warn);} .due-ok{color:var(--success);}
+/* 項目カード */
+.item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;cursor:pointer;}
+.item:active{background:var(--bg3);}
+.it-head{display:flex;align-items:baseline;gap:6px;margin-bottom:4px;}
+.it-name{font-size:15px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.it-int{font-size:11px;color:var(--text2);white-space:nowrap;}
+.it-tags{margin-bottom:4px;}
+.pl{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--border);font-size:13px;}
+.pl:first-of-type{border-top:none;}
+.pl-name{width:64px;flex-shrink:0;font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pl-main{flex:1;min-width:0;}
+.pl-elapsed{font-weight:700;}
+.pl-last{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pl-due{font-size:12px;font-weight:700;white-space:nowrap;text-align:right;}
+.do-btn{flex-shrink:0;width:38px;height:34px;border-radius:8px;border:1px solid var(--success);background:transparent;color:var(--success);font-size:16px;cursor:pointer;}
+.do-btn:active{background:var(--success);color:#fff;}
+.fy-bar{height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-top:8px;}
+.fy-bar div{height:100%;background:var(--success);}
+.fab{position:fixed;right:18px;bottom:calc(var(--nav-h) + 18px);width:54px;height:54px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:28px;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;z-index:90;display:none;}
+.fab.show{display:block;}
+@media(min-width:800px){.fab{right:calc(50% - 360px);}}
+/* 履歴 */
+.list-month{font-size:12px;color:var(--text2);font-weight:600;padding:10px 2px 6px;}
+.row{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:6px;cursor:pointer;display:flex;gap:10px;align-items:center;}
+.row:active{background:var(--bg3);}
+.row .r-date{font-size:12px;color:var(--text2);width:38px;text-align:center;flex-shrink:0;line-height:1.2;}
+.row .r-date b{display:block;font-size:17px;color:var(--text);}
+.row .r-main{flex:1;min-width:0;}
+.row .r-title{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.row .r-sub{font-size:11px;color:var(--text2);margin-top:2px;white-space:pre-wrap;word-break:break-all;}
+.row .r-right{font-size:12px;color:var(--text2);flex-shrink:0;}
+/* 詳細 */
+.sec-title{font-size:12px;font-weight:700;color:var(--text2);margin:16px 0 6px;display:flex;justify-content:space-between;align-items:center;}
+.sec-title:first-child{margin-top:0;}
+.info-tbl{width:100%;font-size:13px;border-collapse:collapse;}
+.info-tbl td{padding:5px 0;border-bottom:1px solid var(--border);vertical-align:top;}
+.info-tbl td:first-child{color:var(--text2);width:80px;font-size:12px;}
+.info-tbl td{word-break:break-all;}
+/* sheet */
+#sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;}
+#sheet-bg.show{display:block;}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-height:92dvh;background:var(--bg2);border-radius:16px 16px 0 0;z-index:201;display:none;flex-direction:column;max-width:760px;margin:0 auto;}
+#sheet.show{display:flex;}
+.sh-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);}
+.sh-title{font-size:16px;font-weight:700;}
+.sh-body{padding:14px 16px;overflow-y:auto;flex:1;}
+.sh-foot{display:flex;gap:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--border);}
+.sh-foot .btn{flex:1;padding:11px;}
+.sh-foot .btn.danger{flex:0 0 auto;}
+.fld{margin-bottom:12px;}
+.fld label{display:block;font-size:12px;color:var(--text2);margin-bottom:4px;}
+.fld .hint{font-size:11px;color:var(--text3);margin-top:4px;}
+.fld-row{display:flex;gap:8px;}
+.fld-row>*{flex:1;min-width:0;}
+.check{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;}
+.check input{width:18px;height:18px;}
+.list-item{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
+.list-item input[type=text]{padding:6px 10px;font-size:14px;}
+.list-item .btn{flex-shrink:0;}
+.set-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:8px;font-size:14px;}
+.set-row:last-child{border-bottom:none;}
+.set-row select{width:auto;}
+#toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:13px;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;display:flex;gap:12px;align-items:center;width:max-content;max-width:calc(100vw - 32px);}
+#toast.show{opacity:1;}
+#toast.act{pointer-events:auto;}
+#toast button{background:none;border:none;color:var(--accent);font-weight:700;font-size:13px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="header">
+  <div class="h-title">いつやった？<span class="h-sub" id="h-sub"></span></div>
+  <span class="app-ver"></span>
+</div>
+
+<div id="app">
+  <div class="page" id="page-list">
+    <div class="toolbar">
+      <div class="chips" id="tag-chips"></div>
+    </div>
+    <div class="toolbar">
+      <div class="muted" id="list-count" style="flex:1"></div>
+      <div class="seg" id="sort-seg">
+        <button data-sort="due" onclick="setSort('due')">期限順</button>
+        <button data-sort="idle" onclick="setSort('idle')">放置順</button>
+      </div>
+    </div>
+    <div id="fy-card"></div>
+    <div id="item-list"></div>
+  </div>
+
+  <div class="page" id="page-history">
+    <div class="toolbar"><div class="chips" id="hist-chips"></div></div>
+    <div id="hist-list"></div>
+  </div>
+
+  <div class="page" id="page-settings">
+    <div class="card">
+      <div class="card-title">記録者</div>
+      <div id="set-members"></div>
+      <button class="btn sm" onclick="addMember()">＋ 追加</button>
+      <div class="set-row" style="margin-top:8px">
+        <span>この端末の記録者</span>
+        <select id="set-me" onchange="setMe(this.value)"></select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">タグ</div>
+      <div id="set-tags"></div>
+      <button class="btn sm" onclick="addTag()">＋ 追加</button>
+      <div class="set-row" style="margin-top:8px">
+        <span>年度の開始月</span>
+        <select id="set-fy" onchange="setFyStart(this.value)"></select>
+      </div>
+      <div class="muted">「年度管理」をONにしたタグは、一覧で今年度の実施済み／未実施を表示します。</div>
+    </div>
+    <div class="card">
+      <div class="card-title">表示</div>
+      <div class="set-row">
+        <span>テーマ</span>
+        <select id="set-theme" onchange="setTheme(this.value)"><option value="dark">ダーク</option><option value="light">ライト</option></select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">データ</div>
+      <div class="set-row"><span>バックアップ（JSON）</span><button class="btn sm" onclick="exportJson()">書き出し</button></div>
+      <div class="set-row"><span>復元（JSON）</span><button class="btn sm" onclick="$('import-file').click()">読み込み</button></div>
+      <div class="set-row"><span>サンプルデータ</span><button class="btn sm" onclick="loadSample()">読み込む</button></div>
+      <div class="set-row"><span>すべてのデータ</span><button class="btn sm danger" onclick="clearAll()">削除</button></div>
+      <input type="file" id="import-file" accept=".json,application/json" style="display:none" onchange="importJson(this)">
+    </div>
+    <div class="muted" style="text-align:center">いつやった？ <span class="app-ver"></span></div>
+  </div>
+</div>
+
+<button class="fab" id="fab" onclick="openItemEdit()">＋</button>
+
+<div id="nav">
+  <button class="nav-btn" data-page="list" onclick="showPage('list')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>一覧
+  </button>
+  <button class="nav-btn" data-page="history" onclick="showPage('history')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>履歴
+  </button>
+  <button class="nav-btn" data-page="settings" onclick="showPage('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>設定
+  </button>
+</div>
+
+<div id="sheet-bg" onclick="closeSheet()"></div>
+<div id="sheet">
+  <div class="sh-head"><div class="sh-title" id="sh-title"></div><button class="btn sm" onclick="closeSheet()">✕</button></div>
+  <div class="sh-body" id="sh-body"></div>
+  <div class="sh-foot" id="sh-foot"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const APP_VERSION = 'v01_2026-11-13';
+const DATA_KEY = 'itsuyatta-data-v1';
+const THEME_KEY = 'itsuyatta-theme';
+const ME_KEY = 'itsuyatta-me';
+const UNITS = {d:'日', w:'週', m:'か月', y:'年'};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/* ---------- 日付 ---------- */
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parseD = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const today = () => ymd(new Date());
+const diffDays = (a, b) => Math.round((parseD(b) - parseD(a)) / 86400000);
+function addMonths(s, n){
+  const d = parseD(s), day = d.getDate();
+  const r = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  r.setDate(Math.min(day, new Date(r.getFullYear(), r.getMonth()+1, 0).getDate()));
+  return ymd(r);
+}
+function addInterval(s, iv){
+  if(iv.u === 'd') { const d = parseD(s); d.setDate(d.getDate() + iv.n); return ymd(d); }
+  if(iv.u === 'w') { const d = parseD(s); d.setDate(d.getDate() + iv.n * 7); return ymd(d); }
+  return addMonths(s, iv.u === 'y' ? iv.n * 12 : iv.n);
+}
+const fmtD = s => s ? s.replace(/-/g, '/') : '';
+const fmtShort = s => { if(!s) return ''; const [y,m,d] = s.split('-'); return (y == new Date().getFullYear() ? '' : y.slice(2) + '/') + Number(m) + '/' + Number(d); };
+function fmtElapsed(days){
+  if(days == null) return '未記録';
+  if(days < 0) return `${-days}日後`;
+  if(days === 0) return '今日';
+  if(days < 60) return `${days}日前`;
+  if(days < 730) return `約${Math.floor(days / 30.44)}か月前`;
+  return `約${(days / 365.25).toFixed(1)}年前`;
+}
+function fyRange(){
+  const t = new Date(), m = (D && D.fyStart) || 4;
+  const sy = t.getMonth() + 1 >= m ? t.getFullYear() : t.getFullYear() - 1;
+  const start = ymd(new Date(sy, m - 1, 1));
+  return { start, end: ymd(new Date(sy + 1, m - 1, 0)), label: m === 1 ? `${sy}年` : `${sy}年度` };
+}
+
+/* ---------- データ ---------- */
+let D;
+const state = { page:'list', tag:'', sort:'due', histTag:'' };
+function emptyData(){ return { fyStart:4, members:['自分'], tags:[], items:[] }; }
+function loadData(){
+  try { const d = JSON.parse(localStorage.getItem(DATA_KEY) || 'null'); if(d && d.items) return Object.assign(emptyData(), d); } catch {}
+  return null;
+}
+function saveData(){ try { localStorage.setItem(DATA_KEY, JSON.stringify(D)); } catch { toast('保存に失敗しました'); } }
+function getMe(){ let m = ''; try { m = localStorage.getItem(ME_KEY) || ''; } catch {} return D.members.includes(m) ? m : (D.members[0] || ''); }
+const tagById = id => D.tags.find(t => t.id === id);
+const itemById = id => D.items.find(x => x.id === id);
+// 場所なしの項目は場所ID '' の1件として扱う
+const placesOf = it => it.places.length ? it.places : [{ id:'', name:'' }];
+const placeName = (it, pid) => (it.places.find(p => p.id === pid) || {}).name || '';
+const ivText = iv => iv ? `${iv.n}${UNITS[iv.u]}ごと` : '';
+
+function placeStatus(it, pid){
+  const logs = it.logs.filter(l => l.placeId === pid).sort((a, b) => b.date.localeCompare(a.date));
+  const last = logs[0] || null, t = today();
+  const s = { last, elapsed: last ? diffDays(last.date, t) : null };
+  if(it.interval){
+    if(last){
+      s.due = addInterval(last.date, it.interval);
+      s.remain = diffDays(t, s.due);
+      const total = diffDays(last.date, s.due);
+      const soon = Math.min(7, Math.ceil(total * 0.2));
+      s.cls = s.remain < 0 ? 'due-over' : s.remain <= soon ? 'due-soon' : 'due-ok';
+      s.dueText = s.remain < 0 ? `${-s.remain}日超過` : s.remain === 0 ? '今日' : `あと${s.remain}日`;
+    } else { s.remain = -Infinity; s.cls = 'due-over'; s.dueText = '未実施'; }
+  }
+  return s;
+}
+function inFy(s){ const r = fyRange(); return !!(s.last && s.last.date >= r.start && s.last.date <= r.end); }
+
+/* ---------- 一覧 ---------- */
+function setSort(s){ state.sort = s; renderList(); }
+function setTagFilter(id){ state.tag = id; renderList(); }
+function chipsHtml(cur, fn){
+  return `<button class="chip ${cur===''?'active':''}" onclick="${fn}('')">すべて</button>` +
+    D.tags.map(t => `<button class="chip ${cur===t.id?'active':''}" onclick="${fn}('${t.id}')">${esc(t.name)}${t.fy?' 📅':''}</button>`).join('');
+}
+function sortKey(it, fy){
+  const sts = placesOf(it).map(p => placeStatus(it, p.id));
+  const idle = Math.max(...sts.map(s => s.elapsed == null ? 1e9 : s.elapsed));
+  const key = [];
+  if(fy) key.push(sts.every(inFy) ? 1 : 0);
+  if(state.sort === 'due'){
+    if(it.interval) key.push(0, Math.min(...sts.map(s => s.remain)));
+    else key.push(1, -idle);
+  } else key.push(-idle);
+  return key;
+}
+const cmpKey = (a, b) => { for(let i = 0; i < a.length; i++) if(a[i] !== b[i]) return a[i] < b[i] ? -1 : 1; return 0; };
+
+function renderList(){
+  $('tag-chips').innerHTML = chipsHtml(state.tag, 'setTagFilter');
+  document.querySelectorAll('#sort-seg button').forEach(b => b.classList.toggle('active', b.dataset.sort === state.sort));
+  const tag = tagById(state.tag);
+  if(state.tag && !tag) state.tag = '';
+  const fy = !!(tag && tag.fy);
+  const items = D.items.filter(it => !state.tag || it.tagIds.includes(state.tag))
+    .map(it => ({ it, k: sortKey(it, fy) })).sort((a, b) => cmpKey(a.k, b.k) || a.it.name.localeCompare(b.it.name, 'ja')).map(x => x.it);
+  $('list-count').textContent = `${items.length}件`;
+
+  if(fy){
+    const r = fyRange();
+    let done = 0, total = 0;
+    items.forEach(it => placesOf(it).forEach(p => { total++; if(inFy(placeStatus(it, p.id))) done++; }));
+    const pct = total ? Math.round(done / total * 100) : 0;
+    $('fy-card').innerHTML = `<div class="card"><div class="card-title"><span>${esc(tag.name)}：${r.label}（${fmtD(r.start)}〜${fmtD(r.end)}）</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:14px"><span>実施済み <b>${done}</b> / ${total}</span><b>${pct}%</b></div>
+      <div class="fy-bar"><div style="width:${pct}%"></div></div></div>`;
+  } else $('fy-card').innerHTML = '';
+
+  if(!items.length){
+    $('item-list').innerHTML = `<div class="empty">${D.items.length ? 'このタグの項目はありません' : '右下の＋から項目を追加してください<br>（設定からサンプルデータも読み込めます）'}</div>`;
+    return;
+  }
+  $('item-list').innerHTML = items.map(it => {
+    const tags = it.tagIds.map(tagById).filter(Boolean);
+    const rows = placesOf(it).map(p => {
+      const s = placeStatus(it, p.id);
+      const right = fy ? `<span class="badge ${inFy(s)?'ok':'ng'}">${inFy(s)?'実施済':'未実施'}</span>`
+        : it.interval ? `<div class="pl-due ${s.cls}">${s.dueText}</div>` : '';
+      return `<div class="pl">
+        ${it.places.length ? `<div class="pl-name">${esc(p.name)}</div>` : ''}
+        <div class="pl-main">
+          <div class="pl-elapsed">${fmtElapsed(s.elapsed)}</div>
+          <div class="pl-last">${s.last ? fmtD(s.last.date) + (s.last.by ? '・' + esc(s.last.by) : '') : '—'}</div>
+        </div>
+        ${right}
+        <button class="do-btn" title="今日やった" onclick="event.stopPropagation();quickDo('${it.id}','${p.id}')">✓</button>
+      </div>`;
+    }).join('');
+    return `<div class="item" onclick="openItem('${it.id}')">
+      <div class="it-head"><span class="it-name">${esc(it.name)}</span><span class="it-int">${ivText(it.interval)}</span></div>
+      ${tags.length ? `<div class="it-tags">${tags.map(t => `<span class="badge">${esc(t.name)}</span>`).join('')}</div>` : ''}
+      ${rows}</div>`;
+  }).join('');
+}
+
+function quickDo(itemId, placeId){
+  const it = itemById(itemId);
+  const log = { id: uid(), placeId, date: today(), by: getMe() };
+  it.logs.push(log);
+  saveData(); render();
+  const pn = placeName(it, placeId);
+  toast(`${it.name}${pn ? '（' + pn + '）' : ''} を記録しました`, '取り消し', () => {
+    it.logs = it.logs.filter(l => l.id !== log.id); saveData(); render(); toast('取り消しました');
+  });
+}
+
+/* ---------- 履歴 ---------- */
+function setHistTag(id){ state.histTag = id; renderHistory(); }
+function renderHistory(){
+  $('hist-chips').innerHTML = chipsHtml(state.histTag, 'setHistTag');
+  const rows = [];
+  D.items.filter(it => !state.histTag || it.tagIds.includes(state.histTag)).forEach(it => {
+    it.logs.forEach(l => rows.push({ t:'log', date:l.date, it, l }));
+    it.memos.forEach(m => rows.push({ t:'memo', date:m.date, it, m }));
+  });
+  rows.sort((a, b) => b.date.localeCompare(a.date) || (a.t === b.t ? 0 : a.t === 'log' ? -1 : 1));
+  if(!rows.length){ $('hist-list').innerHTML = '<div class="empty">記録はまだありません</div>'; return; }
+  let html = '', ym = '';
+  rows.forEach(r => {
+    const m = r.date.slice(0, 7);
+    if(m !== ym){ ym = m; html += `<div class="list-month">${m.replace('-', '年')}月</div>`; }
+    const d = parseD(r.date), wd = '日月火水木金土'[d.getDay()];
+    if(r.t === 'log'){
+      const pn = placeName(r.it, r.l.placeId);
+      html += `<div class="row" onclick="openLogEdit('${r.it.id}','${r.l.id}')">
+        <div class="r-date"><b>${d.getDate()}</b>${wd}</div>
+        <div class="r-main"><div class="r-title">✓ ${esc(r.it.name)}${pn ? '（' + esc(pn) + '）' : ''}</div></div>
+        <div class="r-right">${esc(r.l.by)}</div></div>`;
+    } else {
+      html += `<div class="row" onclick="openMemoEdit('${r.it.id}','${r.m.id}')">
+        <div class="r-date"><b>${d.getDate()}</b>${wd}</div>
+        <div class="r-main"><div class="r-title">📝 ${esc(r.it.name)}</div><div class="r-sub">${esc(r.m.text)}</div></div>
+        <div class="r-right">${esc(r.m.by)}</div></div>`;
+    }
+  });
+  $('hist-list').innerHTML = html;
+}
+
+/* ---------- シート ---------- */
+// opt: {onSave, onDelete, back, saveLabel, extra}
+function openSheet(title, body, opt = {}){
+  $('sh-title').textContent = title;
+  $('sh-body').innerHTML = body;
+  const back = opt.back;
+  const foot = [];
+  if(opt.onDelete) foot.push('<button class="btn danger" id="sh-del">削除</button>');
+  if(opt.extra) foot.push(opt.extra);
+  if(opt.onSave){
+    foot.push(`<button class="btn" id="sh-cancel">${back ? '戻る' : 'キャンセル'}</button><button class="btn primary" id="sh-save">${opt.saveLabel || '保存'}</button>`);
+  } else foot.push(`<button class="btn" id="sh-cancel">${back ? '戻る' : '閉じる'}</button>`);
+  $('sh-foot').innerHTML = foot.join('');
+  $('sh-cancel').onclick = () => back ? back() : closeSheet();
+  const done = msg => { saveData(); render(); if(back) back(); else closeSheet(); toast(msg); };
+  if(opt.onSave) $('sh-save').onclick = () => { const err = opt.onSave(); if(err){ toast(err); return; } done('保存しました'); };
+  if(opt.onDelete) $('sh-del').onclick = () => { if(opt.onDelete() === false) return; done('削除しました'); };
+  $('sheet').classList.add('show'); $('sheet-bg').classList.add('show');
+  $('sh-body').scrollTop = 0;
+}
+function closeSheet(){ $('sheet').classList.remove('show'); $('sheet-bg').classList.remove('show'); }
+const val = id => ($(id).value || '').trim();
+const memberOptions = cur => {
+  const list = D.members.includes(cur) || !cur ? D.members : [...D.members, cur];
+  return '<option value="">（なし）</option>' + list.map(m => `<option ${m===cur?'selected':''}>${esc(m)}</option>`).join('');
+};
+
+/* ---------- 項目詳細 ---------- */
+function openItem(id){
+  const it = itemById(id); if(!it) return closeSheet();
+  const back = () => openItem(id);
+  const tags = it.tagIds.map(tagById).filter(Boolean);
+  const safeUrl = /^https?:\/\//i.test(it.url || '') ? it.url : '';
+  const info = [
+    tags.length ? ['タグ', tags.map(t => `<span class="badge">${esc(t.name)}</span>`).join('')] : null,
+    it.interval ? ['目安', ivText(it.interval)] : null,
+    it.model ? ['型番', esc(it.model)] : null,
+    safeUrl ? ['購入先', `<a href="${esc(safeUrl)}" target="_blank" rel="noopener">${esc(safeUrl)}</a>`] : null,
+  ].filter(Boolean);
+  const places = placesOf(it).map(p => {
+    const s = placeStatus(it, p.id);
+    return `<div class="pl">
+      ${it.places.length ? `<div class="pl-name">${esc(p.name)}</div>` : ''}
+      <div class="pl-main"><div class="pl-elapsed">${fmtElapsed(s.elapsed)}</div>
+        <div class="pl-last">${s.last ? fmtD(s.last.date) + (s.last.by ? '・' + esc(s.last.by) : '') : '—'}${s.due ? '　次回 ' + fmtD(s.due) : ''}</div></div>
+      ${it.interval ? `<div class="pl-due ${s.cls}">${s.dueText}</div>` : ''}
+    </div>`;
+  }).join('');
+  const logs = [...it.logs].sort((a, b) => b.date.localeCompare(a.date));
+  const logHtml = logs.length ? logs.map(l => {
+    const pn = placeName(it, l.placeId);
+    return `<div class="row" onclick="openLogEdit('${it.id}','${l.id}',true)"><div class="r-main"><div class="r-title">${fmtD(l.date)}${pn ? '　' + esc(pn) : ''}</div></div><div class="r-right">${esc(l.by)}</div></div>`;
+  }).join('') : '<div class="muted">まだ記録がありません</div>';
+  const memos = [...it.memos].sort((a, b) => b.date.localeCompare(a.date));
+  const memoHtml = memos.length ? memos.map(m =>
+    `<div class="row" onclick="openMemoEdit('${it.id}','${m.id}',true)"><div class="r-main"><div class="r-title" style="font-size:12px;color:var(--text2);font-weight:400">${fmtD(m.date)}${m.by ? '・' + esc(m.by) : ''}</div><div class="r-sub" style="font-size:13px;color:var(--text)">${esc(m.text)}</div></div></div>`
+  ).join('') : '<div class="muted">メモはありません</div>';
+
+  openSheet(it.name, `
+    ${info.length ? `<table class="info-tbl">${info.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>` : ''}
+    <div class="sec-title"><span>最終実施</span><button class="btn sm primary" onclick="openLogEdit('${it.id}','',true)">＋ 記録</button></div>
+    ${places}
+    <div class="sec-title"><span>メモ</span><button class="btn sm" onclick="openMemoEdit('${it.id}','',true)">＋ メモ</button></div>
+    ${memoHtml}
+    <div class="sec-title"><span>実施履歴（${logs.length}件）</span></div>
+    ${logHtml}
+  `, { extra: `<button class="btn" onclick="openItemEdit('${it.id}')">編集</button>` });
+}
+
+/* ---------- 実施記録 ---------- */
+function openLogEdit(itemId, logId, fromItem){
+  const it = itemById(itemId);
+  const l = it.logs.find(x => x.id === logId);
+  const back = fromItem ? () => openItem(itemId) : null;
+  const pls = placesOf(it);
+  openSheet(l ? '実施記録を編集' : '実施を記録', `
+    <div class="fld"><label>項目</label><div>${esc(it.name)}</div></div>
+    ${it.places.length ? `<div class="fld"><label>場所</label><select id="f-place">${pls.map(p => `<option value="${p.id}" ${l && l.placeId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+    <div class="fld-row">
+      <div class="fld"><label>実施日</label><input type="date" id="f-date" value="${l ? l.date : today()}"></div>
+      <div class="fld"><label>記録者</label><select id="f-by">${memberOptions(l ? l.by : getMe())}</select></div>
+    </div>`, {
+    back,
+    onSave: () => {
+      const date = val('f-date'); if(!date) return '実施日を入力してください';
+      const rec = { id: l ? l.id : uid(), placeId: it.places.length ? val('f-place') : '', date, by: val('f-by') };
+      if(l) Object.assign(l, rec); else it.logs.push(rec);
+    },
+    onDelete: l ? () => { if(!confirm('この実施記録を削除しますか？')) return false; it.logs = it.logs.filter(x => x.id !== l.id); } : null,
+  });
+}
+
+/* ---------- メモ ---------- */
+function openMemoEdit(itemId, memoId, fromItem){
+  const it = itemById(itemId);
+  const m = it.memos.find(x => x.id === memoId);
+  openSheet(m ? 'メモを編集' : 'メモを追加', `
+    <div class="fld"><label>項目</label><div>${esc(it.name)}</div></div>
+    <div class="fld-row">
+      <div class="fld"><label>日付</label><input type="date" id="f-date" value="${m ? m.date : today()}"></div>
+      <div class="fld"><label>記録者</label><select id="f-by">${memberOptions(m ? m.by : getMe())}</select></div>
+    </div>
+    <div class="fld"><label>メモ</label><textarea id="f-text" rows="4" placeholder="例：型番を○○に変更／フィルターの汚れがひどい">${m ? esc(m.text) : ''}</textarea></div>`, {
+    back: fromItem ? () => openItem(itemId) : null,
+    onSave: () => {
+      const text = val('f-text'), date = val('f-date');
+      if(!text) return 'メモを入力してください';
+      if(!date) return '日付を入力してください';
+      const rec = { id: m ? m.id : uid(), date, by: val('f-by'), text };
+      if(m) Object.assign(m, rec); else it.memos.push(rec);
+    },
+    onDelete: m ? () => { if(!confirm('このメモを削除しますか？')) return false; it.memos = it.memos.filter(x => x.id !== m.id); } : null,
+  });
+}
+
+/* ---------- 項目の追加・編集 ---------- */
+let editTags = [];
+function openItemEdit(id){
+  const it = id ? itemById(id) : null;
+  editTags = it ? [...it.tagIds] : (state.tag ? [state.tag] : []);
+  const iv = it && it.interval;
+  openSheet(it ? '項目を編集' : '項目を追加', `
+    <div class="fld"><label>項目名</label><input type="text" id="f-name" value="${it ? esc(it.name) : ''}" placeholder="例：換気扇フィルター交換"></div>
+    <div class="fld"><label>タグ</label><div class="chips" id="f-tags" style="flex-wrap:wrap"></div>
+      <div class="list-item" style="margin-top:6px"><input type="text" id="f-newtag" placeholder="新しいタグ"><button class="btn sm" onclick="addTagInline()">追加</button></div></div>
+    <div class="fld"><label>場所（複数ある場合）</label><div id="f-places">${(it ? it.places : []).map(placeInput).join('')}</div>
+      <button class="btn sm" onclick="$('f-places').insertAdjacentHTML('beforeend', placeInput({id:'',name:''}))">＋ 場所を追加</button>
+      <div class="hint">例：1F／2F、リビング／寝室。場所ごとに実施日を記録します。空なら1か所として扱います</div></div>
+    <div class="fld"><label>目安の間隔（任意）</label>
+      <div class="fld-row"><input type="text" inputmode="numeric" id="f-ivn" value="${iv ? iv.n : ''}" placeholder="なし">
+        <select id="f-ivu">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}" ${(iv ? iv.u : 'm')===k?'selected':''}>${v}ごと</option>`).join('')}</select></div>
+      <div class="hint">入力すると次回までのカウントダウンを表示します</div></div>
+    <div class="fld"><label>型番（任意）</label><input type="text" id="f-model" value="${it ? esc(it.model) : ''}"></div>
+    <div class="fld"><label>購入先リンク（任意）</label><input type="url" id="f-url" value="${it ? esc(it.url) : ''}" placeholder="https://"></div>`, {
+    back: it ? () => openItem(it.id) : null,
+    onSave: () => {
+      const name = val('f-name'); if(!name) return '項目名を入力してください';
+      const n = parseInt(val('f-ivn').replace(/[^\d]/g, ''), 10);
+      const placeEls = [...document.querySelectorAll('#f-places .list-item')];
+      const places = placeEls.map(el => ({ id: el.dataset.id || uid(), name: el.querySelector('input').value.trim() })).filter(p => p.name);
+      const rec = it || { id: uid(), logs: [], memos: [] };
+      // 場所なし→ありに変えた場合、既存記録は1つ目の場所へ。場所を削除した場合、その記録も削除
+      if(it){
+        const ids = new Set(places.map(p => p.id));
+        const lost = it.logs.filter(l => l.placeId && !ids.has(l.placeId)).length;
+        if(lost && !confirm(`削除した場所の実施記録 ${lost}件 も削除されます。よろしいですか？`)) return '保存を中止しました';
+        it.logs = it.logs.filter(l => !l.placeId || ids.has(l.placeId));
+        if(places.length) it.logs.forEach(l => { if(!l.placeId) l.placeId = places[0].id; });
+        else it.logs.forEach(l => { l.placeId = ''; });
+      }
+      Object.assign(rec, { name, tagIds: [...editTags], places, interval: n > 0 ? { n, u: val('f-ivu') } : null, model: val('f-model'), url: val('f-url') });
+      if(!it) D.items.push(rec);
+    },
+    onDelete: it ? () => { if(!confirm(`「${it.name}」を削除しますか？\n実施記録・メモもすべて削除されます。`)) return false; D.items = D.items.filter(x => x.id !== it.id); } : null,
+  });
+  renderEditTags();
+}
+function placeInput(p){ return `<div class="list-item" data-id="${p.id}"><input type="text" value="${esc(p.name)}" placeholder="場所名"><button class="btn sm danger" onclick="this.parentNode.remove()">✕</button></div>`; }
+function renderEditTags(){
+  $('f-tags').innerHTML = D.tags.length ? D.tags.map(t => `<button class="chip ${editTags.includes(t.id)?'active':''}" onclick="toggleEditTag('${t.id}')">${esc(t.name)}</button>`).join('') : '<span class="muted">タグはまだありません</span>';
+}
+function toggleEditTag(id){ editTags = editTags.includes(id) ? editTags.filter(x => x !== id) : [...editTags, id]; renderEditTags(); }
+function addTagInline(){
+  const name = val('f-newtag'); if(!name) return;
+  let t = D.tags.find(x => x.name === name);
+  if(!t){ t = { id: uid(), name, fy: false }; D.tags.push(t); saveData(); }
+  if(!editTags.includes(t.id)) editTags.push(t.id);
+  $('f-newtag').value = ''; renderEditTags();
+}
+
+/* ---------- 設定 ---------- */
+function renderSettings(){
+  $('set-members').innerHTML = D.members.map((m, i) => `<div class="list-item"><input type="text" value="${esc(m)}" onchange="renameMember(${i}, this.value)"><button class="btn sm danger" onclick="delMember(${i})">✕</button></div>`).join('') || '<div class="muted">記録者がいません</div>';
+  const me = getMe();
+  $('set-me').innerHTML = D.members.map(m => `<option ${m===me?'selected':''}>${esc(m)}</option>`).join('') || '<option value="">（なし）</option>';
+  $('set-tags').innerHTML = D.tags.map((t, i) => `<div class="list-item">
+      <input type="text" value="${esc(t.name)}" onchange="renameTag(${i}, this.value)">
+      <label class="check"><input type="checkbox" ${t.fy?'checked':''} onchange="D.tags[${i}].fy=this.checked;saveData()">年度管理</label>
+      <button class="btn sm danger" onclick="delTag(${i})">✕</button></div>`).join('') || '<div class="muted">タグはまだありません</div>';
+  $('set-fy').innerHTML = Array.from({length:12}, (_, i) => `<option value="${i+1}" ${D.fyStart===i+1?'selected':''}>${i+1}月</option>`).join('');
+  $('set-theme').value = document.documentElement.dataset.theme;
+}
+function addMember(){ const n = prompt('記録者の名前'); if(!n || !n.trim()) return; if(D.members.includes(n.trim())) return toast('同じ名前があります'); D.members.push(n.trim()); saveData(); renderSettings(); }
+function renameMember(i, v){
+  v = v.trim(); const old = D.members[i];
+  if(!v || (v !== old && D.members.includes(v))){ toast(!v ? '名前を入力してください' : '同じ名前があります'); return renderSettings(); }
+  D.members[i] = v;
+  // 過去の記録の記録者名も合わせて変更
+  D.items.forEach(it => [...it.logs, ...it.memos].forEach(r => { if(r.by === old) r.by = v; }));
+  let stored = ''; try { stored = localStorage.getItem(ME_KEY); } catch {}
+  if(stored === old) setMe(v, true);
+  saveData(); renderSettings();
+}
+function delMember(i){ if(!confirm(`「${D.members[i]}」を記録者から外しますか？（過去の記録の名前は残ります）`)) return; D.members.splice(i, 1); saveData(); renderSettings(); }
+function setMe(v, quiet){ try { localStorage.setItem(ME_KEY, v); } catch {} if(!quiet) toast('この端末の記録者を変更しました'); }
+function addTag(){ const n = prompt('タグ名'); if(!n || !n.trim()) return; D.tags.push({ id: uid(), name: n.trim(), fy: false }); saveData(); renderSettings(); }
+function renameTag(i, v){ if(!v.trim()) return renderSettings(); D.tags[i].name = v.trim(); saveData(); }
+function delTag(i){
+  const t = D.tags[i];
+  if(!confirm(`タグ「${t.name}」を削除しますか？（項目は削除されません）`)) return;
+  D.tags.splice(i, 1); D.items.forEach(it => { it.tagIds = it.tagIds.filter(x => x !== t.id); });
+  if(state.tag === t.id) state.tag = ''; if(state.histTag === t.id) state.histTag = '';
+  saveData(); renderSettings();
+}
+function setFyStart(v){ D.fyStart = Number(v); saveData(); }
+function setTheme(t){ document.documentElement.dataset.theme = t; try { localStorage.setItem(THEME_KEY, t); } catch {} }
+function exportJson(){
+  const blob = new Blob([JSON.stringify(D, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `itsuyatta_${today()}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function importJson(input){
+  const f = input.files[0]; input.value = ''; if(!f) return;
+  f.text().then(txt => {
+    const d = JSON.parse(txt); if(!d || !Array.isArray(d.items)) throw 0;
+    if(!confirm('現在のデータを読み込んだデータで置き換えますか？')) return;
+    D = Object.assign(emptyData(), d); saveData(); render(); toast('復元しました');
+  }).catch(() => toast('読み込めないファイルです'));
+}
+function clearAll(){ if(!confirm('すべての項目・記録・タグを削除しますか？（元に戻せません）')) return; D = emptyData(); saveData(); state.tag = state.histTag = ''; render(); toast('削除しました'); }
+
+/* ---------- サンプル ---------- */
+function buildSample(){
+  const t = today(), ago = n => { const d = parseD(t); d.setDate(d.getDate() - n); return ymd(d); };
+  const me = '自分', pt = 'パートナー';
+  const tags = { clean: { id: uid(), name: '掃除', fy: false }, filter: { id: uid(), name: 'フィルター', fy: false }, year: { id: uid(), name: '大掃除', fy: true } };
+  const P = (...names) => names.map(name => ({ id: uid(), name }));
+  const L = (pid, days, by) => ({ id: uid(), placeId: pid, date: ago(days), by });
+  const items = [];
+  const add = o => items.push(Object.assign({ id: uid(), tagIds: [], places: [], interval: null, model: '', url: '', logs: [], memos: [] }, o));
+  add({ name: 'ロボット掃除機 紙パック交換', tagIds: [tags.filter.id], interval: { n: 2, u: 'm' }, model: 'XX-PACK-01（3枚入）', url: 'https://example.com/',
+    logs: [L('', 70, me), L('', 132, pt)], memos: [{ id: uid(), date: ago(132), by: pt, text: '純正品から互換品に変更。問題なし' }] });
+  const toilet = P('1F', '2F');
+  add({ name: 'トイレ換気扇フィルター', tagIds: [tags.filter.id], places: toilet, interval: { n: 6, u: 'm' }, model: 'FL-200',
+    logs: [L(toilet[0].id, 150, me), L(toilet[1].id, 200, me)] });
+  const rooms = P('リビング', '寝室', '子供部屋');
+  add({ name: '給気口フィルター', tagIds: [tags.filter.id], places: rooms, interval: { n: 6, u: 'm' },
+    logs: [L(rooms[0].id, 40, pt), L(rooms[1].id, 190, me)],
+    memos: [{ id: uid(), date: ago(40), by: pt, text: 'リビングは道路側なので汚れが早い' }] });
+  add({ name: 'トイレ掃除', tagIds: [tags.clean.id], places: P('1F', '2F'), interval: { n: 1, u: 'w' } });
+  items[items.length - 1].logs = [L(items[items.length - 1].places[0].id, 3, pt), L(items[items.length - 1].places[1].id, 9, me)];
+  add({ name: 'シュレッダー ごみ捨て', tagIds: [tags.clean.id], logs: [L('', 25, me), L('', 80, pt)] });
+  add({ name: '浴室 排水口掃除', tagIds: [tags.clean.id], logs: [L('', 12, pt)] });
+  const r = fyRange();
+  const inThisFy = n => ago(n) >= r.start;
+  add({ name: 'キッチン換気扇', tagIds: [tags.year.id, tags.clean.id], logs: [L('', inThisFy(30) ? 30 : 300, me)] });
+  add({ name: '窓拭き', tagIds: [tags.year.id], places: P('1F', '2F'), logs: [] });
+  add({ name: 'エアコン フィルター', tagIds: [tags.year.id, tags.filter.id], places: P('リビング', '寝室'), interval: { n: 3, u: 'm' } });
+  const ac = items[items.length - 1]; ac.logs = [L(ac.places[0].id, 20, pt)];
+  add({ name: '照明カバー', tagIds: [tags.year.id], logs: [L('', 400, me)] });
+  return { fyStart: 4, members: [me, pt], tags: Object.values(tags), items };
+}
+function loadSample(){
+  if(D.items.length && !confirm('現在のデータをサンプルデータで置き換えますか？')) return;
+  D = buildSample(); saveData(); state.tag = state.histTag = ''; render(); toast('サンプルを読み込みました');
+}
+
+/* ---------- 共通 ---------- */
+function toast(msg, actLabel, act){
+  const t = $('toast');
+  t.innerHTML = esc(msg) + (actLabel ? `<button id="toast-act">${esc(actLabel)}</button>` : '');
+  t.classList.toggle('act', !!actLabel);
+  if(actLabel) $('toast-act').onclick = () => { clearTimeout(toast._t); t.classList.remove('show', 'act'); act(); };
+  t.classList.add('show'); clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show', 'act'), actLabel ? 4000 : 1800);
+}
+function showPage(p){
+  state.page = p;
+  document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + p));
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.toggle('active', el.dataset.page === p));
+  $('fab').classList.toggle('show', p === 'list');
+  window.scrollTo(0, 0);
+  render();
+}
+function render(){
+  $('h-sub').textContent = getMe() ? '記録者: ' + getMe() : '';
+  ({ list: renderList, history: renderHistory, settings: renderSettings })[state.page]();
+}
+
+D = loadData();
+if(!D){ D = buildSample(); saveData(); }
+document.querySelectorAll('.app-ver').forEach(el => el.textContent = APP_VERSION);
+try { const t = localStorage.getItem(THEME_KEY); if(t) document.documentElement.dataset.theme = t; } catch {}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeSheet(); });
+showPage('list');
+</script>
+</body>
+</html>
