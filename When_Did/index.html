@@ -72,6 +72,8 @@ textarea{resize:vertical;min-height:70px;}
 .pl-due{font-size:12px;font-weight:700;white-space:nowrap;text-align:right;}
 .do-btn{flex-shrink:0;width:38px;height:34px;border-radius:8px;border:1px solid var(--success);background:transparent;color:var(--success);font-size:16px;cursor:pointer;}
 .do-btn:active{background:var(--success);color:#fff;}
+@keyframes flash{from{background:color-mix(in srgb,var(--success) 30%,transparent);}to{background:transparent;}}
+.pl.flash{animation:flash 3s ease-out;border-radius:6px;}
 .fy-bar{height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-top:8px;}
 .fy-bar div{height:100%;background:var(--success);}
 .fab{position:fixed;right:18px;bottom:calc(var(--nav-h) + 18px);width:54px;height:54px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:28px;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;z-index:90;display:none;}
@@ -137,6 +139,7 @@ textarea{resize:vertical;min-height:70px;}
     </div>
     <div class="toolbar">
       <div class="muted" id="list-count" style="flex:1"></div>
+      <button class="btn sm" onclick="resort()" title="今の状態で並べ直す">↻ 並べ直す</button>
       <div class="seg" id="sort-seg">
         <button data-sort="due" onclick="setSort('due')">期限順</button>
         <button data-sort="idle" onclick="setSort('idle')">放置順</button>
@@ -213,7 +216,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13';
+const APP_VERSION = 'v01_2026-11-13.2';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -259,7 +262,8 @@ function fyRange(){
 
 /* ---------- データ ---------- */
 let D;
-const state = { page:'list', tag:'', sort:'due', histTag:'' };
+// order: 一覧の表示順（チェックしても並べ替えず、resort=true のときだけ並べ直す）
+const state = { page:'list', tag:'', sort:'due', histTag:'', order:[], resort:true, flash:null };
 function emptyData(){ return { fyStart:4, members:['自分'], tags:[], items:[] }; }
 function loadData(){
   try { const d = JSON.parse(localStorage.getItem(DATA_KEY) || 'null'); if(d && d.items) return Object.assign(emptyData(), d); } catch {}
@@ -293,8 +297,9 @@ function placeStatus(it, pid){
 function inFy(s){ const r = fyRange(); return !!(s.last && s.last.date >= r.start && s.last.date <= r.end); }
 
 /* ---------- 一覧 ---------- */
-function setSort(s){ state.sort = s; renderList(); }
-function setTagFilter(id){ state.tag = id; renderList(); }
+function setSort(s){ state.sort = s; resort(); }
+function setTagFilter(id){ state.tag = id; resort(); }
+function resort(){ state.resort = true; renderList(); }
 function chipsHtml(cur, fn){
   return `<button class="chip ${cur===''?'active':''}" onclick="${fn}('')">すべて</button>` +
     D.tags.map(t => `<button class="chip ${cur===t.id?'active':''}" onclick="${fn}('${t.id}')">${esc(t.name)}${t.fy?' 📅':''}</button>`).join('');
@@ -318,8 +323,14 @@ function renderList(){
   const tag = tagById(state.tag);
   if(state.tag && !tag) state.tag = '';
   const fy = !!(tag && tag.fy);
-  const items = D.items.filter(it => !state.tag || it.tagIds.includes(state.tag))
-    .map(it => ({ it, k: sortKey(it, fy) })).sort((a, b) => cmpKey(a.k, b.k) || a.it.name.localeCompare(b.it.name, 'ja')).map(x => x.it);
+  const shown = D.items.filter(it => !state.tag || it.tagIds.includes(state.tag));
+  if(state.resort){
+    state.order = shown.map(it => ({ it, k: sortKey(it, fy) })).sort((a, b) => cmpKey(a.k, b.k) || a.it.name.localeCompare(b.it.name, 'ja')).map(x => x.it.id);
+    state.resort = false;
+  }
+  // 追加した項目は先頭に表示
+  const pos = new Map(state.order.map((id, i) => [id, i]));
+  const items = [...shown].sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : -1) - (pos.has(b.id) ? pos.get(b.id) : -1));
   $('list-count').textContent = `${items.length}件`;
 
   if(fy){
@@ -342,7 +353,8 @@ function renderList(){
       const s = placeStatus(it, p.id);
       const right = fy ? `<span class="badge ${inFy(s)?'ok':'ng'}">${inFy(s)?'実施済':'未実施'}</span>`
         : it.interval ? `<div class="pl-due ${s.cls}">${s.dueText}</div>` : '';
-      return `<div class="pl">
+      const fl = state.flash && state.flash.itemId === it.id && state.flash.placeId === p.id;
+      return `<div class="pl${fl ? ' flash' : ''}">
         ${it.places.length ? `<div class="pl-name">${esc(p.name)}</div>` : ''}
         <div class="pl-main">
           <div class="pl-elapsed">${fmtElapsed(s.elapsed)}</div>
@@ -363,7 +375,8 @@ function quickDo(itemId, placeId){
   const it = itemById(itemId);
   const log = { id: uid(), placeId, date: today(), by: getMe() };
   it.logs.push(log);
-  saveData(); render();
+  state.flash = { itemId, placeId };
+  saveData(); render(); state.flash = null;
   const pn = placeName(it, placeId);
   toast(`${it.name}${pn ? '（' + pn + '）' : ''} を記録しました`, '取り消し', () => {
     it.logs = it.logs.filter(l => l.id !== log.id); saveData(); render(); toast('取り消しました');
@@ -673,6 +686,7 @@ function showPage(p){
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + p));
   document.querySelectorAll('.nav-btn').forEach(el => el.classList.toggle('active', el.dataset.page === p));
   $('fab').classList.toggle('show', p === 'list');
+  if(p === 'list') state.resort = true;
   window.scrollTo(0, 0);
   render();
 }
