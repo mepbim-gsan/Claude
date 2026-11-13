@@ -221,7 +221,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13.7';
+const APP_VERSION = 'v01_2026-11-13.8';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -283,8 +283,8 @@ const itemById = id => D.items.find(x => x.id === id);
 // 場所なしの項目は場所ID '' の1件として扱う
 const placesOf = it => it.places.length ? it.places : [{ id:'', name:'' }];
 const placeName = (it, pid) => (it.places.find(p => p.id === pid) || {}).name || '';
-// 場所名の列幅：項目内の最長の名前に合わせる（半角は0.6文字分）
-const nameW = it => Math.max(3, ...it.places.map(p => [...p.name].reduce((w, c) => w + (c.charCodeAt(0) < 256 ? 0.6 : 1), 0))) + 0.3;
+// 場所名の列幅：全項目で最長の場所名に合わせ、記録の位置を揃える（半角は0.6文字分）。場所なしの項目も同じ幅を空ける
+const nameW = () => Math.max(3, ...D.items.flatMap(it => it.places.map(p => [...p.name].reduce((w, c) => w + (c.charCodeAt(0) < 256 ? 0.6 : 1), 0)))) + 0.3;
 const ivText = iv => iv ? `${iv.n}${UNITS[iv.u]}ごと` : '';
 
 function placeStatus(it, pid){
@@ -358,13 +358,14 @@ function renderList(){
   }
   $('item-list').innerHTML = items.map(it => {
     const tags = it.tagIds.map(tagById).filter(Boolean);
+    const nw = nameW();
     const rows = placesOf(it).map(p => {
       const s = placeStatus(it, p.id);
       const right = fy ? `<span class="badge ${inFy(s)?'ok':'ng'}">${inFy(s)?'実施済':'未実施'}</span>`
         : it.interval ? `<div class="pl-due ${s.cls}">${s.dueText}</div>` : '';
       const fl = state.flash && state.flash.itemId === it.id && state.flash.placeId === p.id;
       return `<div class="pl${fl ? ' flash' : ''}">
-        ${it.places.length ? `<div class="pl-name" style="width:${nameW(it)}em">${esc(p.name)}</div>` : ''}
+        <div class="pl-name" style="width:${nw}em">${esc(p.name)}</div>
         <div class="pl-main">
           <div class="pl-elapsed">${fmtElapsed(s.elapsed)}</div>
           <div class="pl-last">${s.last ? fmtD(s.last.date) + (s.last.by ? '・' + esc(s.last.by) : '') : '—'}</div>
@@ -474,10 +475,11 @@ function openItem(id){
     safeUrl ? ['購入先', `<a href="${esc(safeUrl)}" target="_blank" rel="noopener">${esc(safeUrl)}</a>`] : null,
     it.note ? ['備考', `<div style="white-space:pre-wrap">${esc(it.note)}</div>`] : null,
   ].filter(Boolean);
+  const nw = nameW();
   const places = placesOf(it).map(p => {
     const s = placeStatus(it, p.id);
     return `<div class="pl">
-      ${it.places.length ? `<div class="pl-name" style="width:${nameW(it)}em">${esc(p.name)}</div>` : ''}
+      <div class="pl-name" style="width:${nw}em">${esc(p.name)}</div>
       <div class="pl-main"><div class="pl-elapsed">${fmtElapsed(s.elapsed)}</div>
         <div class="pl-last">${s.last ? fmtD(s.last.date) + (s.last.by ? '・' + esc(s.last.by) : '') : '—'}${s.due ? '　次回 ' + fmtD(s.due) : ''}</div></div>
       ${it.interval ? `<div class="pl-due ${s.cls}">${s.dueText}</div>` : ''}
