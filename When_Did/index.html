@@ -69,7 +69,7 @@ textarea{resize:vertical;min-height:70px;}
 .it-tags{margin-bottom:4px;}
 .pl{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--border);font-size:13px;}
 .pl:first-of-type{border-top:none;}
-.pl-name{width:64px;flex-shrink:0;font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pl-name{flex:0 0 auto;max-width:45%;font-size:12px;color:var(--text2);line-height:1.3;word-break:break-all;}
 .pl-main{flex:1;min-width:0;}
 .pl-elapsed{font-weight:700;}
 .pl-last{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -221,7 +221,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13.5';
+const APP_VERSION = 'v01_2026-11-13.6';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -283,6 +283,8 @@ const itemById = id => D.items.find(x => x.id === id);
 // 場所なしの項目は場所ID '' の1件として扱う
 const placesOf = it => it.places.length ? it.places : [{ id:'', name:'' }];
 const placeName = (it, pid) => (it.places.find(p => p.id === pid) || {}).name || '';
+// 場所名の列幅：項目内の最長の名前に合わせる（半角は0.6文字分）
+const nameW = it => Math.max(3, ...it.places.map(p => [...p.name].reduce((w, c) => w + (c.charCodeAt(0) < 256 ? 0.6 : 1), 0))) + 0.3;
 const ivText = iv => iv ? `${iv.n}${UNITS[iv.u]}ごと` : '';
 
 function placeStatus(it, pid){
@@ -362,7 +364,7 @@ function renderList(){
         : it.interval ? `<div class="pl-due ${s.cls}">${s.dueText}</div>` : '';
       const fl = state.flash && state.flash.itemId === it.id && state.flash.placeId === p.id;
       return `<div class="pl${fl ? ' flash' : ''}">
-        ${it.places.length ? `<div class="pl-name">${esc(p.name)}</div>` : ''}
+        ${it.places.length ? `<div class="pl-name" style="width:${nameW(it)}em">${esc(p.name)}</div>` : ''}
         <div class="pl-main">
           <div class="pl-elapsed">${fmtElapsed(s.elapsed)}</div>
           <div class="pl-last">${s.last ? fmtD(s.last.date) + (s.last.by ? '・' + esc(s.last.by) : '') : '—'}</div>
@@ -474,7 +476,7 @@ function openItem(id){
   const places = placesOf(it).map(p => {
     const s = placeStatus(it, p.id);
     return `<div class="pl">
-      ${it.places.length ? `<div class="pl-name">${esc(p.name)}</div>` : ''}
+      ${it.places.length ? `<div class="pl-name" style="width:${nameW(it)}em">${esc(p.name)}</div>` : ''}
       <div class="pl-main"><div class="pl-elapsed">${fmtElapsed(s.elapsed)}</div>
         <div class="pl-last">${s.last ? fmtD(s.last.date) + (s.last.by ? '・' + esc(s.last.by) : '') : '—'}${s.due ? '　次回 ' + fmtD(s.due) : ''}</div></div>
       ${it.interval ? `<div class="pl-due ${s.cls}">${s.dueText}</div>` : ''}
