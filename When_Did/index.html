@@ -71,7 +71,7 @@ textarea{resize:vertical;min-height:70px;}
 .pl-last{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .pl-due{font-size:12px;font-weight:700;white-space:nowrap;text-align:right;}
 .do-btn{flex-shrink:0;width:38px;height:34px;border-radius:8px;border:1px solid var(--success);background:transparent;color:var(--success);font-size:16px;cursor:pointer;}
-.do-btn:active{background:var(--success);color:#fff;}
+.do-btn:active,.do-btn.done{background:var(--success);color:#fff;}
 @keyframes flash{from{background:color-mix(in srgb,var(--success) 30%,transparent);}to{background:transparent;}}
 .pl.flash{animation:flash 3s ease-out;border-radius:6px;}
 .fy-bar{height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-top:8px;}
@@ -216,7 +216,7 @@ textarea{resize:vertical;min-height:70px;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v01_2026-11-13.2';
+const APP_VERSION = 'v01_2026-11-13.3';
 const DATA_KEY = 'itsuyatta-data-v1';
 const THEME_KEY = 'itsuyatta-theme';
 const ME_KEY = 'itsuyatta-me';
@@ -361,7 +361,7 @@ function renderList(){
           <div class="pl-last">${s.last ? fmtD(s.last.date) + (s.last.by ? '・' + esc(s.last.by) : '') : '—'}</div>
         </div>
         ${right}
-        <button class="do-btn" title="今日やった" onclick="event.stopPropagation();quickDo('${it.id}','${p.id}')">✓</button>
+        <button class="do-btn${s.last && s.last.date === today() ? ' done' : ''}" title="今日やった" onclick="event.stopPropagation();quickDo('${it.id}','${p.id}')">✓</button>
       </div>`;
     }).join('');
     return `<div class="item" onclick="openItem('${it.id}')">
@@ -373,11 +373,19 @@ function renderList(){
 
 function quickDo(itemId, placeId){
   const it = itemById(itemId);
+  const pn = placeName(it, placeId);
+  // 同じ場所・同じ日の記録は1件まで。記録済みならもう一度タップで取り消せる
+  const done = it.logs.find(l => l.placeId === placeId && l.date === today());
+  if(done){
+    toast(`${it.name}${pn ? '（' + pn + '）' : ''} は今日記録済みです`, '取り消す', () => {
+      it.logs = it.logs.filter(l => l.id !== done.id); saveData(); render(); toast('取り消しました');
+    });
+    return;
+  }
   const log = { id: uid(), placeId, date: today(), by: getMe() };
   it.logs.push(log);
   state.flash = { itemId, placeId };
   saveData(); render(); state.flash = null;
-  const pn = placeName(it, placeId);
   toast(`${it.name}${pn ? '（' + pn + '）' : ''} を記録しました`, '取り消し', () => {
     it.logs = it.logs.filter(l => l.id !== log.id); saveData(); render(); toast('取り消しました');
   });
@@ -501,6 +509,7 @@ function openLogEdit(itemId, logId, fromItem){
     onSave: () => {
       const date = val('f-date'); if(!date) return '実施日を入力してください';
       const rec = { id: l ? l.id : uid(), placeId: it.places.length ? val('f-place') : '', date, by: val('f-by') };
+      if(it.logs.some(x => x.id !== rec.id && x.placeId === rec.placeId && x.date === date)) return 'この日は記録済みです';
       if(l) Object.assign(l, rec); else it.logs.push(rec);
     },
     onDelete: l ? () => { if(!confirm('この実施記録を削除しますか？')) return false; it.logs = it.logs.filter(x => x.id !== l.id); } : null,
