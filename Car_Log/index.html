@@ -111,7 +111,7 @@ button{font-family:inherit;}
 .app-ver{font-size:10px;color:var(--text3);}
 .icon-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .icon-btn svg{width:18px;height:18px;}
-#app{padding-bottom:calc(var(--nav-h) + 16px);max-width:760px;margin:0 auto;}
+#app{padding-bottom:calc(var(--nav-h) + 90px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto;}   /* 最後の行が ＋ボタンに隠れないように */
 #maint-filter,#cost-filter{position:sticky;top:var(--hdr-h,55px);z-index:40;background:var(--bg);margin:0 -14px 6px;padding:8px 14px;}
 .row.dim{opacity:.4;}
 .r-int{font-size:11px;color:var(--accent);margin-top:2px;}
@@ -432,7 +432,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-14.2';
+const APP_VERSION = 'v07_2026-11-14.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
