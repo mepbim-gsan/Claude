@@ -432,7 +432,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-14';
+const APP_VERSION = 'v07_2026-11-14.2';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -720,7 +720,7 @@ function yearsInData(){
   [...V.fuel,...V.odo,...V.maint,...V.costs].forEach(x=>{ if(x.date) s.add(x.date.slice(0,4)); });
   return [...s].sort().reverse();
 }
-function setYear(y){ state.year = y; state.odoRange = y==='all' ? 'all' : 'year'; state.scrollYear = state.page; render(); }
+function setYear(y){ state.year = y; state.odoRange = y==='all' ? 'all' : 'year'; render(); }
 function renderYearSelects(){
   const ys = yearsInData();
   if(state.year!=='all' && !ys.includes(state.year)) state.year = ys[0];
@@ -1260,7 +1260,6 @@ function renderMaint(){
       <div class="r-main"><div class="r-title"><span class="badge maint">${esc(m.category)}</span>${esc(m.title||'')}</div><div class="r-sub">${esc(sub)}</div>${iv}</div>
       <div class="r-right"><div class="r-amt">${num(m.cost)?yen(num(m.cost)):'<span class="muted">—</span>'}</div></div></div>`;
   }, g=>yen(g.reduce((s,m)=>s+(num(m.cost)||0),0)));
-  scrollToYear('maint');
 }
 // 「○カ月」（1年以上は「○年○カ月」、1カ月未満は「○日」）
 function monthsBetween(a, b){
@@ -1269,18 +1268,6 @@ function monthsBetween(a, b){
   if(n<1) return `${daysBetween(a,b)}日`;
   return n>=12 ? `${Math.floor(n/12)}年${n%12?n%12+'カ月':''}` : `${n}カ月`;
 }
-// 年を切り替えたとき、履歴をその年の最初の記録までスクロール
-function scrollToYear(page){
-  if(state.scrollYear!==page) return;
-  state.scrollYear = null;
-  if(state.year==='all') return;
-  const el = document.querySelector(`#${page}-list .row:not(.dim)`);
-  if(!el){ return; }
-  const head = el.previousElementSibling && el.previousElementSibling.classList.contains('list-month') ? el.previousElementSibling : el;
-  const off = $('header').offsetHeight + $(page+'-filter').offsetHeight + 8;
-  window.scrollTo(0, head.getBoundingClientRect().top + scrollY - off);
-}
-
 function openMaintSheet(id){
   const m = id ? V.maint.find(x=>x.id===id) : null;
   const v = m || {date:todayStr(), odo:'', category: state.maintFilter!=='all'?state.maintFilter:D.maintCats[0], title:'', cost:'', shop:'', memo:'', nextDate:'', nextOdo:''};
@@ -1384,7 +1371,6 @@ function renderCost(){
       <div class="r-main"><div class="r-title"><span class="badge cost">${esc(c.category)}</span>${esc(c.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
       <div class="r-right"><div class="r-amt">${yen(num(c.amount))}</div></div></div>`;
   }, g=>yen(g.reduce((s,c)=>s+(num(c.amount)||0),0)));
-  scrollToYear('cost');
 }
 
 function openCostSheet(id){
@@ -1690,7 +1676,6 @@ function showPage(p){
   document.querySelectorAll('.nav-btn').forEach(el=>el.classList.toggle('active', el.dataset.page===p));
   $('fab').classList.toggle('show', !!FAB_ACTION[p]);
   window.scrollTo(0,0);
-  state.scrollYear = p;   // メンテ・費用はタブを開いたとき選択年の位置へ
   render();
 }
 function render(){
