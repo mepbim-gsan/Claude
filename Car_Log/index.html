@@ -111,7 +111,10 @@ button{font-family:inherit;}
 .app-ver{font-size:10px;color:var(--text3);}
 .icon-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .icon-btn svg{width:18px;height:18px;}
-#app{padding-bottom:calc(var(--nav-h) + 16px);max-width:760px;margin:0 auto;}
+#app{padding-bottom:calc(var(--nav-h) + 90px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto;}   /* 最後の行が ＋ボタンに隠れないように */
+#maint-filter,#cost-filter{position:sticky;top:var(--hdr-h,55px);z-index:40;background:var(--bg);margin:0 -14px 6px;padding:8px 14px;}
+.row.dim{opacity:.4;}
+.r-int{font-size:11px;color:var(--accent);margin-top:2px;}
 #nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--bg2);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom);}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;}
 .nav-btn.active{color:var(--accent);}
@@ -429,7 +432,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-09.9';
+const APP_VERSION = 'v07_2026-11-14.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1214,7 +1217,9 @@ function openOdoSheet(id){
 
 /* ---------- メンテナンス ---------- */
 function renderMaint(){
-  const list = V.maint.filter(m=>inYear(m.date) && (state.maintFilter==='all' || m.category===state.maintFilter)).sort(byDateDesc);
+  // 履歴は全期間（選択年以外は薄く表示）、カードは選択年で集計
+  const hist = V.maint.filter(m=>state.maintFilter==='all' || m.category===state.maintFilter).sort(byDateDesc);
+  const list = hist.filter(m=>inYear(m.date));
   const all = V.maint.filter(m=>inYear(m.date));
   const total = list.reduce((s,m)=>s+(num(m.cost)||0),0);
   const wash = all.filter(m=>/洗車/.test(m.category||'')).length;
@@ -1235,19 +1240,34 @@ function renderMaint(){
       kpi('合計', yen(total)) +
       kpi('件数', list.length, '件') +
       kpi('1件平均', paid.length ? yen(total/paid.length) : '—', '', paid.length!==list.length ? `費用あり ${paid.length}件` : '') +
-      kpi('前回', shortDate(list[0]), '', sinceKm(list[0]));
+      kpi('前回', shortDate(hist[0]), '', sinceKm(hist[0]));
   }
-  const used = [...new Set(all.map(m=>m.category))];
+  const used = [...new Set(V.maint.map(m=>m.category))];
   const cats = D.maintCats.filter(c=>used.includes(c)).concat(used.filter(c=>!D.maintCats.includes(c)));
   $('maint-filter').innerHTML = chipsHtml(cats, state.maintFilter, 'maintFilter');
-  $('maint-list').innerHTML = groupedList(list, m=>{
+  $('maint-list').innerHTML = groupedList(hist, m=>{
     const sub = [num(m.odo)!=null?`ODO ${fmt(num(m.odo))}`:'', m.shop, m.nextDate||num(m.nextOdo)!=null?'次回予定あり':''].filter(Boolean).join(' · ');
-    return `<div class="row" onclick="openMaintSheet('${m.id}')">${dateCell(m.date)}
-      <div class="r-main"><div class="r-title"><span class="badge maint">${esc(m.category)}</span>${esc(m.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
+    // 区分で絞り込み中は前回（1つ古い記録）からの間隔
+    let iv = '';
+    if(state.maintFilter!=='all'){
+      const p = hist[hist.indexOf(m)+1];
+      if(p){
+        const km = num(m.odo)!=null && num(p.odo)!=null ? ` / ${fmt(num(m.odo)-num(p.odo))} km` : '';
+        iv = `<div class="r-int">前回から ${monthsBetween(p.date, m.date)}${km}</div>`;
+      }else iv = '<div class="r-int" style="color:var(--text3)">（最初の記録）</div>';
+    }
+    return `<div class="row ${inYear(m.date)?'':'dim'}" onclick="openMaintSheet('${m.id}')">${dateCell(m.date)}
+      <div class="r-main"><div class="r-title"><span class="badge maint">${esc(m.category)}</span>${esc(m.title||'')}</div><div class="r-sub">${esc(sub)}</div>${iv}</div>
       <div class="r-right"><div class="r-amt">${num(m.cost)?yen(num(m.cost)):'<span class="muted">—</span>'}</div></div></div>`;
   }, g=>yen(g.reduce((s,m)=>s+(num(m.cost)||0),0)));
 }
-
+// 「○カ月」（1年以上は「○年○カ月」、1カ月未満は「○日」）
+function monthsBetween(a, b){
+  const [y1,m1,d1]=a.split('-').map(Number), [y2,m2,d2]=b.split('-').map(Number);
+  let n = (y2-y1)*12 + (m2-m1); if(d2<d1) n--;
+  if(n<1) return `${daysBetween(a,b)}日`;
+  return n>=12 ? `${Math.floor(n/12)}年${n%12?n%12+'カ月':''}` : `${n}カ月`;
+}
 function openMaintSheet(id){
   const m = id ? V.maint.find(x=>x.id===id) : null;
   const v = m || {date:todayStr(), odo:'', category: state.maintFilter!=='all'?state.maintFilter:D.maintCats[0], title:'', cost:'', shop:'', memo:'', nextDate:'', nextOdo:''};
@@ -1320,8 +1340,10 @@ function periodMonths(list){
   return Math.max(1, Math.round((end-start)/86400000/30.44));
 }
 function renderCost(){
+  // 履歴は全期間（選択年以外は薄く表示）、カードは選択年で集計
   const all = V.costs.filter(c=>inYear(c.date));
-  const list = all.filter(c=>state.costFilter==='all' || c.category===state.costFilter).sort(byDateDesc);
+  const hist = V.costs.filter(c=>state.costFilter==='all' || c.category===state.costFilter).sort(byDateDesc);
+  const list = hist.filter(c=>inYear(c.date));
   const total = list.reduce((s,c)=>s+(num(c.amount)||0),0);
   if(state.costFilter==='all'){
     // すべて: 合計＋金額の多い区分の上位3つ
@@ -1340,12 +1362,12 @@ function renderCost(){
       kpi('1件平均', list.length ? yen(total/list.length) : '—') +
       kpi(avg[0], list.length ? yen(avg[1]) : '—');
   }
-  const used = [...new Set(all.map(c=>c.category))];
+  const used = [...new Set(V.costs.map(c=>c.category))];
   const cats = D.costCats.filter(c=>used.includes(c)).concat(used.filter(c=>!D.costCats.includes(c)));
   $('cost-filter').innerHTML = chipsHtml(cats, state.costFilter, 'costFilter');
-  $('cost-list').innerHTML = groupedList(list, c=>{
+  $('cost-list').innerHTML = groupedList(hist, c=>{
     const sub = [c.until?`期限 ${c.until}`:'', c.memo].filter(Boolean).join(' · ');
-    return `<div class="row" onclick="openCostSheet('${c.id}')">${dateCell(c.date)}
+    return `<div class="row ${inYear(c.date)?'':'dim'}" onclick="openCostSheet('${c.id}')">${dateCell(c.date)}
       <div class="r-main"><div class="r-title"><span class="badge cost">${esc(c.category)}</span>${esc(c.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
       <div class="r-right"><div class="r-amt">${yen(num(c.amount))}</div></div></div>`;
   }, g=>yen(g.reduce((s,c)=>s+(num(c.amount)||0),0)));
@@ -1669,7 +1691,9 @@ D = loadData(); syncV();
 document.querySelectorAll('.app-ver').forEach(el=>el.textContent=APP_VERSION);
 try{ const t = localStorage.getItem(THEME_KEY); if(t) document.documentElement.dataset.theme = t; }catch{}
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheet(); });
-let _rz; window.addEventListener('resize', ()=>{ clearTimeout(_rz); _rz=setTimeout(render,200); });
+const setHdrH = () => document.documentElement.style.setProperty('--hdr-h', $('header').offsetHeight+'px');
+setHdrH();
+let _rz; window.addEventListener('resize', ()=>{ clearTimeout(_rz); _rz=setTimeout(()=>{ setHdrH(); render(); },200); });
 showPage('home');
 </script>
 <script>
