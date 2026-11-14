@@ -432,7 +432,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-14.3';
+const APP_VERSION = 'v07_2026-11-14.4';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -487,7 +487,7 @@ const FUEL_TYPES = ['レギュラー','ハイオク','軽油','電気','その�
 // データ: { vehicles:[{id, info, fuel, odo, maint, costs, initCosts, sample}], curId, 区分（全車両共通） }
 function newVehicle(info){
   return {id:uid(), sample:false,
-    info:Object.assign({name:'',model:'',year:'',purchaseDate:'',initialOdo:'',fuelType:'レギュラー',tankCapacity:'',color:CAR_COLORS[0][1]}, info||{}),
+    info:Object.assign({name:'',model:'',year:'',purchaseDate:'',initialOdo:'',fuelType:'レギュラー',tankCapacity:'',inspDue:'',color:CAR_COLORS[0][1]}, info||{}),
     fuel:[], odo:[], maint:[], costs:[], initCosts:[]};
 }
 function emptyData(){
@@ -1023,7 +1023,20 @@ function renderReminders(){
   // メンテ：区分ごとに最新の記録の次回予定のみ
   const latest = {};
   V.maint.slice().sort(byDateDesc).forEach(m=>{ const k=m.category||'その他'; if(!latest[k]) latest[k]=m; });
+  // 車検: 車検の記録の次回予定日と車両情報の車検満了日の新しい方。どちらも無い場合は納車日＋3年（1週間早め）を推定表示
+  const insp = latest['車検'];
+  const inspRec = insp && insp.nextDate ? insp.nextDate : '';
+  const inspDue = [inspRec, V.info.inspDue||''].sort().pop();
+  if(inspDue){
+    items.push({kind:'vehicle', id:'', title:'車検 満了', date:inspDue, odo:null, days:daysBetween(today, inspDue), km:null});
+  }else if(!insp && V.info.purchaseDate){
+    const [y,m,d] = V.info.purchaseDate.split('-').map(Number);
+    const est = new Date(y+3, m-1, d-7);
+    const ds = est.getFullYear()+'-'+String(est.getMonth()+1).padStart(2,'0')+'-'+String(est.getDate()).padStart(2,'0');
+    items.push({kind:'vehicle', id:'', title:'車検（推定）', date:ds, odo:null, days:daysBetween(today, ds), km:null, note:'納車日から推定・車両情報で車検満了日を入力'});
+  }
   Object.values(latest).forEach(m=>{
+    if(m.category==='車検' && m.nextDate) return;   // 車検の日付は上でまとめて表示
     if(!m.nextDate && num(m.nextOdo)==null) return;
     const days = m.nextDate ? daysBetween(today, m.nextDate) : null;
     const km = num(m.nextOdo)!=null && cur ? num(m.nextOdo)-cur.odo : null;
@@ -1044,8 +1057,8 @@ function renderReminders(){
     const parts = [];
     if(it.days!=null) parts.push(it.days<0 ? `${-it.days}日超過` : `あと${it.days}日`);
     if(it.km!=null) parts.push(it.km<0 ? `${fmt(-it.km)}km超過` : `あと${fmt(it.km)}km`);
-    const sub = [it.date, it.odo!=null?fmt(it.odo)+' km':''].filter(Boolean).join(' / ');
-    return `<div class="remind" onclick="${it.kind==='maint'?'openMaintSheet':'openCostSheet'}('${it.id}')"><div class="rm-left"><div>${esc(it.title)}</div><div class="rm-sub">${sub}</div></div><div class="rm-due ${cls}">${parts.join(' / ')}</div></div>`;
+    const sub = [it.date, it.odo!=null?fmt(it.odo)+' km':'', it.note||''].filter(Boolean).join(' / ');
+    return `<div class="remind" onclick="${it.kind==='maint'?'openMaintSheet':it.kind==='cost'?'openCostSheet':'openVehicleSheet'}('${it.id}')"><div class="rm-left"><div>${esc(it.title)}</div><div class="rm-sub">${sub}</div></div><div class="rm-due ${cls}">${parts.join(' / ')}</div></div>`;
   }).join('') : '<div class="muted">メンテナンスの「次回予定」や費用の「期限」を入力すると表示されます</div>';
 }
 
@@ -1298,6 +1311,8 @@ function openMaintSheet(id){
       odo:$('m-odo').value.trim(), shop:$('m-shop').value.trim(), memo:$('m-memo').value.trim(), nextDate:$('m-ndate').value, nextOdo:$('m-nodo').value.trim()};
     if(!rec.date) return '日付を入力してください';
     upsert(V.maint, rec);
+    // 車検の次回予定日（＝車検証の新しい満了日）で車両情報の車検満了日を更新
+    if(rec.category==='車検' && rec.nextDate && rec.nextDate > (V.info.inspDue||'')) V.info.inspDue = rec.nextDate;
     // 車検・法定点検と同時に実施した作業を0円の記録として追加
     if(!m && WITH_PARENT.includes(rec.category)){
       document.querySelectorAll('#m-with .chip.active').forEach(b=>{
@@ -1399,7 +1414,7 @@ function openCostSheet(id){
 function renderSettings(){
   renderCloud();
   const v = V.info;
-  const rows = [['車両名',v.name],['車種・グレード',v.model],['年式',v.year],['納車日',v.purchaseDate],['納車時ODO',v.initialOdo?fmt(num(v.initialOdo))+' km':''],['油種',v.fuelType],['タンク容量',v.tankCapacity?v.tankCapacity+' L':'']];
+  const rows = [['車両名',v.name],['車種・グレード',v.model],['年式',v.year],['納車日',v.purchaseDate],['納車時ODO',v.initialOdo?fmt(num(v.initialOdo))+' km':''],['油種',v.fuelType],['タンク容量',v.tankCapacity?v.tankCapacity+' L':''],['車検満了日',v.inspDue]];
   const colorName = (CAR_COLORS.find(c=>c[1]===v.color)||['—'])[0];
   $('set-vehicles').innerHTML = vehicleListHtml('switchVehicle');
   $('set-vehicle').innerHTML = rows.map(([k,x])=>`<div class="set-row"><div class="muted">${k}</div><div>${esc(x)||'<span class="muted">未設定</span>'}</div></div>`).join('')
@@ -1467,12 +1482,13 @@ function openVehicleSheet(isNew){
       <div class="fld"><label>油種</label><select id="v-fuel">${FUEL_TYPES.map(t=>`<option ${t===v.fuelType?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="fld"><label>タンク容量（L）</label><input type="text" inputmode="decimal" id="v-tank" value="${esc(v.tankCapacity)}"></div>
     </div>
+    <div class="fld"><label>車検満了日</label><input type="date" id="v-insp" value="${esc(v.inspDue||'')}"><div class="hint">車検証の「有効期間の満了する日」。未入力の新車は納車日から推定してホームに表示します。車検を記録して次回予定日を入れると自動で更新されます</div></div>
     <div class="fld"><label>車の色（アイコン）</label><div class="swatches" id="v-colors">${CAR_COLORS.map(([n,c])=>`<div class="swatch ${c===(v.color||CAR_COLORS[0][1])?'active':''}" data-color="${c}" onclick="document.querySelectorAll('#v-colors .swatch').forEach(e=>e.classList.toggle('active', e===this))">${carIco(c,18)}${n}</div>`).join('')}</div>
       <div class="hint">iPhone のホーム画面アイコンは、追加した時点の色になります（変更後は追加し直し）。Android のホーム画面アイコンは変わりません</div></div>
     <div class="muted">納車日・納車時ODOはODOログの起点、納車日は購入時の費用の集計日として使用します</div>
   `, () => {
     const info = {name:$('v-name').value.trim(), model:$('v-model').value.trim(), year:$('v-year').value.trim(), purchaseDate:$('v-pdate').value,
-      initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim(),
+      initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim(), inspDue:$('v-insp').value,
       color:(document.querySelector('#v-colors .swatch.active')||{}).dataset?.color || CAR_COLORS[0][1]};
     if(!info.name) return '車両名を入力してください';
     if(isNew){ const nv = newVehicle(info); const si = D.vehicles.findIndex(x=>x.sample); if(si>=0) D.vehicles.splice(si,0,nv); else D.vehicles.push(nv); D.curId = nv.id; syncV(); Object.assign(state, {year:String(new Date().getFullYear()), odoRange:'year'}); }
