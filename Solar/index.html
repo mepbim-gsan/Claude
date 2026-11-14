@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-09-27.7
+  @version   v06_2026-11-15
   @changelog
+    v06_2026-11-15 - 比率の定義を修正（自家消費率=(発電−売電)÷発電、自給率=(消費−買電)÷消費、旧「自給率」=発電÷消費は「発電カバー率」に改名）。日次・月次・年次に二重ドーナツ（内側=発電の内訳、外側=消費の内訳）を追加。KPIの売電比率は自家消費率カードに併記
     v06_2026-09-27.7 - フォルダをSolar/へ戻す（移転ではインストール問題が解消せず）。SolarDashboard/は転送ページ＋SW解除スタブ。CACHE_NAME v4
     v06_2026-09-27.6 - フォルダをSolar/→SolarDashboard/へ移転（Android Chromeの「インストール済み」誤判定回避）。旧URLは転送ページ＋SW解除スタブ。sw.jsのキャッシュ削除を自ツール分のみに限定、CACHE_NAME v3
-    v06_2026-09-27.5 - manifest.jsonにid追加（Android Chromeで「インストール済み」と誤判定されインストールできない問題への対策）、sw.jsのCACHE_NAMEをv2に更新
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -291,6 +291,10 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="scroll" id="self-chart"></div>
   </div>
   <div class="sec">
+    <div class="sec-title" style="margin-bottom:6px" id="heat-donut-title">比率（発電・消費の内訳）</div>
+    <div id="heat-donut"></div>
+  </div>
+  <div class="sec">
     <div class="sec-title" style="margin-bottom:10px">日×時間帯ヒートマップ（kWh）</div>
     <div class="scroll" id="hmap"></div>
     <div class="heat-leg">
@@ -318,6 +322,10 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     </div>
   </div>
   <div class="kpi-row" id="mon-kpi"></div>
+  <div class="sec">
+    <div class="sec-title" style="margin-bottom:6px" id="mon-donut-title">比率（発電・消費の内訳）</div>
+    <div id="mon-donut"></div>
+  </div>
   <div class="sec">
     <div class="sec-hd">
       <div class="sec-title">日別棒グラフ（kWh）</div>
@@ -368,7 +376,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="scroll" id="mo-table-wrap"></div>
   </div>
   <div class="sec">
-    <div class="sec-title" style="margin-bottom:10px">自給率・自家消費率・売電比率（月別 %）</div>
+    <div class="sec-title" style="margin-bottom:10px">自家消費率・自給率・発電カバー率・売電比率（月別 %）</div>
     <div class="scroll" id="eff-chart"></div>
     <div style="display:flex;gap:14px;margin-top:8px;font-size:.68rem;flex-wrap:wrap;" id="eff-legend"></div>
   </div>
@@ -385,6 +393,10 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <button class="btn btn-primary" id="yr-all-btn">全期間</button>
   </div>
   <div class="yr-kpi-row" id="yr-kpi"></div>
+  <div class="sec">
+    <div class="sec-title" style="margin-bottom:6px" id="yr-donut-title">比率（発電・消費の内訳）</div>
+    <div id="yr-donut"></div>
+  </div>
   <div class="sec">
     <div class="sec-hd">
       <div class="sec-title">月別棒グラフ（kWh）</div>
@@ -434,7 +446,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="scroll" id="yr-table-wrap"></div>
   </div>
   <div class="sec">
-    <div class="sec-title" style="margin-bottom:10px">自給率・自家消費率・売電比率（年別 %）</div>
+    <div class="sec-title" style="margin-bottom:10px">自家消費率・自給率・発電カバー率・売電比率（年別 %）</div>
     <div class="scroll" id="yr-eff-chart"></div>
     <div style="display:flex;gap:14px;margin-top:8px;font-size:.68rem;flex-wrap:wrap;" id="yr-eff-legend"></div>
   </div>
@@ -572,7 +584,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v06_2026-09-27.7';
+const APP_VERSION = 'v06_2026-11-15';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -1217,9 +1229,9 @@ function renderHeatKPI(ym){
       <div class="kpi-val" style="color:${color}">${val.toFixed(2)}<span class="kpi-unit">${unit}</span></div>
     </div>`).join('');
     kpi2.innerHTML = [
-      {lbl:'自給率',    val:e.jikyu,    unit:'%',   tip:'発電量÷消費量',             color:col.gen},
-      {lbl:'自家消費率',val:e.jikaSho,  unit:'%',   tip:'（消費量－買電量）÷消費量', color:col.sell},
-      {lbl:'売電比率',  val:e.sellRatio,unit:'%',   tip:'売電量÷発電量',            color:col.buy},
+      {lbl:'自家消費率',val:e.jikaSho,    unit:'%',   tip:'（発電量－売電量）÷発電量<br>売電比率 '+e.sellRatio.toFixed(1)+'%',color:col.con},
+      {lbl:'自給率',    val:e.jikyu,  unit:'%',   tip:'（消費量－買電量）÷消費量', color:col.sell},
+      {lbl:'発電カバー率',val:e.genCover,    unit:'%',   tip:'発電量÷消費量',             color:col.gen},
       {lbl:'自家消費量',val:selfUse,    unit:'kWh', tip:'消費量－買電量',            color:col.con},
     ].map(r=>`<div class="kpi">
       <div class="kpi-lbl">${r.lbl}</div>
@@ -1239,8 +1251,9 @@ function renderHeatKPI(ym){
     const tot = {};
     metrics.forEach(k=>{ tot[k] = ds.reduce((s,dk)=>s+daySum(dk,k),0); });
     const selfUse  = Math.max(tot.con - tot.buy, 0);
-    const jikyu    = tot.con>0 ? Math.min(tot.gen/tot.con*100, 999) : 0;
-    const jikaSho  = tot.con>0 ? Math.min((tot.con-tot.buy)/tot.con*100, 100) : 0;
+    const genCover    = tot.con>0 ? Math.min(tot.gen/tot.con*100, 999) : 0;
+    const jikaSho=tot.gen>0?Math.min((tot.gen-tot.sell)/tot.gen*100,100):0;
+    const jikyu  = tot.con>0 ? Math.min((tot.con-tot.buy)/tot.con*100, 100) : 0;
     const sellRatio= tot.gen>0 ? Math.min(tot.sell/tot.gen*100, 100) : 0;
     if(label){ label.textContent = '当月の日平均'; label.style.display='block'; }
     kpi1.innerHTML = [
@@ -1252,9 +1265,9 @@ function renderHeatKPI(ym){
       <div class="kpi-sub">MAX ${maxV[k].toFixed(1)} / MIN ${minV[k].toFixed(1)} kWh</div>
     </div>`).join('');
     kpi2.innerHTML = [
-      {lbl:'自給率',    val:jikyu,            unit:'%',     digits:1, tip:'発電量÷消費量',             color:col.gen},
-      {lbl:'自家消費率',val:jikaSho,          unit:'%',     digits:1, tip:'（消費量－買電量）÷消費量', color:col.sell},
-      {lbl:'売電比率',  val:sellRatio,        unit:'%',     digits:1, tip:'売電量÷発電量',            color:col.buy},
+      {lbl:'自家消費率',val:jikaSho,            unit:'%',     digits:1, tip:'（発電量－売電量）÷発電量<br>売電比率 '+sellRatio.toFixed(1)+'%',color:col.con},
+      {lbl:'自給率',    val:jikyu,          unit:'%',     digits:1, tip:'（消費量－買電量）÷消費量', color:col.sell},
+      {lbl:'発電カバー率',val:genCover,            unit:'%',     digits:1, tip:'発電量÷消費量',             color:col.gen},
       {lbl:'自家消費量',val:selfUse/ds.length,unit:'kWh/日',digits:2, tip:'消費量－買電量（日平均）',  color:col.con},
     ].map(r=>`<div class="kpi">
       <div class="kpi-lbl">${r.lbl}</div>
@@ -1271,8 +1284,9 @@ function dayTotals(dk){
 
 function efficiencyFromTotals(t){
   return {
-    jikyu: t.con > 0 ? Math.min(t.gen / t.con * 100, 999) : 0,
-    jikaSho: t.con > 0 ? Math.min((t.con - t.buy) / t.con * 100, 100) : 0,
+    jikaSho: t.gen > 0 ? Math.min((t.gen - t.sell) / t.gen * 100, 100) : 0,
+    genCover: t.con > 0 ? Math.min(t.gen / t.con * 100, 999) : 0,
+    jikyu: t.con > 0 ? Math.min((t.con - t.buy) / t.con * 100, 100) : 0,
     sellRatio: t.gen > 0 ? Math.min(t.sell / t.gen * 100, 100) : 0,
   };
 }
@@ -1456,6 +1470,8 @@ function renderHeatmap(ym){
 // RENDER: 自家消費分析グラフ
 // ================================================================
 function renderSelfChart(ym){
+  // 比率ドーナツも選択日（未選択時は月）に連動させる
+  renderDualDonut('heat-donut', periodTotals(selectedDate?[selectedDate]:moDates(ym)), selectedDate||`${ym.slice(0,4)}年${+ym.slice(5)}月`);
   const el  = document.getElementById('self-chart');
   const leg = document.getElementById('self-legend');
   el.innerHTML = ''; leg.innerHTML = '';
@@ -1640,6 +1656,73 @@ function renderHeatTab(){
 }
 
 // ================================================================
+// 二重ドーナツ: 内側=発電量の内訳（自家消費/売電）、外側=消費量の内訳（自家消費/買電）
+// ================================================================
+function periodTotals(dks){
+  const t={gen:0,sell:0,buy:0,con:0};
+  dks.forEach(dk=>Object.keys(t).forEach(m=>{ t[m]+=daySum(dk,m); }));
+  return t;
+}
+function renderDualDonut(elId, t, label){
+  const el=document.getElementById(elId);
+  el.innerHTML='';
+  document.getElementById(elId+'-title').textContent='比率（発電・消費の内訳）'+(label?' — '+label:'');
+  if(!(t.gen>0||t.con>0)){ el.innerHTML=empty(); return; }
+  const col=colors();
+  const selfG=Math.max(t.gen-t.sell,0), selfC=Math.max(t.con-t.buy,0);
+  const jikaSho=t.gen>0?selfG/t.gen*100:0, jikyu=t.con>0?selfC/t.con*100:0;
+  const W=Math.min((el.parentElement.clientWidth||window.innerWidth)-8, 420), H=346;
+  const cx=W/2, cy=136;
+  const svg=d3.select(el).append('svg').attr('width',W).attr('height',H).style('display','block').style('margin','0 auto');
+  const rings=[
+    {r0:58,r1:88,total:t.gen,name:'発電量',parts:[
+      {k:'自家消費',v:selfG,c:col.con,op:.7},{k:'売電',v:t.sell,c:col.sell,op:.85}]},
+    {r0:94,r1:128,total:t.con,name:'消費量',parts:[
+      {k:'自家消費',v:selfC,c:col.con,op:.95},{k:'買電',v:t.buy,c:col.buy,op:.85}]},
+  ];
+  rings.forEach(rg=>{
+    const g=svg.append('g').attr('transform',`translate(${cx},${cy})`);
+    if(!(rg.total>0)){
+      g.append('path').attr('d',d3.arc().innerRadius(rg.r0).outerRadius(rg.r1)({startAngle:0,endAngle:2*Math.PI}))
+        .attr('fill',cv('--grid'));
+      return;
+    }
+    let a=0;
+    rg.parts.forEach(pt=>{
+      const frac=Math.min(pt.v/rg.total,1), a1=a+frac*2*Math.PI;
+      const arc=d3.arc().innerRadius(rg.r0).outerRadius(rg.r1).padAngle(.01);
+      g.append('path').attr('d',arc({startAngle:a,endAngle:a1}))
+        .attr('fill',pt.c).attr('fill-opacity',pt.op).attr('stroke',cv('--bg2')).attr('stroke-width',1.5)
+        .on('mousemove',e=>showTip(e,`${rg.name}の内訳<br>${pt.k}: <b>${pt.v.toFixed(2)} kWh</b>（${(frac*100).toFixed(1)}%）`))
+        .on('mouseleave',hideTip);
+      if(frac>=0.06){
+        const [lx,ly]=arc.centroid({startAngle:a,endAngle:a1});
+        g.append('text').attr('x',lx).attr('y',ly+4).attr('text-anchor','middle').attr('fill','#fff')
+          .attr('font-size',rg.r0>90?12:11).attr('font-weight',700).style('pointer-events','none').text(Math.round(frac*100)+'%');
+      }
+      a=a1;
+    });
+  });
+  // 中央: 自家消費率・自給率
+  const ctr=(y,txt,size,color,w)=>svg.append('text').attr('x',cx).attr('y',y).attr('text-anchor','middle')
+    .attr('fill',color).attr('font-size',size).attr('font-weight',w||400).text(txt);
+  ctr(cy-22,'自家消費率',9,cv('--text2'));
+  ctr(cy-4,jikaSho.toFixed(1)+'%',16,col.con,800);
+  ctr(cy+16,'自給率',9,cv('--text2'));
+  ctr(cy+34,jikyu.toFixed(1)+'%',16,col.sell,800);
+  ctr(cy+152,`発電 ${t.gen.toFixed(1)} kWh ／ 消費 ${t.con.toFixed(1)} kWh`,11,cv('--text2'));
+  // 凡例
+  const leg=[{k:'自家消費',c:col.con},{k:'売電',c:col.sell},{k:'買電',c:col.buy}];
+  const lx0=cx-110;
+  leg.forEach((l,i)=>{
+    svg.append('rect').attr('x',lx0+i*78).attr('y',cy+164).attr('width',10).attr('height',10).attr('rx',2).attr('fill',l.c);
+    svg.append('text').attr('x',lx0+i*78+14).attr('y',cy+173).attr('fill',cv('--text2')).attr('font-size',10).text(l.k);
+  });
+  svg.append('text').attr('x',cx).attr('y',H-6).attr('text-anchor','middle').attr('fill',cv('--text2')).attr('font-size',9)
+    .text('内側＝発電量の内訳（自家消費率）　外側＝消費量の内訳（自給率）');
+}
+
+// ================================================================
 // RENDER: MONTHLY TAB
 // ================================================================
 
@@ -1674,8 +1757,9 @@ function renderMonKPI(){
   if(!ds.length){ el.innerHTML=''; return; }
   const tot = { gen:moSum(ym,'gen'), sell:moSum(ym,'sell'), buy:moSum(ym,'buy'), con:moSum(ym,'con') };
   const selfUse  = Math.max(tot.con - tot.buy, 0);
-  const jikyu    = tot.con>0 ? Math.min(tot.gen/tot.con*100, 999) : 0;
-  const jikaSho  = tot.con>0 ? Math.min((tot.con-tot.buy)/tot.con*100, 100) : 0;
+  const genCover    = tot.con>0 ? Math.min(tot.gen/tot.con*100, 999) : 0;
+  const jikaSho=tot.gen>0?Math.min((tot.gen-tot.sell)/tot.gen*100,100):0;
+  const jikyu  = tot.con>0 ? Math.min((tot.con-tot.buy)/tot.con*100, 100) : 0;
   const sellRatio= tot.gen>0 ? Math.min(tot.sell/tot.gen*100, 100) : 0;
   const n = ds.length || 1;
   const kwhCard = (lbl, val, color, sub) =>
@@ -1691,9 +1775,9 @@ function renderMonKPI(){
     kwhCard('売電量',   tot.sell, col.sell, `日平均 ${(tot.sell/n).toFixed(2)} kWh/日`) +
     kwhCard('買電量',   tot.buy,  col.buy,  `日平均 ${(tot.buy/n).toFixed(2)} kWh/日`) +
     kwhCard('消費量',   tot.con,  col.con,  `日平均 ${(tot.con/n).toFixed(2)} kWh/日`) +
-    pctCard('自給率',      jikyu,    col.gen,  '発電量÷消費量') +
-    pctCard('自家消費率',  jikaSho,  col.sell, '（消費量－買電量）÷消費量') +
-    pctCard('売電比率',    sellRatio,col.buy,  '売電量÷発電量') +
+    pctCard('自家消費率',jikaSho,col.con,'（発電量－売電量）÷発電量<br>売電比率 '+sellRatio.toFixed(1)+'%') +
+    pctCard('自給率',  jikyu,  col.sell, '（消費量－買電量）÷消費量') +
+    pctCard('発電カバー率',genCover,col.gen,'発電量÷消費量') +
     kwhCard('自家消費量',  selfUse,  col.con,  `日平均 ${(selfUse/n).toFixed(2)} kWh/日`);
 }
 
@@ -2101,8 +2185,9 @@ function renderEffChart(){
 
   // 月ごとに3指標を計算
   const series = [
-    { key:'jikyu',    label:'自給率',      color: cv('--gen'),  dash: '' },
-    { key:'jikaSho',  label:'自家消費率',  color: cv('--sell'), dash: '4,3' },
+    {key:'jikaSho', label:'自家消費率', color:cv('--con'), dash:''},
+    {key:'jikyu',   label:'自給率',     color:cv('--sell'), dash:'4,3'},
+    {key:'genCover',label:'発電カバー率',color:cv('--gen'), dash:'6,2,1,2'},
     { key:'sellRatio',label:'売電比率',    color: cv('--buy'),  dash: '2,2' },
   ];
 
@@ -2114,8 +2199,9 @@ function renderEffChart(){
     const con  = ds.reduce((s,dk)=>s+daySum(dk,'con'),0);
     return {
       ym,
-      jikyu:    con>0 ? Math.min(gen/con*100,999) : 0,
-      jikaSho:  con>0 ? Math.min((con-buy)/con*100,100) : 0,
+      jikaSho:  gen>0 ? Math.min((gen-sell)/gen*100,100) : 0,
+      genCover:    con>0 ? Math.min(gen/con*100,999) : 0,
+      jikyu:  con>0 ? Math.min((con-buy)/con*100,100) : 0,
       sellRatio:gen>0 ? Math.min(sell/gen*100,100) : 0,
     };
   });
@@ -2244,11 +2330,12 @@ function renderMonthlyTable(){
     const ds = moDates(ym);
     const gen=moSum(ym,'gen'), sell=moSum(ym,'sell'), buy=moSum(ym,'buy'), con=moSum(ym,'con');
     const self=Math.max(con-buy,0);
-    const jikyu    = con>0 ? Math.min(gen/con*100,999).toFixed(1) : '—';
-    const jikaSho  = con>0 ? Math.min((con-buy)/con*100,100).toFixed(1) : '—';
+    const genCover    = con>0 ? Math.min(gen/con*100,999).toFixed(1) : '—';
+    const jikaSho=gen>0?Math.min((gen-sell)/gen*100,100).toFixed(1):'—';
+    const jikyu  = con>0 ? Math.min((con-buy)/con*100,100).toFixed(1) : '—';
     const sellRatio= gen>0 ? (sell/gen*100).toFixed(1) : '—';
     const incomplete=isIncomplete(ym), current=isCurrentMonth(ym);
-    return {ym, days:ds.length, expected:expectedDays(ym), gen, sell, buy, con, self, jikyu, jikaSho, sellRatio, incomplete, current};
+    return {ym, days:ds.length, expected:expectedDays(ym), gen, sell, buy, con, self, jikaSho, genCover, jikyu, sellRatio, incomplete, current};
   });
 
   const incCount=rows.filter(r=>r.incomplete).length;
@@ -2257,8 +2344,9 @@ function renderMonthlyTable(){
   const tG=rows.reduce((s,r)=>s+r.gen,0), tS=rows.reduce((s,r)=>s+r.sell,0);
   const tB=rows.reduce((s,r)=>s+r.buy,0), tC=rows.reduce((s,r)=>s+r.con,0);
   const tSelf=Math.max(tC-tB,0);
-  const tJikyu  =tC>0?(tG/tC*100).toFixed(1):'—';
-  const tJikaSho=tC>0?((tC-tB)/tC*100).toFixed(1):'—';
+  const tGenCover  =tC>0?(tG/tC*100).toFixed(1):'—';
+  const tJikaSho=tG>0?((tG-tS)/tG*100).toFixed(1):'—';
+  const tJikyu=tC>0?((tC-tB)/tC*100).toFixed(1):'—';
   const tSellR  =tG>0?(tS/tG*100).toFixed(1):'—';
   const warnBg='opacity:.6;background:repeating-linear-gradient(-45deg,transparent,transparent 4px,rgba(245,158,11,.08) 4px,rgba(245,158,11,.08) 8px);';
 
@@ -2270,7 +2358,7 @@ function renderMonthlyTable(){
       <th style="color:${col.buy}">買電 kWh</th>
       <th style="color:${col.con}">消費 kWh</th>
       <th style="color:${col.con}">自家消費 kWh</th>
-      <th>自給率</th><th>自家消費率</th><th>売電比率</th>
+      <th>自家消費率</th><th>自給率</th><th>発電カバー率</th><th>売電比率</th>
     </tr></thead>
     <tbody>${rows.map(r=>{
       const ws=r.incomplete?warnBg:'';
@@ -2285,7 +2373,7 @@ function renderMonthlyTable(){
         <td style="color:${col.buy}">${r.buy.toFixed(1)}</td>
         <td style="color:${col.con}">${r.con.toFixed(1)}</td>
         <td style="color:${col.con}">${r.self.toFixed(1)}</td>
-        <td>${r.jikyu}%</td><td>${r.jikaSho}%</td><td>${r.sellRatio}%</td>
+        <td>${r.jikaSho}%</td><td>${r.jikyu}%</td><td>${r.genCover}%</td><td>${r.sellRatio}%</td>
       </tr>`;
     }).join('')}</tbody>
     <tfoot><tr>
@@ -2295,7 +2383,7 @@ function renderMonthlyTable(){
       <td style="color:${col.buy}">${tB.toFixed(1)}</td>
       <td style="color:${col.con}">${tC.toFixed(1)}</td>
       <td style="color:${col.con}">${tSelf.toFixed(1)}</td>
-      <td>${tJikyu}%</td><td>${tJikaSho}%</td><td>${tSellR}%</td>
+      <td>${tJikaSho}%</td><td>${tJikyu}%</td><td>${tGenCover}%</td><td>${tSellR}%</td>
     </tr></tfoot>
   </table>`;
 }
@@ -2357,8 +2445,9 @@ function renderYrKPI(){
     const buy=ds.reduce((s,dk)=>s+daySum(dk,'buy'),0);
     const con=ds.reduce((s,dk)=>s+daySum(dk,'con'),0);
     const selfUse=Math.max(con-buy,0);
-    const jikyu=con>0?Math.min(gen/con*100,999):0;
-    const jikaSho=con>0?Math.min((con-buy)/con*100,100):0;
+    const genCover=con>0?Math.min(gen/con*100,999):0;
+    const jikaSho=gen>0?Math.min((gen-sell)/gen*100,100):0;
+    const jikyu=con>0?Math.min((con-buy)/con*100,100):0;
     const sellRatio=gen>0?Math.min(sell/gen*100,100):0;
     const mn=ms.length||1;
     el.innerHTML=
@@ -2366,9 +2455,9 @@ function renderYrKPI(){
       kwhCard('売電量', sell.toFixed(0), col.sell, `月平均 ${(sell/mn).toFixed(1)} kWh/月`)+
       kwhCard('買電量', buy.toFixed(0),  col.buy,  `月平均 ${(buy/mn).toFixed(1)} kWh/月`)+
       kwhCard('消費量', con.toFixed(0),  col.con,  `月平均 ${(con/mn).toFixed(1)} kWh/月`)+
-      pctCard('自給率',    jikyu.toFixed(1),    col.gen,  '発電量÷消費量')+
-      pctCard('自家消費率',jikaSho.toFixed(1),  col.sell, '（消費量－買電量）÷消費量')+
-      pctCard('売電比率',  sellRatio.toFixed(1),col.buy,  '売電量÷発電量')+
+      pctCard('自家消費率',jikaSho.toFixed(1),col.con,'（発電量－売電量）÷発電量<br>売電比率 '+sellRatio.toFixed(1)+'%')+
+      pctCard('自給率',jikyu.toFixed(1),  col.sell, '（消費量－買電量）÷消費量')+
+      pctCard('発電カバー率',genCover.toFixed(1),col.gen,'発電量÷消費量')+
       kwhCard('自家消費量',selfUse.toFixed(0),  col.con,  `月平均 ${(selfUse/mn).toFixed(1)} kWh/月`);
   } else {
     const ds=dates();
@@ -2378,8 +2467,9 @@ function renderYrKPI(){
     const buy=ds.reduce((s,dk)=>s+daySum(dk,'buy'),0);
     const con=ds.reduce((s,dk)=>s+daySum(dk,'con'),0);
     const selfUse=Math.max(con-buy,0);
-    const jikyu=con>0?Math.min(gen/con*100,999):0;
-    const jikaSho=con>0?Math.min((con-buy)/con*100,100):0;
+    const genCover=con>0?Math.min(gen/con*100,999):0;
+    const jikaSho=gen>0?Math.min((gen-sell)/gen*100,100):0;
+    const jikyu=con>0?Math.min((con-buy)/con*100,100):0;
     const sellRatio=gen>0?Math.min(sell/gen*100,100):0;
     const mn=ms.length||1;
     el.innerHTML=
@@ -2387,9 +2477,9 @@ function renderYrKPI(){
       kwhCard('設置後累計売電量', sell.toFixed(0), col.sell, `月平均 ${(sell/mn).toFixed(1)} kWh/月`)+
       kwhCard('設置後累計買電量', buy.toFixed(0),  col.buy,  `月平均 ${(buy/mn).toFixed(1)} kWh/月`)+
       kwhCard('設置後累計消費量', con.toFixed(0),  col.con,  `月平均 ${(con/mn).toFixed(1)} kWh/月`)+
-      pctCard('自給率',    jikyu.toFixed(1),    col.gen,  '発電量÷消費量')+
-      pctCard('自家消費率',jikaSho.toFixed(1),  col.sell, '（消費量－買電量）÷消費量')+
-      pctCard('売電比率',  sellRatio.toFixed(1),col.buy,  '売電量÷発電量')+
+      pctCard('自家消費率',jikaSho.toFixed(1),col.con,'（発電量－売電量）÷発電量<br>売電比率 '+sellRatio.toFixed(1)+'%')+
+      pctCard('自給率',jikyu.toFixed(1),  col.sell, '（消費量－買電量）÷消費量')+
+      pctCard('発電カバー率',genCover.toFixed(1),col.gen,'発電量÷消費量')+
       kwhCard('設置後累計自家消費量',selfUse.toFixed(0),col.con,`月平均 ${(selfUse/mn).toFixed(1)} kWh/月`);
   }
 }
@@ -2612,19 +2702,21 @@ function renderDayTable(){
   const rows=ds.map(dk=>{
     const gen=daySum(dk,'gen'),sell=daySum(dk,'sell'),buy=daySum(dk,'buy'),con=daySum(dk,'con');
     const self=Math.max(con-buy,0);
-    const jikyu  =con>0?Math.min(gen/con*100,999).toFixed(1):'—';
-    const jikaSho=con>0?Math.min((con-buy)/con*100,100).toFixed(1):'—';
+    const genCover  =con>0?Math.min(gen/con*100,999).toFixed(1):'—';
+    const jikaSho=gen>0?Math.min((gen-sell)/gen*100,100).toFixed(1):'—';
+    const jikyu=con>0?Math.min((con-buy)/con*100,100).toFixed(1):'—';
     const sellRatio=gen>0?(sell/gen*100).toFixed(1):'—';
     const isToday=dk===today;
     const slotN=getDaySlotCount(dk);
     const incomplete=!isToday&&slotN<expSlots; // 今日はデータ収集中なので除外
-    return {dk,gen,sell,buy,con,self,jikyu,jikaSho,sellRatio,isToday,incomplete,slotN};
+    return {dk,gen,sell,buy,con,self,jikaSho,genCover,jikyu,sellRatio,isToday,incomplete,slotN};
   });
   const tG=rows.reduce((s,r)=>s+r.gen,0),tS=rows.reduce((s,r)=>s+r.sell,0);
   const tB=rows.reduce((s,r)=>s+r.buy,0),tC=rows.reduce((s,r)=>s+r.con,0);
   const tSelf=Math.max(tC-tB,0);
-  const tJikyu  =tC>0?(tG/tC*100).toFixed(1):'—';
-  const tJikaSho=tC>0?((tC-tB)/tC*100).toFixed(1):'—';
+  const tGenCover  =tC>0?(tG/tC*100).toFixed(1):'—';
+  const tJikaSho=tG>0?((tG-tS)/tG*100).toFixed(1):'—';
+  const tJikyu=tC>0?((tC-tB)/tC*100).toFixed(1):'—';
   const tSellR  =tG>0?(tS/tG*100).toFixed(1):'—';
   const incCount=rows.filter(r=>r.incomplete).length;
   const noteEl=document.getElementById('day-table-title');
@@ -2638,7 +2730,7 @@ function renderDayTable(){
     +'<th style="color:'+col.buy+'">買電 kWh</th>'
     +'<th style="color:'+col.con+'">消費 kWh</th>'
     +'<th style="color:'+col.con+'">自家消費 kWh</th>'
-    +'<th>自給率</th><th>自家消費率</th><th>売電比率</th>'
+    +'<th>自家消費率</th><th>自給率</th><th>発電カバー率</th><th>売電比率</th>'
     +'</tr></thead><tbody>'
     +rows.map(r=>{
       const ws=r.incomplete?warnBg:(r.isToday?'font-weight:600;':'');
@@ -2654,7 +2746,7 @@ function renderDayTable(){
         +'<td style="color:'+col.buy+'">'+r.buy.toFixed(2)+'</td>'
         +'<td style="color:'+col.con+'">'+r.con.toFixed(2)+'</td>'
         +'<td style="color:'+col.con+'">'+r.self.toFixed(2)+'</td>'
-        +'<td>'+r.jikyu+'%</td><td>'+r.jikaSho+'%</td><td>'+r.sellRatio+'%</td>'
+        +'<td>'+r.jikaSho+'%</td><td>'+r.jikyu+'%</td><td>'+r.genCover+'%</td><td>'+r.sellRatio+'%</td>'
         +'</tr>';
     }).join('')
     +'</tbody>'
@@ -2666,7 +2758,7 @@ function renderDayTable(){
     +'<td style="color:'+col.buy+'">'+tB.toFixed(2)+'</td>'
     +'<td style="color:'+col.con+'">'+tC.toFixed(2)+'</td>'
     +'<td style="color:'+col.con+'">'+tSelf.toFixed(2)+'</td>'
-    +'<td>'+tJikyu+'%</td><td>'+tJikaSho+'%</td><td>'+tSellR+'%</td>'
+    +'<td>'+tJikaSho+'%</td><td>'+tJikyu+'%</td><td>'+tGenCover+'%</td><td>'+tSellR+'%</td>'
     +'</tr></tfoot></table>';
 }
 
@@ -3396,19 +3488,21 @@ function renderYrTable(){
     const buy=ms.reduce((s,ym)=>s+moSum(ym,'buy'),0);
     const con=ms.reduce((s,ym)=>s+moSum(ym,'con'),0);
     const self=Math.max(con-buy,0);
-    const jikyu   =con>0?Math.min(gen/con*100,999).toFixed(1):'—';
-    const jikaSho =con>0?Math.min((con-buy)/con*100,100).toFixed(1):'—';
+    const genCover   =con>0?Math.min(gen/con*100,999).toFixed(1):'—';
+    const jikaSho=gen>0?Math.min((gen-sell)/gen*100,100).toFixed(1):'—';
+    const jikyu =con>0?Math.min((con-buy)/con*100,100).toFixed(1):'—';
     const sellRatio=gen>0?(sell/gen*100).toFixed(1):'—';
     // 年が現在年かつ12ヶ月揃っていない場合を不完全扱い
     const isCurrent=yr===curYr;
     const incomplete=isCurrent&&ms.length<12;
-    return {yr,days,gen,sell,buy,con,self,jikyu,jikaSho,sellRatio,incomplete,isCurrent};
+    return {yr,days,gen,sell,buy,con,self,jikaSho,genCover,jikyu,sellRatio,incomplete,isCurrent};
   }).reverse();
   const tG=rows.reduce((s,r)=>s+r.gen,0),tS=rows.reduce((s,r)=>s+r.sell,0);
   const tB=rows.reduce((s,r)=>s+r.buy,0),tC=rows.reduce((s,r)=>s+r.con,0);
   const tSelf=Math.max(tC-tB,0);
-  const tJikyu  =tC>0?(tG/tC*100).toFixed(1):'—';
-  const tJikaSho=tC>0?((tC-tB)/tC*100).toFixed(1):'—';
+  const tGenCover  =tC>0?(tG/tC*100).toFixed(1):'—';
+  const tJikaSho=tG>0?((tG-tS)/tG*100).toFixed(1):'—';
+  const tJikyu=tC>0?((tC-tB)/tC*100).toFixed(1):'—';
   const tSellR  =tG>0?(tS/tG*100).toFixed(1):'—';
   wrap.innerHTML='<table class="mo-table"><thead><tr>'
     +'<th>年</th><th>日数</th>'
@@ -3417,7 +3511,7 @@ function renderYrTable(){
     +'<th style="color:'+col.buy+'">買電 kWh</th>'
     +'<th style="color:'+col.con+'">消費 kWh</th>'
     +'<th style="color:'+col.con+'">自家消費 kWh</th>'
-    +'<th>自給率</th><th>自家消費率</th><th>売電比率</th>'
+    +'<th>自家消費率</th><th>自給率</th><th>発電カバー率</th><th>売電比率</th>'
     +'</tr></thead><tbody>'
     +rows.map(r=>{
       const ws=r.incomplete?warnBg:'';
@@ -3432,7 +3526,7 @@ function renderYrTable(){
         +'<td style="color:'+col.buy+'">'+r.buy.toFixed(1)+'</td>'
         +'<td style="color:'+col.con+'">'+r.con.toFixed(1)+'</td>'
         +'<td style="color:'+col.con+'">'+r.self.toFixed(1)+'</td>'
-        +'<td>'+r.jikyu+'%</td><td>'+r.jikaSho+'%</td><td>'+r.sellRatio+'%</td>'
+        +'<td>'+r.jikaSho+'%</td><td>'+r.jikyu+'%</td><td>'+r.genCover+'%</td><td>'+r.sellRatio+'%</td>'
         +'</tr>';
     }).join('')
     +'</tbody>'
@@ -3443,7 +3537,7 @@ function renderYrTable(){
     +'<td style="color:'+col.buy+'">'+tB.toFixed(1)+'</td>'
     +'<td style="color:'+col.con+'">'+tC.toFixed(1)+'</td>'
     +'<td style="color:'+col.con+'">'+tSelf.toFixed(1)+'</td>'
-    +'<td>'+tJikyu+'%</td><td>'+tJikaSho+'%</td><td>'+tSellR+'%</td>'
+    +'<td>'+tJikaSho+'%</td><td>'+tJikyu+'%</td><td>'+tGenCover+'%</td><td>'+tSellR+'%</td>'
     +'</tr></tfoot></table>';
 }
 
@@ -3458,8 +3552,9 @@ function renderYrEffChart(){
   const yrs=years();
   if(!yrs.length){el.innerHTML=empty();return;}
   const series=[
-    {key:'jikyu',    label:'自給率',      color:cv('--gen'),  dash:''},
-    {key:'jikaSho',  label:'自家消費率',  color:cv('--sell'), dash:'4,3'},
+    {key:'jikaSho', label:'自家消費率', color:cv('--con'), dash:''},
+    {key:'jikyu',   label:'自給率',     color:cv('--sell'), dash:'4,3'},
+    {key:'genCover',label:'発電カバー率',color:cv('--gen'), dash:'6,2,1,2'},
     {key:'sellRatio',label:'売電比率',    color:cv('--buy'),  dash:'2,2'},
   ];
   const pts=yrs.map(yr=>{
@@ -3468,7 +3563,7 @@ function renderYrEffChart(){
     const sell=ms.reduce((s,ym)=>s+moSum(ym,'sell'),0);
     const buy=ms.reduce((s,ym)=>s+moSum(ym,'buy'),0);
     const con=ms.reduce((s,ym)=>s+moSum(ym,'con'),0);
-    return {yr,jikyu:con>0?Math.min(gen/con*100,999):0,jikaSho:con>0?Math.min((con-buy)/con*100,100):0,sellRatio:gen>0?Math.min(sell/gen*100,100):0};
+    return {yr,jikaSho:gen>0?Math.min((gen-sell)/gen*100,100):0,genCover:con>0?Math.min(gen/con*100,999):0,jikyu:con>0?Math.min((con-buy)/con*100,100):0,sellRatio:gen>0?Math.min(sell/gen*100,100):0};
   });
   const sp=window.innerWidth<560;
   const ptW=sp?Math.max(40,Math.floor((window.innerWidth-64)/yrs.length)):60;
@@ -3505,6 +3600,8 @@ function renderYrEffChart(){
 function renderMonthlyTab(){
   updateMonNav(); renderMonKPI();
   requestAnimationFrame(()=>{
+    const ym=monYm();
+    if(ym) renderDualDonut('mon-donut', periodTotals(moDates(ym)), `${ym.slice(0,4)}年${+ym.slice(5)}月`);
     renderDayBarChart(); renderMonSelfChart(); renderMonBox();
     requestAnimationFrame(()=>{ renderMonthlyTable(); renderEffChart(); });
   });
@@ -3513,6 +3610,8 @@ function renderMonthlyTab(){
 function renderYearlyTab(){
   updateYrNav(); renderYrKPI();
   requestAnimationFrame(()=>{
+    const yr=yrFilterYear();
+    renderDualDonut('yr-donut', periodTotals(yr?yrDates(yr):dates()), yr?yr+'年':'全期間');
     renderYrMonBarChart(); renderYrSelfChart(); renderYrBox();
     requestAnimationFrame(()=>{ renderYrTable(); renderYrEffChart(); });
   });
