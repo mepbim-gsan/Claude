@@ -194,6 +194,13 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 .remind .rm-left{min-width:0;}
 .remind .rm-sub{font-size:11px;color:var(--text2);}
 .remind .rm-due{font-size:12px;font-weight:700;white-space:nowrap;}
+.rm-sec{font-size:11px;font-weight:700;color:var(--text2);margin:10px 0 2px;}
+.rm-sec:first-child{margin-top:0;}
+.rm-date{display:flex;justify-content:space-between;align-items:center;padding:8px 0 2px;border-top:1px solid var(--border);font-size:12px;color:var(--text2);font-weight:600;}
+.rm-sec + .rm-date{border-top:none;}
+.rm-item{padding:4px 0 6px 12px;font-size:13px;cursor:pointer;}
+.rm-item .rm-sub{font-size:11px;color:var(--text2);}
+.due-past{color:var(--text3);}
 .due-over{color:var(--danger);} .due-soon{color:var(--warn);} .due-ok{color:var(--success);}
 .odo-big{font-size:30px;font-weight:700;letter-spacing:.02em;}
 .odo-big small{font-size:14px;color:var(--text2);font-weight:400;margin-left:4px;}
@@ -432,7 +439,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-14.4';
+const APP_VERSION = 'v07_2026-11-14.5';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1017,49 +1024,61 @@ function renderHome(){
     (running!==total ? `<tr class="total"><td>総額（初期費用含む）</td><td class="num">${entries.length}</td><td class="num">${yen(total)}</td><td class="num"></td></tr>` : '') + `</table>`;
 }
 
+// 次回予定・期限: 「期限」（過ぎると実害がある：車検満了・保険満期など）と「メンテの目安」（次回予定）に分けて表示
 function renderReminders(){
   const today = todayStr(), cur = currentOdo();
-  const items = [];
-  // メンテ：区分ごとに最新の記録の次回予定のみ
+  const dl = [], gd = [];
+  const ymdOf = t => t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  // メンテ：区分ごとに最新の記録
   const latest = {};
   V.maint.slice().sort(byDateDesc).forEach(m=>{ const k=m.category||'その他'; if(!latest[k]) latest[k]=m; });
-  // 車検: 車検の記録の次回予定日と車両情報の車検満了日の新しい方。どちらも無い場合は納車日＋3年（1週間早め）を推定表示
+  // 車検: 車検の記録の次回予定日と車両情報の車検満了日の新しい方。どちらも無い新車は納車日＋3年（1週間早め）を推定
   const insp = latest['車検'];
-  const inspRec = insp && insp.nextDate ? insp.nextDate : '';
-  const inspDue = [inspRec, V.info.inspDue||''].sort().pop();
-  if(inspDue){
-    items.push({kind:'vehicle', id:'', title:'車検 満了', date:inspDue, odo:null, days:daysBetween(today, inspDue), km:null});
-  }else if(!insp && V.info.purchaseDate){
+  const inspDue = [insp && insp.nextDate ? insp.nextDate : '', V.info.inspDue||''].sort().pop();
+  if(inspDue) dl.push({open:'openVehicleSheet()', name:'車検 満了', date:inspDue});
+  else if(!insp && V.info.purchaseDate){
     const [y,m,d] = V.info.purchaseDate.split('-').map(Number);
-    const est = new Date(y+3, m-1, d-7);
-    const ds = est.getFullYear()+'-'+String(est.getMonth()+1).padStart(2,'0')+'-'+String(est.getDate()).padStart(2,'0');
-    items.push({kind:'vehicle', id:'', title:'車検（推定）', date:ds, odo:null, days:daysBetween(today, ds), km:null, note:'納車日から推定・車両情報で車検満了日を入力'});
+    dl.push({open:'openVehicleSheet()', name:'車検 満了（推定）', date:ymdOf(new Date(y+3, m-1, d-7)), note:'納車日から推定。車両情報で車検満了日を入力'});
   }
-  Object.values(latest).forEach(m=>{
-    if(m.category==='車検' && m.nextDate) return;   // 車検の日付は上でまとめて表示
-    if(!m.nextDate && num(m.nextOdo)==null) return;
-    const days = m.nextDate ? daysBetween(today, m.nextDate) : null;
-    const km = num(m.nextOdo)!=null && cur ? num(m.nextOdo)-cur.odo : null;
-    items.push({kind:'maint', id:m.id, title:m.category + (m.title?`（${m.title}）`:''), date:m.nextDate, odo:num(m.nextOdo), days, km});
-  });
+  // 費用の期限（区分ごとに最新の期限のみ）
+  const suffix = c => /保険/.test(c) ? '満期' : /会員|ロードサービス|駐車/.test(c) ? '更新' : '期限';
   V.costs.forEach(c=>{
     if(!c.until) return;
-    const newer = V.costs.some(o=>o!==c && o.category===c.category && o.until && o.until>c.until);
-    if(newer) return;
-    items.push({kind:'cost', id:c.id, title:c.category + (c.title?`（${c.title}）`:'') + ' 期限', date:c.until, days:daysBetween(today,c.until), km:null});
+    if(V.costs.some(o=>o!==c && o.category===c.category && o.until && o.until>c.until)) return;
+    dl.push({open:`openCostSheet('${c.id}')`, name:`${c.category} ${suffix(c.category)}`, note:c.title||'', date:c.until});
   });
+  // メンテの目安（車検以外の次回予定）
+  Object.values(latest).forEach(m=>{
+    if(m.category==='車検') return;
+    if(!m.nextDate && num(m.nextOdo)==null) return;
+    gd.push({open:`openMaintSheet('${m.id}')`, name:m.category, note:m.title||'', date:m.nextDate||'',
+      days: m.nextDate ? daysBetween(today, m.nextDate) : null,
+      km: num(m.nextOdo)!=null && cur ? num(m.nextOdo)-cur.odo : null, odo:num(m.nextOdo)});
+  });
+  // 期限: 日付ごとにまとめる
+  const byDate = {};
+  dl.forEach(x=>{ (byDate[x.date] ||= []).push(x); });
+  const dlHtml = Object.keys(byDate).sort().map(d=>{
+    const n = daysBetween(today, d);
+    const cls = n<0 ? 'due-over' : n<=30 ? 'due-soon' : 'due-ok';
+    return `<div class="rm-date"><span>${d.replace(/-/g,'/')}</span><span class="rm-due ${cls}">${n<0?`${-n}日超過`:`あと${n}日`}</span></div>` +
+      byDate[d].map(x=>`<div class="rm-item" onclick="${x.open}"><div>${esc(x.name)}</div>${x.note?`<div class="rm-sub">${esc(x.note)}</div>`:''}</div>`).join('');
+  }).join('');
+  // 目安: 近い順。過ぎても赤にせず「経過」で控えめに
   const score = it => Math.min(it.days ?? 1e9, it.km!=null ? it.km/30 : 1e9);
-  items.sort((a,b)=>score(a)-score(b));
-  $('home-remind').innerHTML = items.length ? items.map(it=>{
-    const over = (it.days!=null && it.days<0) || (it.km!=null && it.km<0);
-    const soon = !over && ((it.days!=null && it.days<=30) || (it.km!=null && it.km<=500));
-    const cls = over ? 'due-over' : soon ? 'due-soon' : 'due-ok';
+  gd.sort((a,b)=>score(a)-score(b));
+  const gdHtml = gd.map(x=>{
+    const over = (x.days!=null && x.days<0) || (x.km!=null && x.km<0);
+    const soon = !over && ((x.days!=null && x.days<=30) || (x.km!=null && x.km<=500));
     const parts = [];
-    if(it.days!=null) parts.push(it.days<0 ? `${-it.days}日超過` : `あと${it.days}日`);
-    if(it.km!=null) parts.push(it.km<0 ? `${fmt(-it.km)}km超過` : `あと${fmt(it.km)}km`);
-    const sub = [it.date, it.odo!=null?fmt(it.odo)+' km':'', it.note||''].filter(Boolean).join(' / ');
-    return `<div class="remind" onclick="${it.kind==='maint'?'openMaintSheet':it.kind==='cost'?'openCostSheet':'openVehicleSheet'}('${it.id}')"><div class="rm-left"><div>${esc(it.title)}</div><div class="rm-sub">${sub}</div></div><div class="rm-due ${cls}">${parts.join(' / ')}</div></div>`;
-  }).join('') : '<div class="muted">メンテナンスの「次回予定」や費用の「期限」を入力すると表示されます</div>';
+    if(x.days!=null) parts.push(x.days<0 ? `${-x.days}日経過` : `あと${x.days}日`);
+    if(x.km!=null) parts.push(x.km<0 ? `${fmt(-x.km)}km経過` : `あと${fmt(x.km)}km`);
+    const sub = [x.date ? x.date.replace(/-/g,'/') : '', x.odo!=null ? fmt(x.odo)+' km' : '', x.note].filter(Boolean).join(' / ');
+    return `<div class="remind" onclick="${x.open}"><div class="rm-left"><div>${esc(x.name)}</div><div class="rm-sub">${esc(sub)}</div></div><div class="rm-due ${over?'due-past':soon?'due-soon':'due-ok'}">${parts.join(' / ')}</div></div>`;
+  }).join('');
+  $('home-remind').innerHTML = (dlHtml||gdHtml)
+    ? (dlHtml ? `<div class="rm-sec">期限</div>${dlHtml}` : '') + (gdHtml ? `<div class="rm-sec">メンテの目安</div>${gdHtml}` : '')
+    : '<div class="muted">車検満了日、費用の「期限」、メンテナンスの「次回予定」を入力すると表示されます</div>';
 }
 
 /* ---------- 給油 ---------- */
