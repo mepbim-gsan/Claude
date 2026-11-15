@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v06_2026-11-15
+  @version   v06_2026-11-15.2
   @changelog
+    v06_2026-11-15.2 - 比率グラフを他グラフの単位に揃えて組み替え（月次=選択月の日別、年次=選択年の月別（全期間時は全月）、推移=年別を新設）。100%超はクリップし▲表示
     v06_2026-11-15 - 比率の定義を修正（自家消費率=(発電−売電)÷発電、自給率=(消費−買電)÷消費、旧「自給率」=発電÷消費は「発電カバー率」に改名）。日次・月次・年次に二重ドーナツ（内側=発電の内訳、外側=消費の内訳）を追加。KPIの売電比率は自家消費率カードに併記
     v06_2026-09-27.7 - フォルダをSolar/へ戻す（移転ではインストール問題が解消せず）。SolarDashboard/は転送ページ＋SW解除スタブ。CACHE_NAME v4
-    v06_2026-09-27.6 - フォルダをSolar/→SolarDashboard/へ移転（Android Chromeの「インストール済み」誤判定回避）。旧URLは転送ページ＋SW解除スタブ。sw.jsのキャッシュ削除を自ツール分のみに限定、CACHE_NAME v3
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -376,7 +376,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="scroll" id="mo-table-wrap"></div>
   </div>
   <div class="sec">
-    <div class="sec-title" style="margin-bottom:10px">自家消費率・自給率・発電カバー率・売電比率（月別 %）</div>
+    <div class="sec-title" style="margin-bottom:10px">自家消費率・自給率・発電カバー率・売電比率（日別 %）</div>
     <div class="scroll" id="eff-chart"></div>
     <div style="display:flex;gap:14px;margin-top:8px;font-size:.68rem;flex-wrap:wrap;" id="eff-legend"></div>
   </div>
@@ -446,7 +446,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="scroll" id="yr-table-wrap"></div>
   </div>
   <div class="sec">
-    <div class="sec-title" style="margin-bottom:10px">自家消費率・自給率・発電カバー率・売電比率（年別 %）</div>
+    <div class="sec-title" style="margin-bottom:10px"><span id="yr-eff-title">自家消費率・自給率・発電カバー率・売電比率（月別 %）</span></div>
     <div class="scroll" id="yr-eff-chart"></div>
     <div style="display:flex;gap:14px;margin-top:8px;font-size:.68rem;flex-wrap:wrap;" id="yr-eff-legend"></div>
   </div>
@@ -465,6 +465,11 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
       </div>
     </div>
     <div class="scroll" id="yr-chart"></div>
+  </div>
+  <div class="sec">
+    <div class="sec-title" style="margin-bottom:10px">自家消費率・自給率・発電カバー率・売電比率（年別 %）</div>
+    <div class="scroll" id="trend-eff-chart"></div>
+    <div style="display:flex;gap:14px;margin-top:8px;font-size:.68rem;flex-wrap:wrap;" id="trend-eff-legend"></div>
   </div>
   <div class="sec">
     <div class="sec-hd">
@@ -584,7 +589,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v06_2026-11-15';
+const APP_VERSION = 'v06_2026-11-15.2';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -2174,85 +2179,70 @@ function renderYoYMon(selYr, prevYr){
 // ================================================================
 // RENDER: 効率折れ線グラフ
 // ================================================================
-function renderEffChart(){
-  const el = document.getElementById('eff-chart');
-  el.innerHTML = '';
-  const legEl = document.getElementById('eff-legend');
-  legEl.innerHTML = '';
-  const yr=monYear(), prevYr=monPrevYear();
-  const ms = months().filter(ym=>{const y=ym.slice(0,4);return y===yr||(prevYr&&y===prevYr);});
-  if(!ms.length){ el.innerHTML = empty(); return; }
-
-  // 月ごとに3指標を計算
-  const series = [
-    {key:'jikaSho', label:'自家消費率', color:cv('--con'), dash:''},
-    {key:'jikyu',   label:'自給率',     color:cv('--sell'), dash:'4,3'},
-    {key:'genCover',label:'発電カバー率',color:cv('--gen'), dash:'6,2,1,2'},
-    { key:'sellRatio',label:'売電比率',    color: cv('--buy'),  dash: '2,2' },
-  ];
-
-  const pts = ms.map(ym => {
-    const ds = moDates(ym);
-    const gen  = ds.reduce((s,dk)=>s+daySum(dk,'gen'),0);
-    const sell = ds.reduce((s,dk)=>s+daySum(dk,'sell'),0);
-    const buy  = ds.reduce((s,dk)=>s+daySum(dk,'buy'),0);
-    const con  = ds.reduce((s,dk)=>s+daySum(dk,'con'),0);
-    return {
-      ym,
-      jikaSho:  gen>0 ? Math.min((gen-sell)/gen*100,100) : 0,
-      genCover:    con>0 ? Math.min(gen/con*100,999) : 0,
-      jikyu:  con>0 ? Math.min((con-buy)/con*100,100) : 0,
-      sellRatio:gen>0 ? Math.min(sell/gen*100,100) : 0,
-    };
-  });
-
-  const sp  = window.innerWidth < 560;
-  const ptW = sp ? Math.max(24, Math.floor((window.innerWidth-64)/ms.length)) : 44;
-  const mL=44, mT=14, mB=36, cH=160;
-  const W = mL + ms.length*ptW + 10, H = cH+mT+mB;
-  const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
-
-  // Y軸 0〜100%
+// 比率の折れ線（共通）: pts は {key値...} または null（データなし）、labels はX軸ラベル（''で省略）
+const EFF_SERIES = ()=>[
+  {key:'jikaSho', label:'自家消費率', color:cv('--con'), dash:''},
+  {key:'jikyu',   label:'自給率',     color:cv('--sell'), dash:'4,3'},
+  {key:'genCover',label:'発電カバー率',color:cv('--gen'), dash:'6,2,1,2'},
+  {key:'sellRatio',label:'売電比率',  color:cv('--buy'), dash:'2,2'},
+];
+function drawEffLines(el, legEl, pts, labels, tipNames, opt){
+  el.innerHTML=''; legEl.innerHTML='';
+  if(!pts.some(p=>p)){ el.innerHTML=empty(); return; }
+  const n=pts.length, sp=window.innerWidth<560;
+  const mL=44, mT=14, mB=opt.rotate?36:24, cH=160;
+  const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
+  const ptW = opt.fit ? (contW-mL-10)/n : (sp ? Math.max(24, Math.floor((window.innerWidth-64)/n)) : (opt.ptW||44));
+  const W = opt.fit ? contW : mL+n*ptW+10, H=cH+mT+mB;
+  const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
   for(let i=0;i<=4;i++){
-    const y = mT+cH-cH*i/4, v = 25*i;
-    svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',y).attr('y2',y)
-      .attr('stroke',cv('--grid')).attr('stroke-width',1);
-    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end')
-      .attr('fill',cv('--text2')).attr('font-size',9).text(v+'%');
+    const y=mT+cH-cH*i/4;
+    svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',y).attr('y2',y).attr('stroke',cv('--grid')).attr('stroke-width',1);
+    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text(25*i+'%');
   }
-
-  // X軸ラベル
-  pts.forEach(({ym},i)=>{
-    if(!sp || i%2===0){
-      const tx = svg.append('text').attr('x',mL+i*ptW+ptW/2).attr('y',mT+cH+14)
-        .attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9);
-      tx.attr('transform',`rotate(-40,${mL+i*ptW+ptW/2},${mT+cH+14})`).text(+ym.slice(5)+'月');
-    }
+  const cx=i=>mL+i*ptW+ptW/2;
+  labels.forEach((lb,i)=>{
+    if(!lb) return;
+    const t=svg.append('text').attr('x',cx(i)).attr('y',mT+cH+14).attr('fill',cv('--text2')).attr('font-size',9);
+    if(opt.rotate) t.attr('text-anchor','end').attr('transform',`rotate(-40,${cx(i)},${mT+cH+14})`);
+    else t.attr('text-anchor','middle');
+    t.text(lb);
   });
-
-  // 折れ線
-  series.forEach(s => {
-    const lineData = pts.map((p,i) => [mL+i*ptW+ptW/2, mT+cH-(p[s.key]/100)*cH]);
-    const pathD = lineData.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' ');
-    svg.append('path').attr('d',pathD).attr('fill','none')
-      .attr('stroke',s.color).attr('stroke-width',2)
-      .attr('stroke-dasharray',s.dash);
-
-    // 点
+  // 100%超（発電カバー率）は描画領域でクリップし、点を上端に▲表示
+  const plot=clipPlot(svg,mL,mT-4,W-mL,cH+8);
+  EFF_SERIES().forEach(s=>{
+    let seg=[];
+    const flush=()=>{ if(seg.length>1) plot.append('path').attr('d',seg.map((p,k)=>(k===0?'M':'L')+p[0]+','+p[1]).join(' '))
+      .attr('fill','none').attr('stroke',s.color).attr('stroke-width',2).attr('stroke-dasharray',s.dash); seg=[]; };
     pts.forEach((p,i)=>{
-      const [px,py] = lineData[i];
-      svg.append('circle').attr('cx',px).attr('cy',py).attr('r',3)
-        .attr('fill',s.color)
-        .on('mousemove',e=>showTip(e,`${p.ym}<br>${s.label}: <b>${p[s.key].toFixed(1)}%</b>`))
-        .on('mouseleave',hideTip);
+      if(!p){ flush(); return; }
+      const v=p[s.key], py=mT+cH-(Math.min(v,104)/100)*cH;
+      seg.push([cx(i),mT+cH-(v/100)*cH]);
+      const tip=`${tipNames[i]}<br>${s.label}: <b>${v.toFixed(1)}%</b>`;
+      if(v>104) overMark(svg,cx(i),mT-4,s.color);
+      else svg.append('circle').attr('cx',cx(i)).attr('cy',py).attr('r',opt.r||3).attr('fill',s.color)
+        .on('mousemove',e=>showTip(e,tip)).on('mouseleave',hideTip);
     });
-
-    // 凡例
-    const item = document.createElement('span');
+    flush();
+    const item=document.createElement('span');
     item.style.cssText=`display:flex;align-items:center;gap:5px;color:${s.color};font-weight:600;`;
     item.innerHTML=`<svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="${s.color}" stroke-width="2" stroke-dasharray="${s.dash}"/></svg>${s.label}`;
     legEl.appendChild(item);
   });
+}
+
+// 月次: 選択月の日別
+function renderEffChart(){
+  const el=document.getElementById('eff-chart'), legEl=document.getElementById('eff-legend');
+  const ym=monYm();
+  if(!ym){ el.innerHTML=empty(); legEl.innerHTML=''; return; }
+  const dim=new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
+  const has=new Set(moDates(ym));
+  const dks=Array.from({length:dim},(_,i)=>ym+'-'+String(i+1).padStart(2,'0'));
+  drawEffLines(el, legEl,
+    dks.map(dk=>has.has(dk)?efficiencyFromTotals(periodTotals([dk])):null),
+    dks.map((dk,i)=>(i===0||(i+1)%5===0||i===dim-1)?(i+1)+'日':''),
+    dks, {fit:true, r:2.5});
 }
 // ================================================================
 // RENDER: 月間推移 - ヒストグラム
@@ -3544,54 +3534,23 @@ function renderYrTable(){
 // ================================================================
 // 年次タブ：年別率グラフ（折れ線）
 // ================================================================
+// 年次: 選択年の月別（全期間時は全月）
 function renderYrEffChart(){
-  const el=document.getElementById('yr-eff-chart');
-  el.innerHTML='';
-  const legEl=document.getElementById('yr-eff-legend');
-  legEl.innerHTML='';
+  const el=document.getElementById('yr-eff-chart'), legEl=document.getElementById('yr-eff-legend');
+  const yr=yrFilterYear(), existMs=months();
+  const ms = yr ? Array.from({length:12},(_,i)=>yr+'-'+String(i+1).padStart(2,'0')) : existMs;
+  document.getElementById('yr-eff-title').textContent='自家消費率・自給率・発電カバー率・売電比率（月別 %）'+(yr?' — '+yr+'年':' — 全期間');
+  drawEffLines(el, legEl,
+    ms.map(ym=>existMs.includes(ym)?efficiencyFromTotals(periodTotals(moDates(ym))):null),
+    ms.map(ym=>yr ? +ym.slice(5)+'月' : (ym.endsWith('-01')||ym===ms[0] ? ym.slice(2,4)+'/'+(+ym.slice(5)) : +ym.slice(5)+'月')),
+    ms, yr ? {fit:true} : {rotate:true});
+}
+
+// 推移: 年別
+function renderTrendEffChart(){
   const yrs=years();
-  if(!yrs.length){el.innerHTML=empty();return;}
-  const series=[
-    {key:'jikaSho', label:'自家消費率', color:cv('--con'), dash:''},
-    {key:'jikyu',   label:'自給率',     color:cv('--sell'), dash:'4,3'},
-    {key:'genCover',label:'発電カバー率',color:cv('--gen'), dash:'6,2,1,2'},
-    {key:'sellRatio',label:'売電比率',    color:cv('--buy'),  dash:'2,2'},
-  ];
-  const pts=yrs.map(yr=>{
-    const ms=months().filter(ym=>ym.startsWith(yr+'-'));
-    const gen=ms.reduce((s,ym)=>s+moSum(ym,'gen'),0);
-    const sell=ms.reduce((s,ym)=>s+moSum(ym,'sell'),0);
-    const buy=ms.reduce((s,ym)=>s+moSum(ym,'buy'),0);
-    const con=ms.reduce((s,ym)=>s+moSum(ym,'con'),0);
-    return {yr,jikaSho:gen>0?Math.min((gen-sell)/gen*100,100):0,genCover:con>0?Math.min(gen/con*100,999):0,jikyu:con>0?Math.min((con-buy)/con*100,100):0,sellRatio:gen>0?Math.min(sell/gen*100,100):0};
-  });
-  const sp=window.innerWidth<560;
-  const ptW=sp?Math.max(40,Math.floor((window.innerWidth-64)/yrs.length)):60;
-  const mL=44,mT=14,mB=36,cH=160;
-  const W=mL+yrs.length*ptW+10,H=cH+mT+mB;
-  const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
-  for(let i=0;i<=4;i++){
-    const y=mT+cH-cH*i/4,v=25*i;
-    svg.append('line').attr('x1',mL).attr('x2',W-4).attr('y1',y).attr('y2',y).attr('stroke',cv('--grid')).attr('stroke-width',1);
-    svg.append('text').attr('x',mL-5).attr('y',y+4).attr('text-anchor','end').attr('fill',cv('--text2')).attr('font-size',9).text(v+'%');
-  }
-  pts.forEach(({yr},i)=>{
-    svg.append('text').attr('x',mL+i*ptW+ptW/2).attr('y',mT+cH+18).attr('text-anchor','middle').attr('fill',cv('--text2')).attr('font-size',9).text(yr);
-  });
-  series.forEach(s=>{
-    const lineData=pts.map((p,i)=>[mL+i*ptW+ptW/2,mT+cH-(p[s.key]/100)*cH]);
-    svg.append('path').attr('d',lineData.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' ')).attr('fill','none').attr('stroke',s.color).attr('stroke-width',2).attr('stroke-dasharray',s.dash);
-    pts.forEach((p,i)=>{
-      const [px,py]=lineData[i];
-      svg.append('circle').attr('cx',px).attr('cy',py).attr('r',3.5).attr('fill',s.color)
-        .on('mousemove',e=>showTip(e,p.yr+'年<br>'+s.label+': <b>'+p[s.key].toFixed(1)+'%</b>'))
-        .on('mouseleave',hideTip);
-    });
-    const item=document.createElement('span');
-    item.style.cssText='display:flex;align-items:center;gap:5px;color:'+s.color+';font-weight:600;';
-    item.innerHTML='<svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="'+s.color+'" stroke-width="2" stroke-dasharray="'+s.dash+'"/></svg>'+s.label;
-    legEl.appendChild(item);
-  });
+  drawEffLines(document.getElementById('trend-eff-chart'), document.getElementById('trend-eff-legend'),
+    yrs.map(y=>efficiencyFromTotals(periodTotals(yrDates(y)))), yrs, yrs.map(y=>y+'年'), {ptW:60, r:3.5});
 }
 
 // ================================================================
@@ -3619,6 +3578,7 @@ function renderYearlyTab(){
 
 function renderTrendTab(){
   _renderYearlyComboChart(years(), colors());
+  renderTrendEffChart();
   requestAnimationFrame(()=>_renderDegradation(years(), colors()));
 }
 
