@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-15.2
+  @version   v07_2026-11-15.3
   @changelog
+    v07_2026-11-15.3 - ヘッダーのデータ期間をスマホ幅（560px以下）では日数のみ表示（PCは期間＋日数）
     v07_2026-11-15.2 - 日次の期間切替を1行に（‹ 月 › と ‹ 日 › を横並び、日ラベル「2日(月) ✕」を押すと月平均に戻る、ページ名は省略）
     v07_2026-11-15 - CarLogとデザイン統一（配色トークン・角丸カード・KPIタイル、下部固定タブバー、ヘッダー＋各タブの期間切替をヘッダー下に固定、テーマ/粒度/アカウント表示は設定へ移動、ライト既定）。sw.jsのCACHE_NAME v6
-    v06_2026-11-15.5 - 日次の並びを月次・年次と統一（カード>比率>時間帯別>24時間累計>自家消費分析>ヒートマップ>サマリー）、24時間累計グラフ新設（月の各日を灰色・選択日/月平均を色付き・最大/最低日ラベル・線タップで日選択）。季節別平均に指標ボタン追加・全期間集計に変更
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -43,6 +43,7 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
 .h-title .sun{color:var(--gen);}
 .h-sub{font-size:11px;color:var(--text2);font-weight:400;margin-left:6px;}
 .h-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+@media(max-width:560px){.h-sub .rng-full{display:none;}}
 .app-ver{font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums;}
 .icon-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .icon-btn svg{width:18px;height:18px;}
@@ -624,7 +625,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-15.2';
+const APP_VERSION = 'v07_2026-11-15.3';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -1132,7 +1133,8 @@ function updateRange(){
     return;
   }
   const ds = cache.dateList;
-  document.getElementById('drng').textContent = `${ds[0]} 〜 ${ds[ds.length-1]}  ( ${ds.length} 日分 )`;
+  // スマホは日数のみ、PCは期間＋日数
+  document.getElementById('drng').innerHTML = `<span class="rng-full">${ds[0]} 〜 ${ds[ds.length-1]}　</span>${ds.length}日分`;
   if(granularity === 30){
     badge.className = 'granularity-badge g30';
     badge.textContent = '30分粒度';
