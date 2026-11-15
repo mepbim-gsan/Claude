@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-15.4
+  @version   v07_2026-11-15.5
   @changelog
+    v07_2026-11-15.5 - 日次の期間バーにタイトル「日次」を復活（日ラベルの曜日を外し、スマホ幅は ‹ › を28pxに。360px未満はタイトル非表示）
     v07_2026-11-15.4 - 日次: 月平均表示中の ‹ で月の最新日へ移動できるように（› は従来どおり1日へ）
     v07_2026-11-15.3 - ヘッダーのデータ期間をスマホ幅（560px以下）では日数のみ表示（PCは期間＋日数）
-    v07_2026-11-15.2 - 日次の期間切替を1行に（‹ 月 › と ‹ 日 › を横並び、日ラベル「2日(月) ✕」を押すと月平均に戻る、ページ名は省略）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -84,15 +84,19 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
 .mnav button{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;font-family:inherit;}
 .mnav button:disabled{opacity:.35;cursor:default;}
 .mlabel{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:14px;font-weight:600;min-width:104px;text-align:center;}
-.heat-row{flex-wrap:nowrap;}
-.mnav .dlabel{width:auto;height:auto;font-size:13px;min-width:84px;padding:6px 8px;color:var(--text2);}
+.heat-row{flex-wrap:nowrap;justify-content:flex-start;}
+.heat-row > .mnav:nth-child(2){margin-right:auto;}
+.mnav .dlabel{width:auto;height:auto;font-size:13px;min-width:64px;padding:6px 8px;color:var(--text2);}
 .mnav .dlabel.on{color:var(--sell);border-color:var(--sell);}
 @media(max-width:420px){
-  .heat-row .mnav{gap:4px;}
-  .heat-row .mnav button{width:30px;height:34px;font-size:16px;}
-  .heat-row .mlabel{min-width:0;padding:6px 8px;font-size:13px;}
-  .heat-row .mnav .dlabel{min-width:76px;width:auto;}
+  .heat-row{gap:6px;}
+  .heat-row .page-title{font-size:15px;}
+  .heat-row .mnav{gap:3px;}
+  .heat-row .mnav button{width:28px;height:34px;font-size:16px;}
+  .heat-row .mlabel{min-width:0;padding:6px 6px;font-size:13px;}
+  .heat-row .mnav .dlabel{min-width:58px;width:auto;}
 }
+@media(max-width:359px){.heat-title{display:none;}}
 
 /* KPI共通（月間・日別で統一） */
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px;}
@@ -253,6 +257,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
   <div class="page-bar">
     <!-- 月と日を1行に。日ラベルは選択中のみ ✕ 付きで、押すと月平均に戻る -->
     <div class="page-row heat-row">
+      <div class="page-title heat-title">日次</div>
       <div class="mnav">
         <button id="mprev" aria-label="前の月">‹</button>
         <div class="mlabel" id="mlabel">—</div>
@@ -625,7 +630,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-15.4';
+const APP_VERSION = 'v07_2026-11-15.5';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -1661,7 +1666,7 @@ function updateDayNav(ym){
   const idx = selectedDate ? ds.indexOf(selectedDate) : -1;
   const dl = document.getElementById('dlabel');
   dl.textContent = selectedDate
-    ? `${+selectedDate.slice(8)}日(${'日月火水木金土'[new Date(selectedDate+'T00:00:00').getDay()]}) ✕`
+    ? `${+selectedDate.slice(8)}日 ✕`
     : '月平均';
   dl.classList.toggle('on', !!selectedDate);
   dl.title = selectedDate ? '月平均に戻す' : '';
