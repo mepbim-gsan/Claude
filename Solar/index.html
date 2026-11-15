@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16
+  @version   v07_2026-11-16.2
   @changelog
+    v07_2026-11-16.2 - 自給率の色を緑→紫に統一（KPI・二重ドーナツ中央。比率グラフは薄い紫の破線 --con2）
     v07_2026-11-16 - Firestore通信量削減: 端末キャッシュ（IndexedDB）＋目次ドキュメント（_meta-solar：月ごとの最終更新日時）で更新された月だけ取得。CSV取込時は変更月だけ保存（従来は全月を書き直し）
     v07_2026-11-15.5 - 日次の期間バーにタイトル「日次」を復活（日ラベルの曜日を外し、スマホ幅は ‹ › を28pxに。360px未満はタイトル非表示）
-    v07_2026-11-15.4 - 日次: 月平均表示中の ‹ で月の最新日へ移動できるように（› は従来どおり1日へ）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -23,14 +23,14 @@
 [data-theme="light"] {
   --bg:#f4f6fb; --bg2:#ffffff; --bg3:#eef0f7; --border:#d0d5e8;
   --text:#1e2233; --text2:#6b7280; --text3:#9ca3af; --shadow:rgba(0,0,0,.06);
-  --gen:#d97706; --sell:#059669; --buy:#2563eb; --con:#7c3aed; --accent:#d97706;
+  --gen:#d97706; --sell:#059669; --buy:#2563eb; --con:#7c3aed; --con2:#a78bfa; --accent:#d97706;
   --gen-bg:#fef3c7; --sell-bg:#d1fae5; --buy-bg:#dbeafe; --con-bg:#ede9fe;
   --grid:#e5e7eb; --heat-zero:#f0f4f8;
 }
 [data-theme="dark"] {
   --bg:#0f1117; --bg2:#1a1d27; --bg3:#242736; --border:#2e3247;
   --text:#e8eaf0; --text2:#8b90a7; --text3:#5a5f7a; --shadow:rgba(0,0,0,.3);
-  --gen:#f59e0b; --sell:#10b981; --buy:#3b82f6; --con:#8b5cf6; --accent:#f5a623;
+  --gen:#f59e0b; --sell:#10b981; --buy:#3b82f6; --con:#8b5cf6; --con2:#c4b5fd; --accent:#f5a623;
   --gen-bg:#2a1f05; --sell-bg:#06261b; --buy-bg:#0b1a3a; --con-bg:#1e1440;
   --grid:#2e3247; --heat-zero:#0f1117;
 }
@@ -630,7 +630,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16';
+const APP_VERSION = 'v07_2026-11-16.2';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -1275,7 +1275,7 @@ function renderHeatKPI(ym){
     </div>`).join('');
     kpi2.innerHTML = [
       {lbl:'自家消費率',val:e.jikaSho,    unit:'%',   tip:'（発電量－売電量）÷発電量<br>売電比率 '+e.sellRatio.toFixed(1)+'%',color:col.con},
-      {lbl:'自給率',    val:e.jikyu,  unit:'%',   tip:'（消費量－買電量）÷消費量', color:col.sell},
+      {lbl:'自給率',    val:e.jikyu,  unit:'%',   tip:'（消費量－買電量）÷消費量', color:col.con},
       {lbl:'発電カバー率',val:e.genCover,    unit:'%',   tip:'発電量÷消費量',             color:col.gen},
       {lbl:'自家消費量',val:selfUse,    unit:'kWh', tip:'消費量－買電量',            color:col.con},
     ].map(r=>`<div class="kpi">
@@ -1311,7 +1311,7 @@ function renderHeatKPI(ym){
     </div>`).join('');
     kpi2.innerHTML = [
       {lbl:'自家消費率',val:jikaSho,            unit:'%',     digits:1, tip:'（発電量－売電量）÷発電量<br>売電比率 '+sellRatio.toFixed(1)+'%',color:col.con},
-      {lbl:'自給率',    val:jikyu,          unit:'%',     digits:1, tip:'（消費量－買電量）÷消費量', color:col.sell},
+      {lbl:'自給率',    val:jikyu,          unit:'%',     digits:1, tip:'（消費量－買電量）÷消費量', color:col.con},
       {lbl:'発電カバー率',val:genCover,            unit:'%',     digits:1, tip:'発電量÷消費量',             color:col.gen},
       {lbl:'自家消費量',val:selfUse/ds.length,unit:'kWh/日',digits:2, tip:'消費量－買電量（日平均）',  color:col.con},
     ].map(r=>`<div class="kpi">
@@ -1808,7 +1808,7 @@ function renderDualDonut(elId, t, label){
   ctr(cy-22,'自家消費率',9,cv('--text2'));
   ctr(cy-4,jikaSho.toFixed(1)+'%',16,col.con,800);
   ctr(cy+16,'自給率',9,cv('--text2'));
-  ctr(cy+34,jikyu.toFixed(1)+'%',16,col.sell,800);
+  ctr(cy+34,jikyu.toFixed(1)+'%',16,col.con,800);
   ctr(cy+152,`発電 ${t.gen.toFixed(1)} kWh ／ 消費 ${t.con.toFixed(1)} kWh`,11,cv('--text2'));
   // 凡例
   const leg=[{k:'自家消費',c:col.con},{k:'売電',c:col.sell},{k:'買電',c:col.buy}];
@@ -1875,7 +1875,7 @@ function renderMonKPI(){
     kwhCard('買電量',   tot.buy,  col.buy,  `日平均 ${(tot.buy/n).toFixed(2)} kWh/日`) +
     kwhCard('消費量',   tot.con,  col.con,  `日平均 ${(tot.con/n).toFixed(2)} kWh/日`) +
     pctCard('自家消費率',jikaSho,col.con,'（発電量－売電量）÷発電量<br>売電比率 '+sellRatio.toFixed(1)+'%') +
-    pctCard('自給率',  jikyu,  col.sell, '（消費量－買電量）÷消費量') +
+    pctCard('自給率',  jikyu,  col.con, '（消費量－買電量）÷消費量') +
     pctCard('発電カバー率',genCover,col.gen,'発電量÷消費量') +
     kwhCard('自家消費量',  selfUse,  col.con,  `日平均 ${(selfUse/n).toFixed(2)} kWh/日`);
 }
@@ -2277,7 +2277,7 @@ function renderYoYMon(selYr, prevYr){
 // 比率の折れ線（共通）: pts は {key値...} または null（データなし）、labels はX軸ラベル（''で省略）
 const EFF_SERIES = ()=>[
   {key:'jikaSho', label:'自家消費率', color:cv('--con'), dash:''},
-  {key:'jikyu',   label:'自給率',     color:cv('--sell'), dash:'4,3'},
+  {key:'jikyu',   label:'自給率',     color:cv('--con2'), dash:'4,3'},
   {key:'genCover',label:'発電カバー率',color:cv('--gen'), dash:'6,2,1,2'},
   {key:'sellRatio',label:'売電比率',  color:cv('--buy'), dash:'2,2'},
 ];
@@ -2533,7 +2533,7 @@ function renderYrKPI(){
       kwhCard('買電量', buy.toFixed(0),  col.buy,  `月平均 ${(buy/mn).toFixed(1)} kWh/月`)+
       kwhCard('消費量', con.toFixed(0),  col.con,  `月平均 ${(con/mn).toFixed(1)} kWh/月`)+
       pctCard('自家消費率',jikaSho.toFixed(1),col.con,'（発電量－売電量）÷発電量<br>売電比率 '+sellRatio.toFixed(1)+'%')+
-      pctCard('自給率',jikyu.toFixed(1),  col.sell, '（消費量－買電量）÷消費量')+
+      pctCard('自給率',jikyu.toFixed(1),  col.con, '（消費量－買電量）÷消費量')+
       pctCard('発電カバー率',genCover.toFixed(1),col.gen,'発電量÷消費量')+
       kwhCard('自家消費量',selfUse.toFixed(0),  col.con,  `月平均 ${(selfUse/mn).toFixed(1)} kWh/月`);
   } else {
@@ -2555,7 +2555,7 @@ function renderYrKPI(){
       kwhCard('設置後累計買電量', buy.toFixed(0),  col.buy,  `月平均 ${(buy/mn).toFixed(1)} kWh/月`)+
       kwhCard('設置後累計消費量', con.toFixed(0),  col.con,  `月平均 ${(con/mn).toFixed(1)} kWh/月`)+
       pctCard('自家消費率',jikaSho.toFixed(1),col.con,'（発電量－売電量）÷発電量<br>売電比率 '+sellRatio.toFixed(1)+'%')+
-      pctCard('自給率',jikyu.toFixed(1),  col.sell, '（消費量－買電量）÷消費量')+
+      pctCard('自給率',jikyu.toFixed(1),  col.con, '（消費量－買電量）÷消費量')+
       pctCard('発電カバー率',genCover.toFixed(1),col.gen,'発電量÷消費量')+
       kwhCard('設置後累計自家消費量',selfUse.toFixed(0),col.con,`月平均 ${(selfUse/mn).toFixed(1)} kWh/月`);
   }
