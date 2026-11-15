@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-15.5
+  @version   v07_2026-11-16
   @changelog
+    v07_2026-11-16 - Firestore通信量削減: 端末キャッシュ（IndexedDB）＋目次ドキュメント（_meta-solar：月ごとの最終更新日時）で更新された月だけ取得。CSV取込時は変更月だけ保存（従来は全月を書き直し）
     v07_2026-11-15.5 - 日次の期間バーにタイトル「日次」を復活（日ラベルの曜日を外し、スマホ幅は ‹ › を28pxに。360px未満はタイトル非表示）
     v07_2026-11-15.4 - 日次: 月平均表示中の ‹ で月の最新日へ移動できるように（› は従来どおり1日へ）
-    v07_2026-11-15.3 - ヘッダーのデータ期間をスマホ幅（560px以下）では日数のみ表示（PCは期間＋日数）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -630,7 +630,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-15.5';
+const APP_VERSION = 'v07_2026-11-16';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -638,6 +638,8 @@ document.getElementById('app-ver').textContent = APP_VERSION;
 const CONFIG_KEY = 'solar-firebase-config-v1';
 const COLLECTION  = 'shared-solar';
 const DOC_PREFIX  = 'solar-'; // ドキュメントID: solar-{YYYY-MM}
+const META_ID     = '_meta-solar'; // 月ごとの最終更新日時（DOC_PREFIXと重ならないID）
+let _dirtyMonths  = new Set();     // CSV取込で変更された月（保存対象）
 
 let D = {};          // { 'YYYY-MM-DD_HH:MM': {gen,sell,buy,con} }
 let granularity = null; // 30 or 60 (minutes)
@@ -705,18 +707,13 @@ function _syncStatus(msg, autoClear){
   if(autoClear) setTimeout(() => document.getElementById('sync-status').textContent = '', 3000);
 }
 
-// Dから変更月セットを取得
-function _affectedMonths(keys){
-  const s = new Set();
-  for(const k of keys) s.add(k.slice(0,7)); // YYYY-MM
-  return [...s];
-}
-
 function load(){ /* Firebase対応後はloadFirestore()を使用。localStorageキャッシュは廃止 */ }
 
 async function save(){
   if(isSampleMode) return;
-  const ums = _affectedMonths(Object.keys(D));
+  // 変更された月だけ保存（全月の書き直しをしない）
+  const ums = [..._dirtyMonths];
+  _dirtyMonths = new Set();
   if(!ums.length) return;
   _syncStatus('同期中…');
   try{
@@ -730,7 +727,7 @@ async function save(){
 }
 
 async function clearAll(){
-  D = {}; granularity = null; _invalidateAgg();
+  D = {}; granularity = null; _invalidateAgg(); _dirtyMonths = new Set();
   if(isSampleMode) return;
   _syncStatus('消去中…');
   try{
@@ -816,6 +813,7 @@ function parseCSV(text){
     const slot = `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
     const key = `${dk}_${slot}`;
 
+    _dirtyMonths.add(dk.slice(0,7));
     D[key] = {
       gen:  +c[gi]   || 0,
       sell: +c[gi+1] || 0,
@@ -3924,17 +3922,47 @@ function _setupFirebase(){
 }
 
 // ================================================================
+// 端末キャッシュ（IndexedDB）: 月ごとに {ym, ts, granularity, slots} を保存
+// ================================================================
+function _idbOpen(uid){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open('solar-cache-'+uid,1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('months',{keyPath:'ym'});
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });
+}
+function _idbTx(db, mode, fn){
+  return new Promise((res,rej)=>{
+    const tx=db.transaction('months',mode), st=tx.objectStore('months');
+    const out=fn(st);
+    tx.oncomplete=()=>res(out&&out.result); tx.onerror=()=>rej(tx.error);
+  });
+}
+const _idbAll   = db => _idbTx(db,'readonly', st=>st.getAll());
+const _idbPut   = (db,recs) => _idbTx(db,'readwrite', st=>{ recs.forEach(r=>st.put(r)); });
+const _idbDel   = (db,yms)  => _idbTx(db,'readwrite', st=>{ yms.forEach(ym=>st.delete(ym)); });
+const _idbClear = db => _idbTx(db,'readwrite', st=>st.clear());
+
+function _applyCache(recs){
+  D = {}; granularity = null;
+  recs.sort((a,b)=>a.ym<b.ym?-1:1).forEach(r=>{ if(r.granularity) granularity=r.granularity; Object.assign(D, r.slots||{}); });
+  _invalidateAgg();
+}
+
+// ================================================================
 // FIREBASE
 // ================================================================
 async function _initFirebase(cfg){
   const {initializeApp}        = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
   const {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-  const {getFirestore,collection,doc,setDoc,getDocs,deleteDoc,writeBatch} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const {getFirestore,collection,doc,setDoc,getDoc,getDocs,deleteDoc,writeBatch} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
 
   const app = initializeApp(cfg);
   const auth = getAuth(app);
   const db   = getFirestore(app);
   const col  = collection(db, COLLECTION);
+  const metaRef = doc(col, META_ID);
+  let cdb = null; // 端末キャッシュ（ログイン後に開く）
 
   _fbSignIn  = async () => {
     try{ await signInWithPopup(auth, new GoogleAuthProvider()); }
@@ -3951,6 +3979,10 @@ async function _initFirebase(cfg){
         if(k.startsWith(ym)) slots[k] = v;
       }
       await setDoc(doc(col, DOC_PREFIX + ym), { granularity, slots });
+      // 目次（最終更新日時）と端末キャッシュも更新
+      const ts = Date.now();
+      await setDoc(metaRef, { months: { [ym]: ts } }, { merge: true });
+      if(cdb) await _idbPut(cdb, [{ ym, ts, granularity, slots }]).catch(()=>{});
     }
   };
 
@@ -3959,8 +3991,9 @@ async function _initFirebase(cfg){
     _lastWriteAt = Date.now();
     const snap = await getDocs(col);
     const batch = writeBatch(db);
-    snap.docs.forEach(d => { if(d.id.startsWith(DOC_PREFIX)) batch.delete(d.ref); });
+    snap.docs.forEach(d => { if(d.id.startsWith(DOC_PREFIX) || d.id===META_ID) batch.delete(d.ref); });
     await batch.commit();
+    if(cdb) await _idbClear(cdb).catch(()=>{});
   };
 
   onAuthStateChanged(auth, async user => {
@@ -3971,16 +4004,45 @@ async function _initFirebase(cfg){
       document.getElementById('btn-logout').style.display = 'flex';
       _syncStatus('読み込み中…');
       try{
-        const snap = await getDocs(col);
-        D = {}; granularity = null;
-        snap.docs.forEach(d => {
-          if(!d.id.startsWith(DOC_PREFIX)) return;
-          const data = d.data();
-          if(data.granularity) granularity = data.granularity;
-          Object.assign(D, data.slots || {});
-        });
-        _invalidateAgg();
-        _syncStatus('✓ 同期済み', true);
+        // 1) 端末キャッシュがあれば先に表示
+        let cached = [];
+        try{ cdb = await _idbOpen(user.uid); cached = await _idbAll(cdb) || []; }catch(e){ cdb = null; }
+        if(cached.length){
+          _applyCache(cached);
+          monIdx = Math.max(0, months().length-1);
+          monYrIdx = Math.max(0, years().length-1); yrFilterIdx=-2;
+          renderAll();
+        }
+        // 2) 目次を読み、更新された月だけ取り直す（目次がなければ全件読み込みして作成）
+        const metaSnap = await getDoc(metaRef);
+        let recs;
+        if(!metaSnap.exists()){
+          const snap = await getDocs(col), ts = Date.now(), months0 = {};
+          recs = snap.docs.filter(d=>d.id.startsWith(DOC_PREFIX)).map(d=>{
+            const data=d.data(), ym=d.id.slice(DOC_PREFIX.length);
+            months0[ym]=ts;
+            return { ym, ts, granularity:data.granularity||null, slots:data.slots||{} };
+          });
+          if(recs.length) await setDoc(metaRef, { months: months0 });
+          if(cdb){ await _idbClear(cdb).catch(()=>{}); await _idbPut(cdb, recs).catch(()=>{}); }
+          _syncStatus(`✓ 同期済み（${recs.length}か月を取得）`, true);
+        }else{
+          const meta = metaSnap.data().months || {};
+          const byYm = Object.fromEntries(cached.map(r=>[r.ym,r]));
+          const stale = Object.keys(meta).filter(ym => !byYm[ym] || byYm[ym].ts < meta[ym]);
+          const gone  = cached.map(r=>r.ym).filter(ym => !(ym in meta));
+          const fetched = await Promise.all(stale.map(async ym=>{
+            const d = await getDoc(doc(col, DOC_PREFIX + ym));
+            const data = d.exists() ? d.data() : {};
+            return { ym, ts: meta[ym], granularity:data.granularity||null, slots:data.slots||{} };
+          }));
+          fetched.forEach(r=>{ byYm[r.ym]=r; });
+          gone.forEach(ym=>{ delete byYm[ym]; });
+          recs = Object.values(byYm);
+          if(cdb){ await _idbPut(cdb, fetched).catch(()=>{}); if(gone.length) await _idbDel(cdb, gone).catch(()=>{}); }
+          _syncStatus(stale.length ? `✓ 同期済み（${stale.length}か月を更新）` : '✓ 同期済み（キャッシュ）', true);
+        }
+        _applyCache(recs);
       }catch(e){
         _syncStatus('');
         flash('Firestore読み込みエラー: ' + e.message, true);
