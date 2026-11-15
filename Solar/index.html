@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-15.3
+  @version   v07_2026-11-15.4
   @changelog
+    v07_2026-11-15.4 - 日次: 月平均表示中の ‹ で月の最新日へ移動できるように（› は従来どおり1日へ）
     v07_2026-11-15.3 - ヘッダーのデータ期間をスマホ幅（560px以下）では日数のみ表示（PCは期間＋日数）
     v07_2026-11-15.2 - 日次の期間切替を1行に（‹ 月 › と ‹ 日 › を横並び、日ラベル「2日(月) ✕」を押すと月平均に戻る、ページ名は省略）
-    v07_2026-11-15 - CarLogとデザイン統一（配色トークン・角丸カード・KPIタイル、下部固定タブバー、ヘッダー＋各タブの期間切替をヘッダー下に固定、テーマ/粒度/アカウント表示は設定へ移動、ライト既定）。sw.jsのCACHE_NAME v6
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -625,7 +625,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-15.3';
+const APP_VERSION = 'v07_2026-11-15.4';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -1665,7 +1665,8 @@ function updateDayNav(ym){
     : '月平均';
   dl.classList.toggle('on', !!selectedDate);
   dl.title = selectedDate ? '月平均に戻す' : '';
-  document.getElementById('dprev').disabled = idx <= 0;
+  // 月平均から ‹ で最新日（今日・昨日を開きやすく）、› で1日へ
+  document.getElementById('dprev').disabled = !!selectedDate && idx <= 0;
   document.getElementById('dnext').disabled = idx === ds.length-1;
 }
 
