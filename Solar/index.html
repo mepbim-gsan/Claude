@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.10
+  @version   v07_2026-11-16.11
   @changelog
+    v07_2026-11-16.11 - 経年劣化診断表の注記が表と一緒に横スクロールしていたのを修正（注記を表の外へ）
     v07_2026-11-16.10 - グラフがカードからわずかにはみ出して横スクロールになる不具合を修正（幅をカード内側で計算）。サマリー表・経年劣化診断表の左端列（日付・月・年）を固定
     v07_2026-11-16.9 - 最新月・最新年に戻る操作を追加: 表示中のタブ（日次・月次・年次）を再タップ、または「↺」付きの月・年ラベルをタップ
-    v07_2026-11-16.8 - 累計グラフ（月次・年次）の灰色線がタップできない不具合を修正（ツールチップ領域の下に隠れていた）。月次は直近12か月の最大・最低の月を右端に表示（欠けのある月は除外）。月末の日付ラベルの重なりを修正
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -508,6 +508,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
       <div style="font-size:.66rem;color:var(--text2)">天候の影響があるため参考値です</div>
     </div>
     <div class="scroll" id="deg-table-wrap"></div>
+    <div id="deg-table-note"></div>
     <div class="sec-title" style="margin-top:14px;margin-bottom:8px;font-size:.68rem">年別日発電量 箱ひげ図（中央値・IQRで性能比較）</div>
     <div class="scroll" id="deg-box-chart"></div>
     <p style="font-size:.66rem;color:var(--text2);margin-top:6px;line-height:1.8">箱：25〜75パーセンタイル　線：中央値<br>ひげ：5〜95パーセンタイル　点：外れ値（発電量0日除く）</p>
@@ -665,7 +666,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.10';
+const APP_VERSION = 'v07_2026-11-16.11';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -2689,7 +2690,7 @@ function _renderYearlyComboChart(yrs, col){
 function _renderDegradation(yrs, col){
   const tblEl = document.getElementById('deg-table-wrap');
   const chEl  = document.getElementById('deg-box-chart');
-  tblEl.innerHTML = ''; chEl.innerHTML = '';
+  tblEl.innerHTML = ''; chEl.innerHTML = ''; document.getElementById('deg-table-note').innerHTML = '';
   if(!yrs.length){ tblEl.innerHTML = '<p style="font-size:.73rem;color:var(--text2);padding:8px">データが不足しています。</p>'; return; }
 
   const yrStats = yrs.map(yr=>{
@@ -2739,9 +2740,10 @@ function _renderDegradation(yrs, col){
       <th>推定劣化（前年比）</th>
     </tr></thead>
     <tbody>${rows.join('')}</tbody>
-  </table>`+(hasNA ? `<p style="font-size:.66rem;color:var(--text2);margin-top:6px;line-height:1.7">
+  </table>`;
+  document.getElementById('deg-table-note').innerHTML = hasNA ? `<p style="font-size:.66rem;color:var(--text2);margin-top:6px;line-height:1.7">
     対前年比は当年・前年とも1年分のデータがそろった年のみ表示します。<br>
-    それまでの劣化確認は、月次タブ「月別日次 箱ひげ図」（発電量）で同じ月の箱・ひげの上側（晴天日相当）を前年と比べてください。</p>` : '');
+    それまでの劣化確認は、月次タブ「月別日次 箱ひげ図」（発電量）で同じ月の箱・ひげの上側（晴天日相当）を前年と比べてください。</p>` : '';
 
   const yCol = [cv('--gen'), cv('--sell'), cv('--buy'), cv('--con'), '#ef4444'];
   const groups = [...yrStats].reverse().map((s,i)=>({
