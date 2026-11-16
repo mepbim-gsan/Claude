@@ -1,10 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v02_2026-11-17
+  @version   v02_2026-11-17.3
   @changelog
-    v01_2026-09-24   - 月間金額比較で凡例から電気/ガス等を非表示にしても前年合計ラインが再計算されなかった不具合を修正
-    v01_2026-09-24.2 - PWA化（manifest.json・sw.js・アイコン追加、ホーム画面に追加可能に）
     v02_2026-11-17   - 表示名を「Utility Log」に変更。デザインをCarLog・Solar Logと統一（配色・カード・下部タブ・期間バー・設定画面・入力シート、ライト/ダーク切替）
+    v02_2026-11-17.2 - Chart.js を動的読み込みに変更（htmlpreview のプレビューでグラフが表示されなかった対策）
+    v02_2026-11-17.3 - 設定に「集計期間」を追加（年度 4〜3月／暦年 1〜12月の切替）
 -->
 <!DOCTYPE html>
 <html lang="ja" data-theme="light">
@@ -19,7 +19,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <script>try{const t=localStorage.getItem('utilities-theme');if(t)document.documentElement.dataset.theme=t;}catch{}</script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// Chart.js は動的に読み込む（htmlpreview は外部CDNの <script src> を実行しないため、プレビューでグラフが出なかった）
+window._chartReady = new Promise(res => {
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+  s.onload = () => res(true);
+  s.onerror = () => res(false);
+  document.head.appendChild(s);
+});
+</script>
 <style>
 :root{--nav-h:60px;--radius:12px;--hdr-h:55px;}
 [data-theme="light"]{
@@ -216,10 +225,10 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
     <div class="tab-pane active" id="tab-dashboard">
       <div class="page-bar">
         <div class="page-title">ダッシュボード</div>
-        <div class="year-nav"><button class="yn-btn" data-fy-step="-1" onclick="_stepFY(-1)" aria-label="前の年度">‹</button><select class="fy-sel" onchange="_onFYChange(this.value)"></select><button class="yn-btn" data-fy-step="1" onclick="_stepFY(1)" aria-label="次の年度">›</button></div>
+        <div class="year-nav"><button class="yn-btn" data-fy-step="-1" onclick="_stepFY(-1)" aria-label="前の期間">‹</button><select class="fy-sel" onchange="_onFYChange(this.value)"></select><button class="yn-btn" data-fy-step="1" onclick="_stepFY(1)" aria-label="次の期間">›</button></div>
       </div>
       <div class="card">
-        <div class="card-title">年度合計</div>
+        <div class="card-title" id="totalTitle">年度合計</div>
         <div class="kpi-grid" id="summaryCards"></div>
       </div>
       <div class="card" id="service-electricity"></div>
@@ -231,7 +240,7 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
     <div class="tab-pane" id="tab-compare">
       <div class="page-bar">
         <div class="page-title">比較</div>
-        <div class="year-nav"><button class="yn-btn" data-fy-step="-1" onclick="_stepFY(-1)" aria-label="前の年度">‹</button><select class="fy-sel" onchange="_onFYChange(this.value)"></select><button class="yn-btn" data-fy-step="1" onclick="_stepFY(1)" aria-label="次の年度">›</button></div>
+        <div class="year-nav"><button class="yn-btn" data-fy-step="-1" onclick="_stepFY(-1)" aria-label="前の期間">‹</button><select class="fy-sel" onchange="_onFYChange(this.value)"></select><button class="yn-btn" data-fy-step="1" onclick="_stepFY(1)" aria-label="次の期間">›</button></div>
       </div>
       <div class="card">
         <div class="card-title">月間 金額比較 <span class="muted">凡例タップで表示切替</span></div>
@@ -239,12 +248,12 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
       </div>
       <div class="card">
         <div class="card-title">年間 金額推移 <span class="muted">凡例タップで表示切替</span></div>
-        <div class="note">色が薄い部分は、その年度の記録月数が他年度より少ないことを示します</div>
+        <div class="note">色が薄い部分は、その<span data-pw>年度</span>の記録月数が他の<span data-pw>年度</span>より少ないことを示します</div>
         <div class="chart-box" style="height:240px"><canvas id="chartAnnual"></canvas></div>
       </div>
       <div class="card">
         <div class="card-title">年間 使用量推移</div>
-        <div class="note">色が薄い年度は、記録月数が他年度より少ないことを示します</div>
+        <div class="note">色が薄い<span data-pw>年度</span>は、記録月数が他の<span data-pw>年度</span>より少ないことを示します</div>
         <div class="sub-title first"><i class="gdot" style="background:var(--c-elec)"></i>電気（kWh）</div>
         <div class="chart-box" style="height:160px"><canvas id="chartAnnualUsageElec"></canvas></div>
         <div class="sub-title"><i class="gdot" style="background:var(--c-gas)"></i>ガス（m³）</div>
@@ -312,6 +321,13 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
     </div>
     <div class="card">
       <div class="card-title">表示</div>
+      <div class="set-row">
+        <div>集計期間<div class="muted">年ごとの集計・比較の区切り</div></div>
+        <select id="set-period" class="sel-auto" onchange="_setPeriod(this.value)">
+          <option value="fiscal">年度（4〜3月）</option>
+          <option value="calendar">暦年（1〜12月）</option>
+        </select>
+      </div>
       <div class="set-row last">
         <div>テーマ</div>
         <select id="set-theme" class="sel-auto" onchange="_setTheme(this.value)">
@@ -333,7 +349,7 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
 <div id="toast"></div>
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v02_2026-11-17';
+const APP_VERSION = 'v02_2026-11-17.3';
 const CONFIG_KEY = 'firebase-config-v1';
 const THEME_KEY  = 'utilities-theme';
 
@@ -377,7 +393,24 @@ let currentTab   = 'dashboard';
 let historyType  = 'all';
 let editingKey   = null;
 
-let selectedFY = null; // 選択中の年度（null=最新年度）
+let selectedFY = null; // 選択中の年度・年（null=最新）
+// 集計期間: 4=年度（4〜3月） / 1=暦年（1〜12月）。端末ごとに保存
+const PERIOD_KEY = 'utilities-period';
+let periodStart = 4;
+try { if (localStorage.getItem(PERIOD_KEY) === 'calendar') periodStart = 1; } catch {}
+const _periodWord  = () => periodStart === 1 ? '年' : '年度';
+const _periodLabel = y => y + _periodWord();
+function _applyPeriodWords() {
+  document.querySelectorAll('[data-pw]').forEach(el => el.textContent = _periodWord());
+  const t = document.getElementById('totalTitle'); if (t) t.textContent = periodStart === 1 ? '年間合計' : '年度合計';
+}
+function _setPeriod(v) {
+  periodStart = v === 'calendar' ? 1 : 4;
+  try { localStorage.setItem(PERIOD_KEY, v); } catch {}
+  selectedFY = null; // 最新の期間に戻す
+  _applyPeriodWords();
+  _rerenderCurrent();
+}
 // サービス別の表示メトリクス状態
 const metricState = { electricity: 'amount', gas: 'amount', water: 'amount' };
 // Chart.js インスタンス管理
@@ -532,12 +565,11 @@ function _last12Months() {
     return _mk(d.getFullYear(), d.getMonth()+1);
   });
 }
-// 年度(4月始まり)の月キー配列を返す
+// 期間（年度=4月始まり／暦年=1月始まり）の月キー配列を返す
 function _fiscalMonths(fy) {
   return Array.from({length:12}, (_,i) => {
-    const month = ((i + 3) % 12) + 1;
-    const year  = i < 9 ? fy : fy + 1;
-    return _mk(year, month);
+    const m0 = periodStart - 1 + i;
+    return _mk(fy + Math.floor(m0 / 12), m0 % 12 + 1);
   });
 }
 // データ内の年度一覧（降順）
@@ -545,7 +577,7 @@ function _availableFiscalYears() {
   const fys = new Set();
   ['electricity','gas','water'].forEach(t => {
     remoteData[t].forEach(r => {
-      fys.add(r.month >= 4 ? r.year : r.year - 1);
+      fys.add(r.month >= periodStart ? r.year : r.year - 1);
     });
   });
   return [...fys].sort((a,b) => b - a);
@@ -619,8 +651,8 @@ function _renderFYNav() {
   const fy = selectedFY || new Date().getFullYear();
   const list = fys.length ? fys : [fy];
   document.querySelectorAll('.fy-sel').forEach(sel => {
-    sel.innerHTML = list.map(y => `<option value="${y}" ${y===fy?'selected':''}>${y}年度</option>`).join('');
-    sel.title = `${fy}/4〜${fy+1}/3`;
+    sel.innerHTML = list.map(y => `<option value="${y}" ${y===fy?'selected':''}>${_periodLabel(y)}</option>`).join('');
+    sel.title = periodStart === 1 ? `${fy}/1〜${fy}/12` : `${fy}/4〜${fy+1}/3`;
   });
   const idx = list.indexOf(fy);
   document.querySelectorAll('[data-fy-step]').forEach(b => {
@@ -853,7 +885,8 @@ function _renderServiceSection(svc, fy) {
       </table>
     </div>`;
 
-  // Chart描画
+  // Chart描画（Chart.js 読み込み前は表だけ表示し、読み込み完了時に描き直す）
+  if (typeof Chart === 'undefined') return;
   const ctx = document.getElementById('chart-'+svc.key).getContext('2d');
   if (charts[svc.key]) charts[svc.key].destroy();
 
@@ -1028,6 +1061,7 @@ function _renderCompare() {
 }
 
 function _renderMonthlyChart() {
+  if (typeof Chart === 'undefined') return;
   const fy = selectedFY || new Date().getFullYear();
   const months = _fiscalMonths(fy);
   const labels = months.map(m => { const [y,mo]=m.split('-'); return `${y.slice(2)}/${mo}`; });
@@ -1173,6 +1207,7 @@ function _annualBarColors(type, fys, baseColor) {
 }
 
 function _renderAnnualChart() {
+  if (typeof Chart === 'undefined') return;
   const fys = _availableFiscalYears().reverse(); // 昇順
 
   const sumFY = (type, fy) => {
@@ -1186,7 +1221,7 @@ function _renderAnnualChart() {
     return t||null;
   };
 
-  const labels = fys.map(y => y+'年度');
+  const labels = fys.map(_periodLabel);
   const datasets = [
     ...SERVICES.map(svc => ({ label:svc.label, data:fys.map(fy=>sumFY(svc.key,fy)),
       backgroundColor:_annualBarColors(svc.key,fys,svc.color), borderColor:svc.color, borderWidth:1, borderRadius:4 })),
@@ -1213,8 +1248,9 @@ function _renderAnnualChart() {
 // サービスごとの年間使用量推移（単位がkWh/m³で異なるため合算せずサービス別に描画）
 const ANNUAL_USAGE_CANVAS = { electricity: 'chartAnnualUsageElec', gas: 'chartAnnualUsageGas', water: 'chartAnnualUsageWater' };
 function _renderAnnualUsageCharts() {
+  if (typeof Chart === 'undefined') return;
   const fys = _availableFiscalYears().reverse(); // 昇順
-  const labels = fys.map(y => y+'年度');
+  const labels = fys.map(_periodLabel);
 
   const sumUsageFY = (svc, fy) => {
     let t = 0, has = false;
@@ -1569,6 +1605,7 @@ let _fbUser = null;   // ログイン中のユーザー（設定画面の表示�
 function _openSettings() {
   _renderCloud();
   document.getElementById('set-theme').value = document.documentElement.dataset.theme || 'light';
+  document.getElementById('set-period').value = periodStart === 1 ? 'calendar' : 'fiscal';
   document.getElementById('settingsModal').classList.add('show');
 }
 function _closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
@@ -1656,9 +1693,14 @@ async function _initFirebase(cfg) {
 // ── Boot ──────────────────────────────────────────────────────────
 (function(){
   document.querySelectorAll('.app-ver').forEach(el => el.textContent = APP_VERSION);
+  _applyPeriodWords();
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', _cv('--bg2'));
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { _closeInputModal(); _closeSettings(); } });
   let _rz; window.addEventListener('resize', () => { clearTimeout(_rz); _rz = setTimeout(_syncHdrH, 150); });
+  window._chartReady.then(ok => {
+    if (!ok) { _toast('グラフ部品を読み込めませんでした'); return; }
+    if (document.getElementById('app').style.display === 'block') _rerenderCurrent();
+  });
   const cfg=_loadConfig();
   if (cfg?.apiKey) {
     document.getElementById('authArea').style.display='flex';
