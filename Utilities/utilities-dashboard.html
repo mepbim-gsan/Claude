@@ -1,10 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v02_2026-11-17.4
+  @version   v02_2026-11-17.5
   @changelog
-    v02_2026-11-17.2 - Chart.js を動的読み込みに変更（htmlpreview のプレビューでグラフが表示されなかった対策）
     v02_2026-11-17.3 - 設定に「集計期間」を追加（年度 4〜3月／暦年 1〜12月の切替）
     v02_2026-11-17.4 - サービス別の合計行を前年同期比較に変更（今年の最終入力月までで前年と比較）
+    v02_2026-11-17.5 - サンプルデータに2025年度（9月まで）と水道の請求月ズレを追加
 -->
 <!DOCTYPE html>
 <html lang="ja" data-theme="light">
@@ -349,7 +349,7 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
 <div id="toast"></div>
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v02_2026-11-17.4';
+const APP_VERSION = 'v02_2026-11-17.5';
 const CONFIG_KEY = 'firebase-config-v1';
 const THEME_KEY  = 'utilities-theme';
 
@@ -491,7 +491,14 @@ function _generateSampleData() {
   {year:2024,month:12,amount:20360,kwh:722,memo:'auでんき'},
   {year:2025,month:1,amount:20880,kwh:735,memo:'auでんき'},
   {year:2025,month:2,amount:20570,kwh:732,memo:'auでんき'},
-  {year:2025,month:3,amount:19200,kwh:688,memo:'auでんき'}
+  {year:2025,month:3,amount:19200,kwh:688,memo:'auでんき'},
+  // 2025年度は9月まで（年度途中の前年同期比較の確認用）
+  {year:2025,month:4,amount:16540,kwh:579,memo:''},
+  {year:2025,month:5,amount:10480,kwh:381,memo:''},
+  {year:2025,month:6,amount:5150,kwh:170,memo:''},
+  {year:2025,month:7,amount:5300,kwh:162,memo:''},
+  {year:2025,month:8,amount:6010,kwh:205,memo:''},
+  {year:2025,month:9,amount:10950,kwh:394,memo:''}
   ],
     gas: [
   {year:2022,month:4,amount:7000,m3:40,memo:'東京ガス'},
@@ -529,7 +536,13 @@ function _generateSampleData() {
   {year:2024,month:12,amount:11520,m3:68,memo:'東京ガス'},
   {year:2025,month:1,amount:12600,m3:78,memo:'東京ガス'},
   {year:2025,month:2,amount:11650,m3:68,memo:'東京ガス'},
-  {year:2025,month:3,amount:9900,m3:59,memo:'東京ガス'}
+  {year:2025,month:3,amount:9900,m3:59,memo:'東京ガス'},
+  {year:2025,month:4,amount:7280,m3:43,memo:''},
+  {year:2025,month:5,amount:4050,m3:25,memo:''},
+  {year:2025,month:6,amount:2700,m3:16,memo:''},
+  {year:2025,month:7,amount:1850,m3:10,memo:''},
+  {year:2025,month:8,amount:2080,m3:13,memo:''},
+  {year:2025,month:9,amount:4310,m3:25,memo:''}
   ],
     water: [
   {year:2022,month:4,amount:4980,m3:22,memo:''},
@@ -549,7 +562,11 @@ function _generateSampleData() {
   {year:2024,month:8,amount:5110,m3:23,memo:''},
   {year:2024,month:10,amount:5030,m3:22,memo:''},
   {year:2024,month:12,amount:5090,m3:23,memo:''},
-  {year:2025,month:2,amount:4460,m3:19,memo:''}
+  {year:2025,month:2,amount:4460,m3:19,memo:''},
+  // 契約変更で請求月が奇数月にズレた想定（前年と請求月が揃わないケースの確認用）
+  {year:2025,month:5,amount:5240,m3:23,memo:'契約変更で請求月が変更'},
+  {year:2025,month:7,amount:4980,m3:21,memo:''},
+  {year:2025,month:9,amount:5350,m3:24,memo:''}
   ]
   };
 }
