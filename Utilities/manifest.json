@@ -1,9 +1,10 @@
 {
-  "short_name": "光熱費ダッシュボード",
+  "name": "Utility Log",
+  "short_name": "Utility Log",
   "start_url": "./utilities-dashboard.html",
   "display": "standalone",
-  "background_color": "#0f1117",
-  "theme_color": "#1a1d27",
+  "background_color": "#f4f6fb",
+  "theme_color": "#ffffff",
   "lang": "ja",
   "icons": [
     {

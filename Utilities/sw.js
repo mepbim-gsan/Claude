@@ -1,4 +1,4 @@
-const CACHE_NAME = 'utilities-dashboard-v1';
+const CACHE_NAME = 'utilities-dashboard-v2';
 const ENTRY_HTML = './utilities-dashboard.html';
 
 // ネットワーク優先で取得するリソース（更新頻度が高いもの）
@@ -19,7 +19,7 @@ self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME)
       .then(c => c.addAll(PRECACHE_ASSETS))
-      .then(() => self.skipWaiting())  // 待機なしで即時アクティブ化
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -27,13 +27,15 @@ self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+        // 同一オリジンの他ツールのキャッシュは消さない
+        keys.filter(k => k.startsWith('utilities-dashboard-') && k !== CACHE_NAME).map(k => caches.delete(k))
       ))
-      .then(() => self.clients.claim())  // 既存タブを即時制御下に
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
   const url = e.request.url;
 
   // アイコン → キャッシュファースト
@@ -52,24 +54,22 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // HTMLエントリ・manifest・Firebase/Chart.js CDN → ネットワーク優先
-  const isNetworkFirst =
-    url.endsWith(ENTRY_HTML) ||
-    url.includes('manifest.json') ||
-    NETWORK_FIRST_PATTERNS.some(p => p.test(url));
+  // HTML（ページ遷移含む）・manifest・CDN → ネットワーク優先
+  const isAppFile = e.request.mode === 'navigate' || url.endsWith(ENTRY_HTML.slice(1)) || url.includes('manifest.json');
+  const isNetworkFirst = isAppFile || NETWORK_FIRST_PATTERNS.some(p => p.test(url));
 
   if (isNetworkFirst) {
     e.respondWith(
-      fetch(e.request)
+      // HTML・manifest は HTTP キャッシュ（GitHub Pages は最大10分）を使わずサーバーに確認する
+      (isAppFile ? fetch(url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(e.request))
         .then(res => {
-          // 成功したらキャッシュにも保存（次回オフライン時のフォールバック用）
           if (res && res.status === 200 && res.type !== 'opaque') {
             const clone = res.clone();
             caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
           }
           return res;
         })
-        .catch(() => caches.match(e.request))  // オフライン時はキャッシュにフォールバック
+        .catch(() => caches.match(e.request))
     );
     return;
   }

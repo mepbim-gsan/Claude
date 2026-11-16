@@ -1,378 +1,356 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v01_2026-09-24.2
+  @version   v02_2026-11-17
   @changelog
-    v01_2026-09-01   - 比較タブの月間金額比較に前年合計の折れ線グラフを追加
     v01_2026-09-24   - 月間金額比較で凡例から電気/ガス等を非表示にしても前年合計ラインが再計算されなかった不具合を修正
     v01_2026-09-24.2 - PWA化（manifest.json・sw.js・アイコン追加、ホーム画面に追加可能に）
+    v02_2026-11-17   - 表示名を「Utility Log」に変更。デザインをCarLog・Solar Logと統一（配色・カード・下部タブ・期間バー・設定画面・入力シート、ライト/ダーク切替）
 -->
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>光熱費ダッシュボード</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Utility Log</title>
 <link rel="manifest" href="./manifest.json">
-<meta name="theme-color" content="#1a1d27">
+<meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Utility Log">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
+<script>try{const t=localStorage.getItem('utilities-theme');if(t)document.documentElement.dataset.theme=t;}catch{}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f1f5f9; color: #1e293b; }
-
-#authArea, #setupScreen {
-  display: none; position: fixed; inset: 0; background: #f1f5f9;
-  flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 100;
+:root{--nav-h:60px;--radius:12px;--hdr-h:55px;}
+[data-theme="light"]{
+  --bg:#f4f6fb;--bg2:#ffffff;--bg3:#eef0f7;--border:#d0d5e8;
+  --text:#1e2233;--text2:#6b7280;--text3:#9ca3af;--shadow:rgba(0,0,0,.08);
+  --accent:#0d9488;--success:#16a34a;--warn:#d97706;--danger:#dc2626;
+  --c-elec:#d97706;--c-elec2:#f2b544;--c-gas:#dc2626;--c-gas2:#f28b8b;
+  --c-water:#2563eb;--c-water2:#7aa7f5;--c-other:#7c3aed;
+  --inc-bg:#fff4dc;--grid:#e5e7eb;
 }
-#authArea h2 { font-size: 1.2rem; color: #475569; }
-.btn-google {
-  display: flex; align-items: center; gap: 8px; padding: 12px 24px;
-  background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
-  font-size: 1rem; cursor: pointer; box-shadow: 0 1px 3px #0001;
+[data-theme="dark"]{
+  --bg:#0f1117;--bg2:#1a1d27;--bg3:#242736;--border:#2e3247;
+  --text:#e8eaf0;--text2:#8b90a7;--text3:#5a5f7a;--shadow:rgba(0,0,0,.4);
+  --accent:#14b8a6;--success:#3ecf8e;--warn:#f5a623;--danger:#e05252;
+  --c-elec:#f59e0b;--c-elec2:#fcd34d;--c-gas:#ef4444;--c-gas2:#fca5a5;
+  --c-water:#3b82f6;--c-water2:#93c5fd;--c-other:#a78bfa;
+  --inc-bg:#33270a;--grid:#2e3247;
 }
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scrollbar-gutter:stable;}
+body{background:var(--bg);color:var(--text);font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',-apple-system,'Yu Gothic',sans-serif;font-size:14px;min-height:100dvh;overflow-x:hidden;}
+button{font-family:inherit;}
+.muted{color:var(--text2);font-size:12px;}
+.logo{display:inline-block;flex-shrink:0;}
 
-#app { display: none; max-width: 640px; margin: 0 auto; padding-bottom: 80px; }
+/* ── ログイン・初期設定 ── */
+.gate{display:none;position:fixed;inset:0;z-index:300;background:var(--bg);align-items:center;justify-content:center;padding:20px;}
+.gate-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:100%;max-width:380px;box-shadow:0 8px 24px var(--shadow);display:flex;flex-direction:column;gap:12px;}
+.gate-title{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.gate-card textarea{height:110px;font-family:monospace;font-size:12px;}
 
-.app-header {
-  position: sticky; top: 0; z-index: 10; background: #fff;
-  border-bottom: 1px solid #e2e8f0; padding: 12px 16px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.app-header h1 { font-size: 1rem; font-weight: 700; }
-.header-right  { display: flex; align-items: center; gap: 8px; }
-.header-user   { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; min-width: 0; }
-.app-version   { font-size: 0.62rem; color: #94a3b8; white-space: nowrap; }
-.user-name     { font-size: 0.75rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.btn-icon      { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 4px; }
-.chart-title-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-.seg-btns { display:flex; gap:4px; }
-.seg-btn { padding:4px 10px; border:1px solid #e2e8f0; border-radius:16px; font-size:0.75rem; background:#fff; color:#64748b; cursor:pointer; }
-.seg-btn.active { background:#3b82f6; color:#fff; border-color:#3b82f6; }
-.period-nav { display:flex; align-items:center; gap:8px; margin-bottom:0; }
-.period-nav-btn {
-  flex-shrink:0; width:36px; height:36px;
-  border:1px solid #e2e8f0; border-radius:8px; background:#fff;
-  font-size:0.9rem; line-height:1; cursor:pointer; color:#475569;
-  display:flex; align-items:center; justify-content:center; padding:0;
-}
-.period-nav-btn:active { background:#f1f5f9; }
-.period-nav-input {
-  flex:1; height:36px; padding:0 10px;
-  border:1px solid #e2e8f0; border-radius:8px;
-  font-size:0.9rem; background:#fff; color:#1e293b;
-  -webkit-appearance:auto; appearance:auto;
-  font-family:inherit;
-}
+/* ── 共通部品 ── */
+input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;font-family:inherit;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+input[type=number]{text-align:right;-moz-appearance:textfield;}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+textarea{resize:vertical;min-height:60px;}
+select.sel-auto{width:auto;}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 14px;font-size:14px;cursor:pointer;white-space:nowrap;}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+.btn.danger{color:var(--danger);border-color:var(--danger);background:transparent;}
+.btn.sm{padding:5px 10px;font-size:12px;}
+.btn.block{width:100%;padding:11px;}
+.icon-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;}
+.icon-btn svg{width:18px;height:18px;}
+.badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--warn);color:var(--warn);font-weight:600;vertical-align:1px;}
 
-.form-group input[type=number] { text-align:right; }
-.form-group textarea { width:100%; padding:9px 10px; border:1px solid #e2e8f0; border-radius:8px; font-size:0.95rem; resize:vertical; min-height:64px; }
-.form-group textarea:focus { outline:none; border-color:#3b82f6; }
+/* ── ヘッダー ── */
+#app{display:none;}
+#header{position:sticky;top:0;z-index:50;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:10px 14px;}
+.h-title{font-size:16px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;}
+.h-sub{font-size:11px;color:var(--text2);font-weight:400;}
+.app-ver{font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums;}
 
-/* 履歴カード */
-.hist-cards { display:flex; flex-direction:column; gap:10px; }
-.hist-card { background:#fff; border-radius:12px; padding:14px 16px; box-shadow:0 1px 3px #0001; }
-.hist-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-.hist-card-ym { font-size:0.72rem; color:#64748b; }
-.hist-card-type { font-size:0.9rem; font-weight:700; }
-.hist-card-values { display:flex; gap:16px; margin-bottom:4px; }
-.hist-card-amount { font-size:1.1rem; font-weight:700; }
-.hist-card-usage { font-size:0.82rem; color:#64748b; align-self:flex-end; }
-.hist-card-memo { font-size:0.75rem; color:#94a3b8; margin-top:4px; }
-.hist-card-actions { display:flex; gap:6px; margin-top:10px; }
-.hist-card.editing { background:#eff6ff; }
-.hist-edit-row { display:flex; gap:8px; margin-bottom:6px; }
-.hist-edit-row input { flex:1; padding:7px 9px; border:1px solid #93c5fd; border-radius:6px; font-size:0.85rem; text-align:right; }
-.hist-edit-row textarea { flex:1; padding:7px 9px; border:1px solid #93c5fd; border-radius:6px; font-size:0.85rem; resize:none; min-height:52px; }
+/* ── 本文・期間バー ── */
+#main{max-width:760px;margin:0 auto;padding-bottom:calc(var(--nav-h) + 24px + env(safe-area-inset-bottom));}
+.tab-pane{display:none;padding:0 14px 14px;}
+.tab-pane.active{display:block;}
+.page-bar{position:sticky;top:var(--hdr-h);z-index:40;background:var(--bg);margin:0 -14px 12px;padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:51px;}
+.page-title{font-size:18px;font-weight:700;white-space:nowrap;}
+.year-nav{display:flex;align-items:center;gap:6px;}
+.yn-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;}
+.yn-btn:disabled{opacity:.35;cursor:default;}
+.year-nav select{width:auto;padding:6px 10px;font-size:14px;}
 
-.record-table-wrap { overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; max-height: calc(100vh - 160px); border-radius: 12px; }
-.record-table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px #0001; }
-.record-table th { background: #f8fafc; font-size: 0.72rem; color: #64748b; padding: 10px 8px; text-align: right; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 2; white-space: nowrap; box-shadow: 0 1px 0 #e2e8f0; }
-.record-table th:first-child { text-align: left; }
-.record-table td { padding: 10px 8px; font-size: 0.85rem; text-align: right; border-bottom: 1px solid #f1f5f9; cursor: pointer; white-space: nowrap; }
-.record-table td:first-child { text-align: left; color: #64748b; font-size: 0.78rem; cursor: default; }
-.record-table tr:last-child td { border-bottom: none; }
-.record-table td.has-data { font-weight: 600; }
-.record-table td.no-data { color: #cbd5e1; }
-.record-table td.future { color: #e2e8f0; cursor: default; }
-.record-table td.cell-incomplete { background: #fffbeb; }
-.incomplete-dot { color: #f59e0b; font-size: 0.5rem; vertical-align: super; margin-left: 2px; }
-.record-legend { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #94a3b8; padding: 0 4px 8px; }
-.record-legend .incomplete-dot { margin-left: 0; }
-.record-table td:not(:first-child):not(.future):hover { background: #f0f9ff; }
-.record-table tr.current-month td:first-child { color: #3b82f6; font-weight: 700; }
-.sample-badge  { display: inline-block; background: #fef3c7; color: #92400e; font-size: 0.68rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px; }
-.fy-bar { position: sticky; top: 49px; z-index: 9; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; padding: 8px 16px; display: none; }
-.fy-bar select { width: 100%; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; background: #fff; }
+/* ── カード ── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
+.card.flush{padding:0;overflow:hidden;}
+.card-title{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.06em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.card-title .muted{font-size:11px;font-weight:400;letter-spacing:0;}
+.note{font-size:11px;color:var(--text3);margin:-4px 0 8px;}
+.gdot{display:inline-block;width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+.sub-title{font-size:12px;color:var(--text2);font-weight:600;display:flex;align-items:center;gap:6px;margin:14px 0 4px;}
+.sub-title.first{margin-top:0;}
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+@media(min-width:560px){.kpi-grid{grid-template-columns:repeat(4,1fr);}}
+.kpi{background:var(--bg3);border-radius:10px;padding:10px;min-width:0;}
+.kpi .k-label{font-size:11px;color:var(--text2);display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;}
+.kpi .k-val{font-size:20px;font-weight:700;margin-top:2px;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;}
+.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;min-height:1.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;}
+.svc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
+.svc-name{font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px;}
+.svc-avg{font-size:12px;color:var(--text2);white-space:nowrap;}
+.seg{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:10px;}
+.seg button{flex:1;border:none;background:none;padding:7px 0;font-size:12px;color:var(--text2);cursor:pointer;border-right:1px solid var(--border);}
+.seg button:last-child{border-right:none;}
+.seg button.on{background:var(--bg2);color:var(--seg-c,var(--accent));font-weight:700;}
+.chart-box{position:relative;width:100%;height:190px;}
 
-.tab-bar {
-  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
-  width: 100%; max-width: 640px; background: #fff; border-top: 1px solid #e2e8f0; display: flex;
-}
-.tab-btn {
-  flex: 1; padding: 10px 0 8px; border: none; background: none;
-  font-size: 0.7rem; color: #94a3b8; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-}
-.tab-btn .ti { font-size: 1.3rem; }
-.tab-btn.active { color: #3b82f6; }
+/* ── 表 ── */
+.tbl-scroll{max-height:300px;overflow-y:auto;margin-top:10px;}
+table.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;font-variant-numeric:tabular-nums;}
+table.tbl th,table.tbl td{padding:7px 6px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+table.tbl th:first-child,table.tbl td:first-child{text-align:left;}
+table.tbl thead th{position:sticky;top:0;z-index:1;background:var(--bg2);font-size:11px;color:var(--text2);font-weight:600;}
+table.tbl tfoot td{position:sticky;bottom:0;background:var(--bg3);font-weight:700;border-bottom:none;}
+table.tbl td.mo{color:var(--text2);font-size:12px;}
+.na{color:var(--text3);}
+.diff-up{color:var(--danger);font-weight:600;}
+.diff-down{color:var(--success);font-weight:600;}
 
-.tab-pane { padding: 16px; }
+/* ── 記録 ── */
+.rec-wrap{max-height:calc(100dvh - var(--hdr-h) - var(--nav-h) - 120px);overflow:auto;}
+.rec-table th,.rec-table td{padding:10px 10px;}
+.rec-table td{cursor:pointer;}
+.rec-table td:first-child{cursor:default;color:var(--text2);font-size:12px;}
+.rec-table td.has{font-weight:700;}
+.rec-table td.future{color:var(--border);cursor:default;}
+.rec-table td.inc{background:var(--inc-bg);}
+.rec-table tr.cur td:first-child{color:var(--accent);font-weight:700;}
+.rec-table tr:last-child td{border-bottom:none;}
+.rec-table td:not(:first-child):not(.future):active{background:var(--bg3);}
+.incomplete-dot{color:var(--warn);font-size:8px;vertical-align:super;margin-left:2px;}
+.legend-note{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);margin-bottom:8px;}
+.legend-note .incomplete-dot{margin-left:0;vertical-align:baseline;}
 
-/* ── Summary cards ── */
-.summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 20px; }
-.summary-card { background: #fff; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px #0001; border-top: 4px solid #e2e8f0; }
-.summary-card.electricity { border-top: 4px solid #f59e0b; }
-.summary-card.gas         { border-top: 4px solid #ef4444; }
-.summary-card.water       { border-top: 4px solid #3b82f6; }
-.summary-card.total       { border-top: 4px solid #8b5cf6; }
-.s-label  { font-size: 0.72rem; color: #64748b; margin-bottom: 4px; }
-.s-amount { font-size: 1.1rem; font-weight: 700; text-align: right; }
-.s-sub    { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; text-align: right; }
-.s-sub.up   { color: #ef4444; }
-.s-sub.down { color: #22c55e; }
+/* ── 下部タブ ── */
+.tabs{position:fixed;bottom:0;left:0;right:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--bg2);border-top:1px solid var(--border);display:flex;z-index:100;}
+.tab-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;}
+.tab-btn svg{width:22px;height:22px;}
+.tab-btn.active{color:var(--accent);}
 
-/* ── Service section ── */
-.service-section { background: #fff; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 1px 3px #0001; overflow: hidden; }
-.service-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid #f1f5f9;
-}
-.service-header-left { display: flex; align-items: center; gap: 8px; }
-.service-name { font-size: 0.9rem; font-weight: 700; }
-.service-amount { font-size: 0.82rem; color: #64748b; }
+/* ── 入力シート ── */
+#sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;}
+#sheet-bg.show{display:block;}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-height:92dvh;background:var(--bg2);border-radius:16px 16px 0 0;z-index:201;display:none;flex-direction:column;max-width:760px;margin:0 auto;}
+#sheet.show{display:flex;}
+.sh-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);}
+.sh-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:6px;}
+.sh-body{padding:14px 16px;overflow-y:auto;flex:1;}
+.sh-foot{display:flex;gap:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--border);}
+.sh-foot .btn{flex:1;padding:11px;}
+.sh-foot .btn.danger{flex:0 0 auto;}
+.fld{margin-bottom:12px;}
+.fld label{display:block;font-size:12px;color:var(--text2);margin-bottom:4px;}
+.fld-row{display:flex;gap:8px;}
+.fld-row>.fld{flex:1;min-width:0;}
 
-/* ── Metric tabs (金額/使用量) ── */
-.metric-tabs { display: flex; border-bottom: 1px solid #f1f5f9; }
-.metric-tab {
-  flex: 1; padding: 8px 0; font-size: 0.82rem; color: #94a3b8;
-  border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent;
-}
-.metric-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
+/* ── 設定 ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;}
+.modal-bg.show{display:flex;}
+.set-panel{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 14px 6px;width:92%;max-width:420px;max-height:88dvh;overflow-y:auto;box-shadow:0 8px 24px var(--shadow);}
+.set-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.set-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:8px;font-size:14px;}
+.set-row.last,.set-row:last-child{border-bottom:none;}
+.set-details{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;}
+.set-details summary{cursor:pointer;}
+.set-details textarea{height:120px;margin-top:8px;font-family:monospace;font-size:12px;}
+.set-foot{text-align:center;margin:4px 0 8px;}
 
-.chart-wrap { height: 180px; padding: 12px 12px 8px; }
-
-/* ── 比較表 ── */
-.compare-table-wrap { padding: 0 12px 12px; }
-.compare-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; display: flex; flex-direction: column; }
-.compare-table thead, .compare-table tfoot { display: table; width: 100%; table-layout: fixed; }
-.compare-table tbody { display: block; max-height: 200px; overflow-y: auto; width: 100%; }
-.compare-table tbody tr { display: table; width: 100%; table-layout: fixed; }
-.compare-table th { color: #94a3b8; font-weight: 500; padding: 6px 4px; text-align: right; border-bottom: 2px solid #e2e8f0; background: #fff; }
-.compare-table th:first-child { text-align: left; }
-.compare-table td { padding: 6px 4px; text-align: right; border-bottom: 1px solid #f8fafc; }
-.compare-table td:first-child { text-align: left; color: #64748b; }
-.compare-table tr:last-child td { border-bottom: none; }
-.table-total-row td { border-top: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; background: #f8fafc; box-shadow: 0 -2px 4px rgba(0,0,0,0.06); }
-.table-total-row td:first-child { color: #475569; }
-.diff-up   { color: #ef4444; font-weight: 600; }
-.diff-down { color: #22c55e; font-weight: 600; }
-.no-data   { color: #cbd5e1; }
-
-/* ── Input form ── */
-.input-ym { width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 1rem; margin-bottom: 16px; }
-.svc-block { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px #0001; }
-.svc-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; }
-.form-row  { display: flex; gap: 10px; }
-.form-group { flex: 1; }
-.form-group label { font-size: 0.72rem; color: #64748b; display: block; margin-bottom: 4px; }
-.form-group input { width: 100%; padding: 9px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.95rem; }
-.form-group input:focus { outline: none; border-color: #3b82f6; }
-.form-group input::placeholder, .form-group textarea::placeholder { color: #cbd5e1; }
-.btn-save { width: 100%; padding: 14px; background: #3b82f6; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 12px; }
-.btn-save:active { background: #2563eb; }
-
-/* ── History ── */
-.hist-tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; padding-bottom: 2px; }
-.hist-tab { padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; font-size: 0.8rem; cursor: pointer; color: #64748b; white-space: nowrap; flex-shrink: 0; }
-.hist-tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-.history-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px #0001; }
-.history-table th { background: #f8fafc; font-size: 0.72rem; color: #64748b; padding: 10px 8px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-.history-table th:nth-child(3), .history-table th:nth-child(4) { text-align: right; }
-.history-table td { padding: 9px 8px; font-size: 0.82rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-.history-table td:nth-child(3), .history-table td:nth-child(4) { text-align: right; }
-.history-table td:nth-child(5) { text-align: left; }
-.history-table tr:last-child td { border-bottom: none; }
-.history-table .empty { text-align: center; color: #94a3b8; padding: 24px; }
-.history-table .memo-cell { color: #64748b; font-size: 0.75rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.editing-row td { background: #eff6ff; }
-.editing-row input { width: 100%; padding: 5px 7px; border: 1px solid #93c5fd; border-radius: 6px; font-size: 0.82rem; }
-
-.btn-sm { padding: 4px 10px; border-radius: 6px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.75rem; cursor: pointer; color: #374151; }
-.btn-sm+.btn-sm { margin-left: 4px; }
-.btn-sm.btn-primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-.btn-sm.btn-danger  { color: #ef4444; border-color: #fca5a5; }
-
-/* ── Settings modal ── */
-.modal-overlay { display: none; position: fixed; inset: 0; background: #0008; align-items: flex-end; justify-content: center; z-index: 200; }
-.modal-sheet { background: #fff; border-radius: 20px 20px 0 0; padding: 20px 16px 36px; width: 100%; max-width: 640px; }
-.modal-title { font-size: 1rem; font-weight: 700; margin-bottom: 14px; }
-.modal-sheet textarea { width: 100%; height: 140px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.8rem; font-family: monospace; resize: vertical; }
-.modal-actions { display: flex; gap: 8px; margin-top: 12px; }
-.btn-modal { flex: 1; padding: 11px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem; cursor: pointer; background: #fff; }
-.btn-modal.primary  { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-.btn-modal.danger   { color: #ef4444; }
-.btn-modal.sign-out { color: #64748b; }
-
-/* ── Setup screen ── */
-#setupScreen .setup-card { background: #fff; border-radius: 16px; padding: 24px; width: 90%; max-width: 400px; box-shadow: 0 4px 16px #0002; }
-#setupScreen h2 { font-size: 1.1rem; margin-bottom: 8px; }
-#setupScreen p  { font-size: 0.82rem; color: #64748b; margin-bottom: 14px; }
-#setupConfigInput { width: 100%; height: 120px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.78rem; font-family: monospace; resize: none; }
-.btn-setup { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 8px; font-size: 0.95rem; cursor: pointer; }
-.btn-setup.primary   { background: #3b82f6; color: #fff; }
-.btn-setup.secondary { background: #64748b; color: #fff; }
-
-#toast {
-  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(10px);
-  background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 20px;
-  font-size: 0.85rem; opacity: 0; transition: opacity 0.2s, transform 0.2s;
-  pointer-events: none; z-index: 300; white-space: nowrap;
-}
-#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:13px;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;}
+#toast.show{opacity:1;}
 </style>
 </head>
 <body>
 
-<!-- Setup -->
-<div id="setupScreen">
-  <div class="setup-card">
-    <h2>🔧 Firebase設定</h2>
-    <p>FirebaseプロジェクトのconfigをJSON形式で貼り付けてください。</p>
+<!-- 初期設定（Firebase config 未設定時） -->
+<div id="setupScreen" class="gate">
+  <div class="gate-card">
+    <div class="gate-title"><svg class="logo" viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="11" width="5" height="10" rx="1.2" style="fill:var(--c-elec)"/><rect x="9.5" y="5" width="5" height="16" rx="1.2" style="fill:var(--c-gas)"/><rect x="16" y="13" width="5" height="8" rx="1.2" style="fill:var(--c-water)"/></svg>Utility Log</div>
+    <div class="muted">Firebase の config を JSON 形式で貼り付けてください</div>
     <textarea id="setupConfigInput" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}'></textarea>
-    <button class="btn-setup primary"   onclick="_setupFirebase()">設定して開始</button>
-    <button class="btn-setup secondary" onclick="_startSampleMode()">サンプルデータで試す</button>
+    <button class="btn primary block" onclick="_setupFirebase()">設定して開始</button>
+    <button class="btn block" onclick="_startSampleMode()">サンプルデータで試す</button>
+    <div class="muted" style="font-size:11px;">同じサイトの他のツール（タイムカード等）と共通の設定です</div>
   </div>
 </div>
 
-<!-- Auth -->
-<div id="authArea">
-  <h2>光熱費ダッシュボード</h2>
-  <button class="btn-google" onclick="_signIn()">
-    <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-    Googleでログイン
-  </button>
-  <button class="btn-setup secondary" style="width:auto;padding:10px 24px" onclick="_startSampleMode()">サンプルデータで試す</button>
+<!-- ログイン -->
+<div id="authArea" class="gate">
+  <div class="gate-card">
+    <div class="gate-title"><svg class="logo" viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="11" width="5" height="10" rx="1.2" style="fill:var(--c-elec)"/><rect x="9.5" y="5" width="5" height="16" rx="1.2" style="fill:var(--c-gas)"/><rect x="16" y="13" width="5" height="8" rx="1.2" style="fill:var(--c-water)"/></svg>Utility Log</div>
+    <div class="muted">Googleアカウントでログインしてください</div>
+    <button class="btn block" onclick="_signIn()">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Googleでログイン
+    </button>
+    <button class="btn block" onclick="_startSampleMode()">サンプルデータで試す</button>
+  </div>
 </div>
 
 <!-- App -->
 <div id="app">
-  <header class="app-header">
-    <h1>💡 光熱費ダッシュボード<span class="sample-badge" id="sampleBadge" style="display:none">サンプル</span></h1>
-    <div class="header-right">
-      <div class="header-user">
-        <span class="app-version" id="appVersion"></span>
-        <span class="user-name" id="userName"></span>
-      </div>
-      <button class="btn-icon" onclick="_openSettings()">⚙️</button>
-    </div>
+  <header id="header">
+    <div class="h-title"><svg class="logo" viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="11" width="5" height="10" rx="1.2" style="fill:var(--c-elec)"/><rect x="9.5" y="5" width="5" height="16" rx="1.2" style="fill:var(--c-gas)"/><rect x="16" y="13" width="5" height="8" rx="1.2" style="fill:var(--c-water)"/></svg>Utility Log<span class="h-sub" id="hSub"></span></div>
+    <span class="app-ver"></span>
+    <button class="icon-btn" title="設定" onclick="_openSettings()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
   </header>
-  <div class="fy-bar" id="fyBar" style="display:none">
-    <div class="period-nav">
-      <button class="period-nav-btn" onclick="_stepFY(-1)">◀</button>
-      <select id="fySelect" onchange="_onFYChange(this.value)" class="period-nav-input"></select>
-      <button class="period-nav-btn" onclick="_stepFY(+1)">▶</button>
-    </div>
-  </div>
 
-  <!-- Dashboard -->
-  <div class="tab-pane" id="tab-dashboard">
-    <div class="summary-grid" id="summaryCards"></div>
-    <div id="service-electricity" class="service-section"></div>
-    <div id="service-gas"         class="service-section"></div>
-    <div id="service-water"       class="service-section"></div>
-  </div>
+  <main id="main">
+    <!-- ダッシュボード -->
+    <div class="tab-pane active" id="tab-dashboard">
+      <div class="page-bar">
+        <div class="page-title">ダッシュボード</div>
+        <div class="year-nav"><button class="yn-btn" data-fy-step="-1" onclick="_stepFY(-1)" aria-label="前の年度">‹</button><select class="fy-sel" onchange="_onFYChange(this.value)"></select><button class="yn-btn" data-fy-step="1" onclick="_stepFY(1)" aria-label="次の年度">›</button></div>
+      </div>
+      <div class="card">
+        <div class="card-title">年度合計</div>
+        <div class="kpi-grid" id="summaryCards"></div>
+      </div>
+      <div class="card" id="service-electricity"></div>
+      <div class="card" id="service-gas"></div>
+      <div class="card" id="service-water"></div>
+    </div>
 
-  <!-- Compare -->
-  <div class="tab-pane" id="tab-compare" style="display:none">
-    <div class="chart-section">
-      <div class="chart-title">月間 金額比較 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
-      <div class="chart-wrap" style="height:220px"><canvas id="chartMonthly"></canvas></div>
-    </div>
-    <div class="chart-section">
-      <div class="chart-title">年間 金額推移 <span style="font-size:0.72rem;color:#94a3b8;font-weight:400;">凡例タップで表示切替</span></div>
-      <div style="font-size:0.68rem;color:#94a3b8;padding:0 12px 4px;">色が薄い部分は、その年度の記録月数が他年度より少ないことを示します</div>
-      <div class="chart-wrap" style="height:220px"><canvas id="chartAnnual"></canvas></div>
-    </div>
-    <div class="chart-section">
-      <div class="chart-title">年間 使用量推移</div>
-      <div style="font-size:0.68rem;color:#94a3b8;padding:0 12px 4px;">色が薄い年度は、記録月数が他年度より少ないことを示します</div>
-      <div style="font-size:0.78rem;color:#64748b;padding:10px 12px 2px;">⚡ 電気 (kWh)</div>
-      <div class="chart-wrap" style="height:160px"><canvas id="chartAnnualUsageElec"></canvas></div>
-      <div style="font-size:0.78rem;color:#64748b;padding:10px 12px 2px;">🔥 ガス (m³)</div>
-      <div class="chart-wrap" style="height:160px"><canvas id="chartAnnualUsageGas"></canvas></div>
-      <div style="font-size:0.78rem;color:#64748b;padding:10px 12px 2px;">💧 水道 (m³)</div>
-      <div class="chart-wrap" style="height:160px"><canvas id="chartAnnualUsageWater"></canvas></div>
-    </div>
-  </div>
-
-  <!-- Record -->
-  <div class="tab-pane" id="tab-history" style="display:none">
-    <div class="record-legend"><span class="incomplete-dot">●</span>使用量が未入力のセル</div>
-    <div class="record-table-wrap">
-      <table class="record-table" id="recordTable">
-        <thead>
-          <tr>
-            <th>年月</th>
-            <th>⚡ 電気</th>
-            <th>🔥 ガス</th>
-            <th>💧 水道</th>
-            <th>📦 その他</th>
-          </tr>
-        </thead>
-        <tbody id="recordBody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- 入力モーダル -->
-  <div class="modal-overlay" id="inputModal" onclick="if(event.target===this)_closeInputModal()">
-    <div class="modal-sheet" id="inputModalSheet">
-      <div class="modal-title" id="inputModalTitle"></div>
-      <div id="inputModalBody"></div>
-      <div class="modal-actions" style="margin-top:12px;">
-        <button class="btn-modal primary" onclick="_saveInputModal()">保存</button>
-        <button class="btn-modal danger"  onclick="_clearInputModal()">クリア</button>
-        <button class="btn-modal"         onclick="_closeInputModal()">閉じる</button>
+    <!-- 比較 -->
+    <div class="tab-pane" id="tab-compare">
+      <div class="page-bar">
+        <div class="page-title">比較</div>
+        <div class="year-nav"><button class="yn-btn" data-fy-step="-1" onclick="_stepFY(-1)" aria-label="前の年度">‹</button><select class="fy-sel" onchange="_onFYChange(this.value)"></select><button class="yn-btn" data-fy-step="1" onclick="_stepFY(1)" aria-label="次の年度">›</button></div>
+      </div>
+      <div class="card">
+        <div class="card-title">月間 金額比較 <span class="muted">凡例タップで表示切替</span></div>
+        <div class="chart-box" style="height:240px"><canvas id="chartMonthly"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">年間 金額推移 <span class="muted">凡例タップで表示切替</span></div>
+        <div class="note">色が薄い部分は、その年度の記録月数が他年度より少ないことを示します</div>
+        <div class="chart-box" style="height:240px"><canvas id="chartAnnual"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">年間 使用量推移</div>
+        <div class="note">色が薄い年度は、記録月数が他年度より少ないことを示します</div>
+        <div class="sub-title first"><i class="gdot" style="background:var(--c-elec)"></i>電気（kWh）</div>
+        <div class="chart-box" style="height:160px"><canvas id="chartAnnualUsageElec"></canvas></div>
+        <div class="sub-title"><i class="gdot" style="background:var(--c-gas)"></i>ガス（m³）</div>
+        <div class="chart-box" style="height:160px"><canvas id="chartAnnualUsageGas"></canvas></div>
+        <div class="sub-title"><i class="gdot" style="background:var(--c-water)"></i>水道（m³）</div>
+        <div class="chart-box" style="height:160px"><canvas id="chartAnnualUsageWater"></canvas></div>
       </div>
     </div>
+
+    <!-- 記録 -->
+    <div class="tab-pane" id="tab-history">
+      <div class="page-bar">
+        <div class="page-title">記録</div>
+        <div class="muted">セルをタップして入力</div>
+      </div>
+      <div class="legend-note"><span class="incomplete-dot">●</span>使用量が未入力</div>
+      <div class="card flush">
+        <div class="rec-wrap">
+          <table class="tbl rec-table" id="recordTable">
+            <thead>
+              <tr>
+                <th>年月</th>
+                <th><i class="gdot" style="background:var(--c-elec);margin-right:4px;vertical-align:-1px"></i>電気</th>
+                <th><i class="gdot" style="background:var(--c-gas);margin-right:4px;vertical-align:-1px"></i>ガス</th>
+                <th><i class="gdot" style="background:var(--c-water);margin-right:4px;vertical-align:-1px"></i>水道</th>
+                <th><i class="gdot" style="background:var(--c-other);margin-right:4px;vertical-align:-1px"></i>その他</th>
+              </tr>
+            </thead>
+            <tbody id="recordBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <nav class="tabs" id="nav">
+    <button class="tab-btn active" data-tab="dashboard" onclick="_switchTab('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>ダッシュボード</button>
+    <button class="tab-btn" data-tab="compare" onclick="_switchTab('compare')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>比較</button>
+    <button class="tab-btn" data-tab="history" onclick="_switchTab('history')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>記録</button>
+  </nav>
+</div>
+
+<!-- 入力シート -->
+<div id="sheet-bg" onclick="_closeInputModal()"></div>
+<div id="sheet">
+  <div class="sh-head"><div class="sh-title" id="inputModalTitle"></div><button class="icon-btn" onclick="_closeInputModal()">✕</button></div>
+  <div class="sh-body" id="inputModalBody"></div>
+  <div class="sh-foot">
+    <button class="btn danger" onclick="_clearInputModal()">クリア</button>
+    <button class="btn" onclick="_closeInputModal()">キャンセル</button>
+    <button class="btn primary" onclick="_saveInputModal()">保存</button>
   </div>
 </div>
 
-<nav class="tab-bar">
-  <button class="tab-btn active" data-tab="dashboard" onclick="_switchTab('dashboard')"><span class="ti">📊</span>ダッシュボード</button>
-  <button class="tab-btn"        data-tab="compare"   onclick="_switchTab('compare')">  <span class="ti">📈</span>比較</button>
-  <button class="tab-btn"        data-tab="history"   onclick="_switchTab('history')">  <span class="ti">📋</span>記録</button>
-</nav>
-
-<div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)_closeSettings()">
-  <div class="modal-sheet">
-    <div class="modal-title">⚙️ 設定</div>
-    <textarea id="configInput" placeholder="Firebase config JSON"></textarea>
-    <div class="modal-actions">
-      <button class="btn-modal primary"  onclick="_saveSettings()">保存</button>
-      <button class="btn-modal danger"   onclick="_clearSettings()">設定削除</button>
-      <button class="btn-modal sign-out" onclick="_signOut();_closeSettings()">ログアウト</button>
+<!-- 設定 -->
+<div class="modal-bg" id="settingsModal" onclick="if(event.target===this)_closeSettings()">
+  <div class="set-panel">
+    <div class="set-head"><div class="page-title">設定</div><button class="icon-btn" onclick="_closeSettings()">✕</button></div>
+    <div class="card">
+      <div class="card-title">クラウド同期</div>
+      <div id="set-cloud"></div>
     </div>
-    <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
-      <div style="font-size:0.82rem;font-weight:600;color:#475569;margin-bottom:10px;">データ入出力</div>
-      <div class="modal-actions">
-        <button class="btn-modal" onclick="_exportCSV()">📥 CSVエクスポート</button>
-        <button class="btn-modal" onclick="_importCSVClick()">📤 CSVインポート</button>
+    <div class="card">
+      <div class="card-title">表示</div>
+      <div class="set-row last">
+        <div>テーマ</div>
+        <select id="set-theme" class="sel-auto" onchange="_setTheme(this.value)">
+          <option value="light">ライト</option>
+          <option value="dark">ダーク</option>
+        </select>
       </div>
-      <input type="file" id="csvFileInput" accept=".csv" style="display:none" onchange="_importCSV(this)">
-      <div style="font-size:0.72rem;color:#94a3b8;margin-top:8px;">インポートは既存データとマージ（同年月・同種別は上書き）</div>
     </div>
+    <div class="card">
+      <div class="card-title">データ</div>
+      <div class="set-row"><div>CSVエクスポート<div class="muted">全期間の記録をCSVで保存</div></div><button class="btn sm" onclick="_exportCSV()">エクスポート</button></div>
+      <div class="set-row last"><div>CSVインポート<div class="muted">既存データとマージ（同年月・同種別は上書き）</div></div><button class="btn sm" onclick="_importCSVClick()">インポート</button></div>
+      <input type="file" id="csvFileInput" accept=".csv" style="display:none" onchange="_importCSV(this)">
+    </div>
+    <div class="muted set-foot">Utility Log <span class="app-ver"></span></div>
   </div>
 </div>
 
 <div id="toast"></div>
-
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v01_2026-09-24.2';
+const APP_VERSION = 'v02_2026-11-17';
 const CONFIG_KEY = 'firebase-config-v1';
+const THEME_KEY  = 'utilities-theme';
+
+// CSS変数（テーマ別の色）を取得。Chart.js へ渡す色はテーマ切替時に描き直して反映する
+function _cv(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function _setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem(THEME_KEY, t); } catch {}
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', _cv('--bg2'));
+  _rerenderCurrent();
+}
+function _applyChartTheme() {
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.color = _cv('--text2');
+  Chart.defaults.borderColor = _cv('--grid');
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+}
 const DOC_PATH   = 'shared/utilities-data';
 
 function _loadConfig() {
@@ -412,10 +390,17 @@ let _fbSave    = async () => {};
 
 // ── Service config ────────────────────────────────────────────────
 const SERVICES = [
-  { key: 'electricity', label: '⚡ 電気', color: '#f59e0b', colorPrev: '#fcd34d', unit: 'kWh', unitKey: 'kwh', amountFmt: v => '¥'+v.toLocaleString(), usageFmt: v => v+' kWh' },
-  { key: 'gas',         label: '🔥 ガス', color: '#ef4444', colorPrev: '#fca5a5', unit: 'm³',  unitKey: 'm3',  amountFmt: v => '¥'+v.toLocaleString(), usageFmt: v => v+' m³'  },
-  { key: 'water',       label: '💧 水道', color: '#3b82f6', colorPrev: '#93c5fd', unit: 'm³',  unitKey: 'm3',  amountFmt: v => '¥'+v.toLocaleString(), usageFmt: v => v+' m³'  },
+  { key: 'electricity', label: '電気', cssVar: '--c-elec',  unit: 'kWh', unitKey: 'kwh' },
+  { key: 'gas',         label: 'ガス', cssVar: '--c-gas',   unit: 'm³',  unitKey: 'm3'  },
+  { key: 'water',       label: '水道', cssVar: '--c-water', unit: 'm³',  unitKey: 'm3'  },
 ];
+// 色はテーマで変わるため都度CSS変数から取得（6桁hex。末尾に透過度 'cc' 等を連結して使う）
+SERVICES.forEach(s => {
+  Object.defineProperty(s, 'color',     { get: () => _cv(s.cssVar) });
+  Object.defineProperty(s, 'colorPrev', { get: () => _cv(s.cssVar + '2') });
+});
+const SVC_VAR = { electricity: '--c-elec', gas: '--c-gas', water: '--c-water', others: '--c-other' };
+const SVC_NAME = { electricity: '電気', gas: 'ガス', water: '水道', others: 'その他' };
 // その他はSERVICESとは別管理（金額・ラベルのみ）
 // remoteData.others = [{year, month, amount, label, memo}]
 function _unitLabel(metric, svc) {
@@ -601,34 +586,53 @@ function _toast(msg) {
 function _switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
-  document.querySelectorAll('.tab-pane').forEach(p => p.style.display = p.id==='tab-'+tab ? 'block' : 'none');
-  // 年度バーはダッシュボード・比較タブで表示
-  const fyBar = document.getElementById('fyBar');
-  if (fyBar) fyBar.style.display = (tab==='dashboard'||tab==='compare') ? 'block' : 'none';
-  // display:block後にレンダリング（iframe環境でのgetElementById null対策）
-  setTimeout(() => {
-    if (tab==='dashboard') _renderDashboard();
-    if (tab==='compare')   _renderCompare();
-    if (tab==='history')   _renderHistory();
-  }, 0);
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id==='tab-'+tab));
+  window.scrollTo(0, 0);
+  // 表示後にレンダリング（非表示のcanvasではChart.jsのサイズが0になるため）
+  setTimeout(_rerenderCurrent, 0);
+}
+function _rerenderCurrent() {
+  _applyChartTheme();
+  if (currentTab==='dashboard') _renderDashboard();
+  if (currentTab==='compare')   _renderCompare();
+  if (currentTab==='history')   _renderHistory();
+}
+// ヘッダーの高さを期間バーの固定位置（--hdr-h）に反映
+function _syncHdrH() {
+  const h = document.getElementById('header');
+  if (h && h.offsetHeight) document.documentElement.style.setProperty('--hdr-h', h.offsetHeight + 'px');
+}
+function _showApp() {
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('authArea').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  _syncHdrH();
+}
+function _hideApp() {
+  document.getElementById('app').style.display = 'none';
+}
+
+// ── 年度切替（‹ 年度 ›、ダッシュボード・比較で共通） ─────────────
+function _renderFYNav() {
+  const fys = _availableFiscalYears();
+  if (selectedFY === null && fys.length > 0) selectedFY = fys[0];
+  const fy = selectedFY || new Date().getFullYear();
+  const list = fys.length ? fys : [fy];
+  document.querySelectorAll('.fy-sel').forEach(sel => {
+    sel.innerHTML = list.map(y => `<option value="${y}" ${y===fy?'selected':''}>${y}年度</option>`).join('');
+    sel.title = `${fy}/4〜${fy+1}/3`;
+  });
+  const idx = list.indexOf(fy);
+  document.querySelectorAll('[data-fy-step]').forEach(b => {
+    const dir = +b.dataset.fyStep;
+    b.disabled = list[idx - dir] === undefined; // 降順配列: ‹(-1)=古い年度, ›(+1)=新しい年度
+  });
+  return fy;
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────
 function _renderDashboard() {
-  const fys = _availableFiscalYears();
-  if (selectedFY === null && fys.length > 0) selectedFY = fys[0];
-  const fy = selectedFY || new Date().getFullYear();
-
-  // 固定バーのセレクタ更新
-  const fyBar = document.getElementById('fyBar');
-  const fySelect = document.getElementById('fySelect');
-  if (fyBar && fySelect) {
-    fyBar.style.display = 'block';
-    fySelect.innerHTML = fys.map(y =>
-      `<option value="${y}" ${y===fy?'selected':''}>${y}年度（${y}/4〜${y+1}/3）</option>`
-    ).join('');
-  }
-
+  const fy = _renderFYNav();
   _renderSummaryCards(fy);
   SERVICES.forEach(svc => _renderServiceSection(svc, fy));
 }
@@ -636,7 +640,7 @@ function _stepFY(dir) {
   const fys = _availableFiscalYears();
   const idx = fys.indexOf(selectedFY);
   const next = fys[idx - dir]; // 降順配列なので符号を反転
-  if (next !== undefined) { selectedFY = next; _onFYChange(next); const s=document.getElementById('fySelect'); if(s) s.value=next; }
+  if (next !== undefined) _onFYChange(next);
 }
 function _stepMonth(dir) {
   if (_isDirty && !confirm('保存されていない変更があります。移動しますか？')) return;
@@ -649,11 +653,8 @@ function _stepMonth(dir) {
 }
 function _onFYChange(val) {
   selectedFY = parseInt(val);
-  if (currentTab === 'dashboard') {
-    _renderSummaryCards(selectedFY);
-    SERVICES.forEach(svc => _renderServiceSection(svc, selectedFY));
-  }
-  if (currentTab === 'compare') _renderCompare();
+  if (currentTab === 'dashboard') _renderDashboard();
+  if (currentTab === 'compare')   _renderCompare();
 }
 
 function _renderSummaryCards(fy) {
@@ -679,27 +680,29 @@ function _renderSummaryCards(fy) {
       ? (unitAmountSum / unitUsageSum).toFixed(1) : null;
 
     const amountStr = totalAmount > 0 ? '¥'+totalAmount.toLocaleString() : '—';
-    const usageStr  = usageCount  > 0 ? totalUsage.toLocaleString()+' '+svc.unit : '—';
-    const unitStr   = avgUnit     ? '平均 '+avgUnit+'円/'+svc.unit : '';
+    const usageStr  = usageCount  > 0 ? totalUsage.toLocaleString()+' '+svc.unit : '';
+    const unitStr   = avgUnit     ? avgUnit+'円/'+svc.unit : '';
+    const subStr    = [usageStr, unitStr].filter(Boolean).join(' · ');
 
-    html += `<div class="summary-card ${svc.key}">
-      <div class="s-label">${svc.label}</div>
-      <div class="s-amount" style="color:${svc.color}">${amountStr}</div>
-      <div class="s-sub">${usageStr}</div>
-      <div class="s-sub">${unitStr}</div>
+    html += `<div class="kpi">
+      <div class="k-label"><i class="gdot" style="background:var(${svc.cssVar})"></i>${svc.label}</div>
+      <div class="k-val" style="color:var(${svc.cssVar})">${amountStr}</div>
+      <div class="k-sub">${subStr}</div>
     </div>`;
   });
 
   // 年間総合計
-  let grandTotal = 0;
+  let grandTotal = 0, othersTotal = 0;
   months.forEach(m => {
     const [y,mo] = m.split('-');
     SERVICES.forEach(s => { grandTotal += _get(s.key,+y,+mo)?.amount||0; });
-    grandTotal += _getOthers(+y,+mo).reduce((s,r)=>s+(r.amount||0),0);
+    othersTotal += _getOthers(+y,+mo).reduce((s,r)=>s+(r.amount||0),0);
   });
-  html += `<div class="summary-card total" style="grid-column:1/-1;">
-    <div class="s-label">合計</div>
-    <div class="s-amount">¥${grandTotal.toLocaleString()}</div>
+  grandTotal += othersTotal;
+  html += `<div class="kpi">
+    <div class="k-label">合計</div>
+    <div class="k-val">${grandTotal > 0 ? '¥'+grandTotal.toLocaleString() : '—'}</div>
+    <div class="k-sub">${othersTotal > 0 ? 'その他 ¥'+othersTotal.toLocaleString()+' 含む' : ''}</div>
   </div>`;
 
   const sc = document.getElementById('summaryCards'); if (!sc) { console.error('summaryCards not found'); return; } sc.innerHTML = html;
@@ -766,14 +769,14 @@ function _renderServiceSection(svc, fy) {
     }
 
     function _fmtCell(v) {
-      if (v == null) return '<span class="no-data">—</span>';
+      if (v == null) return '<span class="na">—</span>';
       if (metric==='amount') return '¥'+v.toLocaleString();
       if (metric==='unit')   return v.toFixed(1);
       return v.toLocaleString();
     }
     const curStr  = _fmtCell(curVal);
     const prevStr = _fmtCell(prevVal);
-    let diffStr = '<span class="no-data">—</span>';
+    let diffStr = '<span class="na">—</span>';
     let rateCls = '';
     if (diff!=null) {
       rateCls = diff>0 ? 'diff-up' : diff<0 ? 'diff-down' : '';
@@ -786,7 +789,7 @@ function _renderServiceSection(svc, fy) {
       diffStr = `<span class="${rateCls}">${dVal}${rVal ? '<br>'+rVal : ''}</span>`;
     }
     tableRows += `<tr>
-      <td>${y.slice(2)}/${mo}</td>
+      <td class="mo">${y.slice(2)}/${mo}</td>
       <td>${curStr}</td>
       <td>${prevStr}</td>
       <td>${diffStr}</td>
@@ -797,10 +800,10 @@ function _renderServiceSection(svc, fy) {
   let totalRow = '';
   if (metric !== 'unit' && (sumCur !== null || sumPrev !== null)) {
     const fmtSum = v => {
-      if (v == null) return '<span class="no-data">—</span>';
+      if (v == null) return '<span class="na">—</span>';
       return metric === 'amount' ? '¥' + Math.round(v).toLocaleString() : Math.round(v).toLocaleString();
     };
-    let diffSumStr = '<span class="no-data">—</span>';
+    let diffSumStr = '<span class="na">—</span>';
     // 合計金額（使用量）どうしの差分。水道など隔月徴収で計上月が年によってズレ、
     // 月別の差分（同じ月同士のペア）が1件も揃わない場合でも、年間合計どうしなら比較できる
     if (sumCur !== null && sumPrev !== null) {
@@ -814,7 +817,7 @@ function _renderServiceSection(svc, fy) {
       const rVal = sumRate !== null ? `(${sumRate > 0 ? '+' : ''}${sumRate}%)` : '';
       diffSumStr = `<span class="${cls}">${dVal}${rVal ? '<br>'+rVal : ''}</span>`;
     }
-    totalRow = `<tr class="table-total-row">
+    totalRow = `<tr>
       <td>合計</td>
       <td>${fmtSum(sumCur)}</td>
       <td>${fmtSum(sumPrev)}</td>
@@ -826,27 +829,24 @@ function _renderServiceSection(svc, fy) {
     const cls  = diffTotal > 0 ? 'diff-up' : diffTotal < 0 ? 'diff-down' : '';
     const sign = diffTotal >= 0 ? '+' : '';
     const diffSumStr = `<span class="${cls}">${sign}${Math.abs(diffTotal).toFixed(1)}</span>`;
-    totalRow = `<tr class="table-total-row">
+    totalRow = `<tr>
       <td>差分合計</td>
-      <td><span class="no-data">—</span></td>
-      <td><span class="no-data">—</span></td>
+      <td><span class="na">—</span></td>
+      <td><span class="na">—</span></td>
       <td>${diffSumStr}</td>
     </tr>`;
   }
 
+  const seg = (m, txt) => `<button class="${metric===m?'on':''}" onclick="_setMetric('${svc.key}','${m}')">${txt}</button>`;
   container.innerHTML = `
-    <div class="service-header">
-      <span class="service-name">${svc.label}</span>
-      <span class="service-amount" id="svc-avg-${svc.key}"></span>
+    <div class="svc-head">
+      <div class="svc-name"><i class="gdot" style="background:var(${svc.cssVar})"></i>${svc.label}</div>
+      <div class="svc-avg" id="svc-avg-${svc.key}"></div>
     </div>
-    <div class="metric-tabs">
-      <button class="metric-tab ${metric==='amount'?'active':''}" onclick="_setMetric('${svc.key}','amount')">金額</button>
-      <button class="metric-tab ${metric==='usage' ?'active':''}" onclick="_setMetric('${svc.key}','usage')">使用量</button>
-      <button class="metric-tab ${metric==='unit'  ?'active':''}" onclick="_setMetric('${svc.key}','unit')">単価</button>
-    </div>
-    <div class="chart-wrap"><canvas id="chart-${svc.key}"></canvas></div>
-    <div class="compare-table-wrap">
-      <table class="compare-table">
+    <div class="seg" style="--seg-c:var(${svc.cssVar})">${seg('amount','金額')}${seg('usage','使用量')}${seg('unit','単価')}</div>
+    <div class="chart-box"><canvas id="chart-${svc.key}"></canvas></div>
+    <div class="tbl-scroll">
+      <table class="tbl">
         <thead><tr><th>年月</th><th>今年 ${_unitLabel(metric,svc)}</th><th>前年 ${_unitLabel(metric,svc)}</th><th>差分</th></tr></thead>
         <tbody>${tableRows}</tbody>
         <tfoot>${totalRow}</tfoot>
@@ -910,7 +910,7 @@ function _renderServiceSection(svc, fy) {
           type: 'line',
           label: '年間平均',
           data: avgData,
-          borderColor: '#94a3b8',
+          borderColor: _cv('--text3'),
           backgroundColor: 'transparent',
           borderWidth: 1.5,
           pointRadius: 0,
@@ -1021,15 +1021,7 @@ let annualMode  = 'all';      // 'all' | 'elec-gas' | 'elec'
 const charts2 = {};           // 比較タブ用チャート
 
 function _renderCompare() {
-  // fyBarのセレクタ更新（ダッシュボードと共用）
-  const fys = _availableFiscalYears();
-  if (selectedFY === null && fys.length > 0) selectedFY = fys[0];
-  const fySelect = document.getElementById('fySelect');
-  if (fySelect) {
-    fySelect.innerHTML = fys.map(y =>
-      `<option value="${y}" ${y===selectedFY?'selected':''}>${y}年度（${y}/4〜${y+1}/3）</option>`
-    ).join('');
-  }
+  _renderFYNav();
   _renderMonthlyChart();
   _renderAnnualChart();
   _renderAnnualUsageCharts();
@@ -1064,14 +1056,15 @@ function _renderMonthlyChart() {
   }
 
   const datasets = [
-    { key:'electricity', label:'⚡ 電気', data:months.map(m=>getAmt('electricity',m)), type:'bar', backgroundColor:'#f59e0bcc', borderColor:'#f59e0b', borderWidth:1, borderRadius:3, order:2 },
-    { key:'gas',         label:'🔥 ガス', data:months.map(m=>getAmt('gas',m)),         type:'bar', backgroundColor:'#ef4444cc', borderColor:'#ef4444', borderWidth:1, borderRadius:3, order:2 },
-    { key:'water',       label:'💧 水道', data:months.map(m=>getAmt('water',m)),       type:'bar', backgroundColor:'#3b82f6cc', borderColor:'#3b82f6', borderWidth:1, borderRadius:3, order:2 },
-    { key:'others',      label:'📦 その他', data:months.map(m=>getOth(m)),             type:'bar', backgroundColor:'#8b5cf6cc', borderColor:'#8b5cf6', borderWidth:1, borderRadius:3, order:2 },
+    ...['electricity','gas','water','others'].map(k => {
+      const c = _cv(SVC_VAR[k]);
+      return { key:k, label:SVC_NAME[k], data:months.map(m => k==='others' ? getOth(m) : getAmt(k,m)), type:'bar',
+               backgroundColor:c+'cc', borderColor:c, borderWidth:1, borderRadius:3, order:2 };
+    }),
     {
       key:'__prevTotal', label: '前年 合計', data: _prevTotalFor(ALL_SVC_KEYS), type: 'line',
-      borderColor: '#64748b', backgroundColor: 'transparent', borderWidth: 2, borderDash: [4,3],
-      pointRadius: 3, pointBackgroundColor: '#64748b', tension: 0.3, order: 1,
+      borderColor: _cv('--text2'), backgroundColor: 'transparent', borderWidth: 2, borderDash: [4,3],
+      pointRadius: 3, pointBackgroundColor: _cv('--text2'), tension: 0.3, order: 1,
     },
   ];
 
@@ -1097,7 +1090,7 @@ function _renderMonthlyChart() {
       ctx2.save();
       ctx2.beginPath();
       ctx2.setLineDash([4, 4]);
-      ctx2.strokeStyle = '#64748b';
+      ctx2.strokeStyle = _cv('--text2');
       ctx2.lineWidth = 1.5;
       ctx2.moveTo(xAxis.left, yPx);
       ctx2.lineTo(xAxis.right, yPx);
@@ -1105,7 +1098,7 @@ function _renderMonthlyChart() {
 
       // ラベル表示
       ctx2.setLineDash([]);
-      ctx2.fillStyle = '#64748b';
+      ctx2.fillStyle = _cv('--text2');
       ctx2.font = '10px sans-serif';
       ctx2.textAlign = 'right';
       const label = '平均 ¥' + Math.round(avg).toLocaleString();
@@ -1115,12 +1108,12 @@ function _renderMonthlyChart() {
       const bx = xAxis.right - tw - pad * 2 - 4;
       const by = yPx - bh / 2;
       // 白背景
-      ctx2.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx2.fillStyle = _cv('--bg2') + 'e6';
       ctx2.beginPath();
       ctx2.roundRect(bx, by, tw + pad * 2, bh, 4);
       ctx2.fill();
       // テキスト（背景の垂直中央）
-      ctx2.fillStyle = '#475569';
+      ctx2.fillStyle = _cv('--text');
       ctx2.textAlign = 'center';
       ctx2.textBaseline = 'middle';
       ctx2.fillText(label, bx + (tw + pad * 2) / 2, yPx);
@@ -1195,10 +1188,9 @@ function _renderAnnualChart() {
 
   const labels = fys.map(y => y+'年度');
   const datasets = [
-    { label:'⚡ 電気',  data:fys.map(fy=>sumFY('electricity',fy)), backgroundColor:_annualBarColors('electricity',fys,'#f59e0b'), borderColor:'#f59e0b', borderWidth:1, borderRadius:4 },
-    { label:'🔥 ガス',  data:fys.map(fy=>sumFY('gas',fy)),         backgroundColor:_annualBarColors('gas',fys,'#ef4444'),         borderColor:'#ef4444', borderWidth:1, borderRadius:4 },
-    { label:'💧 水道',  data:fys.map(fy=>sumFY('water',fy)),       backgroundColor:_annualBarColors('water',fys,'#3b82f6'),       borderColor:'#3b82f6', borderWidth:1, borderRadius:4 },
-    { label:'📦 その他',data:fys.map(fy=>sumOtherFY(fy)),          backgroundColor:'#8b5cf6cc', borderColor:'#8b5cf6', borderWidth:1, borderRadius:4 },
+    ...SERVICES.map(svc => ({ label:svc.label, data:fys.map(fy=>sumFY(svc.key,fy)),
+      backgroundColor:_annualBarColors(svc.key,fys,svc.color), borderColor:svc.color, borderWidth:1, borderRadius:4 })),
+    { label:'その他', data:fys.map(fy=>sumOtherFY(fy)), backgroundColor:_cv('--c-other')+'cc', borderColor:_cv('--c-other'), borderWidth:1, borderRadius:4 },
   ];
 
   const ctx = document.getElementById('chartAnnual');
@@ -1299,20 +1291,20 @@ function _renderHistory() {
 
     const fmtCell = (rec, type) => {
       if (isFuture) return `<td class="future">—</td>`;
-      if (!rec) return `<td class="no-data" onclick="_openInputModal(${year},${month},'${type}')">—</td>`;
+      if (!rec) return `<td class="na" onclick="_openInputModal(${year},${month},'${type}')">—</td>`;
       const uf = type === 'electricity' ? 'kwh' : 'm3';
       const missingUsage = rec[uf] == null;
-      const cls = missingUsage ? 'has-data cell-incomplete' : 'has-data';
+      const cls = missingUsage ? 'has inc' : 'has';
       const mark = missingUsage ? '<span class="incomplete-dot" title="使用量が未入力です">●</span>' : '';
-      return `<td class="${cls}" onclick="_openInputModal(${year},${month},'${type}')" style="color:${_svcColor(type)}">¥${rec.amount.toLocaleString()}${mark}</td>`;
+      return `<td class="${cls}" onclick="_openInputModal(${year},${month},'${type}')" style="color:var(${SVC_VAR[type]})">¥${rec.amount.toLocaleString()}${mark}</td>`;
     };
     const fmtOther = () => {
       if (isFuture) return `<td class="future">—</td>`;
-      if (!oTotal) return `<td class="no-data" onclick="_openInputModal(${year},${month},'others')">—</td>`;
-      return `<td class="has-data" onclick="_openInputModal(${year},${month},'others')" style="color:#8b5cf6">¥${oTotal.toLocaleString()}</td>`;
+      if (!oTotal) return `<td class="na" onclick="_openInputModal(${year},${month},'others')">—</td>`;
+      return `<td class="has" onclick="_openInputModal(${year},${month},'others')" style="color:var(--c-other)">¥${oTotal.toLocaleString()}</td>`;
     };
 
-    html += `<tr${isCurrent?' class="current-month"':''}>
+    html += `<tr${isCurrent?' class="cur"':''}>
       <td>${label}</td>
       ${fmtCell(eRec,'electricity')}
       ${fmtCell(gRec,'gas')}
@@ -1328,35 +1320,37 @@ let _modalYear = null, _modalMonth = null, _modalType = null;
 
 function _openInputModal(year, month, type) {
   _modalYear = year; _modalMonth = month; _modalType = type;
-  const svcNames = {electricity:'⚡ 電気', gas:'🔥 ガス', water:'💧 水道', others:'📦 その他'};
-  document.getElementById('inputModalTitle').textContent = `${year}年${month}月 ${svcNames[type]}`;
+  document.getElementById('inputModalTitle').innerHTML =
+    `<i class="gdot" style="background:var(${SVC_VAR[type]})"></i>${year}年${month}月 ${SVC_NAME[type]}`;
 
   let bodyHtml = '';
   if (type === 'others') {
     const recs = _getOthers(year, month);
     const r = recs.length > 0 ? recs[0] : {};
     bodyHtml = `
-      <div class="form-group" style="margin-bottom:10px"><label>金額（円）</label><input type="number" id="mi-amount" value="${r.amount??''}" placeholder="3000"></div>
-      <div class="form-group" style="margin-bottom:10px"><label>内容</label><input type="text" id="mi-label" value="${r.label??''}" placeholder="例: 灯油20L"></div>
-      <div class="form-group"><label>メモ</label><textarea id="mi-memo" rows="2">${r.memo??''}</textarea></div>`;
+      <div class="fld"><label>金額（円）</label><input type="number" inputmode="numeric" id="mi-amount" value="${r.amount??''}" placeholder="3000"></div>
+      <div class="fld"><label>内容</label><input type="text" id="mi-label" value="${_esc(r.label??'')}" placeholder="例: 灯油20L"></div>
+      <div class="fld"><label>メモ</label><textarea id="mi-memo" rows="2">${_esc(r.memo??'')}</textarea></div>`;
   } else {
     const r = _get(type, year, month) || {};
     const unitLabel = type === 'electricity' ? 'kWh' : 'm³';
     bodyHtml = `
-      <div class="form-row" style="margin-bottom:10px">
-        <div class="form-group"><label>請求金額（円）</label><input type="number" id="mi-amount" value="${r.amount??''}" placeholder="0"></div>
-        <div class="form-group"><label>使用量（${unitLabel}）</label><input type="number" id="mi-usage" value="${r[type==='electricity'?'kwh':'m3']??''}" placeholder="0"></div>
+      <div class="fld-row">
+        <div class="fld"><label>請求金額（円）</label><input type="number" inputmode="numeric" id="mi-amount" value="${r.amount??''}" placeholder="0"></div>
+        <div class="fld"><label>使用量（${unitLabel}）</label><input type="number" inputmode="decimal" id="mi-usage" value="${r[type==='electricity'?'kwh':'m3']??''}" placeholder="0"></div>
       </div>
-      <div class="form-group"><label>メモ</label><textarea id="mi-memo" rows="2">${r.memo??''}</textarea></div>`;
+      <div class="fld"><label>メモ</label><textarea id="mi-memo" rows="2">${_esc(r.memo??'')}</textarea></div>`;
   }
   document.getElementById('inputModalBody').innerHTML = bodyHtml;
-  document.getElementById('inputModal').style.display = 'flex';
+  document.getElementById('sheet').classList.add('show');
+  document.getElementById('sheet-bg').classList.add('show');
   // 金額欄にフォーカス
   setTimeout(() => document.getElementById('mi-amount')?.focus(), 100);
 }
 
 function _closeInputModal() {
-  document.getElementById('inputModal').style.display = 'none';
+  document.getElementById('sheet').classList.remove('show');
+  document.getElementById('sheet-bg').classList.remove('show');
   _modalYear = _modalMonth = _modalType = null;
 }
 
@@ -1402,8 +1396,8 @@ async function _clearInputModal() {
   _renderHistory();
 }
 
-function _svcColor(type) {
-  return type==='electricity'?'#f59e0b':type==='gas'?'#ef4444':type==='water'?'#3b82f6':'#8b5cf6';
+function _esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 function _startEdit(key, y, m) {
@@ -1570,12 +1564,29 @@ function _csvParseLine(line) {
   return result;
 }
 
+let _fbUser = null;   // ログイン中のユーザー（設定画面の表示用）
+
 function _openSettings() {
-  const cfg=_loadConfig();
-  document.getElementById('configInput').value=cfg?JSON.stringify(cfg,null,2):'';
-  document.getElementById('settingsModal').style.display='flex';
+  _renderCloud();
+  document.getElementById('set-theme').value = document.documentElement.dataset.theme || 'light';
+  document.getElementById('settingsModal').classList.add('show');
 }
-function _closeSettings() { document.getElementById('settingsModal').style.display='none'; }
+function _closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
+function _renderCloud() {
+  const el = document.getElementById('set-cloud');
+  const cfg = _loadConfig();
+  const cfgArea = `<details class="set-details"${cfg ? '' : ' open'}><summary class="muted">Firebase 設定${cfg?.projectId ? '（'+_esc(cfg.projectId)+'）' : ''}</summary>
+    <textarea id="configInput" placeholder="Firebase の config をここに貼り付け">${cfg ? _esc(JSON.stringify(cfg,null,2)) : ''}</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn sm primary" onclick="_saveSettings()">保存して再読み込み</button>${cfg ? '<button class="btn sm danger" onclick="_clearSettings()">削除</button>' : ''}</div>
+    <div class="muted" style="margin-top:6px;">同じサイトの他のツール（タイムカード等）と共通の設定です</div></details>`;
+  if (isSampleMode) {
+    el.innerHTML = `<div class="set-row last"><div>サンプルモード<div class="muted">表示のみ（保存されません）</div></div><button class="btn sm" onclick="location.reload()">終了</button></div>${cfgArea}`;
+  } else if (_fbUser) {
+    el.innerHTML = `<div class="set-row last"><div>${_esc(_fbUser.displayName || _fbUser.email)}<div class="muted">${_esc(_fbUser.email || '')}</div></div><button class="btn sm" onclick="_signOut()">ログアウト</button></div>${cfgArea}`;
+  } else {
+    el.innerHTML = `<div class="muted">未ログイン</div>${cfgArea}`;
+  }
+}
 function _saveSettings() {
   const cfg=_parseFirebaseConfig(document.getElementById('configInput').value);
   if (!cfg?.apiKey) { _toast('設定が無効です'); return; }
@@ -1583,21 +1594,19 @@ function _saveSettings() {
   _toast('保存しました。再読み込みします…'); setTimeout(()=>location.reload(),1200);
 }
 function _clearSettings() {
+  if (!confirm('Firebase の設定を削除しますか？\n（同じサイトの他のツールの設定も消えます）')) return;
   localStorage.removeItem(CONFIG_KEY);
   _toast('削除しました。再読み込みします…'); setTimeout(()=>location.reload(),1200);
 }
 function _signIn()  { _fbSignIn();  }
-function _signOut() { _fbSignOut(); }
+function _signOut() { _closeSettings(); _fbSignOut(); }
 
 // ── Sample mode ───────────────────────────────────────────────────
 function _startSampleMode() {
   isSampleMode=true;
   remoteData=_generateSampleData();
-  document.getElementById('setupScreen').style.display='none';
-  document.getElementById('authArea').style.display='none';
-  document.getElementById('app').style.display='block';
-  document.getElementById('sampleBadge').style.display='inline-block';
-  document.getElementById('userName').textContent='サンプルモード';
+  document.getElementById('hSub').innerHTML = '<span class="badge">サンプル</span>';
+  _showApp();
   _switchTab('dashboard');
 }
 
@@ -1624,27 +1633,32 @@ async function _initFirebase(cfg) {
   };
 
   onAuthStateChanged(auth,user=>{
-    document.getElementById('authArea').style.display=user?'none':'flex';
-    document.getElementById('app').style.display     =user?'block':'none';
-    if (user) {
-      document.getElementById('userName').textContent=user.displayName||user.email;
-      onSnapshot(doc(db,DOC_PATH),snap=>{
-        if (Date.now()-_lastWriteAt<1500) return;
-        if (snap.exists()) {
-          const d=snap.data();
-          remoteData={electricity:d.electricity||[],gas:d.gas||[],water:d.water||[],others:d.others||[]};
-        }
-        if (currentTab==='dashboard') _renderDashboard();
-        if (currentTab==='history')   _renderHistory();
-      });
+    if (isSampleMode) return;
+    _fbUser = user;
+    if (!user) {
+      _hideApp();
+      document.getElementById('authArea').style.display='flex';
+      return;
     }
+    _showApp();
+    _switchTab(currentTab);
+    onSnapshot(doc(db,DOC_PATH),snap=>{
+      if (Date.now()-_lastWriteAt<1500) return;
+      if (snap.exists()) {
+        const d=snap.data();
+        remoteData={electricity:d.electricity||[],gas:d.gas||[],water:d.water||[],others:d.others||[]};
+      }
+      _rerenderCurrent();
+    });
   });
 }
 
 // ── Boot ──────────────────────────────────────────────────────────
 (function(){
-  const verEl = document.getElementById('appVersion');
-  if (verEl) verEl.textContent = APP_VERSION;
+  document.querySelectorAll('.app-ver').forEach(el => el.textContent = APP_VERSION);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', _cv('--bg2'));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { _closeInputModal(); _closeSettings(); } });
+  let _rz; window.addEventListener('resize', () => { clearTimeout(_rz); _rz = setTimeout(_syncHdrH, 150); });
   const cfg=_loadConfig();
   if (cfg?.apiKey) {
     document.getElementById('authArea').style.display='flex';
