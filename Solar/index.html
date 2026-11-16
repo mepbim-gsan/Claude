@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.3
+  @version   v07_2026-11-16.4
   @changelog
+    v07_2026-11-16.4 - 分析の時間帯別プロファイル／余剰と買電を整理（切替を均等分割ボタンに、期間はプルダウン、ピーク表示は凡例・各グラフ見出しへ、内訳×季節の小グラフを低く）
     v07_2026-11-16.3 - 分析タブに「時間帯別プロファイル」（消費量／買電量／内訳 × 全日／平日・土日／季節 × 直近12か月／全期間／年）と「余剰と買電（使用をずらす余地）」を追加
     v07_2026-11-16.2 - 自給率の色を緑→紫に統一。円グラフに合わせ、自家消費率=薄い紫（--con2、内側の輪）、自給率=濃い紫（--con、外側の輪）。KPI・ドーナツ中央・比率グラフ（自給率は破線）で統一
-    v07_2026-11-16 - Firestore通信量削減: 端末キャッシュ（IndexedDB）＋目次ドキュメント（_meta-solar：月ごとの最終更新日時）で更新された月だけ取得。CSV取込時は変更月だけ保存（従来は全月を書き直し）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -131,6 +131,12 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
 
 .peak-row{display:flex;gap:7px;flex-wrap:wrap;}
 .prof-ctl{display:flex;flex-direction:column;gap:6px;}
+/* 均等分割の切替ボタン */
+.seg{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.seg button{flex:1;border:none;background:none;padding:7px 0;font-size:12px;color:var(--text2);cursor:pointer;font-family:inherit;border-right:1px solid var(--border);}
+.seg button:last-child{border-right:none;}
+.seg button.on{background:var(--bg2);color:var(--accent);font-weight:700;}
+.sel-sm{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;padding:5px 8px;font-family:inherit;}
 .chip{padding:3px 10px;border-radius:10px;font-size:.68rem;font-weight:600;}
 
 .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
@@ -504,22 +510,21 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 <div class="tab-content" id="tab-analysis">
   <div class="page-bar"><div class="page-row"><div class="page-title">分析</div></div></div>
   <div class="sec">
-    <div class="sec-hd"><div class="sec-title" id="prof-title">時間帯別プロファイル</div></div>
-    <div class="prof-ctl">
-      <div class="mtg" data-grp="profMode"><button class="mbtn m-con" data-k="con">消費量</button><button class="mbtn" data-k="buy">買電量</button><button class="mbtn" data-k="mix">内訳</button></div>
-      <div class="mtg" data-grp="profCmp"><button class="mbtn m-con" data-k="all">全日</button><button class="mbtn" data-k="wk">平日・土日</button><button class="mbtn" data-k="sea">季節</button></div>
-      <div class="mtg" data-grp="profPeriod" id="prof-period"></div>
+    <div class="sec-hd" style="margin-bottom:8px">
+      <div class="sec-title" id="prof-title">時間帯別プロファイル</div>
+      <select class="sel-sm" id="prof-period" aria-label="期間"></select>
     </div>
-    <div class="peak-row" id="prof-peaks" style="margin:8px 0 4px"></div>
-    <div id="prof-chart"></div>
+    <div class="prof-ctl">
+      <div class="seg" data-grp="profMode"><button class="on" data-k="con">消費量</button><button data-k="buy">買電量</button><button data-k="mix">内訳</button></div>
+      <div class="seg" data-grp="profCmp"><button class="on" data-k="all">全日</button><button data-k="wk">平日・土日</button><button data-k="sea">季節</button></div>
+    </div>
+    <div id="prof-chart" style="margin-top:8px"></div>
     <div style="display:flex;gap:12px;margin-top:6px;font-size:.68rem;flex-wrap:wrap;" id="prof-legend"></div>
     <p style="font-size:.64rem;color:var(--text2);margin-top:4px">丸一日データがそろった日の平均（30分ごと）。土日以外は平日（祝日も平日扱い）。消費量＝発電を加味しない使用量、買電量＝発電でまかなえず購入した量</p>
   </div>
   <div class="sec">
-    <div class="sec-hd">
-      <div class="sec-title">余剰と買電（使用をずらす余地）</div>
-      <div class="mtg" data-grp="shiftGrp"><button class="mbtn m-con" data-k="all">全日</button><button class="mbtn" data-k="wd">平日</button><button class="mbtn" data-k="we">土日</button></div>
-    </div>
+    <div class="sec-title" style="margin-bottom:8px">余剰と買電（使用をずらす余地）</div>
+    <div class="seg" data-grp="shiftGrp" style="margin-bottom:8px"><button class="on" data-k="all">全日</button><button data-k="wd">平日</button><button data-k="we">土日</button></div>
     <div class="peak-row" id="shift-note" style="margin-bottom:6px"></div>
     <div id="shift-chart"></div>
     <p style="font-size:.64rem;color:var(--text2);margin-top:4px">上＝売電（使い切れず余った電気）、下＝買電。余剰が多い時間帯に家電の使用をずらすと自家消費が増えます（期間はプロファイルと共通）</p>
@@ -652,7 +657,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.3';
+const APP_VERSION = 'v07_2026-11-16.4';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -3802,27 +3807,25 @@ function renderProfPeriodBtns(){
   const el=document.getElementById('prof-period');
   const opts=[['12m','直近12か月'],['all','全期間'],...years().slice().reverse().map(y=>[y,y+'年'])];
   if(!opts.some(o=>o[0]===PROF.profPeriod)) PROF.profPeriod='12m';
-  el.innerHTML=opts.map(([k,l])=>`<button class="mbtn${k===PROF.profPeriod?' m-con':''}" data-k="${k}">${l}</button>`).join('');
+  el.innerHTML=opts.map(([k,l])=>`<option value="${k}"${k===PROF.profPeriod?' selected':''}>${l}</option>`).join('');
 }
 
 function renderProfile(){
   renderProfPeriodBtns();
-  const el=document.getElementById('prof-chart'), leg=document.getElementById('prof-legend'), pk=document.getElementById('prof-peaks');
-  el.innerHTML=''; leg.innerHTML=''; pk.innerHTML='';
+  const el=document.getElementById('prof-chart'), leg=document.getElementById('prof-legend');
+  el.innerHTML=''; leg.innerHTML='';
   const col=colors(), sl=slots(), n=sl.length, mode=PROF.profMode;
   const groups=profGroups(PROF.profCmp, profDates()).map(g=>({...g, con:profAvg(g.dks,'con'), buy:profAvg(g.dks,'buy'), gen:profAvg(g.dks,'gen')})).filter(g=>g.con.n>0);
-  const ML2={con:'消費量',buy:'買電量',mix:'内訳'};
-  document.getElementById('prof-title').textContent='時間帯別プロファイル '+ML2[mode]+'（kWh／'+(n===48?'30分':'1時間')+'）';
+  document.getElementById('prof-title').textContent='時間帯別プロファイル（kWh/'+(n===48?'30分':'1時間')+'）';
   if(!groups.length){ el.innerHTML=empty(); return; }
   const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
   const mL=44, mR=8, mT=8, mB=22;
   const px=i=>mL+(contW-mL-mR)*(i+.5)/n;
   const hourTicks=svg=>[0,6,12,18,24].forEach(h=>svg.append('text').attr('x',mL+(contW-mL-mR)*h/24).attr('y',0).attr('dy','1em')
       .attr('text-anchor',h===24?'end':h===0?'start':'middle').attr('fill',cv('--text2')).attr('font-size',9).text(h+'h'));
-  // ピーク表示
+  // ピーク（凡例・各グラフ見出しに添える）
   const pm = mode==='buy'?'buy':'con';
-  pk.innerHTML = groups.map(g=>{ const a=g[pm].v, i=a.indexOf(Math.max(...a));
-    return `<span class="chip" style="background:var(--bg3);color:var(--text)">${g.name} ${mode==='buy'?'買電':'消費'}ピーク ${slotRange(i,1)}／${a[i].toFixed(2)} kWh（${g.con.n}日）</span>`; }).join('');
+  const peakTxt = g => { const a=g[pm].v, i=a.indexOf(Math.max(...a)); return `ピーク ${sl[i]} ${a[i].toFixed(2)}kWh`; };
 
   if(mode!=='mix'){
     const m=mode, cH=170, H=cH+mT+mB;
@@ -3835,7 +3838,7 @@ function renderProfile(){
       const c=g.color||col[m];
       svg.append('path').attr('d',g[m].v.map((v,i)=>(i?'L':'M')+px(i)+','+py(v)).join('')).attr('fill','none')
         .attr('stroke',c).attr('stroke-width',2).attr('stroke-dasharray',g.dash);
-      leg.innerHTML+=`<span style="display:flex;align-items:center;gap:5px;color:${c};font-weight:600"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="${c}" stroke-width="2" stroke-dasharray="${g.dash}"/></svg>${g.name}（${g.con.n}日）</span>`;
+      leg.innerHTML+=`<span style="display:flex;align-items:center;gap:5px;color:${c};font-weight:600"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="${c}" stroke-width="2" stroke-dasharray="${g.dash}"/></svg>${g.name}（${g.con.n}日）<span style="color:var(--text2);font-weight:400">${peakTxt(g)}</span></span>`;
     });
     for(let i=0;i<n;i++) svg.append('rect').attr('x',px(i)-(contW-mL-mR)/n/2).attr('y',mT).attr('width',(contW-mL-mR)/n).attr('height',cH).attr('fill','transparent')
       .on('mousemove',e=>showTip(e,slotRange(i,1)+groups.map(g=>`<br>${g.name}: <b>${g[m].v[i].toFixed(3)} kWh</b>`).join(''))).on('mouseleave',hideTip);
@@ -3843,11 +3846,13 @@ function renderProfile(){
   }
   // 内訳: グループごとに 自家消費＋買電（積み上げ）＝消費、発電は線
   const maxV=niceMax(Math.max(...groups.flatMap(g=>[...g.con.v,...g.gen.v]),0.01));
-  const cH=groups.length>1?120:170, H=cH+mT+mB+16;
+  const cH=groups.length>2?90:groups.length>1?110:170, H=cH+mT+mB+16;
   groups.forEach(g=>{
     const self=g.con.v.map((c,i)=>Math.max(c-g.buy.v[i],0));
     const svg=d3.select(el).append('svg').attr('width',contW).attr('height',H).style('display','block');
-    svg.append('text').attr('x',mL).attr('y',11).attr('fill',g.color||cv('--text')).attr('font-size',11).attr('font-weight',700).text(`${g.name}（${g.con.n}日）`);
+    const tt=svg.append('text').attr('x',mL).attr('y',11).attr('font-size',11);
+    tt.append('tspan').attr('fill',g.color||cv('--text')).attr('font-weight',700).text(`${g.name}（${g.con.n}日）`);
+    tt.append('tspan').attr('fill',cv('--text2')).attr('dx',6).text('消費'+peakTxt(g));
     const top=mT+14, py=v=>top+cH-(v/maxV)*cH;
     drawGridAndYAxis(svg,maxV,mL,top,contW-mR+4,cH);
     hourTicks(svg.append('g').attr('transform',`translate(0,${top+cH+4})`));
@@ -3891,12 +3896,13 @@ function renderShift(){
     +`<span class="chip" style="background:var(--bg3);color:var(--text2)">1日あたり 余剰 ${sum(cur.sell.v).toFixed(2)}／買電 ${sum(cur.buy.v).toFixed(2)} kWh（${cur.sell.n}日）</span>`;
 }
 
-document.querySelectorAll('#tab-analysis .mtg[data-grp]').forEach(g=>g.addEventListener('click',e=>{
-  const b=e.target.closest('.mbtn'); if(!b) return;
+document.querySelectorAll('#tab-analysis .seg[data-grp]').forEach(g=>g.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
   PROF[g.dataset.grp]=b.dataset.k;
-  g.querySelectorAll('.mbtn').forEach(x=>x.classList.toggle('m-con',x===b));
+  g.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
   renderProfile(); renderShift();
 }));
+document.getElementById('prof-period').addEventListener('change',e=>{ PROF.profPeriod=e.target.value; renderProfile(); renderShift(); });
 
 function setupMtg(groupId, setM, cb){
   const g = document.getElementById(groupId);
