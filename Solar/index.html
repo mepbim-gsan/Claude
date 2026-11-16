@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.9
+  @version   v07_2026-11-16.10
   @changelog
+    v07_2026-11-16.10 - グラフがカードからわずかにはみ出して横スクロールになる不具合を修正（幅をカード内側で計算）。サマリー表・経年劣化診断表の左端列（日付・月・年）を固定
     v07_2026-11-16.9 - 最新月・最新年に戻る操作を追加: 表示中のタブ（日次・月次・年次）を再タップ、または「↺」付きの月・年ラベルをタップ
     v07_2026-11-16.8 - 累計グラフ（月次・年次）の灰色線がタップできない不具合を修正（ツールチップ領域の下に隠れていた）。月次は直近12か月の最大・最低の月を右端に表示（欠けのある月は除外）。月末の日付ラベルの重なりを修正
-    v07_2026-11-16.7 - 累計グラフを日次と同じ考え方に: 月次=直近12か月を灰色＋前年同月の破線、年次=他の全年を灰色（年ラベル、設置年は途中から）。灰色線タップでその月・年へ
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -202,6 +202,8 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 .mo-table td:first-child{text-align:left;font-weight:600;}
 .mo-table tr:hover td{background:var(--bg3);}
 .mo-table tfoot td{font-weight:700;border-top:2px solid var(--border);border-bottom:none;}
+.mo-table :is(th,td):first-child,.deg-table :is(th,td):first-child{position:sticky;left:0;z-index:1;background:var(--bg2);box-shadow:inset -1px 0 0 var(--border);}
+.mo-table tr:hover td:first-child{background:var(--bg3);}
 
 /* 年間推移 */
 .yr-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px;}
@@ -663,7 +665,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.9';
+const APP_VERSION = 'v07_2026-11-16.10';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -1060,7 +1062,7 @@ function drawBoxPlot(el, groups, yLabel){
   const minV = 0;
 
   const sp = window.innerWidth < 560;
-  const gW = sp ? Math.max(28, Math.floor((window.innerWidth-80)/validGroups.length)) : Math.max(44, Math.min(80, Math.floor(900/validGroups.length)));
+  const gW = sp ? Math.max(28, Math.floor((boxW(el)-60)/validGroups.length)) : Math.max(44, Math.min(80, Math.floor(900/validGroups.length)));
   const bW = Math.floor(gW * 0.5);
   const mL=44, mT=12, mB=30, cH=180;
   const W = mL + validGroups.length*gW + 16, H = cH+mT+mB;
@@ -1406,7 +1408,7 @@ function renderHourlyBar(ym){
       ピーク ${peakSlot}〜${peakNext} ／ ${avgs[peakIdx].toFixed(3)} kWh
     </span>`;
 
-  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const contW = boxW(el);
   const sp  = contW < 560;
   const n   = sl.length;
   const bW  = sp ? Math.max(4, Math.floor((contW-58)/n)-1) : (n===48?14:26);
@@ -1460,7 +1462,7 @@ function renderHeatmap(ym){
   const maxV = d3.max(rows, r=>r.v) || 1;
   const cScale = d3.scaleSequential().domain([0,maxV]).interpolator(d3.interpolate(heatZero, col));
 
-  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const contW = boxW(el);
   const sp = contW < 560;
 
   if(!sp){
@@ -1577,7 +1579,7 @@ function renderSelfChart(ym){
   const buyColor  = col.buy;   // 青: 買電量（+側積み上げ）
   const sellColor = col.sell;  // 緑: 売電量（-側）
 
-  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const contW = boxW(el);
   const sp  = contW < 560;
   const bW  = sp ? Math.max(4, Math.floor((contW-58)/n)-1) : (n===48?14:26);
   const gap = sp ? 1 : 2;
@@ -1754,7 +1756,7 @@ function renderCum24(ym){
   const lines=ds.map(dk=>({dk, c:cumOf(slotAvg(ym,m,dk))}));
   const avg=cumOf(slotAvg(ym,m));
   const maxV=niceMax(globalMax('day'));
-  const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
+  const contW=(boxW(el))-8;
   const mL=44, mR=64, mT=10, mB=24, cH=160, W=contW, H=cH+mT+mB;
   const px=i=>mL+(W-mL-mR)*i/n, py=v=>mT+cH-(v/maxV)*cH;
   const svg=d3.select(el).append('svg').attr('width',W).attr('height',H);
@@ -1804,7 +1806,7 @@ function renderDualDonut(elId, t, label){
   const col=colors();
   const selfG=Math.max(t.gen-t.sell,0), selfC=Math.max(t.con-t.buy,0);
   const jikaSho=t.gen>0?selfG/t.gen*100:0, jikyu=t.con>0?selfC/t.con*100:0;
-  const W=Math.min((el.parentElement.clientWidth||window.innerWidth)-8, 420), H=346;
+  const W=Math.min((boxW(el))-8, 420), H=346;
   const cx=W/2, cy=136;
   const svg=d3.select(el).append('svg').attr('width',W).attr('height',H).style('display','block').style('margin','0 auto');
   const rings=[
@@ -1937,7 +1939,7 @@ function renderMonChart(){
     ...periodMs.flatMap(ym => Object.keys(ML).map(m => moSum(ym, m)))
   ) || 1;
 
-  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const contW = boxW(el);
   const n = data.length;
   const sp = contW < 480;
   const bW = sp ? Math.max(14, Math.floor((contW - 60) / n) - 4) : Math.max(22, Math.min(48, Math.floor((contW - 60) / n) - 6));
@@ -2003,7 +2005,7 @@ function renderSeaChart(){
   if(!data.length) return;
   const seaCol={'1〜3月':'#3b82f6','4〜6月':'#84cc16','7〜9月':'#f59e0b','10〜12月':'#f97316'};
   const maxV = niceMax(Math.max(...Object.keys(ML).flatMap(m=>seaData(m).map(d=>d[1]))));
-  const contW = (el.parentElement.clientWidth || window.innerWidth) - 8;
+  const contW = (boxW(el)) - 8;
   const n = data.length;
   const mL=44, mT=10, mB=28, cH=150;
   const availW = contW - mL - 8;
@@ -2076,7 +2078,7 @@ function renderMonthlyBoxPlot(allYearsMode){
   const allVals = validStats.flatMap(g=>[g.stats.p5, g.stats.p95, ...g.stats.outliers]);
   const maxV = Math.max(...allVals) || 1;
 
-  const contWB = (el.parentElement.clientWidth || window.innerWidth) - 4;
+  const contWB = (boxW(el)) - 4;
   const sp = contWB < 480;
   const perMo = yrs.length;
   const innerGap = 2;
@@ -2222,7 +2224,7 @@ function renderYoYMon(selYr, prevYr){
   const maxV = Math.max(...allV)||1;
   const grayCol = cv('--text2');
 
-  const contW = (el.parentElement.clientWidth || window.innerWidth) - 4;
+  const contW = (boxW(el)) - 4;
   const sp = contW < 480;
   const mL=44, mT=30, mB=26, cH=160;
   const availW = contW - mL - 8;
@@ -2320,7 +2322,7 @@ function drawEffLines(el, legEl, pts, labels, tipNames, opt){
   if(!pts.some(p=>p)){ el.innerHTML=empty(); return; }
   const n=pts.length, sp=window.innerWidth<560;
   const mL=44, mT=14, mB=opt.rotate?36:24, cH=160;
-  const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
+  const contW=(boxW(el))-8;
   const ptW = opt.fit ? (contW-mL-10)/n : (opt.ptW || (sp ? Math.max(24, Math.floor((window.innerWidth-64)/n)) : 44));
   const W = opt.fit ? contW : mL+n*ptW+10, H=cH+mT+mB;
   // 横スクロール時もY軸目盛りが見えるよう、目盛りは左端に固定した別SVGに描く
@@ -2389,7 +2391,7 @@ function renderHistogram(){
   vals.forEach(v => { const i = Math.floor(v / binW); if(i < numBins) bins[i]++; });
   const maxCount = niceMax(Math.max(...bins), 1);
 
-  const contW = el.parentElement.clientWidth - 32;
+  const contW = boxW(el) - 4;
   const bW = Math.max(6, Math.min(20, Math.floor((contW - 52) / numBins) - 1));
   const gap = 1;
   const mL=44, mT=10, mB=36, cH=140;
@@ -2914,7 +2916,7 @@ function renderMonSelfChart(mode){
 
   // X軸を月の実日数で固定
   const daysInMonth = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
-  const contW = el.parentElement.clientWidth || window.innerWidth;
+  const contW = boxW(el);
   const availW = contW-44-8;
   const moW = Math.floor(availW/daysInMonth);
   const gap = Math.max(1, Math.floor(moW*0.18));
@@ -2994,7 +2996,7 @@ function renderMonBox(){
   // X軸は常に1〜12月固定
   const MOS=[1,2,3,4,5,6,7,8,9,10,11,12];
   const perMo=hasPrev?2:1, innerGap=2;
-  const contWB=(el.parentElement.clientWidth||window.innerWidth)-4;
+  const contWB=(boxW(el))-4;
   const sp=contWB<480;
   const moGap=sp?4:6;
   const availWB=contWB-44-8;
@@ -3103,7 +3105,7 @@ function renderYrSelfChart(mode){
     self: existMs.includes(ym)?Math.max(moSum(ym,'con')-moSum(ym,'buy'),0):0,
   }));
   const maxAbs=niceMax(globalMax('month'));
-  const n=12,contW=(el.parentElement.clientWidth||window.innerWidth)-8;
+  const n=12,contW=(boxW(el))-8;
   const sp=contW<560;
   const availW=contW-44-8,gap=Math.floor(availW*0.1/n);
   const bW=Math.floor((availW-gap*(n-1))/n);
@@ -3171,7 +3173,7 @@ function renderYrBox(){
   if(!stats.length){ el.innerHTML=empty('データ不足'); return; }
   const maxV=niceMax(globalMax('month'));
   const n=stats.length,sp=window.innerWidth<560;
-  const ptW=sp?Math.max(40,Math.floor((window.innerWidth-64)/n)):80;
+  const ptW=sp?Math.max(40,Math.floor((boxW(el)-54)/n)):80;
   const bW=Math.max(20,ptW-24);
   const mL=44,mT=14,mB=28,cH=160;
   const W=mL+n*ptW+10,H=cH+mT+mB;
@@ -3239,7 +3241,7 @@ function renderDayBarChart(){
     return prevDs.includes(pdk) ? daySum(pdk,dayBarMet) : null;
   });
   const maxV = niceMax(globalMax('day'));
-  const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
+  const contW = (boxW(el))-8;
   const availW = contW-44-8;
   const moW = Math.floor(availW/daysInMonth);
   const gap = Math.max(1, Math.floor(moW*0.18));
@@ -3343,7 +3345,7 @@ function renderDayCumChart(){
   };
   const cur = cumOf(ym,ds), prev = cumOf(prevYm,prevDs);
   const maxV = niceMax(globalMax('month', true));
-  const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
+  const contW = (boxW(el))-8;
   const mL=44, mR=58, mT=24, mB=28, cH=160;
   const moW = (contW-mL-mR)/daysInMonth;
   const W=contW, H=cH+mT+mB;
@@ -3448,7 +3450,7 @@ function renderYrMonBarChart(){
   const maxV=niceMax(globalMax('month'));
   // 棒幅: 細め（gap比率大きめ）
   const n=12,mL=44,mT=28,mB=24,cH=160;
-  const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
+  const contW=(boxW(el))-8;
   const availW=contW-mL-8;
   const moW=Math.floor(availW/n);
   const bW=Math.max(8,Math.floor(moW*0.45)); // 月幅の45%
@@ -3562,7 +3564,7 @@ function renderYrCumChart(){
     prevAtLast = (li>0?prev[li-1]:0) + pds.reduce((a,dk)=>a+daySum(dk,yrMonBarMet),0);
   }
   const maxV = niceMax(globalMax('year'));
-  const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
+  const contW = (boxW(el))-8;
   const mL=44, mR=48, mT=24, mB=24, cH=160;
   const moW = (contW-mL-mR)/12;
   const W=contW, H=cH+mT+mB;
@@ -3708,6 +3710,9 @@ function renderYrTable(){
 // ================================================================
 // 年次タブ：年別率グラフ（折れ線）
 // ================================================================
+
+// グラフ描画先の内側幅（カードの padding を含めない）
+function boxW(el){ return el.clientWidth || (el.parentElement.clientWidth-28) || window.innerWidth; }
 
 // 推移: 比率の推移（日別／月別／年別を切替）
 let trendEffGran='month';
@@ -3889,7 +3894,7 @@ function renderProfile(){
   const groups=profGroups(PROF.profCmp, profDates()).map(g=>({...g, con:profAvg(g.dks,'con'), buy:profAvg(g.dks,'buy'), gen:profAvg(g.dks,'gen'), sell:profAvg(g.dks,'sell')})).filter(g=>g.con.n>0);
   document.getElementById('prof-title').textContent='時間帯別プロファイル（kWh/'+(n===48?'30分':'1時間')+'）';
   if(!groups.length){ el.innerHTML=empty(); return; }
-  const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
+  const contW=(boxW(el))-8;
   const mL=44, mR=8, mT=8, mB=22;
   const px=i=>mL+(contW-mL-mR)*(i+.5)/n;
   const hourTicks=svg=>[0,6,12,18,24].forEach(h=>svg.append('text').attr('x',mL+(contW-mL-mR)*h/24).attr('y',0).attr('dy','1em')
@@ -3949,7 +3954,7 @@ function renderShift(){
   const cur=all.find(a=>a.k===PROF.shiftGrp);
   if(!cur || !cur.sell.n){ el.innerHTML=empty(); return; }
   const maxV=niceMax(Math.max(...all.flatMap(a=>[...a.sell.v,...a.buy.v]),0.01));
-  const contW=(el.parentElement.clientWidth||window.innerWidth)-8, mL=44, mR=8, mT=8, cH=90, mB=22, H=mT+cH*2+mB;
+  const contW=(boxW(el))-8, mL=44, mR=8, mT=8, cH=90, mB=22, H=mT+cH*2+mB;
   const zeroY=mT+cH, bw=(contW-mL-mR)/n, x=i=>mL+bw*i;
   const svg=d3.select(el).append('svg').attr('width',contW).attr('height',H);
   drawPosNegGrid(svg,maxV,mL,contW,zeroY,cH,cH);
