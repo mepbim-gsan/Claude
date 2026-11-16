@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.7
+  @version   v07_2026-11-16.8
   @changelog
+    v07_2026-11-16.8 - 累計グラフ（月次・年次）の灰色線がタップできない不具合を修正（ツールチップ領域の下に隠れていた）。月次は直近12か月の最大・最低の月を右端に表示（欠けのある月は除外）。月末の日付ラベルの重なりを修正
     v07_2026-11-16.7 - 累計グラフを日次と同じ考え方に: 月次=直近12か月を灰色＋前年同月の破線、年次=他の全年を灰色（年ラベル、設置年は途中から）。灰色線タップでその月・年へ
     v07_2026-11-16.6 - 時間帯別プロファイル（内訳）に売電（余った分）を薄い緑で追加（自家消費の上、発電線まで）
-    v07_2026-11-16.5 - 全タブの指標ボタン（.mtg）と自家消費分析の切替を均等分割の切替ボタンに統一（タイトルの下に全幅1行）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -660,7 +660,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.7';
+const APP_VERSION = 'v07_2026-11-16.8';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -2926,7 +2926,7 @@ function renderMonSelfChart(mode){
     const dk=ym+'-'+String(dayNum).padStart(2,'0');
     const x=mL+(dayNum-1)*moW;
     // X軸ラベル
-    if(dayNum===1||dayNum%5===0||dayNum===daysInMonth)
+    if(dayNum===1||(dayNum%5===0&&daysInMonth-dayNum>=3)||dayNum===daysInMonth)
       svg.append('text').attr('x',x+moW/2).attr('y',H-6).attr('text-anchor','middle')
         .attr('fill',cv('--text2')).attr('font-size',8).text(dayNum+'日');
     const v=dkMap.get(dk);
@@ -3251,7 +3251,7 @@ function renderDayBarChart(){
     const i=dayNum-1;
     const x=mL+i*moW;
     // X軸ラベル（1日・5の倍数・末日）
-    if(dayNum===1||dayNum%5===0||dayNum===daysInMonth)
+    if(dayNum===1||(dayNum%5===0&&daysInMonth-dayNum>=3)||dayNum===daysInMonth)
       svg.append('text').attr('x',x+moW/2).attr('y',mT+cH+16).attr('text-anchor','middle')
         .attr('fill',cv('--text2')).attr('font-size',9).text(dayNum+'日');
     if(!dkMap.has(dk)) return; // データなし列はスキップ
@@ -3339,25 +3339,26 @@ function renderDayCumChart(){
   const cur = cumOf(ym,ds), prev = cumOf(prevYm,prevDs);
   const maxV = niceMax(globalMax('month', true));
   const contW = (el.parentElement.clientWidth||window.innerWidth)-8;
-  const mL=44, mR=48, mT=24, mB=28, cH=160;
+  const mL=44, mR=58, mT=24, mB=28, cH=160;
   const moW = (contW-mL-mR)/daysInMonth;
   const W=contW, H=cH+mT+mB;
   const px = i=>mL+i*moW+moW/2, py = v=>mT+cH-(v/maxV)*cH;
   const svg = d3.select(el).append('svg').attr('width',W).attr('height',H);
   drawGridAndYAxis(svg, maxV, mL, mT, W-mR+4, cH);
   for(let d=1; d<=daysInMonth; d++){
-    if(d===1||d%5===0||d===daysInMonth)
+    if(d===1||(d%5===0&&daysInMonth-d>=3)||d===daysInMonth)
       svg.append('text').attr('x',px(d-1)).attr('y',mT+cH+16).attr('text-anchor','middle')
         .attr('fill',cv('--text2')).attr('font-size',9).text(d+'日');
   }
   // 直近12か月（前年同月は破線で別に描くので除く）を灰色で。線をタップでその月へ
   const path=pts=>pts.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' ');
-  const recent = ms.slice(Math.max(0,monIdx-12), monIdx).filter(m=>m!==prevYm);
+  const recent = ms.slice(Math.max(0,monIdx-12), monIdx).filter(m=>m!==prevYm), endTot=[];
   recent.forEach(m=>{
     const cv2=cumOf(m, moDates(m)); if(!cv2.length) return;
     const d=path(cv2.map((v,i)=>[px(i),py(v)]));
     svg.append('path').attr('d',d).attr('fill','none').attr('stroke',cv('--text2')).attr('stroke-opacity',.3).attr('stroke-width',1);
-    svg.append('path').attr('d',d).attr('fill','none').attr('stroke','transparent').attr('stroke-width',8).style('cursor','pointer')
+    endTot.push({m, v:cv2[cv2.length-1], y:py(cv2[cv2.length-1])});
+    svg.append('path').attr('class','hit').attr('d',d).attr('fill','none').attr('stroke','transparent').attr('stroke-width',10).style('cursor','pointer')
       .on('mousemove',e=>showTip(e,`${+m.slice(0,4)}年${+m.slice(5)}月<br>月合計: <b>${cv2[cv2.length-1].toFixed(1)} kWh</b>`)).on('mouseleave',hideTip)
       .on('click',()=>{ hideTip(); monIdx=ms.indexOf(m); renderMonthlyTab(); });
   });
@@ -3396,6 +3397,15 @@ function renderDayCumChart(){
       .attr('stroke',cv('--text2')).attr('stroke-width',1.5).attr('stroke-dasharray','4,3').attr('opacity',.7);
     svg.append('text').attr('x',mL+100).attr('y',16).attr('fill',cv('--text2')).attr('font-size',9).text(prevYm.slice(0,4)+'年'+(+prevYm.slice(5))+'月');
   }
+  // 直近12か月で最大・最低の月を右端に表示（日次の24時間累計と同じ）
+  const fullTot=endTot.filter(o=>!isIncomplete(o.m)); // データが欠けた月（設置月など）は除く
+  if(fullTot.length){
+    const mx=fullTot.reduce((a,b)=>b.v>a.v?b:a), mn=fullTot.reduce((a,b)=>b.v<a.v?b:a);
+    const yMx=Math.max(mT+8,Math.min(mT+cH-11,mx.y+3)), yMn=Math.max(yMx+11,Math.min(mT+cH,mn.y+3));
+    const lb=(o,t,y)=>svg.append('text').attr('x',W-mR+4).attr('y',y).attr('fill',cv('--text2')).attr('font-size',9).text(`${+o.m.slice(5)}月 ${t}`);
+    lb(mx,'最大',yMx); if(mn!==mx) lb(mn,'最低',yMn);
+  }
+  svg.selectAll('.hit').raise(); // 日付ごとのツールチップ領域より手前にして、灰色線をタップできるように
   if(recent.length){
     const lx=mL+(prev.length?170:90);
     svg.append('line').attr('x1',lx).attr('x2',lx+16).attr('y1',12).attr('y2',12).attr('stroke',cv('--text2')).attr('stroke-opacity',.4).attr('stroke-width',1.5);
@@ -3564,7 +3574,7 @@ function renderYrCumChart(){
     const cy=cumOf(y); if(!cy.some(v=>v!=null)) return;
     const d=pathN(cy);
     svg.append('path').attr('d',d).attr('fill','none').attr('stroke',cv('--text2')).attr('stroke-opacity',.35).attr('stroke-width',1.2);
-    svg.append('path').attr('d',d).attr('fill','none').attr('stroke','transparent').attr('stroke-width',8).style('cursor','pointer')
+    svg.append('path').attr('class','hit').attr('d',d).attr('fill','none').attr('stroke','transparent').attr('stroke-width',10).style('cursor','pointer')
       .on('mousemove',e=>showTip(e,`${y}年<br>年内累計: <b>${cy[cy.length-1].toFixed(1)} kWh</b>`)).on('mouseleave',hideTip)
       .on('click',()=>{ hideTip(); yrFilterIdx=years().indexOf(y); renderYearlyTab(); });
     const lj=cy.length-1;
@@ -3603,6 +3613,7 @@ function renderYrCumChart(){
   svg.append('line').attr('x1',mL).attr('x2',mL+16).attr('y1',12).attr('y2',12)
     .attr('stroke',c).attr('stroke-width',2);
   svg.append('text').attr('x',mL+20).attr('y',16).attr('fill',c).attr('font-size',9).text(yr+'年');
+  svg.selectAll('.hit').raise();
   if(others.length){
     svg.append('line').attr('x1',mL+60).attr('x2',mL+76).attr('y1',12).attr('y2',12)
       .attr('stroke',cv('--text2')).attr('stroke-opacity',.5).attr('stroke-width',1.5);
