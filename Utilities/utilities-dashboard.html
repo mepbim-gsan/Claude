@@ -1,10 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v02_2026-11-17.3
+  @version   v02_2026-11-17.5
   @changelog
-    v02_2026-11-17   - 表示名を「Utility Log」に変更。デザインをCarLog・Solar Logと統一（配色・カード・下部タブ・期間バー・設定画面・入力シート、ライト/ダーク切替）
-    v02_2026-11-17.2 - Chart.js を動的読み込みに変更（htmlpreview のプレビューでグラフが表示されなかった対策）
     v02_2026-11-17.3 - 設定に「集計期間」を追加（年度 4〜3月／暦年 1〜12月の切替）
+    v02_2026-11-17.4 - サービス別の合計行を前年同期比較に変更（今年の最終入力月までで前年と比較）
+    v02_2026-11-17.5 - サンプルデータに2025年度（9月まで）と水道の請求月ズレを追加
 -->
 <!DOCTYPE html>
 <html lang="ja" data-theme="light">
@@ -349,7 +349,7 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
 <div id="toast"></div>
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v02_2026-11-17.3';
+const APP_VERSION = 'v02_2026-11-17.5';
 const CONFIG_KEY = 'firebase-config-v1';
 const THEME_KEY  = 'utilities-theme';
 
@@ -491,7 +491,14 @@ function _generateSampleData() {
   {year:2024,month:12,amount:20360,kwh:722,memo:'auでんき'},
   {year:2025,month:1,amount:20880,kwh:735,memo:'auでんき'},
   {year:2025,month:2,amount:20570,kwh:732,memo:'auでんき'},
-  {year:2025,month:3,amount:19200,kwh:688,memo:'auでんき'}
+  {year:2025,month:3,amount:19200,kwh:688,memo:'auでんき'},
+  // 2025年度は9月まで（年度途中の前年同期比較の確認用）
+  {year:2025,month:4,amount:16540,kwh:579,memo:''},
+  {year:2025,month:5,amount:10480,kwh:381,memo:''},
+  {year:2025,month:6,amount:5150,kwh:170,memo:''},
+  {year:2025,month:7,amount:5300,kwh:162,memo:''},
+  {year:2025,month:8,amount:6010,kwh:205,memo:''},
+  {year:2025,month:9,amount:10950,kwh:394,memo:''}
   ],
     gas: [
   {year:2022,month:4,amount:7000,m3:40,memo:'東京ガス'},
@@ -529,7 +536,13 @@ function _generateSampleData() {
   {year:2024,month:12,amount:11520,m3:68,memo:'東京ガス'},
   {year:2025,month:1,amount:12600,m3:78,memo:'東京ガス'},
   {year:2025,month:2,amount:11650,m3:68,memo:'東京ガス'},
-  {year:2025,month:3,amount:9900,m3:59,memo:'東京ガス'}
+  {year:2025,month:3,amount:9900,m3:59,memo:'東京ガス'},
+  {year:2025,month:4,amount:7280,m3:43,memo:''},
+  {year:2025,month:5,amount:4050,m3:25,memo:''},
+  {year:2025,month:6,amount:2700,m3:16,memo:''},
+  {year:2025,month:7,amount:1850,m3:10,memo:''},
+  {year:2025,month:8,amount:2080,m3:13,memo:''},
+  {year:2025,month:9,amount:4310,m3:25,memo:''}
   ],
     water: [
   {year:2022,month:4,amount:4980,m3:22,memo:''},
@@ -549,7 +562,11 @@ function _generateSampleData() {
   {year:2024,month:8,amount:5110,m3:23,memo:''},
   {year:2024,month:10,amount:5030,m3:22,memo:''},
   {year:2024,month:12,amount:5090,m3:23,memo:''},
-  {year:2025,month:2,amount:4460,m3:19,memo:''}
+  {year:2025,month:2,amount:4460,m3:19,memo:''},
+  // 契約変更で請求月が奇数月にズレた想定（前年と請求月が揃わないケースの確認用）
+  {year:2025,month:5,amount:5240,m3:23,memo:'契約変更で請求月が変更'},
+  {year:2025,month:7,amount:4980,m3:21,memo:''},
+  {year:2025,month:9,amount:5350,m3:24,memo:''}
   ]
   };
 }
@@ -779,8 +796,37 @@ function _renderServiceSection(svc, fy) {
   // 比較表HTML（直近6ヶ月）
   const tableMonths = [...months].reverse();
   let tableRows = '';
-  // 合計用集計
+  // 合計用集計（金額・使用量は「前年同期」で比較し、未入力の月で前年側だけ多くならないようにする）
+  //  毎月計上（電気・ガス等）: 今年・前年とも入力がある月だけを合計（片方だけの月は両方から除く）
+  //  隔月計上（水道）: 計上月が年によって1か月ずれるため月単位では揃わない。期間で揃える
+  //    （今年の最終入力月まで。前年の計上が1か月遅れていれば件数が揃うよう前年側だけ翌月まで含める）
+  //  どちらも今年の最終入力月より後（まだ来ていない・未入力の月）は比較しない
+  const curIdx = thisYear.map((v,i) => v != null ? i : -1).filter(i => i >= 0);
+  const isBimonthly = !(remoteData[svc.key] || []).some(r => _get(svc.key, r.month === 12 ? r.year + 1 : r.year, r.month % 12 + 1));
+  const cutCur = curIdx.length ? curIdx[curIdx.length-1] : 11;
+  let cutPrev = cutCur;
+  const cntTo = (arr, k) => arr.slice(0, k+1).filter(v => v != null).length;
+  if (isBimonthly && cutCur < 11 && prevYear[cutCur+1] != null
+      && cntTo(prevYear, cutCur) < cntTo(thisYear, cutCur)) cutPrev = cutCur + 1;
+  const moNum = i => +months[i].split('-')[1];
+  const hasPair = !isBimonthly && thisYear.some((v,i) => v != null && prevYear[i] != null);
+  const skipped = []; // 片方だけ入力があり、比較から除いた月
   let sumCur = null, sumPrev = null, sumDiffUnit = null; // sumDiffUnitは単価（差分のみ合計）専用
+  if (metric !== 'unit') {
+    const add = (acc, v) => (acc || 0) + v;
+    for (let i = 0; i <= 11; i++) {
+      const c = thisYear[i], pv = prevYear[i];
+      if (hasPair) {
+        if (i > cutCur) continue;
+        if (c != null && pv != null) { sumCur = add(sumCur, c); sumPrev = add(sumPrev, pv); }
+        else if (c != null || pv != null) skipped.push(moNum(i));
+      } else {
+        // 隔月計上、または前年（今年）の記録が1件も無い場合は期間内の合計どうし
+        if (c  != null && i <= cutCur)  sumCur  = add(sumCur, c);
+        if (pv != null && i <= cutPrev) sumPrev = add(sumPrev, pv);
+      }
+    }
+  }
 
   tableMonths.forEach(m => {
     const [y,mo] = m.split('-');
@@ -791,14 +837,8 @@ function _renderServiceSection(svc, fy) {
     const diff = (curVal!=null && prevVal!=null) ? Math.round((curVal - prevVal)*10)/10 : null;
     const rate = (curVal!=null && prevVal!=null && prevVal!==0) ? Math.round((curVal/prevVal-1)*1000)/10 : null;
 
-    // データがある月のみ合計
-    if (metric !== 'unit') {
-      if (curVal  != null) sumCur  = (sumCur  || 0) + curVal;
-      if (prevVal != null) sumPrev = (sumPrev || 0) + prevVal;
-    } else {
-      // 単価は差分のみ合計
-      if (diff != null) sumDiffUnit = (sumDiffUnit || 0) + diff;
-    }
+    // 単価は差分のみ合計
+    if (metric === 'unit' && diff != null) sumDiffUnit = (sumDiffUnit || 0) + diff;
 
     function _fmtCell(v) {
       if (v == null) return '<span class="na">—</span>';
@@ -836,8 +876,8 @@ function _renderServiceSection(svc, fy) {
       return metric === 'amount' ? '¥' + Math.round(v).toLocaleString() : Math.round(v).toLocaleString();
     };
     let diffSumStr = '<span class="na">—</span>';
-    // 合計金額（使用量）どうしの差分。水道など隔月徴収で計上月が年によってズレ、
-    // 月別の差分（同じ月同士のペア）が1件も揃わない場合でも、年間合計どうしなら比較できる
+    // 前年同期の合計どうしの差分。水道など隔月徴収で計上月が年によってズレ、
+    // 月別の差分（同じ月同士のペア）が1件も揃わない場合でも、期間の合計どうしなら比較できる
     if (sumCur !== null && sumPrev !== null) {
       const totalDiff = Math.round((sumCur - sumPrev) * 10) / 10;
       const cls  = totalDiff > 0 ? 'diff-up' : totalDiff < 0 ? 'diff-down' : '';
@@ -849,10 +889,17 @@ function _renderServiceSection(svc, fy) {
       const rVal = sumRate !== null ? `(${sumRate > 0 ? '+' : ''}${sumRate}%)` : '';
       diffSumStr = `<span class="${cls}">${dVal}${rVal ? '<br>'+rVal : ''}</span>`;
     }
+    // 比較した期間・除いた月を添える（前年側だけ延長した場合は前年セルにも表示）
+    const notes = [];
+    const cutOff = prevYear.some((v,i) => v != null && i > cutPrev); // 前年側で実際に期間外として除いた月があるか
+    if (cutOff) notes.push(`${moNum(0)}〜${moNum(cutCur)}月`);
+    if (skipped.length) notes.push(`${skipped.join('・')}月除く`);
+    const periodStr = notes.length ? `<br><span class="muted">${notes.join('<br>')}</span>` : '';
+    const prevExt = cutPrev !== cutCur ? `<br><span class="muted">〜${moNum(cutPrev)}月</span>` : '';
     totalRow = `<tr>
-      <td>合計</td>
+      <td>合計${periodStr}</td>
       <td>${fmtSum(sumCur)}</td>
-      <td>${fmtSum(sumPrev)}</td>
+      <td>${fmtSum(sumPrev)}${prevExt}</td>
       <td>${diffSumStr}</td>
     </tr>`;
   } else if (metric === 'unit' && sumDiffUnit !== null) {
