@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.2
+  @version   v07_2026-11-16.3
   @changelog
+    v07_2026-11-16.3 - 分析タブに「時間帯別プロファイル」（消費量／買電量／内訳 × 全日／平日・土日／季節 × 直近12か月／全期間／年）と「余剰と買電（使用をずらす余地）」を追加
     v07_2026-11-16.2 - 自給率の色を緑→紫に統一。円グラフに合わせ、自家消費率=薄い紫（--con2、内側の輪）、自給率=濃い紫（--con、外側の輪）。KPI・ドーナツ中央・比率グラフ（自給率は破線）で統一
     v07_2026-11-16 - Firestore通信量削減: 端末キャッシュ（IndexedDB）＋目次ドキュメント（_meta-solar：月ごとの最終更新日時）で更新された月だけ取得。CSV取込時は変更月だけ保存（従来は全月を書き直し）
-    v07_2026-11-15.5 - 日次の期間バーにタイトル「日次」を復活（日ラベルの曜日を外し、スマホ幅は ‹ › を28pxに。360px未満はタイトル非表示）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -130,6 +130,7 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
 .scroll{overflow-x:auto;min-width:0;}
 
 .peak-row{display:flex;gap:7px;flex-wrap:wrap;}
+.prof-ctl{display:flex;flex-direction:column;gap:6px;}
 .chip{padding:3px 10px;border-radius:10px;font-size:.68rem;font-weight:600;}
 
 .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
@@ -503,6 +504,27 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 <div class="tab-content" id="tab-analysis">
   <div class="page-bar"><div class="page-row"><div class="page-title">分析</div></div></div>
   <div class="sec">
+    <div class="sec-hd"><div class="sec-title" id="prof-title">時間帯別プロファイル</div></div>
+    <div class="prof-ctl">
+      <div class="mtg" data-grp="profMode"><button class="mbtn m-con" data-k="con">消費量</button><button class="mbtn" data-k="buy">買電量</button><button class="mbtn" data-k="mix">内訳</button></div>
+      <div class="mtg" data-grp="profCmp"><button class="mbtn m-con" data-k="all">全日</button><button class="mbtn" data-k="wk">平日・土日</button><button class="mbtn" data-k="sea">季節</button></div>
+      <div class="mtg" data-grp="profPeriod" id="prof-period"></div>
+    </div>
+    <div class="peak-row" id="prof-peaks" style="margin:8px 0 4px"></div>
+    <div id="prof-chart"></div>
+    <div style="display:flex;gap:12px;margin-top:6px;font-size:.68rem;flex-wrap:wrap;" id="prof-legend"></div>
+    <p style="font-size:.64rem;color:var(--text2);margin-top:4px">丸一日データがそろった日の平均（30分ごと）。土日以外は平日（祝日も平日扱い）。消費量＝発電を加味しない使用量、買電量＝発電でまかなえず購入した量</p>
+  </div>
+  <div class="sec">
+    <div class="sec-hd">
+      <div class="sec-title">余剰と買電（使用をずらす余地）</div>
+      <div class="mtg" data-grp="shiftGrp"><button class="mbtn m-con" data-k="all">全日</button><button class="mbtn" data-k="wd">平日</button><button class="mbtn" data-k="we">土日</button></div>
+    </div>
+    <div class="peak-row" id="shift-note" style="margin-bottom:6px"></div>
+    <div id="shift-chart"></div>
+    <p style="font-size:.64rem;color:var(--text2);margin-top:4px">上＝売電（使い切れず余った電気）、下＝買電。余剰が多い時間帯に家電の使用をずらすと自家消費が増えます（期間はプロファイルと共通）</p>
+  </div>
+  <div class="sec">
     <div class="sec-hd">
       <div class="sec-title" id="sea-title">季節別平均（kWh/日）</div>
       <div class="mtg" id="sea-mtg">
@@ -630,7 +652,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.2';
+const APP_VERSION = 'v07_2026-11-16.3';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -3687,6 +3709,7 @@ function renderTrendTab(){
 }
 
 function renderAnalysisTab(){
+  renderProfile(); renderShift();
   renderSeaChart(); renderHistogram();
   requestAnimationFrame(()=>renderRankTab());
 }
@@ -3739,6 +3762,141 @@ document.getElementById('dlabel').addEventListener('click',()=>{
   selectedDate = null;
   updateDayNav(ym); renderHeatKPI(ym); renderHourlyBar(ym); renderSelfChart(ym);
 });
+
+// ================================================================
+// 分析: 時間帯別プロファイル（A）／余剰と買電（C）
+// ================================================================
+const PROF = { profMode:'con', profCmp:'all', profPeriod:'12m', shiftGrp:'all' };
+function profDates(){
+  const ds=dates();
+  if(PROF.profPeriod==='all' || !ds.length) return ds;
+  if(PROF.profPeriod==='12m'){
+    const last=new Date(ds[ds.length-1]+'T00:00:00'); last.setFullYear(last.getFullYear()-1);
+    const from=last.getFullYear()+'-'+String(last.getMonth()+1).padStart(2,'0')+'-'+String(last.getDate()).padStart(2,'0');
+    return ds.filter(dk=>dk>from);
+  }
+  return ds.filter(dk=>dk.startsWith(PROF.profPeriod+'-'));
+}
+const _isWeekend = dk => [0,6].includes(new Date(dk+'T00:00:00').getDay());
+const SEA_GROUPS = [['1〜3月',[1,2,3],'#3b82f6'],['4〜6月',[4,5,6],'#84cc16'],['7〜9月',[7,8,9],'#f59e0b'],['10〜12月',[10,11,12],'#f97316']];
+function profGroups(cmp, dks){
+  if(cmp==='wk' || cmp==='wd' || cmp==='we'){
+    const g=[{name:'平日',dks:dks.filter(dk=>!_isWeekend(dk)),dash:''},{name:'土日',dks:dks.filter(_isWeekend),dash:'5,3'}];
+    return cmp==='wd'?[g[0]]:cmp==='we'?[g[1]]:g;
+  }
+  if(cmp==='sea') return SEA_GROUPS.map(([n,ms,c])=>({name:n,dks:dks.filter(dk=>ms.includes(+dk.slice(5,7))),color:c,dash:''}));
+  return [{name:'全日',dks,dash:''}];
+}
+// 丸一日そろった日の30分（または1時間）ごとの平均
+function profAvg(dks, m){
+  const sl=slots(), sum=new Array(sl.length).fill(0); let n=0;
+  for(const dk of dks){ if(isDayIncomplete(dk)) continue; n++; sl.forEach((s,i)=>{ sum[i]+=D[dk+'_'+s]?.[m]||0; }); }
+  return { v: sum.map(x=>n?x/n:0), n };
+}
+const slotRange=(i,len)=>{ const sl=slots(), step=sl.length===48?30:60; const end=(i+len)*step;
+  return sl[i]+'〜'+String(Math.floor(end/60)%24===0&&end>0?24:Math.floor(end/60)).padStart(2,'0')+':'+String(end%60).padStart(2,'0'); };
+// 連続 len スロットの合計が最大になる開始位置
+function bestWindow(arr,len){ let best=0,bi=0; for(let i=0;i+len<=arr.length;i++){ const s2=arr.slice(i,i+len).reduce((a,b)=>a+b,0); if(s2>best){best=s2;bi=i;} } return {i:bi,sum:best}; }
+
+function renderProfPeriodBtns(){
+  const el=document.getElementById('prof-period');
+  const opts=[['12m','直近12か月'],['all','全期間'],...years().slice().reverse().map(y=>[y,y+'年'])];
+  if(!opts.some(o=>o[0]===PROF.profPeriod)) PROF.profPeriod='12m';
+  el.innerHTML=opts.map(([k,l])=>`<button class="mbtn${k===PROF.profPeriod?' m-con':''}" data-k="${k}">${l}</button>`).join('');
+}
+
+function renderProfile(){
+  renderProfPeriodBtns();
+  const el=document.getElementById('prof-chart'), leg=document.getElementById('prof-legend'), pk=document.getElementById('prof-peaks');
+  el.innerHTML=''; leg.innerHTML=''; pk.innerHTML='';
+  const col=colors(), sl=slots(), n=sl.length, mode=PROF.profMode;
+  const groups=profGroups(PROF.profCmp, profDates()).map(g=>({...g, con:profAvg(g.dks,'con'), buy:profAvg(g.dks,'buy'), gen:profAvg(g.dks,'gen')})).filter(g=>g.con.n>0);
+  const ML2={con:'消費量',buy:'買電量',mix:'内訳'};
+  document.getElementById('prof-title').textContent='時間帯別プロファイル '+ML2[mode]+'（kWh／'+(n===48?'30分':'1時間')+'）';
+  if(!groups.length){ el.innerHTML=empty(); return; }
+  const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
+  const mL=44, mR=8, mT=8, mB=22;
+  const px=i=>mL+(contW-mL-mR)*(i+.5)/n;
+  const hourTicks=svg=>[0,6,12,18,24].forEach(h=>svg.append('text').attr('x',mL+(contW-mL-mR)*h/24).attr('y',0).attr('dy','1em')
+      .attr('text-anchor',h===24?'end':h===0?'start':'middle').attr('fill',cv('--text2')).attr('font-size',9).text(h+'h'));
+  // ピーク表示
+  const pm = mode==='buy'?'buy':'con';
+  pk.innerHTML = groups.map(g=>{ const a=g[pm].v, i=a.indexOf(Math.max(...a));
+    return `<span class="chip" style="background:var(--bg3);color:var(--text)">${g.name} ${mode==='buy'?'買電':'消費'}ピーク ${slotRange(i,1)}／${a[i].toFixed(2)} kWh（${g.con.n}日）</span>`; }).join('');
+
+  if(mode!=='mix'){
+    const m=mode, cH=170, H=cH+mT+mB;
+    const maxV=niceMax(Math.max(...groups.flatMap(g=>g[m].v),0.01));
+    const svg=d3.select(el).append('svg').attr('width',contW).attr('height',H);
+    drawGridAndYAxis(svg,maxV,mL,mT,contW-mR+4,cH);
+    hourTicks(svg.append('g').attr('transform',`translate(0,${mT+cH+4})`));
+    const py=v=>mT+cH-(v/maxV)*cH;
+    groups.forEach(g=>{
+      const c=g.color||col[m];
+      svg.append('path').attr('d',g[m].v.map((v,i)=>(i?'L':'M')+px(i)+','+py(v)).join('')).attr('fill','none')
+        .attr('stroke',c).attr('stroke-width',2).attr('stroke-dasharray',g.dash);
+      leg.innerHTML+=`<span style="display:flex;align-items:center;gap:5px;color:${c};font-weight:600"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="${c}" stroke-width="2" stroke-dasharray="${g.dash}"/></svg>${g.name}（${g.con.n}日）</span>`;
+    });
+    for(let i=0;i<n;i++) svg.append('rect').attr('x',px(i)-(contW-mL-mR)/n/2).attr('y',mT).attr('width',(contW-mL-mR)/n).attr('height',cH).attr('fill','transparent')
+      .on('mousemove',e=>showTip(e,slotRange(i,1)+groups.map(g=>`<br>${g.name}: <b>${g[m].v[i].toFixed(3)} kWh</b>`).join(''))).on('mouseleave',hideTip);
+    return;
+  }
+  // 内訳: グループごとに 自家消費＋買電（積み上げ）＝消費、発電は線
+  const maxV=niceMax(Math.max(...groups.flatMap(g=>[...g.con.v,...g.gen.v]),0.01));
+  const cH=groups.length>1?120:170, H=cH+mT+mB+16;
+  groups.forEach(g=>{
+    const self=g.con.v.map((c,i)=>Math.max(c-g.buy.v[i],0));
+    const svg=d3.select(el).append('svg').attr('width',contW).attr('height',H).style('display','block');
+    svg.append('text').attr('x',mL).attr('y',11).attr('fill',g.color||cv('--text')).attr('font-size',11).attr('font-weight',700).text(`${g.name}（${g.con.n}日）`);
+    const top=mT+14, py=v=>top+cH-(v/maxV)*cH;
+    drawGridAndYAxis(svg,maxV,mL,top,contW-mR+4,cH);
+    hourTicks(svg.append('g').attr('transform',`translate(0,${top+cH+4})`));
+    const area=(lo,hi,c)=>svg.append('path').attr('d',d3.area().x((d,i)=>px(i)).y0((d,i)=>py(lo[i])).y1((d,i)=>py(hi[i])).curve(d3.curveStepAfter)(lo)).attr('fill',c).attr('fill-opacity',.75);
+    area(self.map(()=>0), self, cv('--con2'));
+    area(self, self.map((v,i)=>v+g.buy.v[i]), col.buy);
+    svg.append('path').attr('d',g.gen.v.map((v,i)=>(i?'L':'M')+px(i)+','+py(v)).join('')).attr('fill','none').attr('stroke',col.gen).attr('stroke-width',2);
+    for(let i=0;i<n;i++) svg.append('rect').attr('x',px(i)-(contW-mL-mR)/n/2).attr('y',top).attr('width',(contW-mL-mR)/n).attr('height',cH).attr('fill','transparent')
+      .on('mousemove',e=>showTip(e,`${g.name} ${slotRange(i,1)}<br>消費: <b>${g.con.v[i].toFixed(3)}</b><br>自家消費: ${self[i].toFixed(3)}<br>買電: ${g.buy.v[i].toFixed(3)}<br>発電: ${g.gen.v[i].toFixed(3)} kWh`)).on('mouseleave',hideTip);
+  });
+  leg.innerHTML=[['自家消費（太陽光でまかなえた分）',cv('--con2')],['買電',col.buy]].map(([l,c])=>`<span style="display:flex;align-items:center;gap:4px;color:${c};font-weight:600"><span style="width:10px;height:10px;border-radius:2px;background:${c}"></span>${l}</span>`).join('')
+    +`<span style="display:flex;align-items:center;gap:5px;color:${col.gen};font-weight:600"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="${col.gen}" stroke-width="2"/></svg>発電</span>`;
+}
+
+function renderShift(){
+  const el=document.getElementById('shift-chart'), note=document.getElementById('shift-note');
+  el.innerHTML=''; note.innerHTML='';
+  const col=colors(), sl=slots(), n=sl.length, dks=profDates();
+  // 縦軸は 全日・平日・土日 で共通にする（切替で縮尺が変わらないように）
+  const all=['all','wd','we'].map(k=>{ const g=profGroups(k,dks)[0]; return {k, sell:profAvg(g.dks,'sell'), buy:profAvg(g.dks,'buy')}; });
+  const cur=all.find(a=>a.k===PROF.shiftGrp);
+  if(!cur || !cur.sell.n){ el.innerHTML=empty(); return; }
+  const maxV=niceMax(Math.max(...all.flatMap(a=>[...a.sell.v,...a.buy.v]),0.01));
+  const contW=(el.parentElement.clientWidth||window.innerWidth)-8, mL=44, mR=8, mT=8, cH=90, mB=22, H=mT+cH*2+mB;
+  const zeroY=mT+cH, bw=(contW-mL-mR)/n, x=i=>mL+bw*i;
+  const svg=d3.select(el).append('svg').attr('width',contW).attr('height',H);
+  drawPosNegGrid(svg,maxV,mL,contW,zeroY,cH,cH);
+  [0,6,12,18,24].forEach(h=>svg.append('text').attr('x',mL+(contW-mL-mR)*h/24).attr('y',H-6).attr('text-anchor',h===24?'end':h===0?'start':'middle').attr('fill',cv('--text2')).attr('font-size',9).text(h+'h'));
+  for(let i=0;i<n;i++){
+    const s=cur.sell.v[i], b=cur.buy.v[i];
+    if(s>0) svg.append('rect').attr('x',x(i)+.5).attr('y',zeroY-s/maxV*cH).attr('width',Math.max(bw-1,1)).attr('height',s/maxV*cH).attr('fill',col.sell).attr('opacity',.8);
+    if(b>0) svg.append('rect').attr('x',x(i)+.5).attr('y',zeroY).attr('width',Math.max(bw-1,1)).attr('height',b/maxV*cH).attr('fill',col.buy).attr('opacity',.8);
+    svg.append('rect').attr('x',x(i)).attr('y',mT).attr('width',bw).attr('height',cH*2).attr('fill','transparent')
+      .on('mousemove',e=>showTip(e,`${slotRange(i,1)}<br>売電（余剰）: <b>${s.toFixed(3)} kWh</b><br>買電: <b>${b.toFixed(3)} kWh</b>`)).on('mouseleave',hideTip);
+  }
+  const w=n===48?6:3; // 3時間の窓
+  const ws=bestWindow(cur.sell.v,w), wb=bestWindow(cur.buy.v,w);
+  const sum=a=>a.reduce((p,q)=>p+q,0);
+  note.innerHTML=`<span class="chip" style="background:var(--sell-bg);color:var(--sell)">余剰が多い ${slotRange(ws.i,w)}（${ws.sum.toFixed(2)} kWh/日）</span>`
+    +`<span class="chip" style="background:var(--buy-bg);color:var(--buy)">買電が多い ${slotRange(wb.i,w)}（${wb.sum.toFixed(2)} kWh/日）</span>`
+    +`<span class="chip" style="background:var(--bg3);color:var(--text2)">1日あたり 余剰 ${sum(cur.sell.v).toFixed(2)}／買電 ${sum(cur.buy.v).toFixed(2)} kWh（${cur.sell.n}日）</span>`;
+}
+
+document.querySelectorAll('#tab-analysis .mtg[data-grp]').forEach(g=>g.addEventListener('click',e=>{
+  const b=e.target.closest('.mbtn'); if(!b) return;
+  PROF[g.dataset.grp]=b.dataset.k;
+  g.querySelectorAll('.mbtn').forEach(x=>x.classList.toggle('m-con',x===b));
+  renderProfile(); renderShift();
+}));
 
 function setupMtg(groupId, setM, cb){
   const g = document.getElementById(groupId);
