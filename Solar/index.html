@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.12
+  @version   v07_2026-11-16.13
   @changelog
+    v07_2026-11-16.13 - 設定画面をCarLogと同じ構成に: クラウド同期（アカウント・ログアウト・Firebase設定は折りたたみ）／表示（テーマ）／データ（粒度・CSV・消去）のカード分け、右上に✕
     v07_2026-11-16.12 - 年次の年切替（‹ 年 ›）を画面中央に配置
     v07_2026-11-16.11 - 経年劣化診断表の注記が表と一緒に横スクロールしていたのを修正（注記を表の外へ）
-    v07_2026-11-16.10 - グラフがカードからわずかにはみ出して横スクロールになる不具合を修正（幅をカード内側で計算）。サマリー表・経年劣化診断表の左端列（日付・月・年）を固定
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -52,8 +52,17 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
 .btn-primary{border-color:var(--gen);color:var(--gen);}
 .btn-primary:hover{background:var(--gen-bg);}
 .btn-danger:hover{border-color:#ef4444;color:#ef4444;}
-.btn-theme{font-size:1rem;padding:0 9px;}
 
+.set-panel{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 14px 2px;width:92%;max-width:400px;max-height:88dvh;overflow-y:auto;box-shadow:0 8px 24px var(--shadow);}
+.set-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0;font-size:14px;}
+.set-muted{color:var(--text2);font-size:12px;}
+.set-ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.set-select{height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);font-size:14px;font-family:inherit;}
+.set-danger{border-color:#ef4444;color:#ef4444;background:transparent;}
+.set-details{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;}
+.set-details summary{cursor:pointer;}
+.set-details textarea{width:100%;height:120px;margin-top:8px;padding:9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;background:var(--bg3);color:var(--text);resize:vertical;}
 .granularity-badge{font-size:.65rem;padding:3px 8px;border-radius:10px;font-weight:600;border:1px solid var(--border);color:var(--text2);}
 .granularity-badge.g30{border-color:var(--gen);color:var(--gen);background:var(--gen-bg);}
 .granularity-badge.g60{border-color:var(--buy);color:var(--buy);background:var(--buy-bg);}
@@ -616,51 +625,51 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 
 <!-- 設定モーダル -->
 <div id="settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;align-items:center;justify-content:center;">
-  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:22px;width:90%;max-width:340px;box-shadow:0 8px 24px var(--shadow);">
-    <div style="font-size:.85rem;font-weight:600;margin-bottom:14px;">⚙ 設定</div>
+  <div class="set-panel">
+    <div class="set-head"><div style="font-size:16px;font-weight:700;">設定</div><button class="btn" onclick="_closeSettings()" aria-label="閉じる">✕</button></div>
 
-    <!-- 表示・アカウント -->
-    <div style="margin-bottom:12px;display:flex;flex-direction:column;gap:8px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span style="font-size:.7rem;color:var(--text2);">テーマ</span>
-        <button class="btn btn-theme" id="btn-theme">🌙</button>
+    <div class="sec">
+      <div class="sec-title" style="margin-bottom:10px;">クラウド同期</div>
+      <div class="set-row">
+        <div style="min-width:0;">
+          <div id="user-name" class="set-ellip"></div>
+          <div id="user-email" class="set-muted set-ellip"></div>
+          <div id="guest-badge" class="set-muted" style="display:none;">未ログイン（CSVは表示のみ・保存しません）</div>
+        </div>
+        <button class="btn" id="btn-logout" onclick="_signOut()" style="display:none;">ログアウト</button>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span style="font-size:.7rem;color:var(--text2);">データ粒度</span>
-        <span class="granularity-badge" id="gran-badge">未設定</span>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span style="font-size:.7rem;color:var(--text2);">アカウント</span>
-        <span><span id="guest-badge" style="display:none;font-size:.65rem;padding:2px 8px;border-radius:10px;background:var(--buy-bg);color:var(--buy);border:1px solid var(--buy);">未ログイン</span><span id="user-name" style="font-size:.7rem;color:var(--text);"></span></span>
+      <details class="set-details">
+        <summary class="set-muted" id="set-fb-sum">Firebase 設定</summary>
+        <textarea id="settings-config-input" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}'></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary" onclick="_saveSettings()">保存して再読み込み</button>
+          <button class="btn set-danger" onclick="_clearSettings()">削除</button>
+        </div>
+      </details>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title" style="margin-bottom:10px;">表示</div>
+      <div class="set-row">
+        <div>テーマ</div>
+        <select id="set-theme" class="set-select">
+          <option value="light">ライト</option>
+          <option value="dark">ダーク</option>
+        </select>
       </div>
     </div>
 
-    <!-- CSVアップロード -->
-    <div style="margin-bottom:10px;">
-      <div style="font-size:.7rem;color:var(--text2);margin-bottom:6px;">データ</div>
-      <label class="btn btn-primary" style="width:100%;justify-content:center;cursor:pointer;">
+    <div class="sec">
+      <div class="sec-title" style="margin-bottom:10px;">データ</div>
+      <div class="set-row">
+        <div>データ粒度</div>
+        <span class="granularity-badge" id="gran-badge">未設定</span>
+      </div>
+      <label class="btn btn-primary" style="width:100%;justify-content:center;cursor:pointer;height:34px;margin-top:4px;">
         ▲ CSV アップロード
         <input type="file" id="csv-in" accept=".csv" style="display:none" multiple>
       </label>
-    </div>
-
-    <!-- データ消去 -->
-    <div style="margin-bottom:14px;">
-      <button id="btn-clr" style="width:100%;height:28px;border:1px solid #ef4444;border-radius:4px;background:transparent;color:#ef4444;font-size:.72rem;cursor:pointer;font-family:inherit;">データ消去</button>
-    </div>
-
-    <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px;">
-      <div style="font-size:.7rem;color:var(--text2);margin-bottom:6px;">Firebase設定</div>
-      <textarea id="settings-config-input" style="width:100%;height:90px;padding:9px;border:1px solid var(--border);border-radius:6px;font-size:.73rem;font-family:monospace;background:var(--bg3);color:var(--text);resize:none;" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}'></textarea>
-      <div style="display:flex;gap:6px;margin-top:8px;">
-        <button onclick="_saveSettings()" style="flex:1;height:28px;border:none;border-radius:4px;background:var(--gen);color:#fff;font-size:.72rem;cursor:pointer;font-family:inherit;">保存して再読込</button>
-        <button onclick="_clearSettings()" style="height:28px;padding:0 10px;border:1px solid #ef4444;border-radius:4px;background:transparent;color:#ef4444;font-size:.72rem;cursor:pointer;font-family:inherit;">設定削除</button>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:6px;">
-      <button id="btn-logout" onclick="_signOut()" style="flex:1;height:28px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);color:var(--text2);font-size:.72rem;cursor:pointer;font-family:inherit;display:none;">ログアウト</button>
-      <button onclick="_closeSettings()" style="flex:1;height:28px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);color:var(--text2);font-size:.72rem;cursor:pointer;font-family:inherit;">閉じる</button>
+      <button id="btn-clr" class="btn set-danger" style="width:100%;justify-content:center;height:34px;margin-top:8px;">データ消去</button>
     </div>
   </div>
 </div>
@@ -668,7 +677,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.12';
+const APP_VERSION = 'v07_2026-11-16.13';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -726,14 +735,12 @@ function colors(){ return { gen:cv('--gen'), sell:cv('--sell'), buy:cv('--buy'),
 (function initTheme(){
   const t = localStorage.getItem('solar-dash-theme') || 'light';
   document.documentElement.setAttribute('data-theme', t);
-  document.getElementById('btn-theme').textContent = t === 'dark' ? '🌙 ダーク' : '☀ ライト';
+  document.getElementById('set-theme').value = t;
 })();
-document.getElementById('btn-theme').addEventListener('click', () => {
-  const cur = document.documentElement.getAttribute('data-theme');
-  const next = cur === 'dark' ? 'light' : 'dark';
+document.getElementById('set-theme').addEventListener('change', e => {
+  const next = e.target.value;
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('solar-dash-theme', next);
-  document.getElementById('btn-theme').textContent = next === 'dark' ? '🌙 ダーク' : '☀ ライト';
   renderAll();
 });
 
@@ -4115,6 +4122,7 @@ function _signOut() { _fbSignOut(); }
 function _openSettings(){
   const cfg = _loadConfig();
   document.getElementById('settings-config-input').value = cfg ? JSON.stringify(cfg, null, 2) : '';
+  document.getElementById('set-fb-sum').textContent = 'Firebase 設定' + (cfg?.projectId ? '（'+cfg.projectId+'）' : '');
   const m = document.getElementById('settings-modal');
   m.style.display = 'flex';
 }
@@ -4127,6 +4135,7 @@ function _saveSettings(){
   setTimeout(() => location.reload(), 1200);
 }
 function _clearSettings(){
+  if(!confirm('Firebase の設定を削除しますか？')) return;
   localStorage.removeItem(CONFIG_KEY);
   flash('設定を削除しました。再読み込みします…');
   setTimeout(() => location.reload(), 1200);
@@ -4141,7 +4150,7 @@ function _startGuestMode(){
   document.getElementById('setupScreen').style.display = 'none';
   document.getElementById('authArea').style.display    = 'none';
   document.getElementById('appMain').style.display     = 'block';
-  document.getElementById('guest-badge').style.display = 'inline-block';
+  document.getElementById('guest-badge').style.display = 'block';
   monIdx = Math.max(0, months().length-1);
   monYrIdx = Math.max(0, years().length-1); yrFilterIdx=-2;
   renderAll();
@@ -4237,7 +4246,8 @@ async function _initFirebase(cfg){
     document.getElementById('appMain').style.display   = user ? 'block' : 'none';
     if(user){
       document.getElementById('user-name').textContent = user.displayName || user.email;
-      document.getElementById('btn-logout').style.display = 'flex';
+      document.getElementById('user-email').textContent = user.displayName ? user.email : '';
+      document.getElementById('btn-logout').style.display = 'inline-flex';
       _syncStatus('読み込み中…');
       try{
         // 1) 端末キャッシュがあれば先に表示
