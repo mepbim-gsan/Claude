@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.6
+  @version   v07_2026-11-16.7
   @changelog
+    v07_2026-11-16.7 - 累計グラフを日次と同じ考え方に: 月次=直近12か月を灰色＋前年同月の破線、年次=他の全年を灰色（年ラベル、設置年は途中から）。灰色線タップでその月・年へ
     v07_2026-11-16.6 - 時間帯別プロファイル（内訳）に売電（余った分）を薄い緑で追加（自家消費の上、発電線まで）
     v07_2026-11-16.5 - 全タブの指標ボタン（.mtg）と自家消費分析の切替を均等分割の切替ボタンに統一（タイトルの下に全幅1行）
-    v07_2026-11-16.4 - 分析の時間帯別プロファイル／余剰と買電を整理（切替を均等分割ボタンに、期間はプルダウン、ピーク表示は凡例・各グラフ見出しへ、内訳×季節の小グラフを低く）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -660,7 +660,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.6';
+const APP_VERSION = 'v07_2026-11-16.7';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -3315,7 +3315,7 @@ function drawBarPrevLegend(svg,x,y,c,curLabel,prevLabel){
 function renderDayCumChart(){
   const el = document.getElementById('day-cum-chart');
   el.innerHTML = '';
-  document.getElementById('day-cum-title').textContent='月内累計 '+ML[dayBarMet]+'（前年同月比較・kWh）';
+  document.getElementById('day-cum-title').textContent='月内累計 '+ML[dayBarMet]+'（直近12か月・前年同月比較・kWh）';
   const ms = months();
   if(!ms.length || monIdx>=ms.length){ el.innerHTML=empty(); return; }
   const ym = ms[monIdx];
@@ -3350,9 +3350,20 @@ function renderDayCumChart(){
       svg.append('text').attr('x',px(d-1)).attr('y',mT+cH+16).attr('text-anchor','middle')
         .attr('fill',cv('--text2')).attr('font-size',9).text(d+'日');
   }
+  // 直近12か月（前年同月は破線で別に描くので除く）を灰色で。線をタップでその月へ
+  const path=pts=>pts.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' ');
+  const recent = ms.slice(Math.max(0,monIdx-12), monIdx).filter(m=>m!==prevYm);
+  recent.forEach(m=>{
+    const cv2=cumOf(m, moDates(m)); if(!cv2.length) return;
+    const d=path(cv2.map((v,i)=>[px(i),py(v)]));
+    svg.append('path').attr('d',d).attr('fill','none').attr('stroke',cv('--text2')).attr('stroke-opacity',.3).attr('stroke-width',1);
+    svg.append('path').attr('d',d).attr('fill','none').attr('stroke','transparent').attr('stroke-width',8).style('cursor','pointer')
+      .on('mousemove',e=>showTip(e,`${+m.slice(0,4)}年${+m.slice(5)}月<br>月合計: <b>${cv2[cv2.length-1].toFixed(1)} kWh</b>`)).on('mouseleave',hideTip)
+      .on('click',()=>{ hideTip(); monIdx=ms.indexOf(m); renderMonthlyTab(); });
+  });
   if(prev.length) drawLineSeg(svg, prev.map((v,i)=>[px(i),py(v)]));
   const curPts = cur.map((v,i)=>[px(i),py(v)]);
-  svg.append('path').attr('d',curPts.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' '))
+  svg.append('path').attr('d',path(curPts))
     .attr('fill','none').attr('stroke',c).attr('stroke-width',2);
   const li = cur.length-1;
   svg.append('circle').attr('cx',curPts[li][0]).attr('cy',curPts[li][1]).attr('r',3).attr('fill',c);
@@ -3384,6 +3395,11 @@ function renderDayCumChart(){
     svg.append('line').attr('x1',mL+80).attr('x2',mL+96).attr('y1',12).attr('y2',12)
       .attr('stroke',cv('--text2')).attr('stroke-width',1.5).attr('stroke-dasharray','4,3').attr('opacity',.7);
     svg.append('text').attr('x',mL+100).attr('y',16).attr('fill',cv('--text2')).attr('font-size',9).text(prevYm.slice(0,4)+'年'+(+prevYm.slice(5))+'月');
+  }
+  if(recent.length){
+    const lx=mL+(prev.length?170:90);
+    svg.append('line').attr('x1',lx).attr('x2',lx+16).attr('y1',12).attr('y2',12).attr('stroke',cv('--text2')).attr('stroke-opacity',.4).attr('stroke-width',1.5);
+    svg.append('text').attr('x',lx+20).attr('y',16).attr('fill',cv('--text2')).attr('font-size',9).text('直近12か月');
   }
 }
 
@@ -3496,19 +3512,21 @@ function renderYrMonBarChart(){
 function renderYrCumChart(){
   const el = document.getElementById('yr-cum-chart');
   el.innerHTML = '';
-  document.getElementById('yr-cum-title').textContent='年内累計 '+ML[yrMonBarMet]+'（前年比較・kWh）';
+  document.getElementById('yr-cum-title').textContent='年内累計 '+ML[yrMonBarMet]+'（全年比較・kWh）';
   const yr = yrFilterYear();
   if(!yr){ el.innerHTML='<p style="color:var(--text2);padding:20px">年を選択してください</p>'; return; }
   const existMs = months();
   const prevYr = String(+yr-1);
   const c = colors()[yrMonBarMet];
   // 最終データ月までの累計（途中の欠測月は0加算）
+  // 最初のデータ月より前は null（設置年は途中から線が始まる）
   const cumOf = y=>{
     const ms = existMs.filter(ym=>ym.startsWith(y+'-'));
     if(!ms.length) return [];
-    const last = +ms[ms.length-1].slice(5,7);
+    const first = +ms[0].slice(5,7), last = +ms[ms.length-1].slice(5,7);
     let sum=0;
     return Array.from({length:last},(_,i)=>{
+      if(i+1<first) return null;
       const ym=y+'-'+String(i+1).padStart(2,'0');
       if(existMs.includes(ym)) sum+=moSum(ym,yrMonBarMet);
       return sum;
@@ -3539,15 +3557,30 @@ function renderYrCumChart(){
   for(let i=0;i<12;i++)
     svg.append('text').attr('x',px(i)).attr('y',mT+cH+14).attr('text-anchor','middle')
       .attr('fill',cv('--text2')).attr('font-size',9).text((i+1)+'月');
-  if(prev.length) drawLineSeg(svg, prev.map((v,i)=>[px(i),py(v)]));
-  const curPts = cur.map((v,i)=>[px(i),py(v)]);
-  svg.append('path').attr('d',curPts.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' '))
+  // 他の年を灰色で（右端に年ラベル、タップでその年へ）
+  const pathN=arr=>arr.map((v,i)=>v==null?null:[px(i),py(v)]).filter(Boolean).map((p,k)=>(k?'L':'M')+p[0]+','+p[1]).join(' ');
+  const others = years().filter(y=>y!==yr), yLabels=[];
+  others.forEach(y=>{
+    const cy=cumOf(y); if(!cy.some(v=>v!=null)) return;
+    const d=pathN(cy);
+    svg.append('path').attr('d',d).attr('fill','none').attr('stroke',cv('--text2')).attr('stroke-opacity',.35).attr('stroke-width',1.2);
+    svg.append('path').attr('d',d).attr('fill','none').attr('stroke','transparent').attr('stroke-width',8).style('cursor','pointer')
+      .on('mousemove',e=>showTip(e,`${y}年<br>年内累計: <b>${cy[cy.length-1].toFixed(1)} kWh</b>`)).on('mouseleave',hideTip)
+      .on('click',()=>{ hideTip(); yrFilterIdx=years().indexOf(y); renderYearlyTab(); });
+    const lj=cy.length-1;
+    yLabels.push({y, x:px(lj)+5, yy:py(cy[lj])+3});
+  });
+  yLabels.sort((a,b)=>a.yy-b.yy).forEach((l,i,a)=>{ if(i && l.yy-a[i-1].yy<10) l.yy=a[i-1].yy+10; });
+  yLabels.forEach(l=>svg.append('text').attr('x',l.x).attr('y',l.yy).attr('fill',cv('--text2')).attr('font-size',8).text(l.y));
+  const curPts = cur.map((v,i)=>v==null?null:[px(i),py(v)]);
+  svg.append('path').attr('d',pathN(cur))
     .attr('fill','none').attr('stroke',c).attr('stroke-width',2);
-  curPts.forEach(p=>svg.append('circle').attr('cx',p[0]).attr('cy',p[1]).attr('r',2.5).attr('fill',c));
+  curPts.forEach(p=>{ if(p) svg.append('circle').attr('cx',p[0]).attr('cy',p[1]).attr('r',2.5).attr('fill',c); });
   const pct = (a,b,d=1)=>{ const r=(a/b-1)*100; return (r>=0?'+':'')+r.toFixed(d)+'%'; };
   // 最終データ月時点の前年比（天候要因が大きいため中立色で表示）
-  if(prevAtLast>0)
-    svg.append('text').attr('x',curPts[li][0]+6).attr('y',curPts[li][1]+4)
+  const prevFull = prev.length>0 && prev[0]!=null;
+  if(prevFull && prevAtLast>0 && curPts[li])
+    svg.append('text').attr('x',curPts[li][0]+6).attr('y',curPts[li][1]+12)
       .attr('fill',cv('--text2')).attr('font-size',9).text(pct(cur[li],prevAtLast,0));
   // ツールチップ用の列ヒット領域
   for(let i=0;i<12;i++){
@@ -3555,11 +3588,11 @@ function renderYrCumChart(){
     const isLastPartial = partial && i===li;
     let tip=(i+1)+'月末時点';
     if(isLastPartial) tip=(i+1)+'/'+lastDay+'時点';
-    if(i<cur.length) tip+='<br>'+yr+'年: <b>'+cur[i].toFixed(1)+' kWh</b>';
+    if(i<cur.length && cur[i]!=null) tip+='<br>'+yr+'年: <b>'+cur[i].toFixed(1)+' kWh</b>';
     const pv = isLastPartial ? prevAtLast : (i<prev.length ? prev[i] : null);
     if(pv!=null){
       tip+='<br>'+prevYr+'年: '+pv.toFixed(1)+' kWh';
-      if(i<cur.length && pv>0) tip+='（'+pct(cur[i],pv)+'）';
+      if(prevFull && i<cur.length && cur[i]!=null && pv>0) tip+='（'+pct(cur[i],pv)+'）';
       if(isLastPartial) tip+='<br><span style="font-size:.9em">前年は同日までの累計</span>';
     }
     svg.append('rect').attr('x',mL+i*moW).attr('y',mT).attr('width',moW).attr('height',cH)
@@ -3570,10 +3603,10 @@ function renderYrCumChart(){
   svg.append('line').attr('x1',mL).attr('x2',mL+16).attr('y1',12).attr('y2',12)
     .attr('stroke',c).attr('stroke-width',2);
   svg.append('text').attr('x',mL+20).attr('y',16).attr('fill',c).attr('font-size',9).text(yr+'年');
-  if(prev.length){
+  if(others.length){
     svg.append('line').attr('x1',mL+60).attr('x2',mL+76).attr('y1',12).attr('y2',12)
-      .attr('stroke',cv('--text2')).attr('stroke-width',1.5).attr('stroke-dasharray','4,3').attr('opacity',.7);
-    svg.append('text').attr('x',mL+80).attr('y',16).attr('fill',cv('--text2')).attr('font-size',9).text(prevYr+'年');
+      .attr('stroke',cv('--text2')).attr('stroke-opacity',.5).attr('stroke-width',1.5);
+    svg.append('text').attr('x',mL+80).attr('y',16).attr('fill',cv('--text2')).attr('font-size',9).text('他の年（右端に年）');
   }
 }
 
