@@ -1,6 +1,7 @@
 {
   "id": "./solar-dashboard",
-  "short_name": "Solar",
+  "name": "Solar Log",
+  "short_name": "Solar Log",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f1117",
