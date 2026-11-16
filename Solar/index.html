@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.5
+  @version   v07_2026-11-16.6
   @changelog
+    v07_2026-11-16.6 - 時間帯別プロファイル（内訳）に売電（余った分）を薄い緑で追加（自家消費の上、発電線まで）
     v07_2026-11-16.5 - 全タブの指標ボタン（.mtg）と自家消費分析の切替を均等分割の切替ボタンに統一（タイトルの下に全幅1行）
     v07_2026-11-16.4 - 分析の時間帯別プロファイル／余剰と買電を整理（切替を均等分割ボタンに、期間はプルダウン、ピーク表示は凡例・各グラフ見出しへ、内訳×季節の小グラフを低く）
-    v07_2026-11-16.3 - 分析タブに「時間帯別プロファイル」（消費量／買電量／内訳 × 全日／平日・土日／季節 × 直近12か月／全期間／年）と「余剰と買電（使用をずらす余地）」を追加
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -660,7 +660,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.5';
+const APP_VERSION = 'v07_2026-11-16.6';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -3818,7 +3818,7 @@ function renderProfile(){
   const el=document.getElementById('prof-chart'), leg=document.getElementById('prof-legend');
   el.innerHTML=''; leg.innerHTML='';
   const col=colors(), sl=slots(), n=sl.length, mode=PROF.profMode;
-  const groups=profGroups(PROF.profCmp, profDates()).map(g=>({...g, con:profAvg(g.dks,'con'), buy:profAvg(g.dks,'buy'), gen:profAvg(g.dks,'gen')})).filter(g=>g.con.n>0);
+  const groups=profGroups(PROF.profCmp, profDates()).map(g=>({...g, con:profAvg(g.dks,'con'), buy:profAvg(g.dks,'buy'), gen:profAvg(g.dks,'gen'), sell:profAvg(g.dks,'sell')})).filter(g=>g.con.n>0);
   document.getElementById('prof-title').textContent='時間帯別プロファイル（kWh/'+(n===48?'30分':'1時間')+'）';
   if(!groups.length){ el.innerHTML=empty(); return; }
   const contW=(el.parentElement.clientWidth||window.innerWidth)-8;
@@ -3861,12 +3861,14 @@ function renderProfile(){
     hourTicks(svg.append('g').attr('transform',`translate(0,${top+cH+4})`));
     const area=(lo,hi,c)=>svg.append('path').attr('d',d3.area().x((d,i)=>px(i)).y0((d,i)=>py(lo[i])).y1((d,i)=>py(hi[i])).curve(d3.curveStepAfter)(lo)).attr('fill',c).attr('fill-opacity',.75);
     area(self.map(()=>0), self, cv('--con2'));
+    // 売電（余った分）: 自家消費の上に薄い緑。上端はほぼ発電の線に沿う。買電は手前に描く
+    area(self, self.map((v,i)=>v+g.sell.v[i]), col.sell).attr('fill-opacity',.22);
     area(self, self.map((v,i)=>v+g.buy.v[i]), col.buy);
     svg.append('path').attr('d',g.gen.v.map((v,i)=>(i?'L':'M')+px(i)+','+py(v)).join('')).attr('fill','none').attr('stroke',col.gen).attr('stroke-width',2);
     for(let i=0;i<n;i++) svg.append('rect').attr('x',px(i)-(contW-mL-mR)/n/2).attr('y',top).attr('width',(contW-mL-mR)/n).attr('height',cH).attr('fill','transparent')
-      .on('mousemove',e=>showTip(e,`${g.name} ${slotRange(i,1)}<br>消費: <b>${g.con.v[i].toFixed(3)}</b><br>自家消費: ${self[i].toFixed(3)}<br>買電: ${g.buy.v[i].toFixed(3)}<br>発電: ${g.gen.v[i].toFixed(3)} kWh`)).on('mouseleave',hideTip);
+      .on('mousemove',e=>showTip(e,`${g.name} ${slotRange(i,1)}<br>消費: <b>${g.con.v[i].toFixed(3)}</b><br>自家消費: ${self[i].toFixed(3)}<br>買電: ${g.buy.v[i].toFixed(3)}<br>発電: ${g.gen.v[i].toFixed(3)}<br>売電: ${g.sell.v[i].toFixed(3)} kWh`)).on('mouseleave',hideTip);
   });
-  leg.innerHTML=[['自家消費（太陽光でまかなえた分）',cv('--con2')],['買電',col.buy]].map(([l,c])=>`<span style="display:flex;align-items:center;gap:4px;color:${c};font-weight:600"><span style="width:10px;height:10px;border-radius:2px;background:${c}"></span>${l}</span>`).join('')
+  leg.innerHTML=[['自家消費（太陽光でまかなえた分）',cv('--con2'),1],['買電',col.buy,1],['売電（余った分）',col.sell,.3]].map(([l,c,op])=>`<span style="display:flex;align-items:center;gap:4px;color:${c};font-weight:600"><span style="width:10px;height:10px;border-radius:2px;background:${c};opacity:${op}"></span>${l}</span>`).join('')
     +`<span style="display:flex;align-items:center;gap:5px;color:${col.gen};font-weight:600"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="${col.gen}" stroke-width="2"/></svg>発電</span>`;
 }
 
