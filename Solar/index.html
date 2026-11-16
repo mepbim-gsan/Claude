@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.8
+  @version   v07_2026-11-16.9
   @changelog
+    v07_2026-11-16.9 - 最新月・最新年に戻る操作を追加: 表示中のタブ（日次・月次・年次）を再タップ、または「↺」付きの月・年ラベルをタップ
     v07_2026-11-16.8 - 累計グラフ（月次・年次）の灰色線がタップできない不具合を修正（ツールチップ領域の下に隠れていた）。月次は直近12か月の最大・最低の月を右端に表示（欠けのある月は除外）。月末の日付ラベルの重なりを修正
     v07_2026-11-16.7 - 累計グラフを日次と同じ考え方に: 月次=直近12か月を灰色＋前年同月の破線、年次=他の全年を灰色（年ラベル、設置年は途中から）。灰色線タップでその月・年へ
-    v07_2026-11-16.6 - 時間帯別プロファイル（内訳）に売電（余った分）を薄い緑で追加（自家消費の上、発電線まで）
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -87,6 +87,8 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
 .mnav button{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;font-family:inherit;}
 .mnav button:disabled{opacity:.35;cursor:default;}
 .mlabel{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:14px;font-weight:600;min-width:104px;text-align:center;}
+.mlabel.back{cursor:pointer;white-space:nowrap;color:var(--accent);border-color:var(--accent);}
+.mlabel.back::after{content:' ↺';}
 .heat-row{flex-wrap:nowrap;justify-content:flex-start;}
 .heat-row > .mnav:nth-child(2){margin-right:auto;}
 .mnav .dlabel{width:auto;height:auto;font-size:13px;min-width:64px;padding:6px 8px;color:var(--text2);}
@@ -98,6 +100,7 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
   .heat-row .mnav button{width:28px;height:34px;font-size:16px;}
   .heat-row .mlabel{min-width:0;padding:6px 6px;font-size:13px;}
   .heat-row .mnav .dlabel{min-width:58px;width:auto;}
+  .heat-row .mlabel.back::after{content:none;}
 }
 @media(max-width:359px){.heat-title{display:none;}}
 
@@ -660,7 +663,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.8';
+const APP_VERSION = 'v07_2026-11-16.9';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -1721,6 +1724,7 @@ function renderHeatTab(){
   const ym = ms[monIdx];
   const [y,mo] = ym.split('-');
   document.getElementById('mlabel').textContent = `${y}年${+mo}月`;
+  document.getElementById('mlabel').classList.toggle('back', monIdx<ms.length-1);
   document.getElementById('mprev').disabled = monIdx===0;
   document.getElementById('mnext').disabled = monIdx===ms.length-1;
 
@@ -1872,7 +1876,7 @@ function updateMonNav(){
   const idx = Math.min(Math.max(monIdx,0), ms.length-1);
   const ym = ms[idx];
   const [y,mo] = ym.split('-');
-  if(label) label.textContent = `${y}年${+mo}月`;
+  if(label){ label.textContent = `${y}年${+mo}月`; label.classList.toggle('back', idx<ms.length-1); }
   if(prev) prev.disabled = idx===0;
   if(next) next.disabled = idx===ms.length-1;
 }
@@ -2525,6 +2529,7 @@ function updateYrNav(){
     if(allBtn){ allBtn.style.borderColor=''; allBtn.style.color=''; allBtn.style.background=''; }
   }
   // ◀: 最古年(idx=0)で無効  ▶: 全期間(idx=-1)で無効
+  if(label) label.classList.toggle('back', yrFilterIdx>=0&&yrFilterIdx<yrs.length-1);
   if(prev) prev.disabled=yrFilterIdx===0;
   if(next) next.disabled=yrFilterIdx<0;
 }
@@ -3782,6 +3787,7 @@ function renderAll(){
 // ================================================================
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click',()=>{
+    if(btn.dataset.tab===curTab){ goLatest(curTab); return; }
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
     btn.classList.add('active');
@@ -3789,6 +3795,24 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     document.getElementById('tab-'+curTab).classList.add('active');
     renderAll();
   });
+});
+
+// 最新月・最新年へ戻る（タブ再タップ／↺ラベル）
+function goLatest(tab){
+  if(tab==='heat'||tab==='monthly'){
+    const last=months().length-1;
+    if(last<0||monIdx===last) return;
+    monIdx=last; selectedDate=null;
+    tab==='heat' ? renderHeatTab() : renderAll();
+  } else if(tab==='yearly'){
+    const last=years().length-1;
+    if(last<0||yrFilterIdx===last) return;
+    yrFilterIdx=last; renderYearlyTab();
+  } else return;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+[['mlabel','heat'],['mon-nav-label','monthly'],['yr-nav-label','yearly']].forEach(([id,tab])=>{
+  document.getElementById(id)?.addEventListener('click',e=>{ if(e.currentTarget.classList.contains('back')) goLatest(tab); });
 });
 
 document.getElementById('mprev').addEventListener('click',()=>{ monIdx=Math.max(0,monIdx-1); selectedDate=null; renderHeatTab(); });
