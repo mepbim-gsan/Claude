@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.4
+  @version   v07_2026-11-16.5
   @changelog
+    v07_2026-11-16.5 - 全タブの指標ボタン（.mtg）と自家消費分析の切替を均等分割の切替ボタンに統一（タイトルの下に全幅1行）
     v07_2026-11-16.4 - 分析の時間帯別プロファイル／余剰と買電を整理（切替を均等分割ボタンに、期間はプルダウン、ピーク表示は凡例・各グラフ見出しへ、内訳×季節の小グラフを低く）
     v07_2026-11-16.3 - 分析タブに「時間帯別プロファイル」（消費量／買電量／内訳 × 全日／平日・土日／季節 × 直近12か月／全期間／年）と「余剰と買電（使用をずらす余地）」を追加
-    v07_2026-11-16.2 - 自給率の色を緑→紫に統一。円グラフに合わせ、自家消費率=薄い紫（--con2、内側の輪）、自給率=濃い紫（--con、外側の輪）。KPI・ドーナツ中央・比率グラフ（自給率は破線）で統一
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -73,12 +73,15 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
 .sec-hd{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
 .sec-title{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.06em;}
 
-.mtg{display:flex;gap:5px;flex-wrap:wrap;}
-.mbtn{padding:4px 12px;font-size:.7rem;font-weight:500;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-family:inherit;transition:all .15s;border-radius:6px;}
-.mbtn.m-gen{border-color:var(--gen);color:var(--gen);background:var(--gen-bg);}
-.mbtn.m-sell{border-color:var(--sell);color:var(--sell);background:var(--sell-bg);}
-.mbtn.m-buy{border-color:var(--buy);color:var(--buy);background:var(--buy-bg);}
-.mbtn.m-con{border-color:var(--con);color:var(--con);background:var(--con-bg);}
+.mtg{display:flex;flex:1 1 100%;width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.mbtn{flex:1;padding:7px 0;font-size:12px;font-weight:500;border:none;border-right:1px solid var(--border);background:none;color:var(--text2);cursor:pointer;font-family:inherit;transition:background .15s,color .15s;}
+.mbtn:last-child{border-right:none;}
+.sec-hd > div:has(> .mtg){flex:1 1 100%;} /* タイトルと同じ囲みにある切替も全幅に */
+.mbtn.m-gen,.mbtn.m-sell,.mbtn.m-buy,.mbtn.m-con{background:var(--bg2);font-weight:700;}
+.mbtn.m-gen{color:var(--gen);}
+.mbtn.m-sell{color:var(--sell);}
+.mbtn.m-buy{color:var(--buy);}
+.mbtn.m-con{color:var(--accent);}
 
 .mnav{display:flex;align-items:center;gap:6px;}
 .mnav button{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;font-family:inherit;}
@@ -308,9 +311,9 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="sec-hd">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <div class="sec-title">自家消費分析（kWh）</div>
-        <div style="display:flex;gap:4px;">
-          <button class="self-mode-btn active-self" id="self-mode-self" data-mode="self" style="padding:3px 10px;font-size:.68rem;border-radius:4px;border:1px solid var(--con);background:var(--con-bg);color:var(--con);cursor:pointer;font-family:inherit;">自家消費</button>
-          <button class="self-mode-btn" id="self-mode-gen" data-mode="gen" style="padding:3px 10px;font-size:.68rem;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-family:inherit;">発電量</button>
+        <div class="mtg">
+          <button class="mbtn self-mode-btn m-con" id="self-mode-self" data-mode="self">自家消費</button>
+          <button class="mbtn self-mode-btn" id="self-mode-gen" data-mode="gen">発電量</button>
         </div>
       </div>
       <div style="display:flex;gap:12px;font-size:.68rem;flex-wrap:wrap;justify-content:flex-end;align-items:center;" id="self-legend"></div>
@@ -370,9 +373,9 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="sec-hd">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <div class="sec-title">自家消費分析（日単位・kWh）</div>
-        <div style="display:flex;gap:4px;" id="mon-self-mode-btns">
-          <button class="self-mode-btn2 active-self2" data-target="mon" data-mode="self" style="padding:3px 10px;font-size:.68rem;border-radius:4px;border:1px solid var(--con);background:var(--con-bg);color:var(--con);cursor:pointer;font-family:inherit;">自家消費</button>
-          <button class="self-mode-btn2" data-target="mon" data-mode="gen" style="padding:3px 10px;font-size:.68rem;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-family:inherit;">発電量</button>
+        <div class="mtg" id="mon-self-mode-btns">
+          <button class="mbtn self-mode-btn2 m-con" data-target="mon" data-mode="self">自家消費</button>
+          <button class="mbtn self-mode-btn2" data-target="mon" data-mode="gen">発電量</button>
         </div>
       </div>
       <div style="display:flex;gap:12px;font-size:.68rem;flex-wrap:wrap;justify-content:flex-end;align-items:center;" id="mon-self-legend"></div>
@@ -437,9 +440,9 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
     <div class="sec-hd">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <div class="sec-title">自家消費分析（月単位・kWh）</div>
-        <div style="display:flex;gap:4px;" id="yr-self-mode-btns">
-          <button class="self-mode-btn2 active-self2" data-target="yr" data-mode="self" style="padding:3px 10px;font-size:.68rem;border-radius:4px;border:1px solid var(--con);background:var(--con-bg);color:var(--con);cursor:pointer;font-family:inherit;">自家消費</button>
-          <button class="self-mode-btn2" data-target="yr" data-mode="gen" style="padding:3px 10px;font-size:.68rem;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-family:inherit;">発電量</button>
+        <div class="mtg" id="yr-self-mode-btns">
+          <button class="mbtn self-mode-btn2 m-con" data-target="yr" data-mode="self">自家消費</button>
+          <button class="mbtn self-mode-btn2" data-target="yr" data-mode="gen">発電量</button>
         </div>
       </div>
       <div style="display:flex;gap:12px;font-size:.68rem;flex-wrap:wrap;justify-content:flex-end;align-items:center;" id="yr-self-legend"></div>
@@ -657,7 +660,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.4';
+const APP_VERSION = 'v07_2026-11-16.5';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
@@ -3960,12 +3963,7 @@ document.querySelectorAll('.self-mode-btn2').forEach(btn=>{
   btn.addEventListener('click',()=>{
     const target=btn.dataset.target, mode=btn.dataset.mode;
     const group=document.querySelectorAll('.self-mode-btn2[data-target="'+target+'"]');
-    group.forEach(b=>{
-      const isActive=b.dataset.mode===mode;
-      b.style.borderColor=isActive?cv('--con'):cv('--border');
-      b.style.background=isActive?cv('--con-bg'):cv('--bg3');
-      b.style.color=isActive?cv('--con'):cv('--text2');
-    });
+    group.forEach(b=>b.classList.toggle('m-con', b.dataset.mode===mode));
     if(target==='mon'){ monSelfMode=mode; renderMonSelfChart(mode); }
     else { yrSelfMode=mode; renderYrSelfChart(mode); }
   });
@@ -3974,12 +3972,7 @@ document.querySelectorAll('.self-mode-btn2').forEach(btn=>{
 document.querySelectorAll('.self-mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     selfMode = btn.dataset.mode;
-    document.querySelectorAll('.self-mode-btn').forEach(b => {
-      const isActive = b.dataset.mode === selfMode;
-      b.style.borderColor = isActive ? cv('--con') : cv('--border');
-      b.style.background  = isActive ? cv('--con-bg') : cv('--bg3');
-      b.style.color       = isActive ? cv('--con') : cv('--text2');
-    });
+    document.querySelectorAll('.self-mode-btn').forEach(b => b.classList.toggle('m-con', b.dataset.mode === selfMode));
     const ym = months()[monIdx];
     if(ym) renderSelfChart(ym);
   });
