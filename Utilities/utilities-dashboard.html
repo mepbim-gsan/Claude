@@ -1,10 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v02_2026-11-17
+  @version   v02_2026-11-17.2
   @changelog
-    v01_2026-09-24   - 月間金額比較で凡例から電気/ガス等を非表示にしても前年合計ラインが再計算されなかった不具合を修正
     v01_2026-09-24.2 - PWA化（manifest.json・sw.js・アイコン追加、ホーム画面に追加可能に）
     v02_2026-11-17   - 表示名を「Utility Log」に変更。デザインをCarLog・Solar Logと統一（配色・カード・下部タブ・期間バー・設定画面・入力シート、ライト/ダーク切替）
+    v02_2026-11-17.2 - Chart.js を動的読み込みに変更（htmlpreview のプレビューでグラフが表示されなかった対策）
 -->
 <!DOCTYPE html>
 <html lang="ja" data-theme="light">
@@ -19,7 +19,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <script>try{const t=localStorage.getItem('utilities-theme');if(t)document.documentElement.dataset.theme=t;}catch{}</script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// Chart.js は動的に読み込む（htmlpreview は外部CDNの <script src> を実行しないため、プレビューでグラフが出なかった）
+window._chartReady = new Promise(res => {
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+  s.onload = () => res(true);
+  s.onerror = () => res(false);
+  document.head.appendChild(s);
+});
+</script>
 <style>
 :root{--nav-h:60px;--radius:12px;--hdr-h:55px;}
 [data-theme="light"]{
@@ -333,7 +342,7 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
 <div id="toast"></div>
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v02_2026-11-17';
+const APP_VERSION = 'v02_2026-11-17.2';
 const CONFIG_KEY = 'firebase-config-v1';
 const THEME_KEY  = 'utilities-theme';
 
@@ -853,7 +862,8 @@ function _renderServiceSection(svc, fy) {
       </table>
     </div>`;
 
-  // Chart描画
+  // Chart描画（Chart.js 読み込み前は表だけ表示し、読み込み完了時に描き直す）
+  if (typeof Chart === 'undefined') return;
   const ctx = document.getElementById('chart-'+svc.key).getContext('2d');
   if (charts[svc.key]) charts[svc.key].destroy();
 
@@ -1028,6 +1038,7 @@ function _renderCompare() {
 }
 
 function _renderMonthlyChart() {
+  if (typeof Chart === 'undefined') return;
   const fy = selectedFY || new Date().getFullYear();
   const months = _fiscalMonths(fy);
   const labels = months.map(m => { const [y,mo]=m.split('-'); return `${y.slice(2)}/${mo}`; });
@@ -1173,6 +1184,7 @@ function _annualBarColors(type, fys, baseColor) {
 }
 
 function _renderAnnualChart() {
+  if (typeof Chart === 'undefined') return;
   const fys = _availableFiscalYears().reverse(); // 昇順
 
   const sumFY = (type, fy) => {
@@ -1213,6 +1225,7 @@ function _renderAnnualChart() {
 // サービスごとの年間使用量推移（単位がkWh/m³で異なるため合算せずサービス別に描画）
 const ANNUAL_USAGE_CANVAS = { electricity: 'chartAnnualUsageElec', gas: 'chartAnnualUsageGas', water: 'chartAnnualUsageWater' };
 function _renderAnnualUsageCharts() {
+  if (typeof Chart === 'undefined') return;
   const fys = _availableFiscalYears().reverse(); // 昇順
   const labels = fys.map(y => y+'年度');
 
@@ -1659,6 +1672,10 @@ async function _initFirebase(cfg) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', _cv('--bg2'));
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { _closeInputModal(); _closeSettings(); } });
   let _rz; window.addEventListener('resize', () => { clearTimeout(_rz); _rz = setTimeout(_syncHdrH, 150); });
+  window._chartReady.then(ok => {
+    if (!ok) { _toast('グラフ部品を読み込めませんでした'); return; }
+    if (document.getElementById('app').style.display === 'block') _rerenderCurrent();
+  });
   const cfg=_loadConfig();
   if (cfg?.apiKey) {
     document.getElementById('authArea').style.display='flex';
