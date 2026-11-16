@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
   @tool      太陽光ダッシュボード
-  @version   v07_2026-11-16.11
+  @version   v07_2026-11-16.12
   @changelog
+    v07_2026-11-16.12 - 年次の年切替（‹ 年 ›）を画面中央に配置
     v07_2026-11-16.11 - 経年劣化診断表の注記が表と一緒に横スクロールしていたのを修正（注記を表の外へ）
     v07_2026-11-16.10 - グラフがカードからわずかにはみ出して横スクロールになる不具合を修正（幅をカード内側で計算）。サマリー表・経年劣化診断表の左端列（日付・月・年）を固定
-    v07_2026-11-16.9 - 最新月・最新年に戻る操作を追加: 表示中のタブ（日次・月次・年次）を再タップ、または「↺」付きの月・年ラベルをタップ
 -->
 <html lang="ja" data-theme="light">
 <head>
@@ -67,6 +67,8 @@ header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px
 .page-bar{position:sticky;top:var(--hdr-h);z-index:40;background:var(--bg);margin:0 -14px 12px;padding:8px 14px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px;}
 .page-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
 .page-title{font-size:18px;font-weight:700;}
+.yr-row{display:grid;grid-template-columns:1fr auto 1fr;}
+.yr-row > :last-child{justify-self:end;}
 .tab-content.active{display:block;}
 
 .sec{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
@@ -411,7 +413,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 
 <!-- 年次タブ -->
 <div class="tab-content" id="tab-yearly">
-  <div class="page-bar"><div class="page-row">
+  <div class="page-bar"><div class="page-row yr-row">
     <div class="page-title">年次</div>
     <div class="mnav" id="yr-nav">
       <button id="yrprev" aria-label="前の年">‹</button>
@@ -666,7 +668,7 @@ svg text{font-family:-apple-system,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-
 </div><!-- #appMain -->
 
 <script>
-const APP_VERSION = 'v07_2026-11-16.11';
+const APP_VERSION = 'v07_2026-11-16.12';
 document.getElementById('app-ver').textContent = APP_VERSION;
 // ================================================================
 // CONSTANTS & STATE
