@@ -1,10 +1,10 @@
 <!--
   @tool      光熱費ダッシュボード
-  @version   v02_2026-11-17.5
+  @version   v02_2026-11-17.6
   @changelog
-    v02_2026-11-17.3 - 設定に「集計期間」を追加（年度 4〜3月／暦年 1〜12月の切替）
     v02_2026-11-17.4 - サービス別の合計行を前年同期比較に変更（今年の最終入力月までで前年と比較）
     v02_2026-11-17.5 - サンプルデータに2025年度（9月まで）と水道の請求月ズレを追加
+    v02_2026-11-17.6 - 記録タブに金額／使用量の表示切替を追加
 -->
 <!DOCTYPE html>
 <html lang="ja" data-theme="light">
@@ -131,7 +131,12 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
 .diff-down{color:var(--success);font-weight:600;}
 
 /* ── 記録 ── */
-.rec-wrap{max-height:calc(100dvh - var(--hdr-h) - var(--nav-h) - 120px);overflow:auto;}
+.rec-wrap{max-height:calc(100dvh - var(--hdr-h) - var(--nav-h) - 138px);overflow:auto;}
+.rec-tools{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+.rec-tools .seg{width:150px;margin-bottom:0;flex:none;}
+.rec-tools .legend-note{margin-bottom:0;}
+.th-unit{font-size:10px;font-weight:400;color:var(--text3);margin-left:2px;}
+.rec-table td.inc .muted{font-size:11px;font-weight:400;}
 .rec-table th,.rec-table td{padding:10px 10px;}
 .rec-table td{cursor:pointer;}
 .rec-table td:first-child{cursor:default;color:var(--text2);font-size:12px;}
@@ -269,16 +274,22 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
         <div class="page-title">記録</div>
         <div class="muted">セルをタップして入力</div>
       </div>
-      <div class="legend-note"><span class="incomplete-dot">●</span>使用量が未入力</div>
+      <div class="rec-tools">
+        <div class="seg" id="recMetricSeg">
+          <button data-rm="amount" onclick="_setHistoryMetric('amount')">金額</button>
+          <button data-rm="usage" onclick="_setHistoryMetric('usage')">使用量</button>
+        </div>
+        <div class="legend-note"><span class="incomplete-dot">●</span>使用量が未入力</div>
+      </div>
       <div class="card flush">
         <div class="rec-wrap">
           <table class="tbl rec-table" id="recordTable">
             <thead>
               <tr>
                 <th>年月</th>
-                <th><i class="gdot" style="background:var(--c-elec);margin-right:4px;vertical-align:-1px"></i>電気</th>
-                <th><i class="gdot" style="background:var(--c-gas);margin-right:4px;vertical-align:-1px"></i>ガス</th>
-                <th><i class="gdot" style="background:var(--c-water);margin-right:4px;vertical-align:-1px"></i>水道</th>
+                <th><i class="gdot" style="background:var(--c-elec);margin-right:4px;vertical-align:-1px"></i>電気<span class="th-unit" data-u="kWh"></span></th>
+                <th><i class="gdot" style="background:var(--c-gas);margin-right:4px;vertical-align:-1px"></i>ガス<span class="th-unit" data-u="m³"></span></th>
+                <th><i class="gdot" style="background:var(--c-water);margin-right:4px;vertical-align:-1px"></i>水道<span class="th-unit" data-u="m³"></span></th>
                 <th><i class="gdot" style="background:var(--c-other);margin-right:4px;vertical-align:-1px"></i>その他</th>
               </tr>
             </thead>
@@ -349,7 +360,7 @@ table.tbl td.mo{color:var(--text2);font-size:12px;}
 <div id="toast"></div>
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const APP_VERSION = 'v02_2026-11-17.5';
+const APP_VERSION = 'v02_2026-11-17.6';
 const CONFIG_KEY = 'firebase-config-v1';
 const THEME_KEY  = 'utilities-theme';
 
@@ -391,6 +402,15 @@ let remoteData   = { electricity: [], gas: [], water: [], others: [] };
 let _lastWriteAt = 0;
 let currentTab   = 'dashboard';
 let historyType  = 'all';
+// 記録タブの表示（金額／使用量）。端末ごとに保持
+const HIST_METRIC_KEY = 'utilities-history-metric';
+let historyMetric = 'amount';
+try { if (localStorage.getItem(HIST_METRIC_KEY) === 'usage') historyMetric = 'usage'; } catch {}
+function _setHistoryMetric(v) {
+  historyMetric = v === 'usage' ? 'usage' : 'amount';
+  try { localStorage.setItem(HIST_METRIC_KEY, historyMetric); } catch {}
+  _renderHistory();
+}
 let editingKey   = null;
 
 let selectedFY = null; // 選択中の年度・年（null=最新）
@@ -1344,6 +1364,9 @@ function _renderAnnualUsageCharts() {
 function _renderHistory() {
   const body = document.getElementById('recordBody');
   if (!body) return;
+  const usageMode = historyMetric === 'usage';
+  document.querySelectorAll('#recMetricSeg button').forEach(b => b.classList.toggle('on', b.dataset.rm === historyMetric));
+  document.querySelectorAll('#recordTable .th-unit').forEach(el => el.textContent = usageMode ? el.dataset.u : '');
 
   // 直近24ヶ月を生成（古い順）
   const nowJST = new Date(Date.now() + 9*3600*1000);
@@ -1377,6 +1400,11 @@ function _renderHistory() {
       if (!rec) return `<td class="na" onclick="_openInputModal(${year},${month},'${type}')">—</td>`;
       const uf = type === 'electricity' ? 'kwh' : 'm3';
       const missingUsage = rec[uf] == null;
+      if (usageMode) {
+        // 使用量表示：単位はヘッダーに表示。金額だけ入力済みの月は「未入力」
+        if (missingUsage) return `<td class="inc" onclick="_openInputModal(${year},${month},'${type}')"><span class="muted">未入力</span><span class="incomplete-dot">●</span></td>`;
+        return `<td class="has" onclick="_openInputModal(${year},${month},'${type}')" style="color:var(${SVC_VAR[type]})">${rec[uf].toLocaleString()}</td>`;
+      }
       const cls = missingUsage ? 'has inc' : 'has';
       const mark = missingUsage ? '<span class="incomplete-dot" title="使用量が未入力です">●</span>' : '';
       return `<td class="${cls}" onclick="_openInputModal(${year},${month},'${type}')" style="color:var(${SVC_VAR[type]})">¥${rec.amount.toLocaleString()}${mark}</td>`;
