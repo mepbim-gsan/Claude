@@ -7,11 +7,11 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9D</text></svg>">
 <!--
   @tool      Screen Capture Memo
-  @version   v100
-  @changelog v100: v99の書き出し履歴機能について、ユーザーから「OneDriveのどこに保存したか分かる記録が欲しい」と相談。File System Access APIはブラウザ仕様上フォルダの絶対パスを取得できない(取得できるのはフォルダ名のみ)ことを説明したうえで、ユーザーから「保存先フォルダにJSONを置いて都度読み書きすれば、ブラウザのキャッシュに依存せずOneDrive経由で他端末とも共有できるのでは」との提案があり、さらに「HTML保存クリック時にまずJSONをロードして履歴を更新し、保存と同時にJSONへ追記する」という具体的な流れの提案を受け実装。保存先フォルダ(`pendingDirHandle`)へ書き込み成功する経路でのみ、保存するHTML本体とあわせて`screen-capture-memo-history.json`という配列ファイルを読み書きする。各履歴エントリに端末をまたいで衝突しないuid(`genUid()`、時刻+乱数)を付与し、`syncHistoryWithDir()`で「JSON内のuidを持つがローカルDBに無いエントリ」だけをローカルへ取り込み(他端末分の取り込み)、ローカル全件+新規エントリをuidで重複排除してJSONへ書き戻す。JSON書き込みが失敗してもHTML本体の保存自体は成功扱いとし、コンソールログのみに留める。保存先フォルダ未設定時やフォルダへの書き込み自体が失敗した場合(通常ダウンロードへのフォールバック)は従来通りローカルのみの記録。内部関数を一時的に公開したテスト専用コピー(本番には含めない)に対しPlaywrightで、JSON未作成時の空読み込み、ローカルのみのマージ結果、他端末想定の「JSON内にのみ存在するエントリ」がローカルDBへ正しく取り込まれること、同じuidのエントリが再同期で重複しないこと、genUidの一意性を確認。あわせて本番ファイルに対しても通常ダウンロード経路でのエクスポート履歴記録・モーダル表示・個別削除が引き続き壊れていないことを確認。
+  @version   v101
+  @changelog v101: ユーザーから「json更新時に、フォルダ内にファイルが存在していない場合、取り消し線を入れられますか」と要望。保存先フォルダ(v100でJSON履歴同期に使っているのと同じフォルダ)へHTML保存するたびに、ローカルDBの全履歴エントリについてファイル名が実際にフォルダ内に存在するか`fileExistsInDir()`で確認し(同名ファイルは重複排除して1回だけ確認)、見つからなければ`missing:true`をローカルDB・JSON両方に保存する`refreshMissingFlags(dirHandle)`を新設。既存のadd専用`historyAdd`に加え、既存エントリを更新できる`historyPut`も新設。履歴一覧モーダルでは`missing`なエントリのファイル名部分に取り消し線(`.hist-missing`、色も薄く)を表示し、ツールチップで「保存先フォルダに見つかりません。移動・削除された可能性があります」と案内。ユーザーが後でファイルを元に戻せば、次回のHTML保存時に再チェックされ取り消し線は自動的に消える(missing:falseへ復帰)。この判定は保存先フォルダへの書き込みが成功した経路でのみ実行され、通常ダウンロード(保存先フォルダ未設定時)の履歴は対象外。内部関数を一時的に公開したテスト専用コピー(本番には含めない使い捨てコピー)に対しPlaywrightで、存在する2件はmissing:false・存在しない1件はmissing:trueになること、ローカルDBにも反映されること、ファイルを後から削除すると次回チェックでmissing:trueに変わること、逆に復活させるとmissing:falseに戻ることを確認。あわせて本番ファイルに対しても通常ダウンロード経路でのエクスポート履歴記録・モーダル表示・個別削除に回帰がないことを確認。
+  @changelog v100: v99の書き出し履歴機能について、ユーザーから「OneDriveのどこに保存したか分かる記録が欲しい」と相談。File System Access APIはブラウザ仕様上フォルダの絶対パスを取得できない(取得できるのはフォルダ名のみ)ことを説明したうえで、ユーザーから「保存先フォルダにJSONを置いて都度読み書きすれば、ブラウザのキャッシュに依存せずOneDrive経由で他端末とも共有できるのでは」との提案があり、さらに「HTML保存クリック時にまずJSONをロードして履歴を更新し、保存と同時にJSONへ追記する」という具体的な流れの提案を受け実装。保存先フォルダ(`pendingDirHandle`)へ書き込み成功する経路でのみ、保存するHTML本体とあわせて`screen-capture-memo-history.json`という配列ファイルを読み書きする。各履歴エントリに端末をまたいで衝突しないuid(`genUid()`、時刻+乱数)を付与し、`syncHistoryWithDir()`で「JSON内のuidを持つがローカルDBに無いエントリ」だけをローカルへ取り込み(他端末分の取り込み)、ローカル全件+新規エントリをuidで重複排除してJSONへ書き戻す。JSON書き込みが失敗してもHTML本体の保存自体は成功扱いとし、コンソールログのみに留める。保存先フォルダ未設定時やフォルダへの書き込み自体が失敗した場合(通常ダウンロードへのフォールバック)は従来通りローカルのみの記録。
   @changelog v99: ユーザーから「HTMLで保存したリストをキャッシュで残せますか」と相談。意図を確認したところ、記録一覧(キャプチャ/メモ)自体ではなく「いつ・どのファイル名でHTML保存したか」という書き出し履歴を残したい、という要望と判明。IndexedDBに新しいストア`exportHistory`(DBバージョンを2→3に上げて追加、既存2ストアはそのまま)を新設し、`btnExport`の3つの成功パス(保存先フォルダへの書き込み成功/書き込み失敗時のダウンロードへのフォールバック/通常ダウンロード)それぞれで、日時・ファイル名・資料タイトル・日付・件数を記録。記録一覧ヘッダー行に既存の🔄更新ボタンと並べて🕘履歴ボタンを新設し、クリックで`VERSION_HISTORY`の更新履歴モーダルと同じ構造・スタイルの一覧モーダルを表示(新しい書き出しが上、各行に個別削除ボタン付き)。同名ファイルの上書き確認でキャンセルした場合(実際には保存されない)は記録しないよう分岐。Playwrightで、エクスポート前は履歴が空であること、2回エクスポートすると2件記録されダイアログに新しい順で表示されること、個別削除で1件だけ消えること、ページエラーが発生しないことを確認。
-  @changelog v98: ユーザーから「キャプチャや見出しを追加したとき、選択行の下ではなく、最下段に入るようになっていませんか」と指摘。調査の結果、「📝見出し」「💬メモ」ボタンはv75で対応済み(pointerdown時点で選択行を検出し、click発火前にフォーカスがボタン自身へ移る前の状態を保持してからaddCaptureRecord()へ渡す仕組み)だったが、📸キャプチャボタン(btnCapture)とクリップボード貼り付け(btnPaste・ページ上でのCtrl+V)はこの対応が漏れていたことが判明。click/pasteハンドラ内でgetFocusedItem()を呼ぶ時点では既にフォーカスがボタン自身等へ移ってしまっており、選択行の有無に関わらず常にnull(=末尾追加)として扱われていたのが原因。btnCapture・btnPasteにも同じpointerdown時点検出の仕組みを追加し、captureNow()を検出済みの行を引数で受け取れるよう変更。Spaceキーでのキャプチャ(ボタンを介さないショートカット)はフォーカス移動が発生しないため、keydown発火時点でgetFocusedItem()を呼ぶだけで対応。貼り付けで複数枚の画像が一度に貼られた場合も、1枚挿入するたびにその行を次のanchorとして更新し、選択行の直後に貼り付け順のまま連続して挿入されるようにした。Playwrightで、キャプチャ中の行をフォーカスしてから📸キャプチャ→その行の直後に挿入されること、見出し追加との組み合わせでも同様に直後へ挿入されること、ページエラーが発生しないことを確認。
-  ※ v01〜v95の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v98の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -414,6 +414,9 @@
   #exportHistoryList .hist-detail{
     flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);
   }
+  #exportHistoryList .hist-missing{
+    text-decoration:line-through; color:var(--sub);
+  }
   #exportHistoryList .hist-del{
     flex-shrink:0; background:transparent; color:var(--sub); border:1px solid transparent;
     padding:4px 8px; font-size:13px; cursor:pointer; border-radius:6px;
@@ -488,7 +491,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v100</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v101</span>
 </header>
 
 <div id="versionModal">
@@ -853,6 +856,14 @@
     return new Promise((resolve, reject) => {
       const tx = db.transaction(HISTORY_STORE, "readwrite");
       const req = tx.objectStore(HISTORY_STORE).delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function historyPut(record){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HISTORY_STORE, "readwrite");
+      const req = tx.objectStore(HISTORY_STORE).put(record);
       req.onsuccess = () => resolve();
       req.onerror = (e) => reject(e);
     });
@@ -2600,13 +2611,16 @@
         }
         // 保存先フォルダ内のJSON履歴(他端末分を含む)を先に読み込みローカルへ取り込んでから、
         // HTML本体の保存とあわせて新しいエントリを追記してJSONを書き戻す(ユーザー提案の流れ)
-        const mergedHistory = await syncHistoryWithDir(pendingDirHandle);
+        await syncHistoryWithDir(pendingDirHandle);
         await writeFileToDir(pendingDirHandle, fileName, blob);
-        const newEntry = { uid: genUid(), timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length };
-        await historyAdd(newEntry);
-        mergedHistory.push(newEntry);
+        await historyAdd({ uid: genUid(), timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
         try{
-          await writeFileToDir(pendingDirHandle, HISTORY_SYNC_FILE, new Blob([JSON.stringify(mergedHistory)], { type: "application/json" }));
+          // 保存直後のこの時点でフォルダ内の実ファイルの有無を再確認し、
+          // 削除済み(見つからない)エントリにはmissingフラグを立てる(一覧で取り消し線表示に使う)。
+          // 今回保存したファイルは当然存在するのでmissing=falseになる。
+          const withMissing = await refreshMissingFlags(pendingDirHandle);
+          const forJson = withMissing.map(({ id, ...rest }) => rest); // ローカルのautoIncrement idは端末固有なのでJSONには含めない
+          await writeFileToDir(pendingDirHandle, HISTORY_SYNC_FILE, new Blob([JSON.stringify(forJson)], { type: "application/json" }));
         }catch(syncErr){
           console.error("書き出し履歴JSONの保存に失敗しました(HTML本体の保存は成功しています)", syncErr);
         }
@@ -2682,6 +2696,25 @@
       }
     }
     return Array.from(byUid.values());
+  }
+
+  // ローカルDBの全履歴エントリについて、保存先フォルダ内に実ファイルが現存するか確認し、
+  // missingフラグを最新化してDBへ反映する(存在すればfalse/復活、無ければtrueへ)。
+  // 同名ファイルは1回だけ確認すれば済むため重複排除してからチェックする。
+  async function refreshMissingFlags(dirHandle){
+    const all = await historyGetAll();
+    const uniqueNames = Array.from(new Set(all.map((e) => e.fileName)));
+    const existsByName = new Map();
+    for(const name of uniqueNames){
+      existsByName.set(name, await fileExistsInDir(dirHandle, name));
+    }
+    for(const e of all){
+      const missing = !existsByName.get(e.fileName);
+      if(e.missing !== missing){
+        await historyPut({ ...e, missing });
+      }
+    }
+    return all.map((e) => ({ ...e, missing: !existsByName.get(e.fileName) }));
   }
 
   // 保存結果を知らせる一時メッセージ。HTML保存ボタンのすぐ右側に表示することで、
@@ -3510,7 +3543,8 @@
     ["v97","記録一覧に一覧更新ボタンを追加(複数タブ/ウィンドウでの共有・範囲固定を維持したまま反映)、トリミング範囲(選択枠)の各種不具合を修正(リサイズ時のズレ、ハンドルの見切れ、狭い画面での右端まで届かない問題)"],
     ["v98","📸キャプチャボタン・クリップボード貼り付けで、選択行があってもボタンへのフォーカス移動により無視され常に最下段に入ってしまう不具合を修正(見出し/メモ追加と同じ仕組みに統一)"],
     ["v99","HTML保存の書き出し履歴(日時・ファイル名・件数)を記録一覧ヘッダーの🕘履歴ボタンから確認できるように追加"],
-    ["v100","保存先フォルダ設定時、書き出し履歴をフォルダ内のJSONファイルにも保存し、他端末(同じOneDriveフォルダ等)とも共有できるように対応"]
+    ["v100","保存先フォルダ設定時、書き出し履歴をフォルダ内のJSONファイルにも保存し、他端末(同じOneDriveフォルダ等)とも共有できるように対応"],
+    ["v101","書き出し履歴一覧で、保存先フォルダ内に実ファイルが見つからないエントリへ取り消し線を表示するように対応"]
   ];
 
   const verLabel = $("verLabel");
@@ -3554,7 +3588,7 @@
     exportHistoryList.innerHTML = items.map((h) => `
       <li data-id="${h.id}">
         <span class="hist-time">${fmtTime(h.timestamp)}</span>
-        <span class="hist-detail" title="${h.fileName}">${h.fileName}(${h.count}件)</span>
+        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${h.fileName}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}">${h.fileName}(${h.count}件)</span>
         <button class="hist-del" title="この履歴を削除">🗑</button>
       </li>
     `).join("");
