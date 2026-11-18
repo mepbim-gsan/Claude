@@ -43,72 +43,114 @@
     background:var(--bg); color:var(--text);
   }
   header{
-    padding:14px 20px; border-bottom:1px solid var(--border);
-    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
     position:sticky; top:0; z-index:25; background:var(--bg);
-    box-shadow:0 6px 14px rgba(0,0,0,.18);
+    border-bottom:1px solid var(--border); box-shadow:0 6px 14px rgba(0,0,0,.18);
   }
-  header h1{font-size:15px; margin:0; font-weight:600; color:var(--sub); letter-spacing:.02em;}
+  .appBar{display:flex; align-items:center; gap:10px; padding:10px 16px 6px;}
+  header h1{font-size:15px; margin:0; font-weight:700; color:var(--text); letter-spacing:.01em;}
   .ver{font-size:11px; color:var(--sub);}
+  .chip{
+    margin-left:auto; font-size:11px; color:var(--sub); border:1px solid var(--border); border-radius:12px;
+    padding:3px 9px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%;
+  }
+  .chip.live{color:var(--ok); border-color:var(--ok);}
+  .chip:hover{border-color:var(--accent);}
+  .iconBtn{background:transparent; color:var(--sub); border:1px solid var(--border); padding:5px 9px; font-size:14px; line-height:1;}
+  .iconBtn:hover:not(:disabled){color:var(--text); border-color:var(--sub); opacity:1;}
+  #tabBar{display:flex; gap:2px; padding:0 12px;}
+  .tabBtn{
+    flex:1; max-width:160px; background:transparent; color:var(--sub); border-radius:0;
+    border-bottom:3px solid transparent; padding:8px 6px 7px; font-size:13px;
+  }
+  .tabBtn:hover:not(:disabled){color:var(--text); opacity:1;}
+  .tabBtn.active{color:var(--accent); border-bottom-color:var(--accent); font-weight:700;}
   .headerLink{
-    margin-left:auto; color:var(--sub); text-decoration:none; font-size:13px;
-    display:inline-flex; align-items:center; gap:4px; padding:6px 10px;
-    border:1px solid var(--border); border-radius:6px;
+    color:var(--sub); text-decoration:none; font-size:13px;
+    display:inline-flex; align-items:center; gap:4px; padding:8px 12px;
+    border:1px solid var(--border); border-radius:8px;
   }
   .headerLink:hover{color:var(--text); border-color:var(--sub);}
   #btnTheme{padding:6px 10px; font-size:14px; line-height:1;}
 
-  main{padding:20px; max-width:960px; margin:0 auto;}
+  main{padding:14px 16px; max-width:1180px; margin:0 auto;}
 
-  /* 範囲固定後に折りたたんでも、スクロール中にすぐ再調整できるよう
-     共有パネルもスティッキー化(ヘッダーの直下に貼り付く) */
-  #sharePanel{
-    position:sticky; top:var(--header-h, 0px); z-index:22;
-    box-shadow:0 6px 14px rgba(0,0,0,.18);
-  }
-  #capturePanel{
-    position:sticky; top:calc(var(--header-h, 0px) + var(--share-panel-h, 0px)); z-index:20;
-    box-shadow:0 6px 14px rgba(0,0,0,.18);
+  /* タブ: 非表示のページはdisplay:noneにする。ただし範囲タブは画面共有の映像(video)を
+     保持しているため、他のタブを表示中もレイアウトを保ったまま画面外へ退避させる
+     (非表示にしても映像の更新が止まらず、キャプチャが古いフレームにならないようにする) */
+  .page{display:none;}
+  .page.active{display:block;}
+  #page-range:not(.active){
+    display:block; position:fixed; left:-10000px; top:0; width:min(1148px, 100vw);
+    visibility:hidden; pointer-events:none;
   }
 
-  #recordListPanel{padding-top:0;}
-  #recordListHeader{
-    position:sticky; top:calc(var(--header-h, 0px) + var(--share-panel-h, 0px) + var(--capture-panel-h, 0px)); z-index:15;
-    background:var(--panel); margin:0 -16px; padding:14px 16px 10px;
-    border-bottom:1px solid var(--border); box-shadow:0 6px 10px rgba(0,0,0,.10);
+  #recordToolbar{
+    position:sticky; top:var(--header-h, 0px); z-index:20; background:var(--bg);
+    padding:4px 0 8px; margin-bottom:6px; border-bottom:1px solid var(--border);
   }
-  #recordListHeader h2{margin:0 0 4px;}
-  #recordActions{
-    align-items:center; padding:8px 0; margin:2px 0;
-    border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+  #sectionNav{margin-top:8px;}
+  #sectionSelect{flex:1; min-width:0; max-width:420px;}
+  .navBtn{padding:7px 10px; font-size:12px;}
+  #recordLayout{display:flex; gap:16px; align-items:flex-start;}
+  #recordMain{flex:1; min-width:0;}
+  #tocAside{
+    display:none; width:220px; flex-shrink:0; position:sticky;
+    top:calc(var(--header-h, 0px) + var(--record-toolbar-h, 0px) + 8px);
+    max-height:calc(100vh - var(--header-h, 0px) - var(--record-toolbar-h, 0px) - 24px); overflow-y:auto;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 8px;
   }
-  #captureList{padding-top:14px;}
+  .tocHead{font-size:11px; color:var(--sub); font-weight:600; margin:0 6px 6px;}
+  @media (min-width:900px){
+    #tocAside{display:block;}
+  }
+  #docBar{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:12px;
+  }
+  .docInfo{font-size:11px; color:var(--sub); margin-top:6px;}
+  #docBar #exportTitle{flex:1; min-width:120px; width:auto;}
+  .moreWrap{position:relative;}
+  #moreMenu{
+    position:absolute; right:0; top:calc(100% + 4px); z-index:30; min-width:190px;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:6px;
+    box-shadow:0 12px 30px rgba(0,0,0,.3); display:flex; flex-direction:column; gap:2px;
+  }
+  #moreMenu[hidden]{display:none;}
+  #moreMenu button{background:transparent; color:var(--text); text-align:left; padding:8px 10px; border-radius:6px;}
+  #moreMenu button:hover{background:var(--surface2); opacity:1;}
+  #moreMenu .dangerItem{color:var(--danger);}
 
-  /* 狭い幅ではスティッキー領域(共有パネル/キャプチャパネル/記録一覧見出し)が
-     画面の大部分を占めて重くなるため、補助的なヒント文を省略して高さを圧縮する */
+  /* 設定などの汎用モーダル */
+  .modal{
+    display:none; position:fixed; inset:0; z-index:120;
+    background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:24px;
+  }
+  .modal.open{display:flex;}
+  .modalPanel{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    width:420px; max-width:92vw; max-height:84vh; display:flex; flex-direction:column;
+    box-shadow:0 12px 40px rgba(0,0,0,.3);
+  }
+  .modalHead{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600;
+  }
+  .modalBody{padding:6px 14px 14px; overflow-y:auto;}
+  .setSec{padding:10px 0; border-bottom:1px solid var(--border);}
+  .setSec:last-child{border-bottom:none;}
+  .setSec h3{font-size:12px; color:var(--sub); margin:0 0 8px; font-weight:600;}
+  .setRow{margin-bottom:8px;}
+  .setValue{font-size:13px;}
+
+  /* 狭い幅(サイドパネル等)ではボタンをアイコンだけにして1行に収める */
   @media (max-width:600px){
-    #capturePanel .hint,
-    #recordListHeader .hint{
-      display:none;
-    }
-    /* 記録一覧のボタン行: 日付・タイトル欄を少し狭めることで折り返し位置を
-       後ろへずらし、2行目が1ボタンだけで中途半端に余るのを緩和する */
-    #recordActions #exportDate{width:104px;}
-    #recordActions #exportTitle{width:100px;}
-    /* キャプチャ/貼り付け/インポートはアイコンだけで用途がわかるため、
-       狭い幅ではラベル文字を省略してボタン幅を詰める(行の横幅を節約) */
+    main{padding:10px;}
+    .appBar{padding:8px 10px 4px;}
+    #tabBar{padding:0 6px;}
+    #page-range:not(.active){width:100vw;}
     .iconable .btnLabel{display:none;}
     .iconable{padding-left:11px; padding-right:11px;}
-    /* 「1. 画面を共有→範囲を固定」「2. キャプチャ」の見出し文字列は、ボタン自体の
-       ラベルで用途がわかるため狭い幅では省略し、その分の高さを詰める */
-    #sharePanel .panelHeadRow h2{
-      display:none;
-    }
-    /* キャプチャパネルは見出し行がh2だけになり中身が空になるため、行自体を消して
-       その分の高さ(margin-bottom含む)も詰める。ステータス表示はボタン行末尾に同居済み */
-    #capturePanel .panelHeadRow{
-      display:none;
-    }
+    #docBar #exportDate{width:118px;}
+    #docBar #exportTitle{min-width:80px;}
   }
 
   .panel{
@@ -116,40 +158,15 @@
     padding:16px; margin-bottom:16px;
   }
   .panel h2{font-size:13px; color:var(--sub); margin:0 0 10px; font-weight:600;}
-  .panelHeadRow{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
-  .panelHeadRow h2{margin:0;}
-  .panelHeadClickable{
-    display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
-    padding:2px 4px; margin:-2px -4px; border-radius:6px;
-  }
-  .panelHeadClickable:hover{background:var(--surface2);}
-  .panelHeadClickable:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
-  #shareToggleBar{
-    display:block; text-align:center; padding:3px; margin:10px -16px -16px;
-    color:var(--sub); font-size:10px; line-height:1; cursor:pointer; user-select:none;
-    border-top:1px solid var(--border); border-radius:0 0 10px 10px;
-  }
-  #shareToggleBar:hover{background:var(--surface2); color:var(--text);}
-  #shareToggleBar:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
-  /* 狭い幅で共有パネルが折りたたまれている間、展開用の矢印はタイトルバーに
-     同居させるため、ブロック要素としての見た目をやめアイコンボタン風にする */
-  #appHeader #shareToggleBar{
-    display:inline-flex; align-items:center; justify-content:center;
-    width:26px; height:26px; margin:0; padding:0; font-size:12px;
-    border:1px solid var(--border); border-radius:6px;
-  }
-  .panel.collapsed #sharePanelBody{display:none;}
   /* 共有開始前は、映像が無いと意味を持たない操作(比率・範囲固定等)や
-     説明文を隠し、「画面共有を開始」ボタンだけのシンプルな見た目にする(段階的開示)。
-     常時表示(#btnPip)はキャプチャパネル側に常設しているため対象外
-     (btnCaptureと同様、範囲固定前はdisabledのグレー表示のままにする) */
+     説明文を隠し、「画面共有を開始」ボタンだけのシンプルな見た目にする(段階的開示) */
   .panel.share-idle #ratioSelect,
   .panel.share-idle #btnFixRect,
   .panel.share-idle #btnFixFull,
-  .panel.share-idle .hint{
+  .panel.share-idle .hint:not(.idleHint){
     display:none;
   }
-
+  .panel:not(.share-idle) .idleHint{display:none;}
   .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
   .row-right{margin-left:auto; gap:8px;}
 
@@ -378,23 +395,23 @@
     flex-shrink:0; color:var(--accent); font-weight:700; font-family:monospace; font-size:11px;
   }
 
-  #exportHistoryModal{
-    display:none; position:fixed; inset:0; z-index:120;
-    background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:24px;
+  #historyToolbar{
+    position:sticky; top:var(--header-h, 0px); z-index:20; background:var(--bg);
+    padding:4px 0 10px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:8px;
   }
-  #exportHistoryModal.open{display:flex;}
-  #exportHistoryPanel{
-    background:var(--panel); border:1px solid var(--border); border-radius:12px;
-    width:460px; max-width:90vw; max-height:78vh; display:flex; flex-direction:column;
-    box-shadow:0 12px 40px rgba(0,0,0,.3);
+  #historyToolbar .hint{margin-top:0;}
+  .chipBtn{
+    background:transparent; color:var(--sub); border:1px solid var(--border); border-radius:14px;
+    padding:5px 12px; font-size:12px;
   }
-  #exportHistoryPanelHead{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600;
+  .chipBtn.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  #historySearch{
+    flex:1; min-width:0; max-width:420px; background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;
   }
-  .exportHistoryHeadBtns{display:flex; align-items:center; gap:2px;}
   #exportHistoryList{
-    list-style:none; margin:0; padding:8px 14px 14px; overflow-y:auto; font-size:12px;
+    list-style:none; margin:10px 0 0; padding:4px 14px; font-size:12px;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
   }
   #exportHistoryList li{
     display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border);
@@ -490,13 +507,54 @@
 </style>
 </head>
 <body>
-
 <header id="appHeader">
-  <h1>SmartCaptureMemo</h1>
-  <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
-  <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button"></span>
+  <div class="appBar">
+    <h1>SmartCaptureMemo</h1>
+    <span class="chip" id="shareChip" tabindex="0" role="button" title="範囲タブを開く">🖥 未共有</span>
+    <button class="iconBtn" id="btnSettings" type="button" title="設定">⚙</button>
+  </div>
+  <nav id="tabBar" role="tablist">
+    <button class="tabBtn" type="button" role="tab" data-tab="range">🖥 <span class="tabLabel">範囲</span></button>
+    <button class="tabBtn" type="button" role="tab" data-tab="record">📝 <span class="tabLabel">記録</span></button>
+    <button class="tabBtn" type="button" role="tab" data-tab="history">🕘 <span class="tabLabel">履歴</span></button>
+  </nav>
 </header>
+
+<div id="settingsModal" class="modal">
+  <div class="modalPanel" id="settingsPanel">
+    <div class="modalHead">
+      <span>設定</span>
+      <button class="close-btn" id="btnSettingsClose" type="button" title="閉じる">✕</button>
+    </div>
+    <div class="modalBody">
+      <section class="setSec">
+        <h3>保存先フォルダ</h3>
+        <div class="setRow">
+          <span id="saveDirName" class="setValue">未登録(通常のダウンロード)</span>
+        </div>
+        <div class="row">
+          <button class="secondary" id="btnSaveDirPick" type="button">📁 フォルダを選ぶ</button>
+          <button class="secondary" id="btnSaveDirClear" type="button">登録を解除</button>
+        </div>
+        <div class="hint">登録すると「HTML保存」はこのフォルダへ直接保存され、書き出し履歴からファイルを開いたり読み込んだりできます。OneDrive等の同期フォルダにすると他端末と履歴を共有できます</div>
+      </section>
+      <section class="setSec">
+        <h3>表示</h3>
+        <div class="row">
+          <button class="secondary" id="btnTheme" type="button" title="ライト/ダークモード切替">🌙</button>
+          <span class="setValue">ライト/ダーク切替</span>
+        </div>
+      </section>
+      <section class="setSec">
+        <h3>ヘルプ・バージョン</h3>
+        <div class="row">
+          <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
+          <button class="secondary" id="btnVersion" type="button" title="更新履歴">更新履歴 <span class="ver" id="verLabel"></span></button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
 
 <div id="versionModal">
   <div id="versionPanel">
@@ -508,30 +566,12 @@
   </div>
 </div>
 
-<div id="exportHistoryModal">
-  <div id="exportHistoryPanel">
-    <div id="exportHistoryPanelHead">
-      <span>書き出し履歴</span>
-      <div class="exportHistoryHeadBtns">
-        <button class="close-btn" id="btnExportHistorySync" type="button" title="保存先フォルダと同期(他端末分の履歴・ファイル消失状況を反映)">🔄</button>
-        <button class="close-btn" id="btnExportHistoryClose" title="閉じる">✕</button>
-      </div>
-    </div>
-    <ul id="exportHistoryList"></ul>
-  </div>
-</div>
-
 <main>
 
-  <div class="panel share-idle" id="sharePanel">
-    <div class="panelHeadRow">
-      <div class="panelHeadClickable" id="shareHeaderToggle" tabindex="0" role="button" aria-expanded="true">
-        <h2>1. 画面を共有 → 範囲を固定</h2>
-      </div>
-      <button id="btnShareToggle" type="button" class="iconable" title="画面共有を開始"><span id="btnShareToggleIcon">🖥️</span> <span class="btnLabel" id="btnShareToggleLabel">画面共有を開始</span></button>
-    </div>
-    <div id="sharePanelBody">
+  <section class="page" id="page-range">
+    <div class="panel share-idle" id="sharePanel">
       <div class="row" id="shareControlsRow">
+        <button id="btnShareToggle" type="button" class="iconable" title="画面共有を開始"><span id="btnShareToggleIcon">🖥️</span> <span class="btnLabel" id="btnShareToggleLabel">画面共有を開始</span></button>
         <select id="ratioSelect" aria-label="比率">
           <option value="">フリー</option>
           <option value="1.77778">16:9</option>
@@ -561,47 +601,75 @@
           </div>
         </div>
       </div>
+      <div class="hint idleHint">「画面共有を開始」で撮影したい画面を選び、キャプチャする範囲を決めます。範囲を決めると自動で「記録」タブへ移ります</div>
       <div class="hint">映像をドラッグして範囲指定 → 「範囲固定」で以降は連写できます／範囲内をドラッグすると位置だけ移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます(比率指定時は辺ドラッグでも比率を保持)、矢印キーでも位置を微調整できます／範囲を選ばず全画面をそのまま使いたい場合は「🖥 全画面」</div>
-      <div class="hint" id="pipHint">範囲固定と同時に対応ブラウザでは自動的に「常時表示ウィンドウ」が開き、他のアプリを操作中でも最前面の小窓からワンクリックで撮影できます(この共有パネルの映像プレビューはそのまま表示され続けます)</div>
+      <div class="hint" id="pipHint">範囲固定と同時に対応ブラウザでは自動的に「常時表示ウィンドウ」が開き、他のアプリを操作中でも最前面の小窓からワンクリックで撮影できます</div>
     </div>
-    <div id="shareToggleBar" tabindex="0" role="button" aria-label="折りたたむ">▲</div>
-  </div>
+  </section>
 
-  <div class="panel" id="capturePanel">
-    <div class="panelHeadRow">
-      <h2>2. キャプチャ</h2>
+  <section class="page" id="page-record">
+    <div id="recordToolbar">
+      <div class="row" id="captureRow">
+        <button id="btnCapture" class="iconable" disabled title="キャプチャ(Space)">📸 <span class="btnLabel">キャプチャ</span></button>
+        <button id="btnPaste" class="iconable secondary" title="クリップボードから貼り付け(Ctrl+V)">📋 <span class="btnLabel">貼り付け</span></button>
+        <button id="btnAddNote" class="iconable secondary" title="見出しを追加">📝 <span class="btnLabel">見出し</span></button>
+        <button id="btnAddMemo" class="iconable secondary" title="メモを追加">💬 <span class="btnLabel">メモ</span></button>
+        <button id="btnPip" class="iconable secondary" disabled title="常時表示">📌 <span class="btnLabel">常時表示</span></button>
+        <span class="status row-right" id="captureStatus"></span>
+      </div>
+      <div class="row" id="sectionNav">
+        <button class="secondary navBtn" id="btnSectionPrev" type="button" title="前の見出しへ(Alt+↑)">◀</button>
+        <select id="sectionSelect" aria-label="現在の見出し"></select>
+        <button class="secondary navBtn" id="btnSectionNext" type="button" title="次の見出しへ(Alt+↓)">▶</button>
+        <button class="secondary navBtn" id="btnFoldAll" type="button" title="すべて折りたたむ">⊟</button>
+        <button class="secondary navBtn" id="btnUnfoldAll" type="button" title="すべて開く">⊞</button>
+      </div>
     </div>
-    <div class="row">
-      <button id="btnCapture" class="iconable" disabled title="キャプチャ">📸 <span class="btnLabel">キャプチャ</span></button>
-      <button id="btnPaste" class="iconable" title="クリップボードから貼り付け">📋 <span class="btnLabel">貼り付け</span></button>
-      <button id="btnAddNote" class="iconable" title="見出し">📝 <span class="btnLabel">見出し</span></button>
-      <button id="btnAddMemo" class="iconable" title="メモ">💬 <span class="btnLabel">メモ</span></button>
-      <button id="btnPip" class="iconable" disabled title="常時表示">📌 <span class="btnLabel">常時表示</span></button>
-      <span class="status row-right" id="captureStatus"></span>
+    <div id="recordLayout">
+      <aside id="tocAside">
+        <div class="tocHead">目次</div>
+        <nav id="tocList"></nav>
+      </aside>
+      <div id="recordMain">
+        <div id="docBar">
+          <div class="row">
+            <input type="date" id="exportDate">
+            <input type="text" id="exportTitle" placeholder="資料タイトル(任意)">
+            <button class="ok iconable" id="btnExport" title="まとめてHTML保存(保存先フォルダは⚙設定で登録)">💾 <span class="btnLabel">HTML保存</span></button>
+            <div class="moreWrap">
+              <button class="secondary iconBtn" id="btnMore" type="button" title="その他の操作" aria-haspopup="true">⋯</button>
+              <div id="moreMenu" hidden>
+                <button type="button" id="btnImport" title="書き出したHTMLを読み込んで続きから編集">📥 HTMLを読み込む</button>
+                <button type="button" id="btnRefreshList" title="一覧を更新(別のタブ/ウィンドウで追加されたキャプチャを反映。画面共有や範囲固定はそのまま維持)">🔄 一覧を更新</button>
+                <button type="button" class="dangerItem" id="btnClearAll">🗑 全削除</button>
+              </div>
+            </div>
+            <input type="file" id="importFileInput" accept=".html,text/html" style="display:none;">
+          </div>
+          <div class="docInfo"><span id="countLabel">0</span>件 ／ 書き出し目安 <span id="sizeEstimate">-</span> <span id="exportStatusMsg"></span></div>
+        </div>
+        <div id="captureList"><div class="empty">まだキャプチャがありません</div></div>
+      </div>
     </div>
-    <div class="hint">スクショをコピーした状態で Ctrl+V (⌘+V) でも追加できます／このページにフォーカスがある間は Space キーでもキャプチャできます／記録一覧で行を選択中(枠線表示)は、その行の直後に追加されます</div>
-  </div>
+  </section>
 
-  <div class="panel" id="recordListPanel">
-    <div id="recordListHeader">
-      <div class="panelHeadRow" style="margin-bottom:10px;">
-        <h2 style="margin:0;">記録一覧（<span id="countLabel">0</span>件 ／ 書き出し目安 <span id="sizeEstimate">-</span>）</h2>
-        <button class="secondary iconable" id="btnRefreshList" type="button" title="一覧を更新(別のタブ/ウィンドウで追加されたキャプチャを反映。画面共有や範囲固定はそのまま維持されます)">🔄 <span class="btnLabel">更新</span></button>
+  <section class="page" id="page-history">
+    <div id="historyToolbar">
+      <div class="row" id="historyFilters">
+        <button type="button" class="chipBtn" data-range="today">今日</button>
+        <button type="button" class="chipBtn" data-range="thisWeek">今週</button>
+        <button type="button" class="chipBtn" data-range="lastWeek">先週</button>
+        <button type="button" class="chipBtn" data-range="thisMonth">今月</button>
+        <button type="button" class="chipBtn" data-range="all">すべて</button>
       </div>
-      <div class="row" id="recordActions">
-        <input type="file" id="importFileInput" accept=".html,text/html" style="display:none;">
-        <button class="secondary iconable" id="btnImport" title="書き出したHTMLを読み込んで続きから編集">📥 <span class="btnLabel">インポート</span></button>
-        <input type="date" id="exportDate">
-        <input type="text" id="exportTitle" placeholder="資料タイトル(任意)">
-        <button class="secondary" id="btnClearAll">全削除</button>
-        <button class="ok" id="btnExport" title="まとめてHTML保存(Shift+クリックで保存先フォルダを設定/Ctrl+Shift+クリックで解除。設定済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログで確認します)">HTML保存</button>
-        <button class="secondary iconable" id="btnExportHistory" type="button" title="書き出し履歴を表示(過去にHTML保存した日時・ファイル名・件数)">🕘 <span class="btnLabel">履歴</span></button>
-        <span id="exportStatusMsg"></span>
+      <div class="row">
+        <input type="search" id="historySearch" placeholder="ファイル名で検索">
+        <button class="secondary iconBtn" id="btnExportHistorySync" type="button" title="保存先フォルダと同期(他端末分の履歴・ファイル消失状況を反映)">🔄</button>
       </div>
-      <div class="hint" style="margin:8px 0 0;">左端の ⠿ をドラッグすると並び替えできます／⠿ にフォーカスしてShift+Alt+↑/↓でも並び替え可能です(OneNote同様)</div>
+      <div class="hint" id="historyFolderNote"></div>
     </div>
-    <div id="captureList"><div class="empty">まだキャプチャがありません</div></div>
-  </div>
+    <ul id="exportHistoryList"></ul>
+  </section>
 
 </main>
 
@@ -715,8 +783,6 @@
   const btnHelp = $("btnHelp");
   const btnFixRect = $("btnFixRect");
   const btnFixFull = $("btnFixFull");
-  const shareHeaderToggle = $("shareHeaderToggle");
-  const shareToggleBar = $("shareToggleBar");
   const sharePanel = $("sharePanel");
   const btnCapture = $("btnCapture");
   const btnPaste = $("btnPaste");
@@ -739,10 +805,12 @@
   const captureList = $("captureList");
   const countLabel = $("countLabel");
   const sizeEstimateLabel = $("sizeEstimate");
-  const capturePanelEl = $("capturePanel");
+  const shareChip = $("shareChip");
+  const recordToolbarEl = $("recordToolbar");
   const appHeaderEl = $("appHeader");
 
   let stream = null;
+  let currentTab = null; // 表示中のタブ("range" | "record" | "history")
   let dragging = false;
   let dragStart = null;
   // 選択範囲は video の表示座標(CSSピクセル)基準で保持し、
@@ -900,7 +968,21 @@
     btnShareToggleLabel.textContent = connected ? "共有を停止" : "画面共有を開始";
     btnShareToggle.title = connected ? "共有を停止" : "画面共有を開始";
     btnShareToggle.classList.toggle("danger", connected);
-    updateSharePanelHeight();
+    updateShareChip();
+  }
+
+  // ヘッダーの共有状態チップ(どのタブからでも共有・範囲の状態が分かり、クリックで範囲タブへ移れる)
+  function updateShareChip(){
+    if(!isSharing()){
+      shareChip.textContent = "🖥 未共有";
+      shareChip.classList.remove("live");
+    }else if(fixedRect){
+      shareChip.textContent = `🖥 ${fixedRect.w}×${fixedRect.h} 固定中`;
+      shareChip.classList.add("live");
+    }else{
+      shareChip.textContent = "🖥 共有中・範囲未固定";
+      shareChip.classList.remove("live");
+    }
   }
 
   function onShareEnded(){
@@ -923,6 +1005,7 @@
       pipWindow.close();
     }
     shareSurfaceNotice.classList.remove("show", "warn", "info");
+    updateShareChip();
   }
 
   btnShareToggle.addEventListener("click", async () => {
@@ -942,11 +1025,9 @@
       btnFixRect.disabled = false;
       btnFixFull.disabled = false;
       setShareUiConnected(true);
-      // 前回の共有停止で折りたたまれたまま(=範囲固定後)だと、再度共有を開始しても
-      // 全画面/範囲選択の操作画面が隠れたままになり、以前の「共有が切れました」表示も
-      // 残ってしまうため、共有開始のたびに必ず展開してステータス表示もクリアする
-      setSharePanelCollapsed(false);
+      // 以前の「共有が切れました」表示が残らないよう、共有開始のたびにステータス表示をクリアする
       captureStatus.textContent = "";
+      switchTab("range");
 
       // 選択した共有種別に応じて注意喚起(mute/unmuteのような不安定なイベントに頼らず、
       // getSettings().displaySurfaceで確実に判定できる)
@@ -1195,7 +1276,7 @@
   // 矢印キーで選択範囲を微調整(Shiftで大きく移動)
   document.addEventListener("keydown", (e) => {
     if(!selection) return;
-    if(sharePanel.classList.contains("collapsed")) return;
+    if(currentTab !== "range") return;
     if(lightbox.classList.contains("open")) return;
     if(e.ctrlKey || e.metaKey || e.altKey) return; // Shift+Alt+矢印は記録一覧のキーボード並び替えと競合するため除外(Altを含む組み合わせは全て対象外に)
     const tag = document.activeElement && document.activeElement.tagName;
@@ -1216,80 +1297,14 @@
     setSelection({ x, y, w, h });
   });
 
-  function setSharePanelCollapsed(collapsed){
-    sharePanel.classList.toggle("collapsed", collapsed);
-    shareHeaderToggle.setAttribute("aria-expanded", String(!collapsed));
-    shareToggleBar.textContent = collapsed ? "▼" : "▲";
-    shareToggleBar.setAttribute("aria-label", collapsed ? "展開する" : "折りたたむ");
-    // 折りたたみ状態が変わるたび、狭い幅でのボタン・折りたたみ矢印の統合位置も見直す
-    updateShareChromePlacement();
-    // ResizeObserverの通知は、この直後に呼ばれるPiP自動起動(documentPictureInPicture.requestWindow())
-    // が完了するまで配信が止まることがある(環境依存)ため、高さの変化が確定しているこの時点で
-    // 即座に再計算し、--share-panel-hが古い値のまま下のパネルとズレるのを防ぐ
-    updateSharePanelHeight();
-  }
-
-  // 共有開始/停止ボタン(btnShareToggle)の行き先は状態によって3通り。
-  // ①展開中(映像プレビュー表示中): headRowに単独で残すと見出し非表示時(狭い幅)は
-  //   もちろん、見出し表示中(広い幅)でも左に大きな空白ができるため、幅を問わず
-  //   本体の操作行(比率/範囲固定/全画面/共有中と同じ行、#shareControlsRow)へ同居
-  // ②折りたたみ中・狭い幅: headRowに残すとボタン1つだけの空箱行になるため、
-  //   キャプチャパネルのボタン行末尾(メモボタンの右、ステータス表示の直前)へ同居
-  // ③折りたたみ中・広い幅: 見出し(h2)がheadRowに表示されているため、従来通り
-  //   headRowに残す(見出しの右に並べば空白は気にならない)
-  // 展開用の▼/▲矢印は②のときだけタイトルバー(#appHeader)へ同居させる
-  const captureRow = capturePanelEl.querySelector(".row");
-  const shareHeadRow = sharePanel.querySelector(".panelHeadRow");
-  const shareControlsRow = $("shareControlsRow");
-  const narrowWidthQuery = window.matchMedia("(max-width:600px)");
-  function updateShareChromePlacement(){
-    const collapsed = sharePanel.classList.contains("collapsed");
-    const narrow = narrowWidthQuery.matches;
-    const collapsedNarrowMerge = narrow && collapsed;
-
-    let buttonTarget;
-    if(collapsedNarrowMerge){
-      buttonTarget = captureRow;
-    }else if(!collapsed){
-      buttonTarget = shareControlsRow;
-    }else{
-      buttonTarget = shareHeadRow;
-    }
-    // キャプチャ行では、他のボタンを気軽に連打する流れで誤って停止を
-    // 押してしまわないよう、ステータス表示(例:「1475×706px 固定」)の
-    // さらに右側(行の末尾)に配置して物理的な距離を取る
-    if(btnShareToggle.parentElement !== buttonTarget){
-      buttonTarget.appendChild(btnShareToggle);
-    }
-
-    if(collapsedNarrowMerge && shareToggleBar.parentElement !== appHeaderEl){
-      appHeaderEl.insertBefore(shareToggleBar, btnHelp);
-    }else if(!collapsedNarrowMerge && shareToggleBar.parentElement !== sharePanel){
-      sharePanel.appendChild(shareToggleBar);
-    }
-    // ボタン・矢印とも外へ出た共有パネル(②の状態)は、空のカードが残るだけになるため非表示にする
-    sharePanel.style.display = collapsedNarrowMerge ? "none" : "";
-    // headRowは、展開中(ボタンは本体行へ)かつ狭い幅(見出しテキストも非表示)だと
-    // 中身が完全に空になるため、その組み合わせのときだけ行自体を消す
-    shareHeadRow.style.display = (!collapsed && narrow) ? "none" : "";
-    updateHeaderHeight();
-    updateSharePanelHeight();
-    updateCapturePanelHeight();
-  }
-  if(narrowWidthQuery.addEventListener){
-    narrowWidthQuery.addEventListener("change", updateShareChromePlacement);
-  }else{
-    narrowWidthQuery.addListener(updateShareChromePlacement);
-  }
-  updateShareChromePlacement();
-
   function applyFixedRect(rect){
     fixedRect = rect;
     btnCapture.disabled = false;
     btnPip.disabled = false;
-    captureStatus.textContent = `${fixedRect.w}×${fixedRect.h}px 固定`;
-    // 範囲が決まったら映像プレビューは不要になることが多いので自動的に折りたたむ
-    setSharePanelCollapsed(true);
+    captureStatus.textContent = ""; // 範囲のサイズはヘッダーの共有チップに表示する
+    updateShareChip();
+    // 範囲が決まったら映像プレビューは不要になることが多いので、自動的に記録タブへ移る
+    switchTab("record");
     // 範囲固定→PiPを開く、を一連の流れにすることで、タブが背景に回っても
     // video要素がPiP側に移動した状態を維持でき、キャプチャが古いフレームを拾いにくくなる
     if(pipSupported) openPipWindow().catch((err) => console.error("PiP自動起動に失敗しました", err));
@@ -1322,25 +1337,6 @@
     selRect.style.width = "0px";
     selRect.style.height = "0px";
     applyFixedRect({ x:0, y:0, w:video.videoWidth, h:video.videoHeight });
-  });
-
-  shareHeaderToggle.addEventListener("click", () => {
-    setSharePanelCollapsed(!sharePanel.classList.contains("collapsed"));
-  });
-  shareHeaderToggle.addEventListener("keydown", (e) => {
-    if(e.key === "Enter" || e.key === " "){
-      e.preventDefault();
-      setSharePanelCollapsed(!sharePanel.classList.contains("collapsed"));
-    }
-  });
-  shareToggleBar.addEventListener("click", () => {
-    setSharePanelCollapsed(!sharePanel.classList.contains("collapsed"));
-  });
-  shareToggleBar.addEventListener("keydown", (e) => {
-    if(e.key === "Enter" || e.key === " "){
-      e.preventDefault();
-      setSharePanelCollapsed(!sharePanel.classList.contains("collapsed"));
-    }
   });
 
   // ---------- レコード追加共通処理(キャプチャ/貼り付け共通) ----------
@@ -1991,35 +1987,8 @@
     updateCount();
   });
 
-  btnExport.addEventListener("click", async (clickEvent) => {
-    // 保存先フォルダの「登録」「解除」はエクスポート処理そのものとは無関係な軽い操作なので、
-    // 全件読み込みやHTML生成より前に判定し、該当する場合はそれだけで完了させる。
+  btnExport.addEventListener("click", async () => {
     const fsSupported = "showDirectoryPicker" in window;
-    const modKey = clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey);
-
-    if(fsSupported && clickEvent && modKey && clickEvent.shiftKey){
-      const had = await kvGet("saveDirHandle");
-      if(!had){
-        showToast("保存先フォルダは登録されていません。");
-        return;
-      }
-      if(!(await confirmAsync("登録済みの保存先フォルダを解除します。よろしいですか？"))) return;
-      await kvSet("saveDirHandle", null);
-      showToast("保存先フォルダの登録を解除しました。次回からは通常のダウンロードに戻ります。");
-      return;
-    }
-
-    if(fsSupported && clickEvent && clickEvent.shiftKey){
-      try{
-        const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-        await kvSet("saveDirHandle", dirHandle);
-        showToast(`✅ 保存先フォルダを「${dirHandle.name}」に設定しました。次回から保存のたびにこのフォルダを起点に確認します。`);
-        return;
-      }catch(err){
-        if(err && err.name !== "AbortError") console.error(err);
-        return; // フォルダ選択をキャンセルした場合は何もしない
-      }
-    }
 
     // 保存先フォルダが登録済みなら、クリック直後(ブラウザのuser activationが有効なうち)に
     // ピッカーを前回のフォルダを起点(startIn)にして開き、書き込み先を確定させておく。
@@ -3119,7 +3088,8 @@
     }
     if(e.key !== "Escape") return;
     if(versionModal.classList.contains("open")){ closeVersionModal(); return; }
-    if(exportHistoryModal.classList.contains("open")){ closeExportHistoryModal(); return; }
+    if(settingsModal.classList.contains("open")){ closeSettingsModal(); return; }
+    if(!moreMenu.hidden){ closeMoreMenu(); return; }
     if(cropModal.classList.contains("open")){ closeCropModal(); return; }
     if(lightbox.classList.contains("open")) closeLightbox();
   });
@@ -3473,20 +3443,14 @@
     versionModal.classList.remove("open");
     unlockBodyScroll();
   }
-  verLabel.addEventListener("click", openVersionModal);
-  verLabel.addEventListener("keydown", (e) => {
-    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); openVersionModal(); }
-  });
+  $("btnVersion").addEventListener("click", openVersionModal);
   btnVersionClose.addEventListener("click", closeVersionModal);
   versionModal.addEventListener("click", (e) => {
     if(e.target === versionModal) closeVersionModal();
   });
 
   // ---------- 書き出し履歴モーダル ----------
-  const btnExportHistory = $("btnExportHistory");
-  const exportHistoryModal = $("exportHistoryModal");
   const exportHistoryList = $("exportHistoryList");
-  const btnExportHistoryClose = $("btnExportHistoryClose");
   const btnExportHistorySync = $("btnExportHistorySync");
 
   let expandedHistoryGroups = new Set(); // 展開中(同名を畳まず表示中)のファイル名。再描画をまたいで状態を覚えておく
@@ -3577,19 +3541,6 @@
       }
     }
   }
-  async function openExportHistoryModal(){
-    // 開く時点ではローカルの履歴だけを即表示する(フォルダピッカーは出さない)。
-    // 最新状態への同期はモーダル内の🔄ボタンを押した時だけ行う。
-    await renderExportHistoryList();
-    exportHistoryModal.classList.add("open");
-    lockBodyScroll();
-  }
-  function closeExportHistoryModal(){
-    exportHistoryModal.classList.remove("open");
-    unlockBodyScroll();
-  }
-  btnExportHistory.addEventListener("click", openExportHistoryModal);
-  btnExportHistoryClose.addEventListener("click", closeExportHistoryModal);
   btnExportHistorySync.addEventListener("click", async () => {
     btnExportHistorySync.disabled = true;
     try{
@@ -3599,8 +3550,96 @@
       btnExportHistorySync.disabled = false;
     }
   });
-  exportHistoryModal.addEventListener("click", (e) => {
-    if(e.target === exportHistoryModal) closeExportHistoryModal();
+
+  // ---------- タブ切替(範囲/記録/履歴) ----------
+  // タブごとにスクロール位置を覚えておき、戻ったときに元の位置へ復帰する
+  const TAB_KEY = "smart-capture-memo-tab";
+  const tabScrollY = {};
+  function switchTab(tab){
+    if(currentTab === tab) return;
+    if(currentTab) tabScrollY[currentTab] = window.scrollY;
+    currentTab = tab;
+    document.querySelectorAll(".page").forEach((p) => p.classList.toggle("active", p.id === "page-" + tab));
+    document.querySelectorAll(".tabBtn").forEach((b) => {
+      const on = b.dataset.tab === tab;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+    try{ localStorage.setItem(TAB_KEY, tab); }catch(e){}
+    if(tab === "history") renderExportHistoryList();
+    if(tab === "record") updateRecordToolbarHeight();
+    window.scrollTo(0, tabScrollY[tab] || 0);
+  }
+  document.querySelectorAll(".tabBtn").forEach((b) => {
+    b.addEventListener("click", () => switchTab(b.dataset.tab));
+  });
+  shareChip.addEventListener("click", () => switchTab("range"));
+  shareChip.addEventListener("keydown", (e) => {
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); switchTab("range"); }
+  });
+
+  // ---------- その他の操作メニュー(⋯) ----------
+  const btnMore = $("btnMore");
+  const moreMenu = $("moreMenu");
+  function closeMoreMenu(){ moreMenu.hidden = true; }
+  btnMore.addEventListener("click", (e) => {
+    e.stopPropagation();
+    moreMenu.hidden = !moreMenu.hidden;
+  });
+  moreMenu.addEventListener("click", closeMoreMenu); // 項目を選んだら閉じる(各項目の処理は個別のclickで実行)
+  document.addEventListener("click", (e) => {
+    if(!moreMenu.hidden && !e.target.closest(".moreWrap")) closeMoreMenu();
+  });
+
+  // ---------- 設定(保存先フォルダ・テーマ・ヘルプ・更新履歴) ----------
+  const settingsModal = $("settingsModal");
+  const saveDirNameEl = $("saveDirName");
+  const btnSaveDirPick = $("btnSaveDirPick");
+  const btnSaveDirClear = $("btnSaveDirClear");
+  const historyFolderNote = $("historyFolderNote");
+  const fsAccessSupported = "showDirectoryPicker" in window;
+
+  async function refreshSaveDirState(){
+    const handle = fsAccessSupported ? await kvGet("saveDirHandle") : null;
+    if(!fsAccessSupported){
+      saveDirNameEl.textContent = "このブラウザは保存先フォルダの登録に対応していません(Edge/Chrome推奨)";
+      btnSaveDirPick.disabled = true;
+    }else{
+      saveDirNameEl.textContent = handle ? `📁 ${handle.name}` : "未登録(通常のダウンロード)";
+    }
+    btnSaveDirClear.disabled = !handle;
+    historyFolderNote.textContent = handle
+      ? `保存先フォルダ「${handle.name}」に保存したファイルは、📄で開く・📥で読み込みができます`
+      : "⚙設定で保存先フォルダを登録すると、履歴からファイルを開く・読み込みができます";
+    return handle;
+  }
+  function openSettingsModal(){
+    refreshSaveDirState();
+    settingsModal.classList.add("open");
+    lockBodyScroll();
+  }
+  function closeSettingsModal(){
+    settingsModal.classList.remove("open");
+    unlockBodyScroll();
+  }
+  $("btnSettings").addEventListener("click", openSettingsModal);
+  $("btnSettingsClose").addEventListener("click", closeSettingsModal);
+  settingsModal.addEventListener("click", (e) => {
+    if(e.target === settingsModal) closeSettingsModal();
+  });
+  btnSaveDirPick.addEventListener("click", async () => {
+    try{
+      const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      await kvSet("saveDirHandle", dirHandle);
+      await refreshSaveDirState();
+    }catch(err){
+      if(err && err.name !== "AbortError") console.error(err);
+    }
+  });
+  btnSaveDirClear.addEventListener("click", async () => {
+    if(!(await confirmAsync("登録済みの保存先フォルダを解除します。よろしいですか？\n(以降のHTML保存は通常のダウンロードになります)"))) return;
+    await kvSet("saveDirHandle", null);
+    await refreshSaveDirState();
   });
 
   // ヘッダー(タイトル/バージョン)の実高さを監視し、その直下に「2. キャプチャ」
@@ -3615,34 +3654,26 @@
   }
   updateHeaderHeight();
 
-  // 共有パネルの実高さを監視し、「2. キャプチャ」パネルがその直下に貼り付くよう
-  // CSS変数へ反映する(段階的開示・折りたたみ・映像プレビュー表示等で高さが変わっても追従)
-  function updateSharePanelHeight(){
-    document.documentElement.style.setProperty("--share-panel-h", sharePanel.offsetHeight + "px");
+  // 記録タブのツールバー(キャプチャボタン・見出しナビ)の実高さを監視し、目次パネルが
+  // その直下に貼り付くようCSS変数へ反映する(ボタンの折り返し等で高さが変わっても追従)
+  function updateRecordToolbarHeight(){
+    document.documentElement.style.setProperty("--record-toolbar-h", recordToolbarEl.offsetHeight + "px");
   }
   if(typeof ResizeObserver !== "undefined"){
-    new ResizeObserver(updateSharePanelHeight).observe(sharePanel);
+    new ResizeObserver(updateRecordToolbarHeight).observe(recordToolbarEl);
   }else{
-    window.addEventListener("resize", updateSharePanelHeight);
+    window.addEventListener("resize", updateRecordToolbarHeight);
   }
-  updateSharePanelHeight();
-
-  // 「2. キャプチャ」パネルの実高さを監視し、記録一覧の見出しがその直下に
-  // ぴったり貼り付くようCSS変数へ反映する(ボタンが折り返す等で高さが変わっても追従)
-  function updateCapturePanelHeight(){
-    document.documentElement.style.setProperty("--capture-panel-h", capturePanelEl.offsetHeight + "px");
-  }
-  if(typeof ResizeObserver !== "undefined"){
-    new ResizeObserver(updateCapturePanelHeight).observe(capturePanelEl);
-  }else{
-    window.addEventListener("resize", updateCapturePanelHeight);
-  }
-  updateCapturePanelHeight();
+  updateRecordToolbarHeight();
 
   // ---------- init ----------
   (async () => {
     db = await openDB();
+    let savedTab = null;
+    try{ savedTab = localStorage.getItem(TAB_KEY); }catch(e){}
+    switchTab(["range","record","history"].includes(savedTab) ? savedTab : "record");
     await loadAll();
+    refreshSaveDirState();
   })();
 
 })();
