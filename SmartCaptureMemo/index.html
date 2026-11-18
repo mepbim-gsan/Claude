@@ -410,14 +410,16 @@
   mark .memo-col-blue, .memo-col-blue mark{color:var(--memo-col-blue) !important;}
   mark .memo-col-green, .memo-col-green mark{color:var(--memo-col-green) !important;}
 
-  /* ヘッダーのタイトル下にバージョンを常時表示(クリックで更新履歴)。
-     前回見たバージョンから更新されていたら「NEW」を付けて知らせる */
+  /* ヘッダーのタイトル下にバージョンを常時表示。前回見たバージョンから更新されていたら「NEW」を付けて知らせる
+     (クリックでNEWを既読に)。更新履歴は表に出さず、バージョン表記の5回連続クリックで開くイースターエッグ */
   .brand{display:flex; flex-direction:column; align-items:flex-start; min-width:0; line-height:1.2;}
   .verBtn{
     background:transparent; color:var(--sub); border:none; padding:1px 0 0; font-size:10.5px; font-weight:400;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; white-space:nowrap;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; cursor:default; white-space:nowrap;
+    -webkit-user-select:none; user-select:none;
   }
-  .verBtn:hover:not(:disabled){color:var(--accent); text-decoration:underline; opacity:1;}
+  .verBtn:hover:not(:disabled){opacity:1;}
+  .verBtn.is-new{cursor:pointer;}
   .verBtn.is-new::after{
     content:"NEW"; margin-left:6px; padding:0 5px; border-radius:8px; background:var(--accent); color:#fff;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:9px; font-weight:700; vertical-align:1px;
@@ -429,7 +431,7 @@
   #versionModal.open{display:flex;}
   #versionPanel{
     background:var(--panel); border:1px solid var(--border); border-radius:12px;
-    width:340px; max-width:90vw; max-height:78vh; display:flex; flex-direction:column;
+    width:520px; max-width:92vw; max-height:84vh; display:flex; flex-direction:column;
     box-shadow:0 12px 40px rgba(0,0,0,.3);
   }
   #versionPanelHead{
@@ -440,17 +442,35 @@
     background:transparent; color:var(--sub); border:none; padding:2px 6px; font-size:13px; cursor:pointer;
   }
   .close-btn:hover{color:var(--text);}
-  #versionList{
-    list-style:none; margin:0; padding:8px 14px 14px; overflow-y:auto; font-size:12px;
+  /* 更新履歴: 日付ごとのグループ → 各更新(#N)をカード風の行で表示 */
+  #versionList{list-style:none; margin:0; padding:6px 14px 16px; overflow-y:auto; font-size:13px;}
+  #versionList .vGroup{padding:10px 0 4px;}
+  #versionList .vDate{
+    position:sticky; top:-6px; z-index:1; background:var(--panel); padding:4px 0 6px;
+    font-size:12px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:8px;
   }
-  #versionList li{
-    display:flex; gap:8px; padding:5px 0; border-bottom:1px solid var(--border);
-    color:var(--sub); line-height:1.5;
+  #versionList .vGen{
+    font-size:10px; font-weight:700; color:var(--accent); border:1px solid var(--accent);
+    border-radius:8px; padding:0 6px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   }
-  #versionList li:last-child{border-bottom:none;}
-  #versionList .v-tag{
-    flex-shrink:0; color:var(--accent); font-weight:700; font-family:monospace; font-size:11px;
+  #versionList .vItems{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
+  #versionList .vItem{
+    display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border-radius:8px;
+    background:var(--surface2); border:1px solid var(--border); line-height:1.55; color:var(--text);
   }
+  #versionList .vItem.is-latest{border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent);}
+  #versionList .vNo{
+    flex-shrink:0; min-width:2.6em; color:var(--sub); font-size:11px; font-weight:700; padding-top:2px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums;
+  }
+  #versionList .vText{flex:1; min-width:0;}
+  #versionList .vLatest{
+    display:inline-block; margin:0 6px 2px 0; padding:0 6px; border-radius:8px;
+    background:var(--accent); color:#fff; font-size:10px; font-weight:700; vertical-align:1px;
+  }
+  #versionList .vBullets{margin:0; padding-left:1.2em;}
+  #versionList .vBullets li{margin:1px 0;}
+  #versionList .is-legacy .vItem{color:var(--sub);}
 
   #historyToolbar{
     position:sticky; top:var(--header-h, 0px); z-index:20; background:var(--bg);
@@ -577,7 +597,7 @@
   <div class="appBar">
     <div class="brand">
       <h1>SmartCaptureMemo</h1>
-      <button class="verBtn" id="verLabel" type="button" title="更新履歴を見る"></button>
+      <button class="verBtn" id="verLabel" type="button" tabindex="-1"></button>
     </div>
     <span class="chip" id="shareChip" tabindex="0" role="button" title="範囲タブを開く">🖥 未共有</span>
     <button class="iconBtn" id="btnSettings" type="button" title="設定">⚙</button>
@@ -620,10 +640,9 @@
         </div>
       </section>
       <section class="setSec">
-        <h3>ヘルプ・バージョン</h3>
+        <h3>ヘルプ</h3>
         <div class="row">
           <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
-          <button class="secondary" id="btnVersion" type="button" title="更新履歴">更新履歴</button>
         </div>
       </section>
     </div>
@@ -3885,8 +3904,8 @@
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
   const APP_VERSION = "v02_2026-11-18.12"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
-    ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
-    ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
+    ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
+    ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
     ["v02_2026-11-18.2","見出しの◀▶(常時表示ウィンドウ・Alt+↑/↓含む)を、端まで行ったら反対側へ循環するように変更"],
     ["v02_2026-11-18.3","目次の件数(📸・💬)を固定幅の列にし、桁数が違ってもアイコンの位置が揃うように"],
     ["v02_2026-11-18.4","記録タブのキャプチャ/貼り付け/見出し/メモ/常時表示ボタンの幅を統一"],
@@ -3913,9 +3932,33 @@
   const btnVersionClose = $("btnVersionClose");
 
   function openVersionModal(){
-    versionList.innerHTML = VERSION_HISTORY.slice().reverse().map(([v, t]) =>
-      `<li><span class="v-tag">${v}</span><span>${t}</span></li>`
-    ).join("");
+    // 更新日ごとにまとめ、新しい順に表示する。各更新は日付内の通し番号(#N)で示し、最新に「最新」を付ける
+    const parseVer = (v) => {
+      const m = v.match(/^v(\d+)(?:_(\d{4}-\d{2}-\d{2})(?:\.(\d+))?)?$/);
+      return m ? { gen: "v" + m[1], date: m[2] || "", n: m[3] ? Number(m[3]) : 1 } : { gen: v, date: "", n: 1 };
+    };
+    const groups = [];
+    VERSION_HISTORY.slice().reverse().forEach(([v, t]) => {
+      const pv = parseVer(v);
+      const key = pv.date || pv.gen;
+      let g = groups[groups.length - 1];
+      if(!g || g.key !== key){ g = { key, date: pv.date, gen: pv.gen, items: [] }; groups.push(g); }
+      g.items.push({ v, pv, t });
+    });
+    const textHtml = (t) => Array.isArray(t)
+      ? `<ul class="vBullets">${t.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+      : `<div>${escapeHtml(t)}</div>`;
+    versionList.innerHTML = groups.map((g) => `
+      <li class="vGroup${g.date ? "" : " is-legacy"}">
+        <div class="vDate">${g.date ? g.date.replace(/-/g, "/") : "旧ツール"} <span class="vGen">${g.gen}</span></div>
+        <ol class="vItems">${g.items.map((it) => `
+          <li class="vItem${it.v === APP_VERSION ? " is-latest" : ""}" title="${it.v}">
+            <span class="vNo">${g.date ? "#" + it.pv.n : ""}</span>
+            <div class="vText">${it.v === APP_VERSION ? '<span class="vLatest">最新</span>' : ""}${textHtml(it.t)}</div>
+          </li>`).join("")}
+        </ol>
+      </li>`).join("");
+    versionList.scrollTop = 0;
     versionModal.classList.add("open");
     lockBodyScroll();
     verLabel.classList.remove("is-new");
@@ -3925,8 +3968,21 @@
     versionModal.classList.remove("open");
     unlockBodyScroll();
   }
-  $("btnVersion").addEventListener("click", openVersionModal);
-  verLabel.addEventListener("click", openVersionModal);
+  // バージョン表記: 1回のクリックでNEWを既読にするだけ。2秒以内に5回連続でクリックすると更新履歴が開く
+  let verClicks = 0, verClickTimer = null;
+  verLabel.addEventListener("click", () => {
+    if(verLabel.classList.contains("is-new")){
+      verLabel.classList.remove("is-new");
+      try{ localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION); }catch(e){}
+    }
+    verClicks++;
+    clearTimeout(verClickTimer);
+    verClickTimer = setTimeout(() => { verClicks = 0; }, 2000);
+    if(verClicks >= 5){
+      verClicks = 0;
+      openVersionModal();
+    }
+  });
   btnVersionClose.addEventListener("click", closeVersionModal);
   versionModal.addEventListener("click", (e) => {
     if(e.target === versionModal) closeVersionModal();
