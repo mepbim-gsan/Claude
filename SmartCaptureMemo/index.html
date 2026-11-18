@@ -3,16 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Screen Capture Memo</title>
+<title>SmartCaptureMemo</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9D</text></svg>">
-<!--
-  @tool      Screen Capture Memo
-  @version   v104
-  @changelog v104: ユーザーから「履歴で更新かけるとき、再度フォルダを開く動作が必要？」と質問。v103の実装(🕘履歴ボタンを開くたびに毎回`showDirectoryPicker`を呼ぶ)はその通り毎回ダイアログが出る仕様だったため率直に回答したところ、ユーザーから「そっちの方がいいかも。更新アイコンだけでいいかもね」と、モーダルを開く時点では同期せずローカル即表示にし、同期は明示的なアイコンボタンだけで行う方式への変更を要望され対応。`openExportHistoryModal()`からフォルダ同期処理を分離して`syncExportHistoryWithFolder()`という独立関数にし(保存先フォルダ未登録時やピッカーキャンセル時は何もせず静かに終わる)、モーダルを開く処理自体は`renderExportHistoryList()`のみを呼ぶ軽量な処理に戻した。モーダルヘッダー(`#exportHistoryPanelHead`)の閉じるボタンの隣に🔄アイコンボタン(`#btnExportHistorySync`、`.exportHistoryHeadBtns`でグループ化)を新設し、クリックで`syncExportHistoryWithFolder()`→`renderExportHistoryList()`を実行(実行中は二重クリック防止のため`disabled`)。Playwrightで、モーダルを開いただけでは`showDirectoryPicker`が一切呼ばれずローカル履歴のみ即表示されること、🔄ボタンを押すと初めてピッカーが呼ばれ他端末限定エントリが反映されることを、`showDirectoryPicker`呼び出し回数のカウントで確認。
-  @changelog v103: ユーザーから「同名は畳んでほしいな」と要望(v102のバッジ表示では不十分で、実際に折りたたんでほしいとのこと)。`renderExportHistoryList()`を書き直し、同じファイル名の履歴は最新1件だけを常時表示する行(primary行)とし、残りは`hidden`属性付きの子行(`.hist-child`)として畳んでおく方式に変更。primary行に「同名N件 ▸/▾」の展開ボタン(`.hist-expand`)を付け、クリックで子行の`hidden`を外す/戻す。展開状態は`expandedHistoryGroups`というファイル名のSetで再描画(削除時など)をまたいで保持。削除は手動DOM操作ではなく丸ごと再描画(`renderExportHistoryList()`再実行)に統一し、primary行を削除した場合に次点の子行が自動的に新しいprimaryへ昇格する(通し番号・展開ボタンも再計算される)ことをPlaywrightで確認。実装中、CSSの`#exportHistoryList li{display:flex}`というID+タグのルールが、ブラウザ標準の`[hidden]{display:none}`より詳細度が高く`hidden`属性を無効化してしまう(JS上はhidden:trueなのに画面には表示されたままになる)不具合をスクリーンショット比較で発見し、`#exportHistoryList li[hidden]{display:none}`を明示的に追加して解消。続けてユーザーから「これは履歴を押したときに、履歴だけ更新する処理も可能ですか」と相談があり、🕘履歴ボタン(`openExportHistoryModal`)のクリック自体をHTML保存と同じ同期のトリガーに追加。保存先フォルダが登録済みの場合のみ、モーダルを開く直前に`showDirectoryPicker({mode:"read"})`でフォルダへの一時アクセスを取得し、`syncHistoryWithDir()`(他端末分のJSON履歴取り込み)・`refreshMissingFlags()`(ファイル消失状況の再確認)を実行してからモーダルを表示する(書き込みは行わないため`readwrite`ではなく`read`モードで十分)。ピッカーをキャンセルした場合(AbortError)はエラー表示せずローカルの履歴のみで表示を続行。Playwrightでは、kvストアへ直接ダミーの`saveDirHandle`を書き込み`showDirectoryPicker`をモックしたうえで🕘履歴ボタンをクリックし、他端末のみに存在するエントリがローカルDBへ取り込まれモーダルに反映されること、missing判定(フォルダ内に実ファイルが無いため`missing:true`)も同時に行われることを確認。あわせて保存先フォルダ未登録時はピッカーが出ず従来通り瞬時にローカル履歴のみ表示されることも確認。
-  @changelog v102: ユーザーから「同じ名前で複数回保存されたものは、わかるように記載できますか」と要望。`renderExportHistoryList()`で、取得した全履歴エントリを`fileName`ごとにグループ化し、タイムスタンプ昇順で通し番号(例: 同じ名前が3件なら1回目〜3回目)を振る。重複が無いファイル名はバッジを表示せず、重複がある場合のみ各行のファイル名の横に`同名X/Y`(X=この行の通し番号、Y=その名前の総保存回数)という小さなバッジを表示し、最新(X=Y)のものだけアクセントカラーの枠にして視認性を上げる。ツールチップで「同じファイル名でY回保存されています(これはX回目)」と案内。保存先フォルダの有無に関わらずローカルの履歴データだけで計算できる純粋な表示ロジックのため、DBスキーマやJSON同期ロジックへの変更は無し。Playwrightで、同じタイトル・日付のまま3回エクスポート+別タイトルで1回エクスポートし、重複の3件には「同名1/3」「同名2/3」「同名3/3」(最新のみ強調スタイル)、重複の無い1件にはバッジが出ないことをスクリーンショット付きで確認。
-  ※ v01〜v101の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
--->
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --surface3:#12151c;
@@ -500,10 +492,10 @@
 <body>
 
 <header id="appHeader">
-  <h1>SCREEN CAPTURE MEMO</h1>
+  <h1>SmartCaptureMemo</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v104</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button"></span>
 </header>
 
 <div id="versionModal">
@@ -759,11 +751,11 @@
   let fixedRect = null; // {x,y,w,h} in source video px (実解像度)
 
   // ---------- IndexedDB ----------
-  const DB_NAME = "screen-capture-memo-db";
+  const DB_NAME = "smart-capture-memo-db";
   const STORE = "captures";
   const KV_STORE = "kv"; // 保存先フォルダハンドル等、少量の設定値を保持
   const HISTORY_STORE = "exportHistory"; // HTML保存の書き出し履歴(ファイル名・日時・件数)
-  const HISTORY_SYNC_FILE = "screen-capture-memo-history.json"; // 保存先フォルダに書き出す履歴の同期用JSON(他端末との共有に使う)
+  const HISTORY_SYNC_FILE = "smart-capture-memo-history.json"; // 保存先フォルダに書き出す履歴の同期用JSON(他端末との共有に使う)
   let db = null;
 
   // 端末をまたいでも衝突しない履歴エントリの識別子(IndexedDBのid autoIncrementは端末ごとに独立するため別途付与)
@@ -2077,12 +2069,12 @@
       h: r.dataURL ? undefined : (r.heading !== false) // 画像なしエントリのみ: true=見出し / false=メモ
     }));
     const dataJson = JSON.stringify(exportData).replace(/<\/script/gi, "<\\/script");
-    const docTitle = (exportTitleInput.value || "").trim() || "Screen Capture Memo";
+    const docTitle = (exportTitleInput.value || "").trim() || "SmartCaptureMemo";
     const docTitleEsc = docTitle.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     const metaJson = JSON.stringify({ title: docTitle, date: exportDateInput.value || "" }).replace(/<\/script/gi, "<\\/script");
 
     // ファイル名: 資料タイトル名_yyyy-mmdd.html (Windows/Macで使えない文字は除去)
-    const safeTitle = docTitle.replace(/[\\/:*?"<>|]/g, "").trim() || "Screen Capture Memo";
+    const safeTitle = docTitle.replace(/[\\/:*?"<>|]/g, "").trim() || "SmartCaptureMemo";
     const dateValue = exportDateInput.value; // "YYYY-MM-DD"
     const [dy, dm, dd] = dateValue ? dateValue.split("-") : [];
     const dateForFilename = (dy && dm && dd) ? `${dy}-${dm}${dd}` : "";
@@ -2865,7 +2857,7 @@
   });
 
   // ---------- テーマ切替 ----------
-  const THEME_KEY = "screen-capture-memo-theme";
+  const THEME_KEY = "smart-capture-memo-theme";
 
   function systemTheme(){
     return (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
@@ -3434,8 +3426,8 @@
   }
 
   // タイトル・日付: 前回値をlocalStorageに保持し、リロードしても保持されるように
-  const TITLE_KEY = "screen-capture-memo-export-title";
-  const DATE_KEY = "screen-capture-memo-export-date";
+  const TITLE_KEY = "smart-capture-memo-export-title";
+  const DATE_KEY = "smart-capture-memo-export-date";
 
   function todayString(){
     const d = new Date();
@@ -3458,114 +3450,14 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
+  const APP_VERSION = "v02_2026-11-18"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
-    ["v01","初版。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し"],
-    ["v02","メモの自動保存を修正"],
-    ["v03","記録順を撮影順に統一"],
-    ["v04","範囲指定に比率固定を追加"],
-    ["v05","ライトモード対応"],
-    ["v06","UI文言を簡略化、テーマ切替ボタン追加"],
-    ["v07","共有ダイアログで画面全体を優先選択"],
-    ["v08","常時表示ウィンドウ(PiP)を追加"],
-    ["v09","ライトモードのボタン視認性を修正"],
-    ["v10","キャプチャボタンをスクロール追従に"],
-    ["v11","エクスポートにPDF向けレイアウトを追加"],
-    ["v12","保存ボタン廃止、PDFレイアウトを刷新"],
-    ["v13","資料タイトル入力とタイムスタンプ非表示化"],
-    ["v14","PDFグリッドの列数計算を修正"],
-    ["v15","ノート形式の余白調整"],
-    ["v16","ボタン文言短縮でレイアウト改善"],
-    ["v17","画像拡大表示・全画面固定ボタン追加"],
-    ["v18","全画面固定時の選択枠クリア"],
-    ["v19","PiPで映像フレームの鮮度を維持"],
-    ["v20","範囲固定と同時にPiP自動起動、共有停止ボタン追加"],
-    ["v21","共有停止時のインジケーター残留を修正"],
-    ["v22","共有停止で範囲もクリア、範囲移動/リサイズ/矢印キー対応"],
-    ["v23","パネル開閉をヘッダークリックに統一"],
-    ["v24","開閉バーをパネル下部の帯に変更"],
-    ["v25","範囲選択に四隅リサイズハンドル追加"],
-    ["v26","開閉バーを常時表示の統一バーに"],
-    ["v27","ウィンドウ/タブ共有時の注意表示を追加"],
-    ["v28","画像のトリミング機能を追加"],
-    ["v29","記録一覧をドラッグ&ドロップで並び替え可能に"],
-    ["v30","トリミングを非破壊化"],
-    ["v31","トリミング範囲を記憶し再開可能に"],
-    ["v32","注意文言を改行して読みやすく"],
-    ["v33","保存ファイル名にタイトル・日付を反映"],
-    ["v34","画像なしの見出し/メモを追加可能に"],
-    ["v35","見出し/メモの表示を切替可能に"],
-    ["v36","エクスポートHTMLのインポート機能を追加"],
-    ["v37","常時表示ボタンをパネル1へ移動"],
-    ["v38","メモ欄でEsc対応、自動拡大、インポートでタイトル/日付復元"],
-    ["v39","日付欄の幅を縮小"],
-    ["v40","削除ボタンを控えめなデザインに"],
-    ["v41","画像拡大表示にホイールズーム追加"],
-    ["v42","画像をJPEG化・解像度上限で軽量化"],
-    ["v43","インポート画像にも軽量化を適用"],
-    ["v44","バージョン表記クリックで更新履歴を表示"],
-    ["v45","保存ファイル名の順序変更、保存先フォルダ記憶機能(裏コマンド)を追加"],
-    ["v46","記録一覧にエクスポートサイズの目安を表示"],
-    ["v47","タイトル/日付の永続化、保存トースト通知、フォルダ登録解除機能を追加"],
-    ["v48","エクスポートH1に日付併記、PDFレイアウトの各ページに印刷用ヘッダー帯を追加"],
-    ["v49","キャプチャサイズ表示を見出し行へ移動しボタンの折り返しを解消"],
-    ["v50","記録一覧の見出しをキャプチャパネル直下にスティッキー表示"],
-    ["v51","書き出し系ボタンをキャプチャパネルから記録一覧の見出しへ移動"],
-    ["v52","記録一覧のボタン列を独立ツールバー化し縦中央揃えに"],
-    ["v53","PiP中も共有パネルに映像プレビューが表示され続けるよう変更"],
-    ["v54","保存失敗時の通知を明確化、トーストをクリックで閉じられるように"],
-    ["v55","保存結果の通知をHTML保存ボタン横のインライン表示に変更"],
-    ["v56","保存の重さを改善(N回の全件読み込みを1回に、フォルダ登録を軽量化)"],
-    ["v57","登録フォルダへの保存時、同名ファイルがあれば上書き確認を表示"],
-    ["v58","キャプチャ元の映像未準備時に共有パネル側へ自動フォールバック"],
-    ["v59","PiP二重video方式を撤回、videoを実際に移動する方式へ復帰"],
-    ["v60","原因は別PC固有の問題と判明、PiP二重video方式(v58相当)へ復帰"],
-    ["v61","ライトボックスにドラッグでのパン(表示位置移動)機能を追加"],
-    ["v62","ライトボックスで矢印キーによる前後の画像切り替えに対応"],
-    ["v63","トリミングで範囲外リリース時に誤キャンセルされる不具合を修正"],
-    ["v64","トリミングに辺ハンドルを追加し幅/高さの片方だけ変更可能に"],
-    ["v65","キャプチャの範囲選択にも辺ハンドルを追加。インポート時のタイトル/日付保存漏れを修正"],
-    ["v66","保存先フォルダを毎回ピッカーで確認する方式に再設計(権限失効の不安定さを解消)"],
-    ["v67","記録一覧をCtrl(⌘)+Alt+↑/↓でも並び替え可能に(⠿ハンドルにフォーカスして操作)"],
-    ["v68","メモ欄でEscを押した後もそのまま並び替えできるよう修正"],
-    ["v69","並び替えのキー組み合わせをShift+Alt+↑/↓に変更(OneNote同様)"],
-    ["v70","行選択中のキャプチャ/貼り付け/見出しは、その行の直後に挿入されるように"],
-    ["v71","トリミングに「前回の範囲」ボタンを追加(直前の範囲を比率で他画像にも適用可能)"],
-    ["v72","モーダル表示中に背景ページがスクロールしてしまう不具合を修正"],
-    ["v73","ライトボックス/トリミング画像のネイティブドラッグを無効化しドラッグ操作を安定化"],
-    ["v74","ライトボックスで小さい画像も上限倍率まで画面いっぱいに拡大表示"],
-    ["v75","「見出し」追加が選択行を無視して末尾に入ってしまう不具合を修正"],
-    ["v76","ライトボックスに画像下のメモキャプション表示を追加(3行で省略)"],
-    ["v77","矢印キーで画像切替後、閉じてもスクロールが復活しない不具合を修正"],
-    ["v78","書き出したHTMLの拡大表示にもメモキャプションを反映"],
-    ["v79","ヘッダー(タイトル・バージョン)をスクロールしても固定表示に"],
-    ["v80","ライトボックス画像の右クリックコピーができない不具合を修正"],
-    ["v81","書き出しHTMLの一覧表示に見出しの目次パネルを追加"],
-    ["v82","メモ・見出し内のURLを自動でハイパーリンク化"],
-    ["v83","書き出しHTMLが白紙になる重大バグを修正(v82の正規表現不具合)"],
-    ["v84","記録一覧の行に「前回の範囲」クイックトリミングボタンを追加"],
-    ["v85","「見出し」の横に「メモ」ボタンを追加し、最初からメモ種別で追加可能に"],
-    ["v86","メモに太字・マーカー・文字色・リンク等のMarkdown風記法を追加"],
-    ["v87","メモ装飾ボタンをトグル式に変更し、入れ子の重複を自動解消"],
-    ["v88","文字色の「黒」ボタンが色タグで囲んでしまう不具合を修正(常にプレーン文字に)"],
-    ["v89","グリッド形式(A4にN枚/ページ)でコメント表示のON/OFFを選択可能に"],
-    ["v90","使い方ヘルプページ(help.html)を追加し、ヘッダーからリンク"],
-    ["v91","並び替え後にメモ編集/トリミングすると書き出しHTMLの順序が画面表示とズレる不具合を修正"],
-    ["v92","書き出しHTMLの目次パネルを改善(現在地ハイライト・狭幅時は右端スワイプ/ホバーで表示)"],
-    ["v93","メモ装飾に取り消し線・下線を追加"],
-    ["v94","マーカー+文字色の組み合わせ表示と装飾トグルボタンの不具合を修正"],
-    ["v95","メモ装飾ツールバーを本文下の専用行(区切り線あり)に変更し、編集時の先頭行ズレを解消"],
-    ["v96","共有パネルのスティッキー化・段階的開示、共有開始/停止ボタンの統合、狭い幅での画像+メモ縦並び、ウィンドウリサイズ時の選択枠ズレ修正"],
-    ["v97","記録一覧に一覧更新ボタンを追加(複数タブ/ウィンドウでの共有・範囲固定を維持したまま反映)、トリミング範囲(選択枠)の各種不具合を修正(リサイズ時のズレ、ハンドルの見切れ、狭い画面での右端まで届かない問題)"],
-    ["v98","📸キャプチャボタン・クリップボード貼り付けで、選択行があってもボタンへのフォーカス移動により無視され常に最下段に入ってしまう不具合を修正(見出し/メモ追加と同じ仕組みに統一)"],
-    ["v99","HTML保存の書き出し履歴(日時・ファイル名・件数)を記録一覧ヘッダーの🕘履歴ボタンから確認できるように追加"],
-    ["v100","保存先フォルダ設定時、書き出し履歴をフォルダ内のJSONファイルにも保存し、他端末(同じOneDriveフォルダ等)とも共有できるように対応"],
-    ["v101","書き出し履歴一覧で、保存先フォルダ内に実ファイルが見つからないエントリへ取り消し線を表示するように対応"],
-    ["v102","書き出し履歴一覧で、同じファイル名で複数回保存された場合に「同名X/Y」バッジを表示するように対応"],
-    ["v103","書き出し履歴一覧で同名ファイルを折りたたみ表示に変更、🕘履歴ボタンを開くたびに保存先フォルダと同期するように対応"],
-    ["v104","書き出し履歴モーダルを開く際の自動フォルダ同期をやめ、モーダル内の🔄アイコンで明示的に同期する方式に変更"]
+    ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
+    ["v02_2026-11-18","SmartCaptureMemoとして新規作成(Screen Capture Memo v104をベースに、保存データを旧ツールと分離)"]
   ];
 
   const verLabel = $("verLabel");
+  verLabel.textContent = APP_VERSION;
   const versionModal = $("versionModal");
   const versionList = $("versionList");
   const btnVersionClose = $("btnVersionClose");
