@@ -1,0 +1,3759 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screen Capture Memo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9D</text></svg>">
+<!--
+  @tool      Screen Capture Memo
+  @version   v104
+  @changelog v104: ユーザーから「履歴で更新かけるとき、再度フォルダを開く動作が必要？」と質問。v103の実装(🕘履歴ボタンを開くたびに毎回`showDirectoryPicker`を呼ぶ)はその通り毎回ダイアログが出る仕様だったため率直に回答したところ、ユーザーから「そっちの方がいいかも。更新アイコンだけでいいかもね」と、モーダルを開く時点では同期せずローカル即表示にし、同期は明示的なアイコンボタンだけで行う方式への変更を要望され対応。`openExportHistoryModal()`からフォルダ同期処理を分離して`syncExportHistoryWithFolder()`という独立関数にし(保存先フォルダ未登録時やピッカーキャンセル時は何もせず静かに終わる)、モーダルを開く処理自体は`renderExportHistoryList()`のみを呼ぶ軽量な処理に戻した。モーダルヘッダー(`#exportHistoryPanelHead`)の閉じるボタンの隣に🔄アイコンボタン(`#btnExportHistorySync`、`.exportHistoryHeadBtns`でグループ化)を新設し、クリックで`syncExportHistoryWithFolder()`→`renderExportHistoryList()`を実行(実行中は二重クリック防止のため`disabled`)。Playwrightで、モーダルを開いただけでは`showDirectoryPicker`が一切呼ばれずローカル履歴のみ即表示されること、🔄ボタンを押すと初めてピッカーが呼ばれ他端末限定エントリが反映されることを、`showDirectoryPicker`呼び出し回数のカウントで確認。
+  @changelog v103: ユーザーから「同名は畳んでほしいな」と要望(v102のバッジ表示では不十分で、実際に折りたたんでほしいとのこと)。`renderExportHistoryList()`を書き直し、同じファイル名の履歴は最新1件だけを常時表示する行(primary行)とし、残りは`hidden`属性付きの子行(`.hist-child`)として畳んでおく方式に変更。primary行に「同名N件 ▸/▾」の展開ボタン(`.hist-expand`)を付け、クリックで子行の`hidden`を外す/戻す。展開状態は`expandedHistoryGroups`というファイル名のSetで再描画(削除時など)をまたいで保持。削除は手動DOM操作ではなく丸ごと再描画(`renderExportHistoryList()`再実行)に統一し、primary行を削除した場合に次点の子行が自動的に新しいprimaryへ昇格する(通し番号・展開ボタンも再計算される)ことをPlaywrightで確認。実装中、CSSの`#exportHistoryList li{display:flex}`というID+タグのルールが、ブラウザ標準の`[hidden]{display:none}`より詳細度が高く`hidden`属性を無効化してしまう(JS上はhidden:trueなのに画面には表示されたままになる)不具合をスクリーンショット比較で発見し、`#exportHistoryList li[hidden]{display:none}`を明示的に追加して解消。続けてユーザーから「これは履歴を押したときに、履歴だけ更新する処理も可能ですか」と相談があり、🕘履歴ボタン(`openExportHistoryModal`)のクリック自体をHTML保存と同じ同期のトリガーに追加。保存先フォルダが登録済みの場合のみ、モーダルを開く直前に`showDirectoryPicker({mode:"read"})`でフォルダへの一時アクセスを取得し、`syncHistoryWithDir()`(他端末分のJSON履歴取り込み)・`refreshMissingFlags()`(ファイル消失状況の再確認)を実行してからモーダルを表示する(書き込みは行わないため`readwrite`ではなく`read`モードで十分)。ピッカーをキャンセルした場合(AbortError)はエラー表示せずローカルの履歴のみで表示を続行。Playwrightでは、kvストアへ直接ダミーの`saveDirHandle`を書き込み`showDirectoryPicker`をモックしたうえで🕘履歴ボタンをクリックし、他端末のみに存在するエントリがローカルDBへ取り込まれモーダルに反映されること、missing判定(フォルダ内に実ファイルが無いため`missing:true`)も同時に行われることを確認。あわせて保存先フォルダ未登録時はピッカーが出ず従来通り瞬時にローカル履歴のみ表示されることも確認。
+  @changelog v102: ユーザーから「同じ名前で複数回保存されたものは、わかるように記載できますか」と要望。`renderExportHistoryList()`で、取得した全履歴エントリを`fileName`ごとにグループ化し、タイムスタンプ昇順で通し番号(例: 同じ名前が3件なら1回目〜3回目)を振る。重複が無いファイル名はバッジを表示せず、重複がある場合のみ各行のファイル名の横に`同名X/Y`(X=この行の通し番号、Y=その名前の総保存回数)という小さなバッジを表示し、最新(X=Y)のものだけアクセントカラーの枠にして視認性を上げる。ツールチップで「同じファイル名でY回保存されています(これはX回目)」と案内。保存先フォルダの有無に関わらずローカルの履歴データだけで計算できる純粋な表示ロジックのため、DBスキーマやJSON同期ロジックへの変更は無し。Playwrightで、同じタイトル・日付のまま3回エクスポート+別タイトルで1回エクスポートし、重複の3件には「同名1/3」「同名2/3」「同名3/3」(最新のみ強調スタイル)、重複の無い1件にはバッジが出ないことをスクリーンショット付きで確認。
+  ※ v01〜v101の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+-->
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --surface3:#12151c;
+    --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac; --accent:#4f8cff;
+    --danger:#e5484d; --ok:#2fbf71; --disabled-bg:#33384a; --disabled-text:#8a90a0; --secondary-bg:#262b38; --secondary-text:#e6e8ec;
+    --img-bg:#000;
+    /* メモ装飾用(ライトボックスキャプション等、常に暗い背景の場所にも使うため、
+       テーマによらず同じ値にして可読性を確保する) */
+    --mark-bg:#fde047; --mark-fg:#1c1f26;
+    --memo-col-red:#e5484d; --memo-col-blue:#3b82f6; --memo-col-green:#2fa360;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --surface3:#f7f8fa;
+      --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280; --accent:#3b6fe0;
+      --danger:#c81e2b; --ok:#1f9d5c; --disabled-bg:#dde1e8; --disabled-text:#4b5563; --secondary-bg:#e7e9ee; --secondary-text:#1c1f26;
+      --img-bg:#e9eaee;
+    }
+  }
+  /* 手動切替(ボタン操作)。OS設定より優先される */
+  html[data-theme="light"]{
+    --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --surface3:#f7f8fa;
+    --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280; --accent:#3b6fe0;
+    --danger:#c81e2b; --ok:#1f9d5c; --disabled-bg:#dde1e8; --disabled-text:#4b5563; --secondary-bg:#e7e9ee; --secondary-text:#1c1f26;
+    --img-bg:#e9eaee;
+  }
+  html[data-theme="dark"]{
+    --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --surface3:#12151c;
+    --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac; --accent:#4f8cff;
+    --danger:#e5484d; --ok:#2fbf71; --disabled-bg:#33384a; --disabled-text:#8a90a0; --secondary-bg:#262b38; --secondary-text:#e6e8ec;
+    --img-bg:#000;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:var(--bg); color:var(--text);
+  }
+  header{
+    padding:14px 20px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    position:sticky; top:0; z-index:25; background:var(--bg);
+    box-shadow:0 6px 14px rgba(0,0,0,.18);
+  }
+  header h1{font-size:15px; margin:0; font-weight:600; color:var(--sub); letter-spacing:.02em;}
+  .ver{font-size:11px; color:var(--sub);}
+  .headerLink{
+    margin-left:auto; color:var(--sub); text-decoration:none; font-size:13px;
+    display:inline-flex; align-items:center; gap:4px; padding:6px 10px;
+    border:1px solid var(--border); border-radius:6px;
+  }
+  .headerLink:hover{color:var(--text); border-color:var(--sub);}
+  #btnTheme{padding:6px 10px; font-size:14px; line-height:1;}
+
+  main{padding:20px; max-width:960px; margin:0 auto;}
+
+  /* 範囲固定後に折りたたんでも、スクロール中にすぐ再調整できるよう
+     共有パネルもスティッキー化(ヘッダーの直下に貼り付く) */
+  #sharePanel{
+    position:sticky; top:var(--header-h, 0px); z-index:22;
+    box-shadow:0 6px 14px rgba(0,0,0,.18);
+  }
+  #capturePanel{
+    position:sticky; top:calc(var(--header-h, 0px) + var(--share-panel-h, 0px)); z-index:20;
+    box-shadow:0 6px 14px rgba(0,0,0,.18);
+  }
+
+  #recordListPanel{padding-top:0;}
+  #recordListHeader{
+    position:sticky; top:calc(var(--header-h, 0px) + var(--share-panel-h, 0px) + var(--capture-panel-h, 0px)); z-index:15;
+    background:var(--panel); margin:0 -16px; padding:14px 16px 10px;
+    border-bottom:1px solid var(--border); box-shadow:0 6px 10px rgba(0,0,0,.10);
+  }
+  #recordListHeader h2{margin:0 0 4px;}
+  #recordActions{
+    align-items:center; padding:8px 0; margin:2px 0;
+    border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+  }
+  #captureList{padding-top:14px;}
+
+  /* 狭い幅ではスティッキー領域(共有パネル/キャプチャパネル/記録一覧見出し)が
+     画面の大部分を占めて重くなるため、補助的なヒント文を省略して高さを圧縮する */
+  @media (max-width:600px){
+    #capturePanel .hint,
+    #recordListHeader .hint{
+      display:none;
+    }
+    /* 記録一覧のボタン行: 日付・タイトル欄を少し狭めることで折り返し位置を
+       後ろへずらし、2行目が1ボタンだけで中途半端に余るのを緩和する */
+    #recordActions #exportDate{width:104px;}
+    #recordActions #exportTitle{width:100px;}
+    /* キャプチャ/貼り付け/インポートはアイコンだけで用途がわかるため、
+       狭い幅ではラベル文字を省略してボタン幅を詰める(行の横幅を節約) */
+    .iconable .btnLabel{display:none;}
+    .iconable{padding-left:11px; padding-right:11px;}
+    /* 「1. 画面を共有→範囲を固定」「2. キャプチャ」の見出し文字列は、ボタン自体の
+       ラベルで用途がわかるため狭い幅では省略し、その分の高さを詰める */
+    #sharePanel .panelHeadRow h2{
+      display:none;
+    }
+    /* キャプチャパネルは見出し行がh2だけになり中身が空になるため、行自体を消して
+       その分の高さ(margin-bottom含む)も詰める。ステータス表示はボタン行末尾に同居済み */
+    #capturePanel .panelHeadRow{
+      display:none;
+    }
+  }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:16px; margin-bottom:16px;
+  }
+  .panel h2{font-size:13px; color:var(--sub); margin:0 0 10px; font-weight:600;}
+  .panelHeadRow{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
+  .panelHeadRow h2{margin:0;}
+  .panelHeadClickable{
+    display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+    padding:2px 4px; margin:-2px -4px; border-radius:6px;
+  }
+  .panelHeadClickable:hover{background:var(--surface2);}
+  .panelHeadClickable:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  #shareToggleBar{
+    display:block; text-align:center; padding:3px; margin:10px -16px -16px;
+    color:var(--sub); font-size:10px; line-height:1; cursor:pointer; user-select:none;
+    border-top:1px solid var(--border); border-radius:0 0 10px 10px;
+  }
+  #shareToggleBar:hover{background:var(--surface2); color:var(--text);}
+  #shareToggleBar:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
+  /* 狭い幅で共有パネルが折りたたまれている間、展開用の矢印はタイトルバーに
+     同居させるため、ブロック要素としての見た目をやめアイコンボタン風にする */
+  #appHeader #shareToggleBar{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; margin:0; padding:0; font-size:12px;
+    border:1px solid var(--border); border-radius:6px;
+  }
+  .panel.collapsed #sharePanelBody{display:none;}
+  /* 共有開始前は、映像が無いと意味を持たない操作(比率・範囲固定等)や
+     説明文を隠し、「画面共有を開始」ボタンだけのシンプルな見た目にする(段階的開示)。
+     常時表示(#btnPip)はキャプチャパネル側に常設しているため対象外
+     (btnCaptureと同様、範囲固定前はdisabledのグレー表示のままにする) */
+  .panel.share-idle #ratioSelect,
+  .panel.share-idle #btnFixRect,
+  .panel.share-idle #btnFixFull,
+  .panel.share-idle .hint{
+    display:none;
+  }
+
+  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .row-right{margin-left:auto; gap:8px;}
+
+  button{
+    background:var(--accent); color:#fff; border:none; border-radius:8px;
+    padding:9px 13px; font-size:13px; cursor:pointer; font-weight:500;
+    transition:opacity .15s; white-space:nowrap;
+  }
+  button:disabled{background:var(--disabled-bg); color:var(--disabled-text); cursor:not-allowed;}
+  button:hover:not(:disabled){opacity:.88;}
+  button.secondary{background:var(--secondary-bg); color:var(--secondary-text);}
+  button.danger{background:var(--danger); font-weight:600;}
+  button.ok{background:var(--ok);}
+
+  select{
+    background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;
+  }
+  input[type="text"], input[type="date"]{
+    background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit; width:130px;
+    text-overflow:ellipsis;
+  }
+  input[type="date"]{width:118px; padding-right:4px;}
+
+  .status{font-size:12px; color:var(--sub);}
+  .status.live{color:var(--ok);}
+
+  #selectStage{
+    position:relative; display:none; margin-top:12px;
+    border:1px solid var(--border); border-radius:8px; overflow:hidden;
+    max-width:100%; cursor:crosshair; user-select:none;
+  }
+  #selectStage video, #selectStage canvas{display:block; width:100%; height:auto;}
+  #selectOverlay{position:absolute; inset:0;}
+  #selRect{
+    position:absolute; border:2px solid var(--accent);
+    background:rgba(79,140,255,.15); pointer-events:none; display:none;
+  }
+  .handle{
+    position:absolute; width:14px; height:14px; margin:-7px;
+    background:var(--accent); border:2px solid #fff; border-radius:50%;
+    pointer-events:auto; z-index:5;
+  }
+  .handle.nw{ left:0; top:0; cursor:nwse-resize; }
+  .handle.ne{ left:100%; top:0; cursor:nesw-resize; }
+  .handle.sw{ left:0; top:100%; cursor:nesw-resize; }
+  .handle.se{ left:100%; top:100%; cursor:nwse-resize; }
+  .handle.edge-n{ left:50%; top:0; cursor:ns-resize; }
+  .handle.edge-s{ left:50%; top:100%; cursor:ns-resize; }
+  .handle.edge-e{ left:100%; top:50%; cursor:ew-resize; }
+  .handle.edge-w{ left:0; top:50%; cursor:ew-resize; }
+  #selectStage.hover-move{cursor:move;}
+  #shareSurfaceNotice{
+    display:none; font-size:12px; padding:8px 12px; border-radius:8px; margin-top:8px;
+    line-height:1.6; white-space:pre-line;
+  }
+  #shareSurfaceNotice.show{display:block;}
+  #shareSurfaceNotice.warn{background:#3a2420; border:1px solid #6b3a30; color:#ffb199;}
+  #shareSurfaceNotice.info{background:var(--surface2); border:1px solid var(--border); color:var(--sub);}
+  @media (prefers-color-scheme: light){ #shareSurfaceNotice.warn{background:#fdecea; border-color:#f3b3a6; color:#9a2e1a;} }
+  html[data-theme="light"] #shareSurfaceNotice.warn{background:#fdecea; border-color:#f3b3a6; color:#9a2e1a;}
+  html[data-theme="dark"] #shareSurfaceNotice.warn{background:#3a2420; border-color:#6b3a30; color:#ffb199;}
+  .hint{font-size:11px; color:var(--sub); margin-top:8px;}
+
+  #captureList{display:flex; flex-direction:column; gap:10px;}
+  .item{
+    display:flex; gap:12px; background:var(--surface2); border:1px solid var(--border);
+    border-radius:8px; padding:10px; transition:opacity .15s;
+  }
+  .item.dragging{opacity:.4;}
+  .item.drag-over{border-top:3px solid var(--accent);}
+  .item:focus-within{outline:2px solid var(--accent); outline-offset:2px;}
+  .drag-handle{
+    align-self:center; flex-shrink:0; cursor:grab; color:var(--sub); font-size:16px;
+    padding:4px 2px; user-select:none;
+  }
+  .drag-handle:active{cursor:grabbing;}
+  .item.item-heading{
+    background:transparent; border:none; border-left:4px solid var(--accent);
+    border-radius:4px; padding:6px 10px;
+  }
+  .item.item-heading .heading-text{
+    font-weight:700; font-size:14px; min-height:32px; background:transparent; border:none;
+    padding:4px 2px;
+  }
+  .item.item-heading.type-memo{border-left-color:var(--border);}
+  .item.item-heading.type-memo .heading-text{font-weight:400; font-size:13px;}
+  .item.item-heading .memoPreview{
+    font-weight:700; font-size:14px; min-height:32px; background:transparent; border:none; padding:4px 2px;
+  }
+  .item.item-heading.type-memo .memoPreview{font-weight:400; font-size:13px;}
+  .type-badge{
+    cursor:pointer; padding:1px 6px; border-radius:10px; background:var(--surface2);
+    border:1px solid var(--border);
+  }
+  .type-badge:hover{background:var(--accent-soft, var(--surface2)); color:var(--accent);}
+  .item img{
+    width:160px; height:auto; border-radius:6px; border:1px solid var(--border);
+    flex-shrink:0; object-fit:contain; background:var(--img-bg);
+  }
+  .item .itembody{flex:1; display:flex; flex-direction:column; gap:6px; min-width:0;}
+  .item .meta{font-size:11px; color:var(--sub);}
+  .item .saveState{color:var(--ok); font-weight:600;}
+  /* サイドパネルのように幅を狭くして使うと画像とメモが横に圧縮されるため、
+     狭い幅では画像を上・メモを下に積む縦並びに切り替える */
+  @media (max-width:600px){
+    .item{flex-direction:column;}
+    .item img{width:100%; max-width:none;}
+    .drag-handle{align-self:flex-start;}
+  }
+  .item textarea{
+    width:100%; background:var(--surface3); color:var(--text); border:1px solid var(--border);
+    border-bottom:none; border-radius:6px 6px 0 0; padding:8px; font-size:13px; resize:vertical; min-height:44px;
+    font-family:inherit; overflow-y:hidden;
+  }
+  .item textarea:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .item .memoField{position:relative;}
+  /* ツールバーはtextareaの下に専用行として配置(区切り線で分ける)。先頭行の位置は
+     プレビュー表示(.memoPreview)側と同じpadding-topになるため、編集画面に入っても
+     先頭行の位置がずれない */
+  .item .memoToolbar{
+    display:flex; flex-wrap:wrap; justify-content:flex-start; align-items:center; gap:5px;
+    border-top:1px solid var(--border); padding:4px 8px 0;
+  }
+  .item .memoToolbar[hidden]{display:none;}
+  .item.item-heading .memoToolbar{padding:4px 2px 0;}
+  .item .memoToolBtn{
+    background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px;
+    padding:2px 8px; font-size:12px; cursor:pointer; line-height:1.4;
+    box-shadow:0 1px 2px rgba(0,0,0,.18);
+  }
+  .item .memoToolBtn:hover{border-color:var(--accent); color:var(--accent);}
+  .item .memoToolBtn.memoToolBtn-bold{font-weight:700;}
+  .item .memoToolBtn.memoToolBtn-strike{text-decoration:line-through;}
+  .item .memoToolBtn.memoToolBtn-underline{text-decoration:underline;}
+  .item .memoColorDots{
+    display:flex; align-items:center; gap:4px; background:var(--panel); border:1px solid var(--border);
+    border-radius:14px; padding:3px 6px; box-shadow:0 1px 2px rgba(0,0,0,.18);
+  }
+  .item .memoColorDot{
+    width:13px; height:13px; border-radius:50%; border:1px solid rgba(0,0,0,.3);
+    background:var(--dot); cursor:pointer; padding:0;
+  }
+  .item .memoColorDot:hover{outline:2px solid var(--accent); outline-offset:1px;}
+  .item .memoPreview{
+    min-height:44px; border:1px solid var(--border); border-radius:6px; padding:8px;
+    background:var(--surface3); font-size:13px; line-height:1.5; white-space:pre-wrap;
+    overflow-wrap:anywhere; cursor:text;
+  }
+  .item .memoPreview:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+  .item .memoPreview a{color:var(--accent); text-decoration:underline;}
+  .item .memoPreview mark{background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;}
+  .item .memoPreview .memoPlaceholder{color:var(--sub);}
+  .item .itemactions{display:flex; align-items:center; gap:8px;}
+  .item .itemactions button{padding:5px 10px; font-size:11px;}
+  .item .itemactions .icon-btn{
+    margin-left:auto; background:transparent; color:var(--sub);
+    padding:4px 8px; font-size:13px; border:1px solid transparent;
+  }
+  .item .itemactions .icon-btn:hover{
+    background:var(--danger); color:#fff; opacity:1;
+  }
+
+  .empty{color:var(--sub); font-size:13px; text-align:center; padding:24px;}
+
+  .item img{cursor:zoom-in;}
+
+  #lightbox{
+    display:none; position:fixed; inset:0; z-index:100;
+    background:rgba(0,0,0,.85); flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:10px;
+    cursor:zoom-out;
+  }
+  #lightbox.open{display:flex;}
+  #lightbox img{max-width:96vw; max-height:96vh; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .08s ease-out; transform-origin:center; cursor:grab; touch-action:none;}
+  #lightbox img:active{cursor:grabbing;}
+  #lightboxCaption{
+    max-width:min(96vw, 700px); color:#e6e8ec; background:rgba(23,26,33,.85);
+    border-radius:8px; padding:8px 14px; font-size:13px; line-height:1.5; white-space:pre-wrap;
+    overflow:hidden; text-overflow:ellipsis;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+    cursor:default; flex-shrink:0;
+  }
+  #lightboxCaption:empty{display:none;}
+  #lightboxCaption a{color:var(--accent); text-decoration:underline;}
+  #lightboxCaption b{font-weight:700;}
+  #lightboxCaption mark{background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;}
+  /* マーカーと文字色を組み合わせた時、入れ子の順序に関わらず文字色を優先させる。
+     mark側の色指定(.memoPreview mark / #lightboxCaption mark)より詳細度が低いため!importantで上書き */
+  .memo-col-red{color:var(--memo-col-red);}
+  .memo-col-blue{color:var(--memo-col-blue);}
+  .memo-col-green{color:var(--memo-col-green);}
+  mark .memo-col-red, .memo-col-red mark{color:var(--memo-col-red) !important;}
+  mark .memo-col-blue, .memo-col-blue mark{color:var(--memo-col-blue) !important;}
+  mark .memo-col-green, .memo-col-green mark{color:var(--memo-col-green) !important;}
+
+  .ver{cursor:pointer;}
+  .ver:hover{text-decoration:underline;}
+  #versionModal{
+    display:none; position:fixed; inset:0; z-index:120;
+    background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:24px;
+  }
+  #versionModal.open{display:flex;}
+  #versionPanel{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    width:340px; max-width:90vw; max-height:78vh; display:flex; flex-direction:column;
+    box-shadow:0 12px 40px rgba(0,0,0,.3);
+  }
+  #versionPanelHead{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600;
+  }
+  .close-btn{
+    background:transparent; color:var(--sub); border:none; padding:2px 6px; font-size:13px; cursor:pointer;
+  }
+  .close-btn:hover{color:var(--text);}
+  #versionList{
+    list-style:none; margin:0; padding:8px 14px 14px; overflow-y:auto; font-size:12px;
+  }
+  #versionList li{
+    display:flex; gap:8px; padding:5px 0; border-bottom:1px solid var(--border);
+    color:var(--sub); line-height:1.5;
+  }
+  #versionList li:last-child{border-bottom:none;}
+  #versionList .v-tag{
+    flex-shrink:0; color:var(--accent); font-weight:700; font-family:monospace; font-size:11px;
+  }
+
+  #exportHistoryModal{
+    display:none; position:fixed; inset:0; z-index:120;
+    background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:24px;
+  }
+  #exportHistoryModal.open{display:flex;}
+  #exportHistoryPanel{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    width:460px; max-width:90vw; max-height:78vh; display:flex; flex-direction:column;
+    box-shadow:0 12px 40px rgba(0,0,0,.3);
+  }
+  #exportHistoryPanelHead{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600;
+  }
+  .exportHistoryHeadBtns{display:flex; align-items:center; gap:2px;}
+  #exportHistoryList{
+    list-style:none; margin:0; padding:8px 14px 14px; overflow-y:auto; font-size:12px;
+  }
+  #exportHistoryList li{
+    display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border);
+    color:var(--sub); line-height:1.5;
+  }
+  #exportHistoryList li[hidden]{display:none;} /* li{display:flex}の方が詳細度が高くhidden属性が無効化されるため明示的に上書き */
+  #exportHistoryList li:last-child{border-bottom:none;}
+  #exportHistoryList .hist-time{
+    flex-shrink:0; color:var(--accent); font-weight:700; font-family:monospace; font-size:11px;
+  }
+  #exportHistoryList .hist-detail{
+    flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);
+  }
+  #exportHistoryList .hist-missing{
+    text-decoration:line-through; color:var(--sub);
+  }
+  #exportHistoryList .hist-expand{
+    flex-shrink:0; font-size:10px; line-height:1; white-space:nowrap;
+    color:var(--sub); border:1px solid var(--border); border-radius:4px; padding:4px 6px;
+    background:transparent; cursor:pointer;
+  }
+  #exportHistoryList .hist-expand:hover{ border-color:var(--accent); color:var(--accent); }
+  #exportHistoryList .hist-expand.open{ color:var(--accent); border-color:var(--accent); }
+  #exportHistoryList li.hist-child{
+    padding-left:14px; opacity:.85;
+  }
+  #exportHistoryList .hist-del{
+    flex-shrink:0; background:transparent; color:var(--sub); border:1px solid transparent;
+    padding:4px 8px; font-size:13px; cursor:pointer; border-radius:6px;
+  }
+  #exportHistoryList .hist-del:hover{background:var(--danger); color:#fff;}
+  #exportHistoryEmpty{color:var(--sub); font-size:12px; padding:4px 0;}
+
+  #exportStatusMsg{
+    font-size:12px; color:var(--sub); opacity:0; transition:opacity .2s;
+    max-width:280px; line-height:1.4;
+  }
+  #exportStatusMsg.show{opacity:1;}
+  #exportStatusMsg.warn{color:var(--danger);}
+  #exportStatusMsg.ok{color:var(--ok);}
+
+  #cropModal{
+    display:none; position:fixed; inset:0; z-index:110;
+    background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:24px;
+  }
+  #cropModal.open{display:flex;}
+  #cropPanel{
+    background:var(--panel); border-radius:12px; padding:16px; max-width:92vw;
+  }
+  /* #cropStageは幅を指定していない通常のblock要素のため、本来は画像ではなく
+     「親(#cropPanel、padding:16px・max-width:92vw)の中身の幅」いっぱいに
+     広がろうとする。一方、中の画像はwidth:autoのため親のレイアウト幅とは
+     無関係に自分自身のmax-width:88vwだけを基準にサイズを決める。この2つの
+     計算基準(92vwベースの親幅からpaddingを引いた値 と 88vwそのもの)は
+     ビューポート幅によって一致しないことがあり、特に狭い画面では画像の方が
+     ステージより広く計算され、画像がステージの右端からはみ出す(=ステージ
+     基準で%指定している選択枠(青い線)は画像の右端まで届かない)不具合が
+     あった。width:fit-contentでステージ自体を画像の実際のサイズに
+     ぴったり合わせることで、両者の基準のズレをなくす */
+  #cropStage{
+    position:relative; width:fit-content; max-width:88vw; max-height:72vh;
+    margin:0 auto; cursor:crosshair; user-select:none; line-height:0;
+  }
+  /* ステージ側で overflow:hidden にしていると、選択範囲が右端/下端いっぱいまで
+     広がったときに四隅・辺のハンドル(枠の外側にわずかにはみ出す円)が半分
+     だけ切れて見えてしまう(画面が狭いほど目立つ)ため overflow:hiddenにしない。
+     画像にだけ角丸(border-radius)を付けると、選択枠(#cropSelRectは常に
+     直角四隅)との間に隙間が生じ、全体選択時に右端/下端の角がわずかに
+     内側へ寄って見えてしまうため、画像側の角丸も付けずシンプルな直角のまま
+     にする(外側のカード#cropPanel自体は角丸のまま) */
+  #cropStage img{display:block; max-width:88vw; max-height:72vh; width:auto; height:auto;}
+  #cropOverlay{position:absolute; inset:0;}
+  #cropSelRect{
+    position:absolute; border:2px solid var(--accent);
+    background:rgba(79,140,255,.15); display:none;
+  }
+
+  /* alert()/confirm()の代替モーダル。Edgeのサイドパネル等、ネイティブの
+     ブロッキングダイアログが表示されないブラウザコンテキストでも機能するよう、
+     自前のモーダルで同等の確認/通知を行う(他のモーダルより手前に出す) */
+  #msgModal{
+    display:none; position:fixed; inset:0; z-index:130;
+    background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:24px;
+  }
+  #msgModal.open{display:flex;}
+  #msgPanel{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    width:340px; max-width:90vw; box-shadow:0 12px 40px rgba(0,0,0,.3); padding:16px;
+  }
+  #msgText{font-size:13px; line-height:1.6; white-space:pre-wrap; margin-bottom:14px;}
+  #msgActions{display:flex; justify-content:flex-end; gap:8px;}
+
+</style>
+</head>
+<body>
+
+<header id="appHeader">
+  <h1>SCREEN CAPTURE MEMO</h1>
+  <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
+  <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v104</span>
+</header>
+
+<div id="versionModal">
+  <div id="versionPanel">
+    <div id="versionPanelHead">
+      <span>更新履歴</span>
+      <button class="close-btn" id="btnVersionClose" title="閉じる">✕</button>
+    </div>
+    <ul id="versionList"></ul>
+  </div>
+</div>
+
+<div id="exportHistoryModal">
+  <div id="exportHistoryPanel">
+    <div id="exportHistoryPanelHead">
+      <span>書き出し履歴</span>
+      <div class="exportHistoryHeadBtns">
+        <button class="close-btn" id="btnExportHistorySync" type="button" title="保存先フォルダと同期(他端末分の履歴・ファイル消失状況を反映)">🔄</button>
+        <button class="close-btn" id="btnExportHistoryClose" title="閉じる">✕</button>
+      </div>
+    </div>
+    <ul id="exportHistoryList"></ul>
+  </div>
+</div>
+
+<main>
+
+  <div class="panel share-idle" id="sharePanel">
+    <div class="panelHeadRow">
+      <div class="panelHeadClickable" id="shareHeaderToggle" tabindex="0" role="button" aria-expanded="true">
+        <h2>1. 画面を共有 → 範囲を固定</h2>
+      </div>
+      <button id="btnShareToggle" type="button" class="iconable" title="画面共有を開始"><span id="btnShareToggleIcon">🖥️</span> <span class="btnLabel" id="btnShareToggleLabel">画面共有を開始</span></button>
+    </div>
+    <div id="sharePanelBody">
+      <div class="row" id="shareControlsRow">
+        <select id="ratioSelect" aria-label="比率">
+          <option value="">フリー</option>
+          <option value="1.77778">16:9</option>
+          <option value="0.5625">9:16</option>
+          <option value="1.33333">4:3</option>
+          <option value="0.75">3:4</option>
+          <option value="1">1:1</option>
+          <option value="1.5">3:2</option>
+        </select>
+        <button id="btnFixRect" disabled>範囲固定</button>
+        <button class="secondary" id="btnFixFull" disabled>🖥 全画面</button>
+        <span class="status" id="shareStatus">未接続</span>
+      </div>
+      <div id="shareSurfaceNotice"></div>
+      <div id="selectStage">
+        <video id="video" autoplay muted playsinline></video>
+        <div id="selectOverlay">
+          <div id="selRect">
+            <div class="handle nw" data-corner="nw"></div>
+            <div class="handle ne" data-corner="ne"></div>
+            <div class="handle sw" data-corner="sw"></div>
+            <div class="handle se" data-corner="se"></div>
+            <div class="handle edge-n" data-corner="n"></div>
+            <div class="handle edge-s" data-corner="s"></div>
+            <div class="handle edge-e" data-corner="e"></div>
+            <div class="handle edge-w" data-corner="w"></div>
+          </div>
+        </div>
+      </div>
+      <div class="hint">映像をドラッグして範囲指定 → 「範囲固定」で以降は連写できます／範囲内をドラッグすると位置だけ移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます(比率指定時は辺ドラッグでも比率を保持)、矢印キーでも位置を微調整できます／範囲を選ばず全画面をそのまま使いたい場合は「🖥 全画面」</div>
+      <div class="hint" id="pipHint">範囲固定と同時に対応ブラウザでは自動的に「常時表示ウィンドウ」が開き、他のアプリを操作中でも最前面の小窓からワンクリックで撮影できます(この共有パネルの映像プレビューはそのまま表示され続けます)</div>
+    </div>
+    <div id="shareToggleBar" tabindex="0" role="button" aria-label="折りたたむ">▲</div>
+  </div>
+
+  <div class="panel" id="capturePanel">
+    <div class="panelHeadRow">
+      <h2>2. キャプチャ</h2>
+    </div>
+    <div class="row">
+      <button id="btnCapture" class="iconable" disabled title="キャプチャ">📸 <span class="btnLabel">キャプチャ</span></button>
+      <button id="btnPaste" class="iconable" title="クリップボードから貼り付け">📋 <span class="btnLabel">貼り付け</span></button>
+      <button id="btnAddNote" class="iconable" title="見出し">📝 <span class="btnLabel">見出し</span></button>
+      <button id="btnAddMemo" class="iconable" title="メモ">💬 <span class="btnLabel">メモ</span></button>
+      <button id="btnPip" class="iconable" disabled title="常時表示">📌 <span class="btnLabel">常時表示</span></button>
+      <span class="status row-right" id="captureStatus"></span>
+    </div>
+    <div class="hint">スクショをコピーした状態で Ctrl+V (⌘+V) でも追加できます／このページにフォーカスがある間は Space キーでもキャプチャできます／記録一覧で行を選択中(枠線表示)は、その行の直後に追加されます</div>
+  </div>
+
+  <div class="panel" id="recordListPanel">
+    <div id="recordListHeader">
+      <div class="panelHeadRow" style="margin-bottom:10px;">
+        <h2 style="margin:0;">記録一覧（<span id="countLabel">0</span>件 ／ 書き出し目安 <span id="sizeEstimate">-</span>）</h2>
+        <button class="secondary iconable" id="btnRefreshList" type="button" title="一覧を更新(別のタブ/ウィンドウで追加されたキャプチャを反映。画面共有や範囲固定はそのまま維持されます)">🔄 <span class="btnLabel">更新</span></button>
+      </div>
+      <div class="row" id="recordActions">
+        <input type="file" id="importFileInput" accept=".html,text/html" style="display:none;">
+        <button class="secondary iconable" id="btnImport" title="書き出したHTMLを読み込んで続きから編集">📥 <span class="btnLabel">インポート</span></button>
+        <input type="date" id="exportDate">
+        <input type="text" id="exportTitle" placeholder="資料タイトル(任意)">
+        <button class="secondary" id="btnClearAll">全削除</button>
+        <button class="ok" id="btnExport" title="まとめてHTML保存(Shift+クリックで保存先フォルダを設定/Ctrl+Shift+クリックで解除。設定済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログで確認します)">HTML保存</button>
+        <button class="secondary iconable" id="btnExportHistory" type="button" title="書き出し履歴を表示(過去にHTML保存した日時・ファイル名・件数)">🕘 <span class="btnLabel">履歴</span></button>
+        <span id="exportStatusMsg"></span>
+      </div>
+      <div class="hint" style="margin:8px 0 0;">左端の ⠿ をドラッグすると並び替えできます／⠿ にフォーカスしてShift+Alt+↑/↓でも並び替え可能です(OneNote同様)</div>
+    </div>
+    <div id="captureList"><div class="empty">まだキャプチャがありません</div></div>
+  </div>
+
+</main>
+
+<canvas id="workCanvas" style="display:none;"></canvas>
+
+<div id="lightbox">
+  <img id="lightboxImg" alt="拡大表示" draggable="false">
+  <div id="lightboxCaption"></div>
+</div>
+
+<div id="cropModal">
+  <div id="cropPanel">
+    <div id="cropStage">
+      <img id="cropImage" alt="トリミング対象" draggable="false">
+      <div id="cropOverlay">
+        <div id="cropSelRect">
+          <div class="handle nw" data-corner="nw"></div>
+          <div class="handle ne" data-corner="ne"></div>
+          <div class="handle sw" data-corner="sw"></div>
+          <div class="handle se" data-corner="se"></div>
+          <div class="handle edge-n" data-corner="n"></div>
+          <div class="handle edge-s" data-corner="s"></div>
+          <div class="handle edge-e" data-corner="e"></div>
+          <div class="handle edge-w" data-corner="w"></div>
+        </div>
+      </div>
+    </div>
+    <div class="hint">ドラッグで範囲を選択/移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます</div>
+    <div class="row" style="margin-top:10px;">
+      <button class="danger" id="btnCropRevert" style="display:none;">元に戻す(トリミング前の画像)</button>
+      <button class="secondary" id="btnCropUseLast" style="display:none;" title="直前にトリミングした範囲(相対位置)をこの画像にも適用します">前回の範囲</button>
+      <div class="row" style="margin-left:auto; gap:8px;">
+        <button class="secondary" id="btnCropCancel">キャンセル</button>
+        <button class="ok" id="btnCropApply">この範囲でトリミング</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="msgModal">
+  <div id="msgPanel">
+    <div id="msgText"></div>
+    <div id="msgActions">
+      <button class="secondary" id="btnMsgCancel">キャンセル</button>
+      <button id="btnMsgOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- alert()/confirm()の代替(Edgeのサイドパネル等ではネイティブの
+  // ブロッキングダイアログが表示されないブラウザコンテキストがあるため、常に
+  // 自前のモーダルで代替する) ----------
+  const msgModal = $("msgModal");
+  const msgText = $("msgText");
+  const btnMsgOk = $("btnMsgOk");
+  const btnMsgCancel = $("btnMsgCancel");
+  let msgResolve = null;
+  function closeMsgModal(result){
+    msgModal.classList.remove("open");
+    if(msgResolve){ const r = msgResolve; msgResolve = null; r(result); }
+  }
+  btnMsgOk.addEventListener("click", () => closeMsgModal(true));
+  btnMsgCancel.addEventListener("click", () => closeMsgModal(false));
+  msgModal.addEventListener("click", (e) => { if(e.target === msgModal) closeMsgModal(false); });
+  document.addEventListener("keydown", (e) => {
+    if(!msgModal.classList.contains("open")) return;
+    if(e.key === "Escape") closeMsgModal(false);
+    if(e.key === "Enter") closeMsgModal(true);
+  });
+  // alert()の代替。確定ボタン(OK)のみ表示し、閉じても何も判定しない
+  function alertAsync(message){
+    return new Promise((resolve) => {
+      msgResolve = () => resolve(undefined);
+      msgText.textContent = message;
+      btnMsgCancel.style.display = "none";
+      msgModal.classList.add("open");
+      btnMsgOk.focus();
+    });
+  }
+  // confirm()の代替。OK/キャンセルの2択でPromise<boolean>を返す
+  function confirmAsync(message){
+    return new Promise((resolve) => {
+      msgResolve = resolve;
+      msgText.textContent = message;
+      btnMsgCancel.style.display = "";
+      msgModal.classList.add("open");
+      btnMsgOk.focus();
+    });
+  }
+
+  const video = $("video");
+  let captureSourceEl = video; // 実際にキャプチャの描画元として使うvideo要素(PiP中はpipVideoElに切替)
+  const selectStage = $("selectStage");
+  const selRect = $("selRect");
+  const workCanvas = $("workCanvas");
+  const ctx = workCanvas.getContext("2d");
+  const lightbox = $("lightbox");
+  const lightboxImg = $("lightboxImg");
+  const lightboxCaption = $("lightboxCaption");
+
+  const btnShareToggle = $("btnShareToggle");
+  const btnShareToggleIcon = $("btnShareToggleIcon");
+  const btnShareToggleLabel = $("btnShareToggleLabel");
+  const btnTheme = $("btnTheme");
+  const btnHelp = $("btnHelp");
+  const btnFixRect = $("btnFixRect");
+  const btnFixFull = $("btnFixFull");
+  const shareHeaderToggle = $("shareHeaderToggle");
+  const shareToggleBar = $("shareToggleBar");
+  const sharePanel = $("sharePanel");
+  const btnCapture = $("btnCapture");
+  const btnPaste = $("btnPaste");
+  const btnPip = $("btnPip");
+  const btnAddNote = $("btnAddNote");
+  const btnAddMemo = $("btnAddMemo");
+  const pipHint = $("pipHint");
+  const ratioSelect = $("ratioSelect");
+  const btnClearAll = $("btnClearAll");
+  const btnExport = $("btnExport");
+  const exportTitleInput = $("exportTitle");
+  const exportDateInput = $("exportDate");
+  const exportStatusMsg = $("exportStatusMsg");
+  const btnRefreshList = $("btnRefreshList");
+  const btnImport = $("btnImport");
+  const importFileInput = $("importFileInput");
+  const shareStatus = $("shareStatus");
+  const shareSurfaceNotice = $("shareSurfaceNotice");
+  const captureStatus = $("captureStatus");
+  const captureList = $("captureList");
+  const countLabel = $("countLabel");
+  const sizeEstimateLabel = $("sizeEstimate");
+  const capturePanelEl = $("capturePanel");
+  const appHeaderEl = $("appHeader");
+
+  let stream = null;
+  let dragging = false;
+  let dragStart = null;
+  // 選択範囲は video の表示座標(CSSピクセル)基準で保持し、
+  // キャプチャ時に video.videoWidth/videoHeight との比率で実座標に変換する
+  let selection = null; // {x,y,w,h} in displayed CSS px
+  let fixedRect = null; // {x,y,w,h} in source video px (実解像度)
+
+  // ---------- IndexedDB ----------
+  const DB_NAME = "screen-capture-memo-db";
+  const STORE = "captures";
+  const KV_STORE = "kv"; // 保存先フォルダハンドル等、少量の設定値を保持
+  const HISTORY_STORE = "exportHistory"; // HTML保存の書き出し履歴(ファイル名・日時・件数)
+  const HISTORY_SYNC_FILE = "screen-capture-memo-history.json"; // 保存先フォルダに書き出す履歴の同期用JSON(他端末との共有に使う)
+  let db = null;
+
+  // 端末をまたいでも衝突しない履歴エントリの識別子(IndexedDBのid autoIncrementは端末ごとに独立するため別途付与)
+  function genUid(){
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function openDB(){
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 3);
+      req.onupgradeneeded = (e) => {
+        const _db = e.target.result;
+        if(!_db.objectStoreNames.contains(STORE)){
+          _db.createObjectStore(STORE, { keyPath:"id", autoIncrement:true });
+        }
+        if(!_db.objectStoreNames.contains(KV_STORE)){
+          _db.createObjectStore(KV_STORE, { keyPath:"key" });
+        }
+        if(!_db.objectStoreNames.contains(HISTORY_STORE)){
+          _db.createObjectStore(HISTORY_STORE, { keyPath:"id", autoIncrement:true });
+        }
+      };
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e);
+    });
+  }
+
+  function kvGet(key){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(KV_STORE, "readonly");
+      const req = tx.objectStore(KV_STORE).get(key);
+      req.onsuccess = (e) => resolve(e.target.result ? e.target.result.value : undefined);
+      req.onerror = (e) => reject(e);
+    });
+  }
+
+  function kvSet(key, value){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(KV_STORE, "readwrite");
+      const req = tx.objectStore(KV_STORE).put({ key, value });
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e);
+    });
+  }
+
+  function dbAdd(record){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const req = tx.objectStore(STORE).add(record);
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function dbPut(record){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const req = tx.objectStore(STORE).put(record);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function dbDelete(id){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const req = tx.objectStore(STORE).delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function dbGetAll(){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const req = tx.objectStore(STORE).getAll();
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function dbClear(){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const req = tx.objectStore(STORE).clear();
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e);
+    });
+  }
+
+  // ---------- 書き出し履歴(HTML保存のたびに記録、記録一覧とは別のキャッシュ) ----------
+  function historyAdd(record){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HISTORY_STORE, "readwrite");
+      const req = tx.objectStore(HISTORY_STORE).add(record);
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function historyGetAll(){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HISTORY_STORE, "readonly");
+      const req = tx.objectStore(HISTORY_STORE).getAll();
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function historyDelete(id){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HISTORY_STORE, "readwrite");
+      const req = tx.objectStore(HISTORY_STORE).delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function historyPut(record){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HISTORY_STORE, "readwrite");
+      const req = tx.objectStore(HISTORY_STORE).put(record);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e);
+    });
+  }
+
+  // ---------- 画面共有 ----------
+  function stopAllTracks(){
+    if(stream){
+      stream.getTracks().forEach((t) => {
+        try{ t.stop(); }catch(e){ console.error(e); }
+      });
+    }
+    // video要素がストリームを参照したままだとブラウザによっては
+    // 共有中インジケーターが残ることがあるため、明示的に切り離す
+    video.srcObject = null;
+    stream = null;
+  }
+
+  // 共有中かどうかは、ボタン自身の表示状態(danger化=停止ボタン化)ではなく
+  // パネルのshare-idleクラスの有無で一元管理する(表示とロジックを同じ源に揃える)
+  function isSharing(){
+    return !sharePanel.classList.contains("share-idle");
+  }
+  function setShareUiConnected(connected){
+    sharePanel.classList.toggle("share-idle", !connected);
+    btnShareToggleIcon.textContent = connected ? "⏹" : "🖥️";
+    btnShareToggleLabel.textContent = connected ? "共有を停止" : "画面共有を開始";
+    btnShareToggle.title = connected ? "共有を停止" : "画面共有を開始";
+    btnShareToggle.classList.toggle("danger", connected);
+    updateSharePanelHeight();
+  }
+
+  function onShareEnded(){
+    stopAllTracks();
+    shareStatus.textContent = "共有終了";
+    shareStatus.classList.remove("live");
+    btnFixRect.disabled = true;
+    btnFixFull.disabled = true;
+    btnCapture.disabled = true;
+    btnPip.disabled = true;
+    setShareUiConnected(false);
+    captureStatus.textContent = "共有が切れました";
+    // 共有が切れた以上、範囲指定も意味を持たないためクリア
+    selection = null;
+    fixedRect = null;
+    selRect.style.display = "none";
+    selRect.style.width = "0px";
+    selRect.style.height = "0px";
+    if(pipWindow){
+      pipWindow.close();
+    }
+    shareSurfaceNotice.classList.remove("show", "warn", "info");
+  }
+
+  btnShareToggle.addEventListener("click", async () => {
+    if(isSharing()){
+      onShareEnded();
+      return;
+    }
+    try{
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video:{ frameRate:5, displaySurface:"monitor" },
+        audio:false
+      });
+      video.srcObject = stream;
+      selectStage.style.display = "block";
+      shareStatus.textContent = "共有中";
+      shareStatus.classList.add("live");
+      btnFixRect.disabled = false;
+      btnFixFull.disabled = false;
+      setShareUiConnected(true);
+      // 前回の共有停止で折りたたまれたまま(=範囲固定後)だと、再度共有を開始しても
+      // 全画面/範囲選択の操作画面が隠れたままになり、以前の「共有が切れました」表示も
+      // 残ってしまうため、共有開始のたびに必ず展開してステータス表示もクリアする
+      setSharePanelCollapsed(false);
+      captureStatus.textContent = "";
+
+      // 選択した共有種別に応じて注意喚起(mute/unmuteのような不安定なイベントに頼らず、
+      // getSettings().displaySurfaceで確実に判定できる)
+      const displaySurface = stream.getVideoTracks()[0].getSettings().displaySurface;
+      shareSurfaceNotice.classList.remove("show", "warn", "info");
+      if(displaySurface === "window"){
+        shareSurfaceNotice.textContent =
+          "⚠️ ウィンドウを共有中\n" +
+          "対象ウィンドウを最小化すると映像の更新が止まります。\n" +
+          "キャプチャ対象は最小化せず、他アプリの裏に回す形でご利用ください。";
+        shareSurfaceNotice.classList.add("show", "warn");
+      }else if(displaySurface === "browser"){
+        shareSurfaceNotice.textContent =
+          "ℹ️ タブを共有中です。\n" +
+          "ブラウザウィンドウを裏に回すと更新頻度が落ちることがあります。\n" +
+          "気になる場合は「常時表示ウィンドウ」の利用がおすすめです。";
+        shareSurfaceNotice.classList.add("show", "info");
+      }
+
+      stream.getVideoTracks()[0].addEventListener("ended", onShareEnded);
+    }catch(err){
+      shareStatus.textContent = "キャンセルしました";
+      console.error(err);
+    }
+  });
+
+  // ---------- 範囲ドラッグ選択 ----------
+  let movingSelection = false;
+  let moveOffset = { x:0, y:0 };
+  let resizingHandle = null; // "nw" | "ne" | "sw" | "se" | null
+  let resizeAnchor = null; // ドラッグ中固定される反対側の角
+
+  // selRectの位置・サイズはpx(絶対値)ではなく%(selectStageに対する比率)で
+  // 指定する。これにより、ウィンドウをどれだけ速くリサイズしても、JSが追いつく
+  // のを待たずブラウザが毎フレーム自動的に選択枠を追従させてくれる(JSでの
+  // 再計算・ResizeObserverでの監視が一切不要になり、原理的に取りこぼしが起きない)
+  function updateSelRectVisual(){
+    const r = selectStage.getBoundingClientRect();
+    if(!r.width || !r.height) return; // ステージが非表示(折りたたみ中など)の間は計算できない
+    selRect.style.left = (selection.x / r.width * 100) + "%";
+    selRect.style.top = (selection.y / r.height * 100) + "%";
+    selRect.style.width = (selection.w / r.width * 100) + "%";
+    selRect.style.height = (selection.h / r.height * 100) + "%";
+    selRect.style.display = "block";
+  }
+  function setSelection(rect){
+    selection = rect;
+    updateSelRectVisual();
+  }
+  // selection(px)は新しい操作を開始した瞬間の値のまま保持されるため、その後に
+  // ウィンドウがリサイズされると(selRectの表示自体は%指定で常に正しいまま
+  // 追従しているが)selection自体は古いサイズ基準のpx値になっている。次の操作
+  // (ハンドルドラッグ・移動・比率変更・矢印キー・範囲固定)を始める直前に必ず
+  // これを呼び、画面に実際に表示されている枠(selRectの実測位置)からselectionを
+  // 読み直して同期してから使う。これにより「見えている通りの範囲」が常に
+  // 正になり、見た目と実際のキャプチャ範囲が食い違うことがなくなる
+  function syncSelectionFromDisplay(){
+    if(!selection) return;
+    const r = selectStage.getBoundingClientRect();
+    if(!r.width || !r.height) return;
+    const sr = selRect.getBoundingClientRect();
+    selection = { x: sr.left - r.left, y: sr.top - r.top, w: sr.width, h: sr.height };
+  }
+
+  function cornerPoint(corner, sel){
+    // 指定コーナー・辺の対辺(=リサイズ中に固定しておく基準点)を返す
+    const right = sel.x + sel.w, bottom = sel.y + sel.h;
+    if(corner === "nw") return { x: right, y: bottom };
+    if(corner === "ne") return { x: sel.x, y: bottom };
+    if(corner === "sw") return { x: right, y: sel.y };
+    if(corner === "se") return { x: sel.x, y: sel.y };
+    if(corner === "n") return { x: sel.x, y: bottom }; // 上辺: 下端を固定
+    if(corner === "s") return { x: sel.x, y: sel.y };  // 下辺: 上端を固定
+    if(corner === "e") return { x: sel.x, y: sel.y };  // 右辺: 左端を固定
+    return { x: right, y: sel.y }; // "w" 左辺: 右端を固定
+  }
+
+  document.querySelectorAll("#selRect .handle").forEach((h) => {
+    h.addEventListener("pointerdown", (e) => {
+      if(!selection) return;
+      e.stopPropagation();
+      e.preventDefault();
+      syncSelectionFromDisplay();
+      resizingHandle = h.dataset.corner;
+      resizeAnchor = cornerPoint(resizingHandle, selection);
+    });
+  });
+
+  window.addEventListener("pointermove", (e) => {
+    if(!resizingHandle || !selection || !resizeAnchor) return;
+    const r = selectStage.getBoundingClientRect();
+    const cx = Math.max(0, Math.min(e.clientX - r.left, r.width));
+    const cy = Math.max(0, Math.min(e.clientY - r.top, r.height));
+    const ratio = parseFloat(ratioSelect.value) || 0;
+    const MIN = 10;
+    const corner = resizingHandle;
+    let { x, y, w, h } = selection;
+
+    if(corner === "n" || corner === "s"){
+      // 辺ハンドル(上下): 高さだけを変更。比率指定時は高さから幅を再計算し、中心を保ったまま幅も追従させる
+      const ay = resizeAnchor.y;
+      let newH = Math.max(MIN, Math.abs(cy - ay));
+      let newY = cy < ay ? ay - newH : ay;
+      let newW = w, newX = x;
+      if(ratio > 0){
+        newW = newH * ratio;
+        newX = x + w / 2 - newW / 2;
+      }
+      if(newY < 0){ newH += newY; newY = 0; if(ratio > 0) newW = newH * ratio; }
+      if(newY + newH > r.height){ newH = r.height - newY; if(ratio > 0) newW = newH * ratio; }
+      newX = Math.max(0, Math.min(newX, r.width - newW));
+      x = newX; y = newY; w = newW; h = newH;
+    }else if(corner === "e" || corner === "w"){
+      // 辺ハンドル(左右): 幅だけを変更。比率指定時は幅から高さを再計算し、中心を保ったまま高さも追従させる
+      const ax = resizeAnchor.x;
+      let newW = Math.max(MIN, Math.abs(cx - ax));
+      let newX = cx < ax ? ax - newW : ax;
+      let newH = h, newY = y;
+      if(ratio > 0){
+        newH = newW / ratio;
+        newY = y + h / 2 - newH / 2;
+      }
+      if(newX < 0){ newW += newX; newX = 0; if(ratio > 0) newH = newW / ratio; }
+      if(newX + newW > r.width){ newW = r.width - newX; if(ratio > 0) newH = newW / ratio; }
+      newY = Math.max(0, Math.min(newY, r.height - newH));
+      x = newX; y = newY; w = newW; h = newH;
+    }else{
+      // 四隅ハンドル: 従来通り幅・高さ両方を変更
+      const ax = resizeAnchor.x, ay = resizeAnchor.y;
+      const dx = cx - ax, dy = cy - ay;
+
+      w = Math.max(MIN, Math.abs(dx));
+      h = ratio > 0 ? w / ratio : Math.max(MIN, Math.abs(dy));
+
+      x = dx < 0 ? ax - w : ax;
+      y = dy < 0 ? ay - h : ay;
+
+      // ステージ範囲を超えないようクランプ(比率指定時は再計算して形状を維持)
+      if(x < 0){ w += x; x = 0; if(ratio > 0) h = w / ratio; }
+      if(y < 0){ h += y; y = 0; if(ratio > 0) w = h * ratio; }
+      if(x + w > r.width){ w = r.width - x; if(ratio > 0) h = w / ratio; }
+      if(y + h > r.height){ h = r.height - y; if(ratio > 0) w = h * ratio; }
+    }
+
+    setSelection({ x, y, w, h });
+  });
+
+  selectStage.addEventListener("pointerdown", (e) => {
+    syncSelectionFromDisplay();
+    const r = selectStage.getBoundingClientRect();
+    const cx = e.clientX - r.left, cy = e.clientY - r.top;
+
+    // 既存の選択範囲の内側をクリックした場合は「移動」として扱い、書き直さない
+    if(selection && cx >= selection.x && cx <= selection.x + selection.w &&
+       cy >= selection.y && cy <= selection.y + selection.h){
+      movingSelection = true;
+      moveOffset = { x: cx - selection.x, y: cy - selection.y };
+      return;
+    }
+
+    movingSelection = false;
+    dragging = true;
+    dragStart = { x: cx, y: cy };
+    selRect.style.display = "block";
+    selRect.style.left = dragStart.x + "px";
+    selRect.style.top = dragStart.y + "px";
+    selRect.style.width = "0px";
+    selRect.style.height = "0px";
+  });
+
+  selectStage.addEventListener("pointermove", (e) => {
+    // ドラッグ・移動中でなくても、選択範囲内にカーソルがあるか判定してcursorを切り替える
+    if(!dragging && !movingSelection && selection){
+      const r0 = selectStage.getBoundingClientRect();
+      const hx = e.clientX - r0.left, hy = e.clientY - r0.top;
+      const inside = hx >= selection.x && hx <= selection.x + selection.w &&
+                     hy >= selection.y && hy <= selection.y + selection.h;
+      selectStage.classList.toggle("hover-move", inside);
+    }
+
+    const r = selectStage.getBoundingClientRect();
+    const cx = e.clientX - r.left, cy = e.clientY - r.top;
+
+    if(movingSelection && selection){
+      // CHANGED: サイズ・比率は変えず位置だけ移動(毎回書き直さずに微調整できるように)
+      let x = cx - moveOffset.x;
+      let y = cy - moveOffset.y;
+      x = Math.max(0, Math.min(x, r.width - selection.w));
+      y = Math.max(0, Math.min(y, r.height - selection.h));
+      setSelection({ x, y, w: selection.w, h: selection.h });
+      return;
+    }
+
+    if(!dragging) return;
+    const dx = cx - dragStart.x;
+    const dy = cy - dragStart.y;
+    const ratio = parseFloat(ratioSelect.value) || 0; // w/h。0=フリー
+
+    let w, h;
+    if(ratio > 0){
+      // CHANGED: 比率指定時はX方向のドラッグ量を基準に高さを算出し、縦横比を維持したまま矩形を広げる
+      w = Math.abs(dx);
+      h = w / ratio;
+      // ステージ範囲を超えないようクランプ(比率は維持)
+      const maxW = r.width, maxH = r.height;
+      if(h > maxH){ h = maxH; w = h * ratio; }
+      if(w > maxW){ w = maxW; h = w / ratio; }
+    }else{
+      w = Math.abs(dx);
+      h = Math.abs(dy);
+    }
+
+    const x = dx < 0 ? dragStart.x - w : dragStart.x;
+    const y = dy < 0 ? dragStart.y - h : dragStart.y;
+
+    setSelection({ x, y, w, h });
+  });
+
+  window.addEventListener("pointerup", () => {
+    dragging = false;
+    movingSelection = false;
+    resizingHandle = null;
+    resizeAnchor = null;
+  });
+
+  // 比率を後から選び直した場合、既存の範囲選択を中心を保ったままその比率に変形する
+  ratioSelect.addEventListener("change", () => {
+    if(!selection) return;
+    const ratio = parseFloat(ratioSelect.value) || 0;
+    if(ratio <= 0) return; // フリーに戻す場合は形状をそのまま維持
+    syncSelectionFromDisplay();
+    const r = selectStage.getBoundingClientRect();
+    const cx = selection.x + selection.w / 2;
+    const cy = selection.y + selection.h / 2;
+    let w = selection.w;
+    let h = w / ratio;
+    if(h > r.height){ h = r.height; w = h * ratio; }
+    if(w > r.width){ w = r.width; h = w / ratio; }
+    let x = cx - w / 2;
+    let y = cy - h / 2;
+    x = Math.max(0, Math.min(x, r.width - w));
+    y = Math.max(0, Math.min(y, r.height - h));
+    setSelection({ x, y, w, h });
+  });
+
+  // 矢印キーで選択範囲を微調整(Shiftで大きく移動)
+  document.addEventListener("keydown", (e) => {
+    if(!selection) return;
+    if(sharePanel.classList.contains("collapsed")) return;
+    if(lightbox.classList.contains("open")) return;
+    if(e.ctrlKey || e.metaKey || e.altKey) return; // Shift+Alt+矢印は記録一覧のキーボード並び替えと競合するため除外(Altを含む組み合わせは全て対象外に)
+    const tag = document.activeElement && document.activeElement.tagName;
+    if(tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+    const arrowKeys = ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"];
+    if(!arrowKeys.includes(e.key)) return;
+    e.preventDefault();
+    const step = e.shiftKey ? 10 : 1;
+    syncSelectionFromDisplay();
+    const r = selectStage.getBoundingClientRect();
+    let { x, y, w, h } = selection;
+    if(e.key === "ArrowUp") y -= step;
+    if(e.key === "ArrowDown") y += step;
+    if(e.key === "ArrowLeft") x -= step;
+    if(e.key === "ArrowRight") x += step;
+    x = Math.max(0, Math.min(x, r.width - w));
+    y = Math.max(0, Math.min(y, r.height - h));
+    setSelection({ x, y, w, h });
+  });
+
+  function setSharePanelCollapsed(collapsed){
+    sharePanel.classList.toggle("collapsed", collapsed);
+    shareHeaderToggle.setAttribute("aria-expanded", String(!collapsed));
+    shareToggleBar.textContent = collapsed ? "▼" : "▲";
+    shareToggleBar.setAttribute("aria-label", collapsed ? "展開する" : "折りたたむ");
+    // 折りたたみ状態が変わるたび、狭い幅でのボタン・折りたたみ矢印の統合位置も見直す
+    updateShareChromePlacement();
+    // ResizeObserverの通知は、この直後に呼ばれるPiP自動起動(documentPictureInPicture.requestWindow())
+    // が完了するまで配信が止まることがある(環境依存)ため、高さの変化が確定しているこの時点で
+    // 即座に再計算し、--share-panel-hが古い値のまま下のパネルとズレるのを防ぐ
+    updateSharePanelHeight();
+  }
+
+  // 共有開始/停止ボタン(btnShareToggle)の行き先は状態によって3通り。
+  // ①展開中(映像プレビュー表示中): headRowに単独で残すと見出し非表示時(狭い幅)は
+  //   もちろん、見出し表示中(広い幅)でも左に大きな空白ができるため、幅を問わず
+  //   本体の操作行(比率/範囲固定/全画面/共有中と同じ行、#shareControlsRow)へ同居
+  // ②折りたたみ中・狭い幅: headRowに残すとボタン1つだけの空箱行になるため、
+  //   キャプチャパネルのボタン行末尾(メモボタンの右、ステータス表示の直前)へ同居
+  // ③折りたたみ中・広い幅: 見出し(h2)がheadRowに表示されているため、従来通り
+  //   headRowに残す(見出しの右に並べば空白は気にならない)
+  // 展開用の▼/▲矢印は②のときだけタイトルバー(#appHeader)へ同居させる
+  const captureRow = capturePanelEl.querySelector(".row");
+  const shareHeadRow = sharePanel.querySelector(".panelHeadRow");
+  const shareControlsRow = $("shareControlsRow");
+  const narrowWidthQuery = window.matchMedia("(max-width:600px)");
+  function updateShareChromePlacement(){
+    const collapsed = sharePanel.classList.contains("collapsed");
+    const narrow = narrowWidthQuery.matches;
+    const collapsedNarrowMerge = narrow && collapsed;
+
+    let buttonTarget;
+    if(collapsedNarrowMerge){
+      buttonTarget = captureRow;
+    }else if(!collapsed){
+      buttonTarget = shareControlsRow;
+    }else{
+      buttonTarget = shareHeadRow;
+    }
+    // キャプチャ行では、他のボタンを気軽に連打する流れで誤って停止を
+    // 押してしまわないよう、ステータス表示(例:「1475×706px 固定」)の
+    // さらに右側(行の末尾)に配置して物理的な距離を取る
+    if(btnShareToggle.parentElement !== buttonTarget){
+      buttonTarget.appendChild(btnShareToggle);
+    }
+
+    if(collapsedNarrowMerge && shareToggleBar.parentElement !== appHeaderEl){
+      appHeaderEl.insertBefore(shareToggleBar, btnHelp);
+    }else if(!collapsedNarrowMerge && shareToggleBar.parentElement !== sharePanel){
+      sharePanel.appendChild(shareToggleBar);
+    }
+    // ボタン・矢印とも外へ出た共有パネル(②の状態)は、空のカードが残るだけになるため非表示にする
+    sharePanel.style.display = collapsedNarrowMerge ? "none" : "";
+    // headRowは、展開中(ボタンは本体行へ)かつ狭い幅(見出しテキストも非表示)だと
+    // 中身が完全に空になるため、その組み合わせのときだけ行自体を消す
+    shareHeadRow.style.display = (!collapsed && narrow) ? "none" : "";
+    updateHeaderHeight();
+    updateSharePanelHeight();
+    updateCapturePanelHeight();
+  }
+  if(narrowWidthQuery.addEventListener){
+    narrowWidthQuery.addEventListener("change", updateShareChromePlacement);
+  }else{
+    narrowWidthQuery.addListener(updateShareChromePlacement);
+  }
+  updateShareChromePlacement();
+
+  function applyFixedRect(rect){
+    fixedRect = rect;
+    btnCapture.disabled = false;
+    btnPip.disabled = false;
+    captureStatus.textContent = `${fixedRect.w}×${fixedRect.h}px 固定`;
+    // 範囲が決まったら映像プレビューは不要になることが多いので自動的に折りたたむ
+    setSharePanelCollapsed(true);
+    // 範囲固定→PiPを開く、を一連の流れにすることで、タブが背景に回っても
+    // video要素がPiP側に移動した状態を維持でき、キャプチャが古いフレームを拾いにくくなる
+    if(pipSupported) openPipWindow().catch((err) => console.error("PiP自動起動に失敗しました", err));
+  }
+
+  btnFixRect.addEventListener("click", () => {
+    if(!selection || selection.w < 5 || selection.h < 5){
+      alertAsync("範囲をドラッグで指定してください(全画面をそのまま使う場合は「🖥 全画面」)");
+      return;
+    }
+    // 実際に画面に見えている青枠(selRectの実測位置)から選択範囲を読み直してから
+    // 固定する。これにより、見た目の枠と固定されるキャプチャ範囲が常に一致する
+    syncSelectionFromDisplay();
+    const r = selectStage.getBoundingClientRect();
+    const scaleX = video.videoWidth / r.width;
+    const scaleY = video.videoHeight / r.height;
+    applyFixedRect({
+      x: Math.round(selection.x * scaleX),
+      y: Math.round(selection.y * scaleY),
+      w: Math.round(selection.w * scaleX),
+      h: Math.round(selection.h * scaleY)
+    });
+  });
+
+  btnFixFull.addEventListener("click", () => {
+    if(!video.videoWidth || !video.videoHeight) return;
+    // 範囲選択が残っていると全画面固定と矛盾して見えるためクリア
+    selection = null;
+    selRect.style.display = "none";
+    selRect.style.width = "0px";
+    selRect.style.height = "0px";
+    applyFixedRect({ x:0, y:0, w:video.videoWidth, h:video.videoHeight });
+  });
+
+  shareHeaderToggle.addEventListener("click", () => {
+    setSharePanelCollapsed(!sharePanel.classList.contains("collapsed"));
+  });
+  shareHeaderToggle.addEventListener("keydown", (e) => {
+    if(e.key === "Enter" || e.key === " "){
+      e.preventDefault();
+      setSharePanelCollapsed(!sharePanel.classList.contains("collapsed"));
+    }
+  });
+  shareToggleBar.addEventListener("click", () => {
+    setSharePanelCollapsed(!sharePanel.classList.contains("collapsed"));
+  });
+  shareToggleBar.addEventListener("keydown", (e) => {
+    if(e.key === "Enter" || e.key === " "){
+      e.preventDefault();
+      setSharePanelCollapsed(!sharePanel.classList.contains("collapsed"));
+    }
+  });
+
+  // ---------- レコード追加共通処理(キャプチャ/貼り付け共通) ----------
+  // 現在フォーカスのある行(⠿ハンドル/メモ欄/ボタン等、その行のどこか)を返す。
+  // なければnull(=末尾に追加、という従来通りの挙動になる)
+  function getFocusedItem(){
+    const el = document.activeElement;
+    if(!el || !captureList.contains(el)) return null;
+    return el.closest(".item");
+  }
+
+  // anchorItemOverrideを明示的に渡した場合はそちらを優先する(undefinedの場合のみ
+  // その場でgetFocusedItem()する)。ボタンクリックはclickイベント発火までに
+  // ボタン自身へフォーカスが移ってしまい、その時点でgetFocusedItem()しても
+  // 選択していた行を検出できないため、pointerdown時点で先に検出して渡す用途
+  async function addCaptureRecord(dataURL, anchorItemOverride, opts){
+    const anchorItem = anchorItemOverride !== undefined ? anchorItemOverride : getFocusedItem();
+    const record = { dataURL, memo:"", timestamp: Date.now() };
+    if(opts && opts.heading !== undefined) record.heading = opts.heading;
+    const id = await dbAdd(record);
+    record.id = id;
+    const div = renderItem(record, false, anchorItem);
+    // 見た目の挿入位置とDB上のorderを一致させる(orderが空のままだと、
+    // idの大小で決まるリロード時の並び順で末尾に戻ってしまうため、選択行の有無に
+    // 関わらず常に同期する。以前はanchorItemがある時だけ呼んでいたため、選択なしで
+    // 追加したレコードのorderが未設定のまま残ることがあった)
+    await persistOrderFromDom();
+    if(anchorItem){
+      // 続けてキャプチャ/見出し追加した場合も同じ行の直後に連続して挿入されるよう、
+      // フォーカスを新しい行の⠿ハンドルへ移す
+      const handle = div.querySelector(".drag-handle");
+      if(handle) handle.focus();
+    }
+    updateCount();
+    return record;
+  }
+
+  // 「📝見出し」「💬メモ」ボタンはクリックするとフォーカスがボタン自身へ移ってしまい、
+  // click発火時点でgetFocusedItem()しても選択していた行が検出できなくなるため、
+  // フォーカス移動が起きる前のpointerdown時点で先に検出しておく
+  let noteInsertAnchor;
+  const captureNoteInsertAnchor = () => { noteInsertAnchor = getFocusedItem(); };
+  btnAddNote.addEventListener("pointerdown", captureNoteInsertAnchor);
+  btnAddMemo.addEventListener("pointerdown", captureNoteInsertAnchor);
+  btnAddNote.addEventListener("click", async () => {
+    const record = await addCaptureRecord(null, noteInsertAnchor);
+    // 追加直後にメモ欄を編集状態にしてすぐ入力できるように(プレビューをクリックしたのと同じ扱い)
+    const div = captureList.querySelector(`.item[data-id="${record.id}"]`);
+    const preview = div && div.querySelector(".memoPreview");
+    if(preview) preview.click();
+  });
+  btnAddMemo.addEventListener("click", async () => {
+    // 見出しと違い、最初からメモ種別(heading:false)で追加する
+    const record = await addCaptureRecord(null, noteInsertAnchor, { heading: false });
+    const div = captureList.querySelector(`.item[data-id="${record.id}"]`);
+    const preview = div && div.querySelector(".memoPreview");
+    if(preview) preview.click();
+  });
+
+  function blobToDataURL(blob){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // 長辺が上限を超える場合は縮小し、JPEGで書き出す(ファイルサイズ軽減。
+  // PNGではなくJPEGにするのは、右クリック→コピーでTeams/OneNote等へ貼り付けた際の
+  // 互換性を保つため。WebPはOneNote等で貼り付け不可になるケースがあるため避けている)
+  const MAX_LONG_EDGE = 1920;
+  const JPEG_QUALITY = 0.9;
+  function canvasToOptimizedDataURL(canvas){
+    let src = canvas;
+    const longEdge = Math.max(canvas.width, canvas.height);
+    if(longEdge > MAX_LONG_EDGE){
+      const scale = MAX_LONG_EDGE / longEdge;
+      const scaled = document.createElement("canvas");
+      scaled.width = Math.round(canvas.width * scale);
+      scaled.height = Math.round(canvas.height * scale);
+      scaled.getContext("2d").drawImage(canvas, 0, 0, scaled.width, scaled.height);
+      src = scaled;
+    }
+    return src.toDataURL("image/jpeg", JPEG_QUALITY);
+  }
+
+  // ---------- キャプチャ ----------
+  async function captureNow(anchorItemOverride){
+    if(!fixedRect) return false;
+
+    // captureSourceEl(PiP側等)がまだ映像データを持っていない場合(切替直後の一瞬など)は、
+    // 常に映像を表示し続けている共有パネル側のvideoへフォールバックする。
+    // これによりPiP切替のタイミング次第でキャプチャが失敗する事態を防ぐ。
+    let src = captureSourceEl;
+    if(!src || src.readyState < 2 || !src.videoWidth){
+      src = video;
+    }
+    if(!src || !src.videoWidth){
+      console.error("キャプチャ元の映像がまだ準備できていません");
+      return false;
+    }
+
+    workCanvas.width = fixedRect.w;
+    workCanvas.height = fixedRect.h;
+    try{
+      ctx.drawImage(
+        src,
+        fixedRect.x, fixedRect.y, fixedRect.w, fixedRect.h,
+        0, 0, fixedRect.w, fixedRect.h
+      );
+    }catch(err){
+      console.error("キャプチャの描画に失敗しました", err);
+      return false;
+    }
+    const dataURL = canvasToOptimizedDataURL(workCanvas);
+    await addCaptureRecord(dataURL, anchorItemOverride);
+    return true;
+  }
+  // 📸ボタンもクリックでフォーカスがボタン自身へ移ってしまうため、見出し/メモ追加と
+  // 同様にpointerdown時点で選択行を検出しておく(click発火時点では検出できない)
+  let captureInsertAnchor;
+  btnCapture.addEventListener("pointerdown", () => { captureInsertAnchor = getFocusedItem(); });
+  btnCapture.addEventListener("click", () => captureNow(captureInsertAnchor));
+
+  // ---------- クリップボードから貼り付け ----------
+  let pasteInsertAnchor;
+  btnPaste.addEventListener("pointerdown", () => { pasteInsertAnchor = getFocusedItem(); });
+  btnPaste.addEventListener("click", async () => {
+    try{
+      const items = await navigator.clipboard.read();
+      let found = false;
+      let anchor = pasteInsertAnchor;
+      for(const item of items){
+        const imgType = item.types.find(t => t.startsWith("image/"));
+        if(imgType){
+          const blob = await item.getType(imgType);
+          const dataURL = await blobToDataURL(blob);
+          const record = await addCaptureRecord(dataURL, anchor);
+          anchor = captureList.querySelector(`.item[data-id="${record.id}"]`);
+          found = true;
+        }
+      }
+      if(!found){
+        alertAsync("クリップボードに画像が見つかりませんでした。スクリーンショットをコピーしてから再度お試しください");
+      }
+    }catch(err){
+      console.error(err);
+      alertAsync("クリップボードの読み取りに失敗しました。このページ上で Ctrl+V (⌘+V) を押しても貼り付けできます");
+    }
+  });
+
+  // このページ上でのCtrl+V/⌘+V貼り付けにも対応(ブラウザのクリップボード権限ダイアログを介さず動作)。
+  // ボタンを介さずキー操作だけで発生するため、ハンドラ開始時点のフォーカスがそのまま選択行の判定に使える
+  document.addEventListener("paste", async (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if(!items) return;
+    let anchor = getFocusedItem();
+    for(const it of items){
+      if(it.kind === "file" && it.type.startsWith("image/")){
+        const blob = it.getAsFile();
+        if(!blob) continue;
+        const dataURL = await blobToDataURL(blob);
+        const record = await addCaptureRecord(dataURL, anchor);
+        anchor = captureList.querySelector(`.item[data-id="${record.id}"]`);
+      }
+    }
+  });
+
+  // ---------- 一覧描画 ----------
+  function fmtTime(ts){
+    const d = new Date(ts);
+    const p = (n) => String(n).padStart(2,"0");
+    return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+
+  function clearEmptyState(){
+    const empty = captureList.querySelector(".empty");
+    if(empty) empty.remove();
+  }
+
+  // メモ欄(画像メモ・見出し/メモ共通)のツールバー。太字/取り消し線/下線/マーカー/リンク/文字色4色
+  const MEMO_TOOLBAR_HTML = `
+    <div class="memoToolbar" hidden>
+      <button class="memoToolBtn memoToolBtn-bold" type="button" data-memo-action="bold" title="太字">B</button>
+      <button class="memoToolBtn memoToolBtn-strike" type="button" data-memo-action="strike" title="取り消し線">S</button>
+      <button class="memoToolBtn memoToolBtn-underline" type="button" data-memo-action="underline" title="下線">U</button>
+      <button class="memoToolBtn" type="button" data-memo-action="mark" title="黄色マーカー">🖍</button>
+      <button class="memoToolBtn" type="button" data-memo-action="link" title="リンクを付ける">🔗</button>
+      <span class="memoColorDots">
+        <button class="memoColorDot" type="button" data-memo-color="black" style="--dot:var(--text);" title="黒(標準色)"></button>
+        <button class="memoColorDot" type="button" data-memo-color="red" style="--dot:var(--memo-col-red);" title="赤"></button>
+        <button class="memoColorDot" type="button" data-memo-color="blue" style="--dot:var(--memo-col-blue);" title="青"></button>
+        <button class="memoColorDot" type="button" data-memo-color="green" style="--dot:var(--memo-col-green);" title="緑"></button>
+      </span>
+    </div>
+  `;
+
+  function renderItem(record, prepend, afterEl){
+    clearEmptyState();
+    const div = document.createElement("div");
+    const isHeading = !record.dataURL;
+    div.className = "item" + (isHeading ? " item-heading" : "");
+    div.dataset.id = record.id;
+    if(isHeading){
+      const asHeading = record.heading !== false; // 未設定(既存データ含む)はデフォルトで見出し扱い
+      div.innerHTML = `
+        <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてShift+Alt+↑/↓で並び替え">⠿</span>
+        <div class="itembody">
+          <div class="meta">
+            <span class="type-badge" title="クリックで見出し/メモを切替">${asHeading ? "📝 見出し" : "💬 メモ"}</span>
+            ／ ${fmtTime(record.timestamp)} <span class="saveState"></span>
+          </div>
+          <div class="memoField">
+            <textarea class="heading-text" placeholder="見出し・メモを入力(例: 発表者が交代、テーマが変わった、など)" hidden>${record.memo || ""}</textarea>
+            ${MEMO_TOOLBAR_HTML}
+            <div class="memoPreview" tabindex="0"></div>
+          </div>
+          <div class="itemactions">
+            <button class="icon-btn btn-del" title="削除">🗑</button>
+          </div>
+        </div>
+      `;
+      if(!asHeading) div.classList.add("type-memo");
+    }else{
+      div.innerHTML = `
+        <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてShift+Alt+↑/↓で並び替え">⠿</span>
+        <img src="${record.dataURL}" alt="capture">
+        <div class="itembody">
+          <div class="meta">${fmtTime(record.timestamp)} <span class="saveState"></span></div>
+          <div class="memoField">
+            <textarea placeholder="メモを入力..." hidden>${record.memo || ""}</textarea>
+            ${MEMO_TOOLBAR_HTML}
+            <div class="memoPreview" tabindex="0"></div>
+          </div>
+          <div class="itemactions">
+            <button class="secondary btn-crop">✂️ トリミング</button>
+            <button class="secondary btn-crop-last" style="display:none;" title="直前にトリミングした範囲(比率)を、モーダルを開かずこの画像にそのまま適用します">🔁 前回の範囲</button>
+            <button class="icon-btn btn-del" title="削除">🗑</button>
+          </div>
+        </div>
+      `;
+    }
+    const cropBtn = div.querySelector(".btn-crop");
+    const typeBadge = div.querySelector(".type-badge");
+    if(typeBadge){
+      typeBadge.addEventListener("click", async () => {
+        const nowHeading = record.heading !== false;
+        record.heading = !nowHeading;
+        await saveRecordPreservingOrder(record);
+        typeBadge.textContent = record.heading ? "📝 見出し" : "💬 メモ";
+        div.classList.toggle("type-memo", !record.heading);
+      });
+    }
+    const textarea = div.querySelector("textarea");
+    const saveState = div.querySelector(".saveState");
+    const memoToolbar = div.querySelector(".memoToolbar");
+    const memoPreview = div.querySelector(".memoPreview");
+    let saveTimer = null;
+    const doSave = async () => {
+      record.memo = textarea.value;
+      await saveRecordPreservingOrder(record);
+      saveState.textContent = "保存済";
+      setTimeout(() => { saveState.textContent = ""; }, 1200);
+    };
+    // 入力量に応じてメモ欄の高さを自動拡大(手動リサイズも引き続き可能)
+    const autoGrowTextarea = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
+    };
+    // 入力の変化をまとめて扱う(キー入力・貼り付け・ツールバー操作のいずれも通る)
+    const handleMemoChanged = () => {
+      autoGrowTextarea();
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(doSave, 800);
+    };
+    // ふだんはプレビュー(太字・マーカー・リンク等を反映した表示)、クリックすると
+    // 編集用のテキストエリアに切り替わり、フォーカスを外すと保存してプレビューに戻る
+    const syncMemoPreview = () => {
+      const html = renderMemoMarkdown(textarea.value);
+      memoPreview.innerHTML = html || '<span class="memoPlaceholder">クリックしてメモを入力…</span>';
+    };
+    const showMemoPreview = () => {
+      syncMemoPreview();
+      memoPreview.hidden = false;
+      textarea.hidden = true;
+      memoToolbar.hidden = true;
+    };
+    const showMemoEditor = () => {
+      memoPreview.hidden = true;
+      textarea.hidden = false;
+      memoToolbar.hidden = false;
+      textarea.focus();
+      const len = textarea.value.length;
+      textarea.setSelectionRange(len, len);
+      autoGrowTextarea();
+    };
+    memoPreview.addEventListener("click", showMemoEditor);
+    memoPreview.addEventListener("keydown", (e) => {
+      if(e.key === "Enter" || e.key === " "){ e.preventDefault(); showMemoEditor(); }
+    });
+    showMemoPreview(); // 初期状態は「編集していない」= プレビュー表示
+    // メモ入力のたびdebounce(800ms)で自動保存。ボタン操作は不要
+    textarea.addEventListener("input", handleMemoChanged);
+    // フォーカスが外れた時は即保存し、プレビュー表示に戻す
+    textarea.addEventListener("blur", () => {
+      clearTimeout(saveTimer);
+      doSave();
+      showMemoPreview();
+    });
+    // Escでメモ欄からフォーカスを外す(ライトボックス等の他のEsc処理と競合しないようstopPropagation)。
+    // 抜けた後そのままShift+Alt+↑/↓で並び替えできるよう、フォーカスをこの行の⠿ハンドルへ移す
+    textarea.addEventListener("keydown", (e) => {
+      if(e.key === "Escape"){
+        e.stopPropagation();
+        textarea.blur();
+        const handle = div.querySelector(".drag-handle");
+        if(handle) handle.focus();
+      }
+    });
+    // リッチテキスト(リンク付き文字など)の貼り付けは、クリップボードのHTML情報から
+    // <a>タグを拾って[表示文字](URL)記法へ自動変換する。リンクを含まない貼り付けは
+    // ブラウザの既定動作(プレーンテキスト貼り付け)に任せる
+    textarea.addEventListener("paste", (e) => {
+      const html = e.clipboardData && e.clipboardData.getData("text/html");
+      if(!html || !/<a[\s>]/i.test(html)) return;
+      e.preventDefault();
+      const converted = htmlFragmentToMarkdown(html);
+      const start = textarea.selectionStart, end = textarea.selectionEnd;
+      textarea.setRangeText(converted, start, end, "end");
+      handleMemoChanged();
+    });
+    // ツールバーのボタンをクリックした瞬間にtextareaからフォーカスが外れると
+    // blur→プレビュー表示に戻ってしまうため、mousedown時点でpreventDefaultして
+    // フォーカス移動そのものを止める(textareaにフォーカスが残り続ける)
+    memoToolbar.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("mousedown", (e) => e.preventDefault());
+    });
+    memoToolbar.querySelector('[data-memo-action="bold"]').addEventListener("click", () => {
+      toggleWrapMemoSelection(textarea, /^\*\*([\s\S]*)\*\*$/, /\*\*([^*]*)\*\*/g, (inner) => `**${inner}**`, "太字にする文字", "**");
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="strike"]').addEventListener("click", () => {
+      toggleWrapMemoSelection(textarea, /^~~([\s\S]*)~~$/, /~~([^~]*)~~/g, (inner) => `~~${inner}~~`, "取り消し線にする文字", "~~");
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="underline"]').addEventListener("click", () => {
+      toggleWrapMemoSelection(textarea, /^__([\s\S]*)__$/, /__([^_]*)__/g, (inner) => `__${inner}__`, "下線を引く文字", "__");
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="mark"]').addEventListener("click", () => {
+      toggleWrapMemoSelection(textarea, /^==([\s\S]*)==$/, /==([^=]*)==/g, (inner) => `==${inner}==`, "マーカーにする文字", "==");
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="link"]').addEventListener("click", () => {
+      const start = textarea.selectionStart, end = textarea.selectionEnd;
+      const label = textarea.value.slice(start, end) || "リンク文字";
+      textarea.setRangeText(`[${label}](https://)`, start, end, "end");
+      textarea.focus();
+      handleMemoChanged();
+    });
+    memoToolbar.querySelectorAll(".memoColorDot").forEach((dot) => {
+      dot.addEventListener("click", () => {
+        applyMemoColor(textarea, dot.dataset.memoColor);
+        handleMemoChanged();
+      });
+    });
+    if(cropBtn){
+      cropBtn.addEventListener("click", () => openCropModal(record, div.querySelector("img")));
+    }
+    const cropLastBtn = div.querySelector(".btn-crop-last");
+    if(cropLastBtn){
+      cropLastBtn.style.display = lastCropRatio ? "inline-block" : "none";
+      cropLastBtn.addEventListener("click", () => applyLastCropRatio(record, div.querySelector("img")));
+    }
+    div.querySelector(".btn-del").addEventListener("click", async () => {
+      await dbDelete(record.id);
+      div.remove();
+      updateCount();
+      if(captureList.children.length === 0){
+        captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
+      }
+    });
+    if(afterEl && afterEl.parentNode === captureList){
+      captureList.insertBefore(div, afterEl.nextSibling); // afterElの直後(nextSiblingがnullなら末尾)
+    }else if(prepend){
+      captureList.insertBefore(div, captureList.firstChild);
+    }else{
+      captureList.appendChild(div);
+    }
+    return div;
+  }
+
+  function updateCount(){
+    countLabel.textContent = captureList.querySelectorAll(".item").length;
+    updateSizeEstimate();
+  }
+
+  // エクスポートHTMLのおおよそのサイズを見積もる。
+  // 実際のexportHtml生成と同じ考え方(画像はBase64のまま、originalDataURLは含めない)で
+  // 文字数を積算し、テンプレート側の固定オーバーヘッド(CSS/JS等、約20KB)を加算する。
+  const EXPORT_TEMPLATE_OVERHEAD_BYTES = 20000;
+  let sizeEstimateTimer = null;
+  function updateSizeEstimate(){
+    clearTimeout(sizeEstimateTimer);
+    sizeEstimateTimer = setTimeout(async () => {
+      try{
+        const records = await dbGetAll();
+        let total = EXPORT_TEMPLATE_OVERHEAD_BYTES;
+        records.forEach((r) => {
+          if(r.dataURL) total += r.dataURL.length;
+          if(r.memo) total += r.memo.length;
+        });
+        sizeEstimateLabel.textContent = formatBytes(total);
+      }catch(err){
+        console.error(err);
+        sizeEstimateLabel.textContent = "-";
+      }
+    }, 150);
+  }
+
+  function formatBytes(bytes){
+    if(bytes < 1024) return bytes + " B";
+    if(bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  // ---------- 記録一覧のドラッグ&ドロップ並び替え ----------
+  let draggingItem = null;
+
+  // 現在のDOM順を正として、全レコードのorderを振り直して保存する(ドラッグ&ドロップ・キーボード並び替え共通)
+  async function persistOrderFromDom(){
+    const records = await dbGetAll();
+    const byId = new Map(records.map((r) => [String(r.id), r]));
+    const items = Array.from(captureList.querySelectorAll(".item"));
+    const updates = [];
+    items.forEach((div, index) => {
+      const rec = byId.get(div.dataset.id);
+      if(rec && rec.order !== index){
+        rec.order = index;
+        updates.push(dbPut(rec));
+      }
+    });
+    await Promise.all(updates);
+  }
+
+  // メモ編集・トリミング等の保存は、行作成時に捕まえた古いrecordオブジェクトを使うため
+  // persistOrderFromDom()が別途DBから取得し直したコピーに設定したorderを拾えていない。
+  // そのままdbPut()するとorderフィールドが丸ごと消えてしまう(並び替え後に書き出すと
+  // 順序が食い違う不具合の原因だった)。保存の直前に必ず現在のDOM位置からorderを
+  // 補ってから保存することで、どの保存経路でもorderが失われないようにする
+  function currentDomOrderFor(id){
+    const items = Array.from(captureList.querySelectorAll(".item"));
+    return items.findIndex((div) => Number(div.dataset.id) === id);
+  }
+  async function saveRecordPreservingOrder(record){
+    const idx = currentDomOrderFor(record.id);
+    if(idx !== -1) record.order = idx;
+    await dbPut(record);
+  }
+
+  captureList.addEventListener("dragstart", (e) => {
+    const handle = e.target.closest(".drag-handle");
+    if(!handle) return;
+    draggingItem = handle.closest(".item");
+    draggingItem.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", draggingItem.dataset.id);
+  });
+
+  captureList.addEventListener("dragover", (e) => {
+    if(!draggingItem) return;
+    e.preventDefault();
+    const overItem = e.target.closest(".item");
+    if(!overItem || overItem === draggingItem) return;
+    const r = overItem.getBoundingClientRect();
+    const before = (e.clientY - r.top) < r.height / 2;
+    captureList.insertBefore(draggingItem, before ? overItem : overItem.nextSibling);
+  });
+
+  captureList.addEventListener("dragend", async () => {
+    if(!draggingItem) return;
+    draggingItem.classList.remove("dragging");
+    draggingItem = null;
+    await persistOrderFromDom();
+  });
+
+  // キーボードでの並び替え: ⠿ハンドルにフォーカスした状態でShift+Alt+↑/↓を押すと
+  // 1つ上/下のアイテムと入れ替える(ドラッグ操作の代替、OneNoteの行移動と同じキー組み合わせ)。
+  // 移動後もハンドルのフォーカスは維持される
+  captureList.addEventListener("keydown", async (e) => {
+    if(e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    if(!e.shiftKey || !e.altKey) return;
+    const handle = e.target.closest(".drag-handle");
+    if(!handle) return;
+    const item = handle.closest(".item");
+    if(!item) return;
+    const sibling = e.key === "ArrowUp" ? item.previousElementSibling : item.nextElementSibling;
+    if(!sibling) return; // 端まで来たら何もしない
+    e.preventDefault();
+    if(e.key === "ArrowUp"){
+      captureList.insertBefore(item, sibling);
+    }else{
+      captureList.insertBefore(item, sibling.nextSibling); // nextSiblingがnullなら末尾へ移動
+    }
+    handle.focus(); // 同じノードを再配置しているだけだがブラウザ差異に備えて明示的に再フォーカス
+    await persistOrderFromDom();
+  });
+
+  async function loadAll(){
+    const records = await dbGetAll();
+    records.sort((a,b) => (a.order ?? a.id) - (b.order ?? b.id)); // 手動並び替え済みならorder、なければ撮影順(id)
+    if(records.length === 0){
+      captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
+    }else{
+      captureList.innerHTML = "";
+      records.forEach(r => renderItem(r, false));
+    }
+    updateCount();
+  }
+
+  // 同じツールを複数タブ/ウィンドウで開いている場合、IndexedDBは共有されるが
+  // 各タブの一覧表示(DOM)は読み込み時点のまま更新されない。ページ全体を再読み込み
+  // すると画面共有・範囲固定・選択中の範囲等がすべて失われるため、一覧の再読み込みだけを
+  // 独立して行えるようにする(loadAll()はDBから読み直して#captureListを再描画するだけで、
+  // video/selection/fixedRect等の共有状態には一切触れない)
+  btnRefreshList.addEventListener("click", async () => {
+    await loadAll();
+    showToast("一覧を更新しました。");
+  });
+
+  btnClearAll.addEventListener("click", async () => {
+    if(!(await confirmAsync("全てのキャプチャを削除します。よろしいですか？"))) return;
+    await dbClear();
+    captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
+    updateCount();
+    // 全削除は「新しく始める」操作とみなし、タイトル・日付も初期状態へ戻す
+    exportTitleInput.value = "";
+    exportDateInput.value = todayString();
+    localStorage.removeItem(TITLE_KEY);
+    localStorage.removeItem(DATE_KEY);
+  });
+
+  // ---------- まとめてHTML保存 ----------
+  // ---------- インポート(書き出したHTMLを読み込んで続きから編集) ----------
+  // 文字列内の記号に惑わされないよう、クォート・エスケープを考慮して
+  // "marker + 開き括弧...閉じ括弧" に対応する範囲を正確に抜き出す(配列/オブジェクト共通)
+  function extractBalanced(text, marker, openCh, closeCh){
+    const idx = text.indexOf(marker);
+    if(idx === -1) return null;
+    let i = idx + marker.length;
+    if(text[i] !== openCh) return null;
+    const start = i;
+    let depth = 0, inStr = false, strCh = "", esc = false;
+    for(; i < text.length; i++){
+      const c = text[i];
+      if(inStr){
+        if(esc){ esc = false; }
+        else if(c === "\\"){ esc = true; }
+        else if(c === strCh){ inStr = false; }
+      }else{
+        if(c === '"' || c === "'"){ inStr = true; strCh = c; }
+        else if(c === openCh){ depth++; }
+        else if(c === closeCh){
+          depth--;
+          if(depth === 0){ i++; return text.slice(start, i); }
+        }
+      }
+    }
+    return null;
+  }
+
+  btnImport.addEventListener("click", () => importFileInput.click());
+
+  importFileInput.addEventListener("change", async () => {
+    const file = importFileInput.files[0];
+    importFileInput.value = ""; // 同じファイルを連続で選んでもchangeが発火するように
+    if(!file) return;
+
+    const text = await file.text();
+    const arrText = extractBalanced(text, "var DATA = ", "[", "]");
+    if(!arrText){
+      alertAsync("このHTMLからデータを読み取れませんでした。このツールで書き出したHTMLファイルを選んでください。");
+      return;
+    }
+    let items;
+    try{
+      items = JSON.parse(arrText);
+    }catch(err){
+      console.error(err);
+      alertAsync("データの読み込みに失敗しました(形式が壊れている可能性があります)。");
+      return;
+    }
+    if(!Array.isArray(items) || items.length === 0){
+      alertAsync("読み込めるキャプチャが見つかりませんでした。");
+      return;
+    }
+
+    // タイトル・日付(META)も読み込めれば併せて復元する(古い形式のファイルには無い場合もある)
+    let meta = null;
+    const metaText = extractBalanced(text, "var META = ", "{", "}");
+    if(metaText){
+      try{ meta = JSON.parse(metaText); }catch(err){ console.error(err); }
+    }
+    const metaNote = meta ? `\nタイトル「${meta.title || ""}」・日付「${meta.date || "未設定"}」も読み込みます。` : "";
+    if(!(await confirmAsync(`${items.length}件を記録一覧の末尾に追加します。${metaNote}よろしいですか？`))) return;
+
+    for(const it of items){
+      let dataURL = it.d || null;
+      if(dataURL){
+        // 古いエクスポート(PNG等)や大きい画像も、取り込み時に同じ基準(JPEG・長辺1920px)へ揃える
+        try{
+          const img = await new Promise((resolve, reject) => {
+            const im = new Image();
+            im.onload = () => resolve(im);
+            im.onerror = reject;
+            im.src = dataURL;
+          });
+          workCanvas.width = img.naturalWidth;
+          workCanvas.height = img.naturalHeight;
+          ctx.drawImage(img, 0, 0);
+          dataURL = canvasToOptimizedDataURL(workCanvas);
+        }catch(err){
+          console.error("インポート画像の再エンコードに失敗、元データのまま取り込みます", err);
+        }
+      }
+      const record = {
+        dataURL,
+        memo: it.m || "",
+        timestamp: Date.now(),
+        heading: dataURL ? undefined : (it.h !== false)
+      };
+      const id = await dbAdd(record);
+      record.id = id;
+      renderItem(record, false);
+    }
+    if(meta){
+      // .valueへの代入だけではinputイベントが発火せずlocalStorageへ保存されないため、明示的に保存する
+      if(meta.title){
+        exportTitleInput.value = meta.title;
+        localStorage.setItem(TITLE_KEY, meta.title);
+      }
+      if(meta.date){
+        exportDateInput.value = meta.date;
+        localStorage.setItem(DATE_KEY, meta.date);
+      }
+    }
+    updateCount();
+  });
+
+  btnExport.addEventListener("click", async (clickEvent) => {
+    // 保存先フォルダの「登録」「解除」はエクスポート処理そのものとは無関係な軽い操作なので、
+    // 全件読み込みやHTML生成より前に判定し、該当する場合はそれだけで完了させる。
+    const fsSupported = "showDirectoryPicker" in window;
+    const modKey = clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey);
+
+    if(fsSupported && clickEvent && modKey && clickEvent.shiftKey){
+      const had = await kvGet("saveDirHandle");
+      if(!had){
+        showToast("保存先フォルダは登録されていません。");
+        return;
+      }
+      if(!(await confirmAsync("登録済みの保存先フォルダを解除します。よろしいですか？"))) return;
+      await kvSet("saveDirHandle", null);
+      showToast("保存先フォルダの登録を解除しました。次回からは通常のダウンロードに戻ります。");
+      return;
+    }
+
+    if(fsSupported && clickEvent && clickEvent.shiftKey){
+      try{
+        const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        await kvSet("saveDirHandle", dirHandle);
+        showToast(`✅ 保存先フォルダを「${dirHandle.name}」に設定しました。次回から保存のたびにこのフォルダを起点に確認します。`);
+        return;
+      }catch(err){
+        if(err && err.name !== "AbortError") console.error(err);
+        return; // フォルダ選択をキャンセルした場合は何もしない
+      }
+    }
+
+    // 保存先フォルダが登録済みなら、クリック直後(ブラウザのuser activationが有効なうち)に
+    // ピッカーを前回のフォルダを起点(startIn)にして開き、書き込み先を確定させておく。
+    // 実際の書き込みはこの後の重い処理(全件読み込み・HTML生成)の後に行うが、
+    // フォルダの選び直し自体はここで確認済みのため、権限の失効(requestPermissionが
+    // クリックから離れすぎて無反応になる)を気にする必要がなくなる。
+    let pendingDirHandle = null;
+    let dirPickCancelled = false;
+    const savedHandle = fsSupported ? await kvGet("saveDirHandle") : null;
+    if(savedHandle){
+      try{
+        pendingDirHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: savedHandle });
+        await kvSet("saveDirHandle", pendingDirHandle); // 選び直した場合に備え最新のハンドルを覚え直す
+      }catch(err){
+        if(err && err.name !== "AbortError") console.error("保存先フォルダの選択に失敗しました", err);
+        dirPickCancelled = true;
+      }
+    }
+
+    // エクスポート前に画面上の全textareaを強制保存(debounce未確定分の取りこぼし防止)。
+    // 以前は項目ごとにdbGetAll()(全件読み込み)していたため、件数が多いほど
+    // 無駄に重くなっていた。1回の全件取得で済ませるよう修正。
+    const allForFlush = await dbGetAll();
+    const flushById = new Map(allForFlush.map((r) => [r.id, r]));
+    const pending = Array.from(captureList.querySelectorAll(".item")).map(async (div) => {
+      const id = Number(div.dataset.id);
+      const textarea = div.querySelector("textarea");
+      const rec = flushById.get(id);
+      if(rec && rec.memo !== textarea.value){
+        rec.memo = textarea.value;
+        await dbPut(rec);
+      }
+    });
+    await Promise.all(pending);
+
+    const records = await dbGetAll();
+    records.sort((a,b) => (a.order ?? a.id) - (b.order ?? b.id));
+    if(records.length === 0){
+      alertAsync("キャプチャがありません");
+      return;
+    }
+
+    // メモに万一 "</script" を含んでいてもHTMLパーサーを壊さないようエスケープした上でJSON化
+    const exportData = records.map(r => ({
+      m: r.memo || "",
+      d: r.dataURL || null,
+      h: r.dataURL ? undefined : (r.heading !== false) // 画像なしエントリのみ: true=見出し / false=メモ
+    }));
+    const dataJson = JSON.stringify(exportData).replace(/<\/script/gi, "<\\/script");
+    const docTitle = (exportTitleInput.value || "").trim() || "Screen Capture Memo";
+    const docTitleEsc = docTitle.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const metaJson = JSON.stringify({ title: docTitle, date: exportDateInput.value || "" }).replace(/<\/script/gi, "<\\/script");
+
+    // ファイル名: 資料タイトル名_yyyy-mmdd.html (Windows/Macで使えない文字は除去)
+    const safeTitle = docTitle.replace(/[\\/:*?"<>|]/g, "").trim() || "Screen Capture Memo";
+    const dateValue = exportDateInput.value; // "YYYY-MM-DD"
+    const [dy, dm, dd] = dateValue ? dateValue.split("-") : [];
+    const dateForFilename = (dy && dm && dd) ? `${dy}-${dm}${dd}` : "";
+    const fileName = dateForFilename ? `${dateForFilename}_${safeTitle}.html` : `${safeTitle}.html`;
+
+    const exportHtml = `<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${docTitleEsc}</title>
+<style>
+  :root{--bg:#0f1115;--text:#e6e8ec;--sub:#9aa0ac;--panel:#171a21;--border:#2a2e3a;--accent:#4f8cff;--mark-bg:#fde047;--mark-fg:#1c1f26;--memo-col-red:#e5484d;--memo-col-blue:#3b82f6;--memo-col-green:#2fa360;}
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f5f6f8;--text:#1c1f26;--sub:#6b7280;--panel:#ffffff;--border:#d8dbe2;--accent:#3b6fe0;}
+  }
+  html[data-theme="light"]{--bg:#f5f6f8;--text:#1c1f26;--sub:#6b7280;--panel:#ffffff;--border:#d8dbe2;--accent:#3b6fe0;}
+  html[data-theme="dark"]{--bg:#0f1115;--text:#e6e8ec;--sub:#9aa0ac;--panel:#171a21;--border:#2a2e3a;--accent:#4f8cff;}
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);margin:0;}
+  .controls{
+    position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+  }
+  .controls strong{font-size:14px;}
+  .controls select, .controls button{
+    background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px;
+    padding:7px 12px; font-size:13px; cursor:pointer; font-family:inherit;
+  }
+  .controls .rightGroup{margin-left:auto; display:flex; gap:10px;}
+  #perPageWrap{display:none; align-items:center; gap:6px; font-size:12px; color:var(--sub);}
+  #gridCommentWrap{display:none; align-items:center; gap:6px; font-size:12px; color:var(--sub); cursor:pointer;}
+
+  main{max-width:900px; margin:0 auto; padding:24px;}
+  #docTitle{font-size:18px; margin:0 0 16px; padding-bottom:10px; border-bottom:2px solid var(--border);}
+  .docDateTag{font-size:13px; font-weight:400; color:var(--sub);}
+
+  #tocPanel{
+    display:block; position:fixed; top:76px; right:24px; width:200px; max-height:calc(100vh - 100px);
+    overflow-y:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:12px 14px; z-index:5;
+  }
+  #tocPanel.toc-hidden{ display:none !important; }
+  #tocPanel h2{font-size:11px; color:var(--sub); margin:0 0 8px; font-weight:600; letter-spacing:.02em;}
+  #tocPanel nav{display:flex; flex-direction:column;}
+  #tocPanel a{
+    display:block; color:var(--text); text-decoration:none; font-size:12px; line-height:1.4;
+    padding:4px 0 4px 8px; margin-left:-1px; border-left:2px solid transparent; opacity:.85;
+  }
+  #tocPanel a:hover{opacity:1; border-left-color:var(--accent);}
+  #tocPanel a.active{opacity:1; font-weight:700; color:var(--accent); border-left-color:var(--accent);}
+  #tocEdgeTrigger{ display:none; }
+  @media (max-width:1300px){
+    #tocPanel{
+      top:0; right:0; width:240px; max-height:none; height:100vh; border-radius:10px 0 0 10px;
+      transform:translateX(100%); transition:transform .25s ease; box-shadow:-6px 0 20px rgba(0,0,0,.3);
+      z-index:40; padding-top:20px;
+    }
+    #tocPanel.toc-open{ transform:translateX(0); }
+    #tocEdgeTrigger{
+      display:block; position:fixed; top:0; right:0; width:16px; height:100vh; z-index:39;
+    }
+  }
+  @media print{ #tocPanel, #tocEdgeTrigger{display:none !important;} }
+
+  .pageHeaderPrint{
+    display:none; font-size:8pt; color:var(--sub); padding-bottom:2mm; margin-bottom:4mm;
+    border-bottom:1px solid var(--border);
+  }
+  @media print{ .pageHeaderPrint{display:block;} }
+
+  .rec{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;break-inside:avoid;}
+  .rec-meta{font-size:12px;color:var(--sub);margin-bottom:8px;}
+  .rec img{max-width:100%;border-radius:6px;border:1px solid var(--border);}
+  .rec-memo{margin-top:10px;font-size:14px;white-space:pre-wrap;}
+  .recHeading{
+    font-weight:700; font-size:16px; padding:10px 0 10px 12px; margin:22px 0 12px;
+    border-left:4px solid var(--accent); white-space:pre-wrap; break-inside:avoid;
+  }
+  .recHeading.is-memo{font-weight:400; font-size:14px; border-left-color:var(--border); margin:12px 0;}
+
+  .gridPage{display:grid; gap:8mm; margin-bottom:14mm;}
+  .gridPage:not(:last-child){break-after:page;}
+  .gridCell{break-inside:avoid; border:1px solid var(--border); border-radius:6px; padding:6mm; background:var(--panel);}
+  .gridCell img{display:block; width:100%; border:1px solid var(--border); border-radius:4px;}
+  .gridMeta{font-size:8pt; color:var(--sub); margin-bottom:2mm;}
+  .gridMemo{font-size:9pt; margin-top:2mm; white-space:pre-wrap;}
+  .gridHeading{
+    grid-column:1 / -1; font-weight:700; font-size:11pt; padding:2mm 0 2mm 3mm;
+    border-left:3px solid var(--accent); white-space:pre-wrap; break-inside:avoid;
+  }
+  .gridHeading.is-memo{font-weight:400; font-size:9pt; border-left-color:var(--border);}
+
+  .notePage:not(:last-child){break-after:page;}
+  .noteRow{display:flex; gap:6mm; align-items:flex-start; break-inside:avoid; border-bottom:1px solid var(--border); padding-bottom:3mm; margin-bottom:3mm;}
+  .noteSlide{flex:0 0 55%;}
+  .noteSlide img{width:100%; display:block; border:1px solid var(--border); border-radius:4px;}
+  .noteMeta{font-size:8pt; color:var(--sub); margin-top:1mm;}
+  .noteComment{flex:1; font-size:10pt; white-space:pre-wrap; padding-top:2mm;}
+  .noteHeading{
+    font-weight:700; font-size:11pt; padding:2mm 0 2mm 3mm; margin-bottom:3mm;
+    border-left:3px solid var(--accent); white-space:pre-wrap; break-inside:avoid;
+  }
+  .noteHeading.is-memo{font-weight:400; font-size:9pt; border-left-color:var(--border);}
+
+  .rec-memo a, .recHeading a, .gridMemo a, .gridHeading a, .noteComment a, .noteHeading a, #lightboxCaption a{
+    color:var(--accent); text-decoration:underline;
+  }
+  .rec-memo mark, .recHeading mark, .gridMemo mark, .gridHeading mark, .noteComment mark, .noteHeading mark, #lightboxCaption mark{
+    background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;
+  }
+  .memo-col-red{color:var(--memo-col-red);}
+  .memo-col-blue{color:var(--memo-col-blue);}
+  .memo-col-green{color:var(--memo-col-green);}
+  mark .memo-col-red, .memo-col-red mark{color:var(--memo-col-red) !important;}
+  mark .memo-col-blue, .memo-col-blue mark{color:var(--memo-col-blue) !important;}
+  mark .memo-col-green, .memo-col-green mark{color:var(--memo-col-green) !important;}
+
+  @page{ size:A4; margin:14mm; }
+  @media print{
+    :root{--bg:#fff; --panel:#fff; --text:#111; --sub:#555; --border:#ccc;}
+    .controls{display:none !important;}
+    main{max-width:none; padding:0;}
+    #lightbox{display:none !important;}
+  }
+
+  #lightbox{
+    display:none; position:fixed; inset:0; z-index:100;
+    background:rgba(0,0,0,.85); flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:10px;
+    cursor:zoom-out;
+  }
+  #lightbox.open{display:flex;}
+  #lightbox img{max-width:96vw; max-height:96vh; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .08s ease-out; transform-origin:center; cursor:grab; touch-action:none;}
+  #lightbox img:active{cursor:grabbing;}
+  #lightboxCaption{
+    max-width:min(96vw, 700px); color:#e6e8ec; background:rgba(23,26,33,.85);
+    border-radius:8px; padding:8px 14px; font-size:13px; line-height:1.5; white-space:pre-wrap;
+    overflow:hidden; text-overflow:ellipsis;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+    cursor:default; flex-shrink:0;
+  }
+  #lightboxCaption:empty{display:none;}
+</style></head>
+<body>
+
+<div class="controls">
+  <strong>${docTitleEsc} — ${records.length}件</strong>
+  <select id="layoutSelect">
+    <option value="list">一覧表示</option>
+    <option value="grid">PDF用: A4にN枚/ページ</option>
+    <option value="notes">PDF用: ノート形式(スライド+コメント)</option>
+  </select>
+  <div id="perPageWrap">
+    枚数/ページ
+    <select id="perPageSelect">
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4" selected>4</option>
+      <option value="6">6</option>
+    </select>
+  </div>
+  <label id="gridCommentWrap" style="display:none;">
+    <input type="checkbox" id="gridCommentToggle" checked> コメント表示
+  </label>
+  <div class="rightGroup">
+    <button id="btnTheme" type="button" title="ライト/ダーク切替">🌙</button>
+    <button id="btnPrint" type="button">🖨 印刷 / PDF保存</button>
+  </div>
+</div>
+
+<main>
+  <h1 id="docTitle">${docTitleEsc}${dateValue ? ` <span class="docDateTag">・${dateValue}</span>` : ""}</h1>
+  <div id="viewRoot"></div>
+</main>
+
+<div id="tocEdgeTrigger"></div>
+<div id="tocPanel">
+  <h2>目次</h2>
+  <nav id="tocList"></nav>
+</div>
+
+<div id="lightbox">
+  <img id="lightboxImg" alt="拡大表示" draggable="false">
+  <div id="lightboxCaption"></div>
+</div>
+
+<script>
+(function(){
+  var META = ${metaJson};
+  var DATA = ${dataJson};
+
+  var lightbox = document.getElementById("lightbox");
+  var lightboxImg = document.getElementById("lightboxImg");
+  var lightboxCaption = document.getElementById("lightboxCaption");
+  var lightboxZoom = 1;
+  var lightboxPanX = 0, lightboxPanY = 0;
+  var lightboxDragging = false, lightboxMoved = false, lightboxDragStart = null, lightboxPanStart = null;
+  var IMG_SRC_LIST = DATA.filter(function(r){ return r.d; }).map(function(r){ return r.d; });
+  var IMG_MEMO_LIST = DATA.filter(function(r){ return r.d; }).map(function(r){ return r.m || ""; });
+  var lightboxIndex = -1;
+  lightboxCaption.addEventListener("click", function(e){ e.stopPropagation(); });
+
+  function applyLightboxTransform(){
+    lightboxImg.style.transform = "translate(" + lightboxPanX + "px, " + lightboxPanY + "px) scale(" + lightboxZoom + ")";
+  }
+
+  function openLightbox(src, index){
+    lightboxImg.src = src;
+    lightboxIndex = (index !== undefined) ? index : IMG_SRC_LIST.indexOf(src);
+    lightboxCaption.innerHTML = renderMemoMarkdown((IMG_MEMO_LIST[lightboxIndex] || "").trim());
+    lightboxZoom = 1;
+    lightboxPanX = 0;
+    lightboxPanY = 0;
+    applyLightboxTransform();
+    lightbox.classList.add("open");
+  }
+  function closeLightbox(){
+    lightbox.classList.remove("open");
+    lightboxImg.src = "";
+    lightboxCaption.textContent = "";
+  }
+  function showLightboxByOffset(offset){
+    if(lightboxIndex === -1 || IMG_SRC_LIST.length === 0) return;
+    var next = (lightboxIndex + offset + IMG_SRC_LIST.length) % IMG_SRC_LIST.length;
+    openLightbox(IMG_SRC_LIST[next], next);
+  }
+  lightbox.addEventListener("click", function(){
+    if(lightboxMoved){ lightboxMoved = false; return; } // ドラッグ後のclickでは閉じない
+    closeLightbox();
+  });
+  lightbox.addEventListener("wheel", function(e){
+    if(!lightbox.classList.contains("open")) return;
+    e.preventDefault();
+    lightboxZoom = Math.min(5, Math.max(0.5, lightboxZoom + (e.deltaY < 0 ? 0.15 : -0.15)));
+    applyLightboxTransform();
+  }, { passive: false });
+  // ドラッグで表示位置を移動(拡大時に便利。等倍でも動かせる)
+  lightboxImg.addEventListener("pointerdown", function(e){
+    if(e.button !== 0) return; // 右クリックは素通りさせてブラウザ標準の「画像をコピー」等を使えるようにする
+    e.stopPropagation();
+    lightboxDragging = true;
+    lightboxMoved = false;
+    lightboxDragStart = { x: e.clientX, y: e.clientY };
+    lightboxPanStart = { x: lightboxPanX, y: lightboxPanY };
+    lightboxImg.setPointerCapture(e.pointerId);
+  });
+  lightboxImg.addEventListener("pointermove", function(e){
+    if(!lightboxDragging) return;
+    var dx = e.clientX - lightboxDragStart.x, dy = e.clientY - lightboxDragStart.y;
+    if(Math.abs(dx) > 3 || Math.abs(dy) > 3) lightboxMoved = true;
+    lightboxPanX = lightboxPanStart.x + dx;
+    lightboxPanY = lightboxPanStart.y + dy;
+    applyLightboxTransform();
+  });
+  lightboxImg.addEventListener("pointerup", function(){ lightboxDragging = false; });
+  document.addEventListener("keydown", function(e){
+    if(lightbox.classList.contains("open") &&
+       (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")){
+      e.preventDefault();
+      if(e.key === "ArrowLeft" || e.key === "ArrowUp") showLightboxByOffset(-1);
+      else showLightboxByOffset(1);
+      return;
+    }
+    if(e.key === "Escape" && lightbox.classList.contains("open")) closeLightbox();
+  });
+
+  function el(tag, cls, text){
+    var e = document.createElement(tag);
+    if(cls) e.className = cls;
+    if(text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  // メモ内のMarkdown風記法(太字/黄色マーカー/文字色/リンク/裸のURL)をHTMLに変換する。
+  // 必ず先にHTMLエスケープしてから記法を適用することでXSSを防止する
+  function renderMemoMarkdown(text){
+    var escaped = (text || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    var html = escaped;
+    html = html.replace(/\\[([^\\]\\n]+)\\]\\((https?:\\/\\/(?:[^\\s()]|\\([^\\s()]*\\))+)\\)/g, function(_, label, url){
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+    });
+    html = html.replace(/==([^=\\n]+)==/g, "<mark>$1</mark>");
+    html = html.replace(/\\[([^\\]\\n]+)\\]\\{(red|blue|green|black)\\}/g, function(_, label, color){
+      if(color === "black") return label;
+      return '<span class="memo-col-' + color + '">' + label + '</span>';
+    });
+    html = html.replace(/\\*\\*([^*\\n]+)\\*\\*/g, "<b>$1</b>");
+    html = html.replace(/~~([^~\\n]+)~~/g, "<s>$1</s>");
+    html = html.replace(/__([^_\\n]+)__/g, "<u>$1</u>");
+    html = html.replace(/(^|[^"'>])(https?:\\/\\/(?:[A-Za-z0-9\\-._~:/?#[\\]@!$&*+,;=%]|\\([A-Za-z0-9\\-._~:/?#[\\]@!$&*+,;=%]*\\))+)/g, function(_, pre, url){
+      var m = url.match(/[.,;:!?\\]}]+$/);
+      var trail = m ? m[0] : "";
+      var core = trail ? url.slice(0, -trail.length) : url;
+      return pre + '<a href="' + core + '" target="_blank" rel="noopener noreferrer">' + core + '</a>' + trail;
+    });
+    return html;
+  }
+  function elLinked(tag, cls, text){
+    var e = document.createElement(tag);
+    if(cls) e.className = cls;
+    e.innerHTML = renderMemoMarkdown(text || "");
+    return e;
+  }
+
+  function makeImg(src){
+    var img = document.createElement("img");
+    img.src = src; img.alt = "capture";
+    img.style.cursor = "zoom-in";
+    img.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      openLightbox(src);
+    });
+    return img;
+  }
+
+  function renderList(root){
+    DATA.forEach(function(r, idx){
+      if(r.d){
+        var rec = el("div", "rec");
+        rec.appendChild(makeImg(r.d));
+        rec.appendChild(elLinked("div", "rec-memo", r.m || "(メモなし)"));
+        root.appendChild(rec);
+      }else{
+        var headingEl = elLinked("div", r.h === false ? "recHeading is-memo" : "recHeading", r.m || "");
+        if(r.h !== false) headingEl.id = "toc-" + idx;
+        root.appendChild(headingEl);
+      }
+    });
+  }
+
+  // 「見出し」レコードだけを拾って右側の目次パネルを組み立てる(一覧表示のときのみ表示)
+  var tocPanel = document.getElementById("tocPanel");
+  var tocList = document.getElementById("tocList");
+  var tocEdgeTrigger = document.getElementById("tocEdgeTrigger");
+  var tocObserver = null;
+
+  function openToc(){
+    if(tocPanel.classList.contains("toc-hidden")) return;
+    tocPanel.classList.add("toc-open");
+  }
+  function closeToc(){
+    tocPanel.classList.remove("toc-open");
+  }
+
+  // 画面幅が狭い時は目次パネルを右端の外に隠し、右端ホバー/右端からのスワイプで引き出す
+  tocEdgeTrigger.addEventListener("mouseenter", openToc);
+  tocEdgeTrigger.addEventListener("mouseleave", function(){
+    setTimeout(function(){ if(!tocPanel.matches(":hover")) closeToc(); }, 150);
+  });
+  tocPanel.addEventListener("mouseleave", closeToc);
+  document.addEventListener("click", function(ev){
+    if(!tocPanel.classList.contains("toc-open")) return;
+    if(tocPanel.contains(ev.target) || tocEdgeTrigger.contains(ev.target)) return;
+    closeToc();
+  });
+  var tocTouchStartX = null, tocTouchStartY = null, tocTouchTracking = false;
+  document.addEventListener("touchstart", function(ev){
+    if(tocPanel.classList.contains("toc-hidden")) return;
+    var t = ev.touches[0];
+    var nearEdge = (window.innerWidth - t.clientX) < 24;
+    if(nearEdge || tocPanel.classList.contains("toc-open")){
+      tocTouchStartX = t.clientX; tocTouchStartY = t.clientY; tocTouchTracking = true;
+    }
+  }, { passive: true });
+  document.addEventListener("touchmove", function(ev){
+    if(!tocTouchTracking) return;
+    var t = ev.touches[0];
+    var dx = t.clientX - tocTouchStartX;
+    var dy = t.clientY - tocTouchStartY;
+    if(Math.abs(dy) > Math.abs(dx)) return; // 縦スクロールは無視
+    if(dx < -40) openToc();
+    else if(dx > 40 && tocPanel.classList.contains("toc-open")){ closeToc(); tocTouchTracking = false; }
+  }, { passive: true });
+  document.addEventListener("touchend", function(){ tocTouchTracking = false; });
+
+  function renderToc(){
+    tocList.innerHTML = "";
+    if(tocObserver){ tocObserver.disconnect(); tocObserver = null; }
+    var headings = DATA.map(function(r, idx){ return { r: r, idx: idx }; })
+      .filter(function(x){ return !x.r.d && x.r.h !== false; });
+    if(headings.length === 0){ tocPanel.classList.add("toc-hidden"); return; }
+    var links = {};
+    headings.forEach(function(h){
+      var a = document.createElement("a");
+      a.href = "#toc-" + h.idx;
+      a.textContent = h.r.m || "(無題)";
+      a.addEventListener("click", function(ev){
+        ev.preventDefault();
+        var target = document.getElementById("toc-" + h.idx);
+        if(target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        closeToc();
+      });
+      tocList.appendChild(a);
+      links["toc-" + h.idx] = a;
+    });
+    tocPanel.classList.remove("toc-hidden");
+
+    // 現在スクロール中のセクションに対応する目次項目をハイライト
+    if("IntersectionObserver" in window){
+      tocObserver = new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          var link = links[entry.target.id];
+          if(!link) return;
+          link.classList.toggle("active", entry.isIntersecting);
+        });
+      }, { rootMargin: "-80px 0px -70% 0px", threshold: 0 });
+      headings.forEach(function(h){
+        var target = document.getElementById("toc-" + h.idx);
+        if(target) tocObserver.observe(target);
+      });
+    }
+  }
+  function hideToc(){ tocPanel.classList.add("toc-hidden"); closeToc(); }
+
+  // 見出し(画像なし)はページの「N枚/ページ」の枚数カウントに含めず、
+  // 現在のページの中に全幅の区切りとして挿入する
+  function buildPages(perPage){
+    var pages = [];
+    var current = [];
+    var count = 0;
+    DATA.forEach(function(item){
+      if(item.d){
+        if(count >= perPage){
+          pages.push(current);
+          current = [];
+          count = 0;
+        }
+        current.push(item);
+        count++;
+      }else{
+        current.push(item);
+      }
+    });
+    if(current.length) pages.push(current);
+    return pages;
+  }
+
+  function makePageHeaderPrint(){
+    var text = META && META.title ? META.title : "";
+    if(META && META.date) text += (text ? " ・ " : "") + META.date;
+    return el("div", "pageHeaderPrint", text);
+  }
+
+  function renderGrid(root, perPage, showComment){
+    // 1列縦積みだと高さがA4に収まりきらずページからあふれるため、
+    // 2枚のときのみ1列(縦2枚)、それ以外は2列以上に分けて高さを抑える
+    var cols = perPage <= 2 ? 1 : (perPage <= 4 ? 2 : 3);
+    var pages = buildPages(perPage);
+    pages.forEach(function(chunk){
+      var page = el("div", "gridPage");
+      page.style.gridTemplateColumns = "repeat(" + cols + ", 1fr)";
+      var header = makePageHeaderPrint();
+      header.style.gridColumn = "1 / -1";
+      page.appendChild(header);
+      chunk.forEach(function(r){
+        if(r.d){
+          var cell = el("div", "gridCell");
+          cell.appendChild(makeImg(r.d));
+          if(showComment) cell.appendChild(elLinked("div", "gridMemo", r.m || "(メモなし)"));
+          page.appendChild(cell);
+        }else{
+          page.appendChild(elLinked("div", r.h === false ? "gridHeading is-memo" : "gridHeading", r.m || ""));
+        }
+      });
+      root.appendChild(page);
+    });
+  }
+
+  function renderNotes(root, perPage){
+    var pages = buildPages(perPage);
+    pages.forEach(function(chunk){
+      var page = el("div", "notePage");
+      page.appendChild(makePageHeaderPrint());
+      chunk.forEach(function(r){
+        if(r.d){
+          var row = el("div", "noteRow");
+          var slide = el("div", "noteSlide");
+          slide.appendChild(makeImg(r.d));
+          row.appendChild(slide);
+          row.appendChild(elLinked("div", "noteComment", r.m || "(メモなし)"));
+          page.appendChild(row);
+        }else{
+          page.appendChild(elLinked("div", r.h === false ? "noteHeading is-memo" : "noteHeading", r.m || ""));
+        }
+      });
+      root.appendChild(page);
+    });
+  }
+
+  var viewRoot = document.getElementById("viewRoot");
+  var layoutSelect = document.getElementById("layoutSelect");
+  var perPageWrap = document.getElementById("perPageWrap");
+  var perPageSelect = document.getElementById("perPageSelect");
+  var gridCommentWrap = document.getElementById("gridCommentWrap");
+  var gridCommentToggle = document.getElementById("gridCommentToggle");
+  var btnPrint = document.getElementById("btnPrint");
+  var btnTheme = document.getElementById("btnTheme");
+
+  function render(){
+    viewRoot.innerHTML = "";
+    var mode = layoutSelect.value;
+    perPageWrap.style.display = (mode === "grid" || mode === "notes") ? "inline-flex" : "none";
+    gridCommentWrap.style.display = (mode === "grid") ? "inline-flex" : "none";
+    if(mode === "list"){ renderList(viewRoot); renderToc(); }
+    else if(mode === "grid"){ renderGrid(viewRoot, parseInt(perPageSelect.value, 10), gridCommentToggle.checked); hideToc(); }
+    else if(mode === "notes"){ renderNotes(viewRoot, parseInt(perPageSelect.value, 10)); hideToc(); }
+  }
+  layoutSelect.addEventListener("change", render);
+  perPageSelect.addEventListener("change", render);
+  gridCommentToggle.addEventListener("change", render);
+  render();
+
+  function systemTheme(){
+    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+  }
+  function applyTheme(theme){
+    if(theme){ document.documentElement.setAttribute("data-theme", theme); }
+    else{ document.documentElement.removeAttribute("data-theme"); }
+    var eff = theme || systemTheme();
+    btnTheme.textContent = eff === "light" ? "🌙" : "☀️";
+  }
+  applyTheme(null);
+  btnTheme.addEventListener("click", function(){
+    var cur = document.documentElement.getAttribute("data-theme") || systemTheme();
+    applyTheme(cur === "light" ? "dark" : "light");
+  });
+
+  btnPrint.addEventListener("click", function(){ window.print(); });
+})();
+<\/script>
+</body></html>`;
+
+    const blob = new Blob([exportHtml], { type:"text/html" });
+
+    // 保存先フォルダ: クリック直後に確定させておいたpendingDirHandleがあればそこへ保存、
+    // 無ければ(未登録、またはフォルダ選択をキャンセルした場合)通常ダウンロード。
+    if(pendingDirHandle){
+      try{
+        const exists = await fileExistsInDir(pendingDirHandle, fileName);
+        if(exists && !(await confirmAsync(`「${fileName}」は既に存在します。上書きしますか？`))){
+          showToast("保存を中止しました(同名ファイルが既に存在します)。タイトルや日付を変えて再度お試しください。");
+          return;
+        }
+        // 保存先フォルダ内のJSON履歴(他端末分を含む)を先に読み込みローカルへ取り込んでから、
+        // HTML本体の保存とあわせて新しいエントリを追記してJSONを書き戻す(ユーザー提案の流れ)
+        await syncHistoryWithDir(pendingDirHandle);
+        await writeFileToDir(pendingDirHandle, fileName, blob);
+        await historyAdd({ uid: genUid(), timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
+        try{
+          // 保存直後のこの時点でフォルダ内の実ファイルの有無を再確認し、
+          // 削除済み(見つからない)エントリにはmissingフラグを立てる(一覧で取り消し線表示に使う)。
+          // 今回保存したファイルは当然存在するのでmissing=falseになる。
+          const withMissing = await refreshMissingFlags(pendingDirHandle);
+          const forJson = withMissing.map(({ id, ...rest }) => rest); // ローカルのautoIncrement idは端末固有なのでJSONには含めない
+          await writeFileToDir(pendingDirHandle, HISTORY_SYNC_FILE, new Blob([JSON.stringify(forJson)], { type: "application/json" }));
+        }catch(syncErr){
+          console.error("書き出し履歴JSONの保存に失敗しました(HTML本体の保存は成功しています)", syncErr);
+        }
+        showToast(`✅「${pendingDirHandle.name}」に保存しました: ${fileName}`);
+        return;
+      }catch(err){
+        console.error("保存先フォルダへの書き込みに失敗、通常のダウンロードに切り替えます", err);
+        const url2 = URL.createObjectURL(blob);
+        const a2 = document.createElement("a");
+        a2.href = url2; a2.download = fileName; a2.click();
+        URL.revokeObjectURL(url2);
+        await historyAdd({ uid: genUid(), timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
+        showToast(`⚠️ 保存に失敗し、通常のダウンロードに切り替えました: ${fileName}`);
+        return;
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+    await historyAdd({ uid: genUid(), timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
+    showToast(dirPickCancelled
+      ? `保存先の選択をキャンセルしたため、通常のダウンロードに切り替えました: ${fileName}`
+      : `ダウンロードしました: ${fileName}`);
+  });
+
+  async function fileExistsInDir(dirHandle, name){
+    try{
+      await dirHandle.getFileHandle(name, { create: false });
+      return true;
+    }catch(err){
+      if(err && err.name === "NotFoundError") return false;
+      throw err; // 権限エラー等はそのまま呼び出し元へ
+    }
+  }
+
+  async function writeFileToDir(dirHandle, name, blob){
+    const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  }
+
+  // 保存先フォルダ内のJSON履歴ファイルを読む。無い/壊れている場合は空配列(新規作成扱い)
+  async function readJsonFromDir(dirHandle, name){
+    try{
+      const fileHandle = await dirHandle.getFileHandle(name, { create: false });
+      const file = await fileHandle.getFile();
+      const data = JSON.parse(await file.text());
+      return Array.isArray(data) ? data : [];
+    }catch(err){
+      return [];
+    }
+  }
+
+  // 保存先フォルダのJSON履歴(他端末が書いたものを含む)をローカルのexportHistoryへ取り込み、
+  // 統合済みの配列(ローカル+JSON由来、uidで重複排除)を返す。この戻り値に新規エントリを足して
+  // 書き戻せば、他端末分も含めた最新状態をJSONに残せる。
+  async function syncHistoryWithDir(dirHandle){
+    const remote = await readJsonFromDir(dirHandle, HISTORY_SYNC_FILE);
+    const local = await historyGetAll();
+    const byUid = new Map();
+    local.forEach((e) => { if(e.uid) byUid.set(e.uid, e); });
+    const knownUids = new Set(byUid.keys());
+    for(const e of remote){
+      if(e && e.uid && !knownUids.has(e.uid)){
+        const { id, ...rest } = e; // 他端末のローカルidを持ち込まない(自端末でautoIncrement採番させる)
+        await historyAdd(rest);
+        byUid.set(e.uid, rest);
+      }
+    }
+    return Array.from(byUid.values());
+  }
+
+  // ローカルDBの全履歴エントリについて、保存先フォルダ内に実ファイルが現存するか確認し、
+  // missingフラグを最新化してDBへ反映する(存在すればfalse/復活、無ければtrueへ)。
+  // 同名ファイルは1回だけ確認すれば済むため重複排除してからチェックする。
+  async function refreshMissingFlags(dirHandle){
+    const all = await historyGetAll();
+    const uniqueNames = Array.from(new Set(all.map((e) => e.fileName)));
+    const existsByName = new Map();
+    for(const name of uniqueNames){
+      existsByName.set(name, await fileExistsInDir(dirHandle, name));
+    }
+    for(const e of all){
+      const missing = !existsByName.get(e.fileName);
+      if(e.missing !== missing){
+        await historyPut({ ...e, missing });
+      }
+    }
+    return all.map((e) => ({ ...e, missing: !existsByName.get(e.fileName) }));
+  }
+
+  // 保存結果を知らせる一時メッセージ。HTML保存ボタンのすぐ右側に表示することで、
+  // クリックした手元でそのまま結果が分かるようにする(自動で消える/クリックでも消せる)。
+  let toastTimer = null;
+  function showToast(message){
+    const el = exportStatusMsg;
+    el.textContent = message;
+    el.classList.remove("warn", "ok");
+    if(message.startsWith("⚠️")) el.classList.add("warn");
+    else if(message.startsWith("✅")) el.classList.add("ok");
+    // 直前の表示を一度リセットしてから付け直すことで、連続保存時も確実にフェードインし直す
+    el.classList.remove("show");
+    void el.offsetWidth; // 強制リフロー(トランジションを確実に再トリガーするため)
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 5000);
+  }
+
+  // ---------- 常時表示ウィンドウ(Document Picture-in-Picture) ----------
+  let pipWindow = null;
+  let pipVideoEl = null; // PiPウィンドウ内に新設するvideo要素(共有パネル側のvideoとは別インスタンス)
+  const pipSupported = "documentPictureInPicture" in window;
+  if(!pipSupported){
+    btnPip.disabled = true;
+    btnPip.title = "このブラウザは常時表示ウィンドウに対応していません(Edge/Chrome推奨)";
+    pipHint.textContent = "常時表示ウィンドウはEdge/Chromeで利用できます";
+  }
+
+  function buildPipDocument(win){
+    const theme = document.documentElement.getAttribute("data-theme") || systemTheme();
+    win.document.head.innerHTML = `
+      <style>
+        html{color-scheme:${theme === "light" ? "light" : "dark"};}
+        body{
+          margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+          background:${theme === "light" ? "#f5f6f8" : "#0f1115"};
+          color:${theme === "light" ? "#1c1f26" : "#e6e8ec"};
+          display:flex; flex-direction:column; align-items:center; justify-content:center;
+          height:100vh; gap:10px; user-select:none;
+        }
+        button{
+          background:#4f8cff; color:#fff; border:none; border-radius:10px;
+          padding:14px 22px; font-size:16px; font-weight:600; cursor:pointer; width:80%;
+        }
+        button:active{opacity:.85;}
+        .st{font-size:11px; opacity:.7; text-align:center;}
+      </style>
+    `;
+    win.document.body.innerHTML = `
+      <button id="pipCaptureBtn">📸 キャプチャ</button>
+      <div class="st" id="pipStatusText">Spaceキーでも撮影できます</div>
+    `;
+
+    // 共有パネル側のvideoは動かさず、PiPウィンドウ側に「別のvideo要素」を新設して
+    // 同じMediaStreamを流す。1本のstreamは複数のvideo要素へ同時に紐付けられるため、
+    // 両方に映像が表示されたまま、キャプチャは常にPiP側(=表示中として扱われ間引かれない方)から行う。
+    pipVideoEl = win.document.createElement("video");
+    pipVideoEl.autoplay = true;
+    pipVideoEl.muted = true;
+    pipVideoEl.playsInline = true;
+    pipVideoEl.style.width = "1px";
+    pipVideoEl.style.height = "1px";
+    pipVideoEl.style.position = "fixed";
+    pipVideoEl.style.opacity = "0";
+    pipVideoEl.srcObject = stream;
+    win.document.body.appendChild(pipVideoEl);
+    captureSourceEl = pipVideoEl;
+
+    const pipBtn = win.document.getElementById("pipCaptureBtn");
+    const pipStatus = win.document.getElementById("pipStatusText");
+    const flash = async () => {
+      const ok = await captureNow();
+      pipStatus.textContent = ok ? "撮影しました" : "範囲が未固定です";
+      setTimeout(() => { pipStatus.textContent = "Spaceキーでも撮影できます"; }, 900);
+    };
+    pipBtn.addEventListener("click", flash);
+    win.document.addEventListener("keydown", (e) => {
+      if(e.code === "Space"){ e.preventDefault(); flash(); }
+    });
+  }
+
+  function restoreVideoFromPip(){
+    // PiPを閉じたら、キャプチャ元を共有パネル側のvideoへ戻す(共有パネル側は
+    // 最初から映像を表示し続けているので、動かす必要はない)
+    captureSourceEl = video;
+    pipVideoEl = null;
+  }
+
+  function setPipButtonActive(active){
+    btnPip.classList.toggle("danger", active);
+    btnPip.title = active ? "常時表示を閉じる" : "常時表示";
+  }
+
+  async function openPipWindow(){
+    if(!pipSupported) return;
+    if(pipWindow){
+      pipWindow.focus();
+      return;
+    }
+    pipWindow = await documentPictureInPicture.requestWindow({ width:220, height:110 });
+    buildPipDocument(pipWindow);
+    setPipButtonActive(true);
+    pipWindow.addEventListener("pagehide", () => {
+      pipWindow = null;
+      restoreVideoFromPip();
+      setPipButtonActive(false);
+    });
+  }
+
+  // ボタンクリック時は、既に開いている場合はフォーカスではなく閉じる(トグル動作)。
+  // 範囲固定直後の自動オープン(openPipWindow直接呼び出し)は、開いていれば
+  // フォーカスするだけの従来動作のままにする(せっかく開いた小窓を自動で閉じない)
+  function togglePipWindow(){
+    if(!pipSupported) return;
+    if(pipWindow){
+      pipWindow.close();
+      return;
+    }
+    openPipWindow();
+  }
+
+  btnPip.addEventListener("click", togglePipWindow);
+
+  // このページにフォーカスがある間、Spaceキーでキャプチャ(入力欄操作中は除く)
+  document.addEventListener("keydown", (e) => {
+    if(e.code !== "Space") return;
+    const tag = document.activeElement && document.activeElement.tagName;
+    if(tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+    if(btnCapture.disabled) return;
+    e.preventDefault();
+    captureNow(getFocusedItem());
+  });
+
+  // ---------- テーマ切替 ----------
+  const THEME_KEY = "screen-capture-memo-theme";
+
+  function systemTheme(){
+    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+  }
+  function applyTheme(theme){
+    if(theme){
+      document.documentElement.setAttribute("data-theme", theme);
+    }else{
+      document.documentElement.removeAttribute("data-theme");
+    }
+    const effective = theme || systemTheme();
+    btnTheme.textContent = effective === "light" ? "🌙" : "☀️";
+  }
+  btnTheme.addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme") || systemTheme();
+    const next = current === "light" ? "dark" : "light";
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  });
+  applyTheme(localStorage.getItem(THEME_KEY));
+
+  // ---------- ライトボックス(記録一覧の画像を拡大表示) ----------
+  let lightboxZoom = 1;
+  let lightboxPanX = 0, lightboxPanY = 0;
+  let lightboxDragging = false, lightboxMoved = false, lightboxDragStart = null, lightboxPanStart = null;
+
+  function applyLightboxTransform(){
+    lightboxImg.style.transform = `translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxZoom})`;
+  }
+
+  // 記録一覧に現在表示されている画像(見出しを除く)をDOM順で取得。矢印キーでの前後移動に使う。
+  function getLightboxImages(){
+    return Array.from(captureList.querySelectorAll(".item img"));
+  }
+  let lightboxIndex = -1;
+
+  // モーダル(ライトボックス/トリミング/バージョン履歴)表示中は背景ページのスクロールを止める。
+  // モーダル上でのホイール操作やドラッグ中に裏で本文がスクロールしてしまい、
+  // 誤操作やドラッグ座標のずれの原因になっていたための対策(複数モーダルの多重開閉に備えカウンタ管理)
+  let openModalCount = 0;
+  function lockBodyScroll(){
+    openModalCount++;
+    document.body.style.overflow = "hidden";
+  }
+  function unlockBodyScroll(){
+    openModalCount = Math.max(0, openModalCount - 1);
+    if(openModalCount === 0) document.body.style.overflow = "";
+  }
+
+  // 原寸が画面より小さい画像は、上限倍率までは画面いっぱいに拡大して表示する
+  // (原寸のまま表示すると小さすぎて見づらいため)。上限を設けているのは、
+  // 極端に小さい画像を無理に画面いっぱいまで引き伸ばすとぼやけて粗く見えるのを防ぐため
+  const LIGHTBOX_MAX_UPSCALE = 3;
+  // キャプション表示分(最大3行+パディング+隙間)として画像の高さ計算から差し引く概算値
+  const LIGHTBOX_CAPTION_RESERVE = 110;
+  // メモ内のMarkdown風記法(太字/黄色マーカー/文字色/リンク/裸のURL)をHTMLに変換する。
+  // 必ず先にHTMLエスケープしてから記法を適用することでXSSを防止する
+  function renderMemoMarkdown(text){
+    const escaped = (text || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    let html = escaped;
+    // [表示文字](URL)(URL内に()が1組含まれるケース(Wikipediaの曖昧さ回避ページ等)も
+    // 閉じ括弧で途中切れしないよう、"()"で囲まれた1階層分のまとまりも許容する)
+    html = html.replace(/\[([^\]\n]+)\]\((https?:\/\/(?:[^\s()]|\([^\s()]*\))+)\)/g, (_, label, url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    });
+    // ==マーカー==(文字色との組み合わせ時にマーカー側の正規表現が[文字]{色}が
+    // 生成するinline styleの"="で分断されないよう、文字色より先に処理する)
+    html = html.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
+    // [表示文字]{色}(red/blue/green/black。blackは「標準色に戻す」の意味で、
+    // 表示先(記録一覧のプレビュー/常に暗い背景のライトボックスキャプション等)によって
+    // 適切な既定色が異なるため、あえて色を指定せずそのまま周囲に継承させる)。
+    // クラス指定にしているのは、マーカーと組み合わせた時にCSS側で
+    // mark内外どちらの入れ子順でも文字色を優先させる上書きルールを書けるようにするため
+    html = html.replace(/\[([^\]\n]+)\]\{(red|blue|green|black)\}/g, (_, label, color) => {
+      if(color === "black") return label;
+      return `<span class="memo-col-${color}">${label}</span>`;
+    });
+    // **太字**
+    html = html.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+    // ~~取り消し線~~
+    html = html.replace(/~~([^~\n]+)~~/g, "<s>$1</s>");
+    // __下線__
+    html = html.replace(/__([^_\n]+)__/g, "<u>$1</u>");
+    // 裸のURL(すでにhref="..."の中にあるものは除外。文末の句読点・括弧等はリンクに含めない。
+    // URL自体に"()"が1組含まれるケースも、"(...)"の1階層分のまとまりとして許容し、
+    // 周囲の文章による閉じ括弧(例:「(参照: URL)」の末尾の)）とは区別する)
+    html = html.replace(/(^|[^"'>])(https?:\/\/(?:[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]|\([A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]*\))+)/g, (_, pre, url) => {
+      const m = url.match(/[.,;:!?\]}]+$/);
+      const trail = m ? m[0] : "";
+      const core = trail ? url.slice(0, -trail.length) : url;
+      return `${pre}<a href="${core}" target="_blank" rel="noopener noreferrer">${core}</a>${trail}`;
+    });
+    return html;
+  }
+  // メモ欄ツールバー: 選択範囲へ記法を適用するトグル式ヘルパー。
+  // 選択範囲全体がちょうどこの記法そのものなら外す(もう一度押すとオフ)。
+  // それ以外の場合、選択範囲の内側に同じ記法の入れ子が残っていると二重掛けになってしまうため、
+  // 先に内側の既存分を剥がしてから改めて全体を掛け直す
+  function toggleWrapMemoSelection(textarea, fullPattern, stripPattern, makeWrapped, placeholder, delim){
+    const value = textarea.value;
+    const start = textarea.selectionStart, end = textarea.selectionEnd;
+    const selected = value.slice(start, end);
+    const exact = selected.match(fullPattern);
+    if(exact){
+      textarea.setRangeText(exact[1], start, end, "end");
+      textarea.focus();
+      return;
+    }
+    // ダブルクリック等で装飾記号の「内側の単語だけ」が選択されている場合、
+    // 選択範囲の直前・直後に同じ記号が隣接していれば、それも含めて剥がす
+    // (記号そのものを選択範囲に含めないと解除できず、押すたびに記号が増殖してしまうため)
+    if(delim){
+      const dLen = delim.length;
+      const before = value.slice(Math.max(0, start - dLen), start);
+      const after = value.slice(end, end + dLen);
+      if(before === delim && after === delim){
+        textarea.setRangeText(selected, start - dLen, end + dLen, "end");
+        textarea.focus();
+        return;
+      }
+    }
+    const result = makeWrapped((selected || placeholder).replace(stripPattern, "$1"));
+    textarea.setRangeText(result, start, end, "end");
+    textarea.focus();
+  }
+  // 文字色ボタン用。黒は「標準色に戻す(色設定を外す)」という意味なので、
+  // タグで囲まず常にプレーンテキストへ戻す(renderMemoMarkdown側の{black}の扱いと対応)。
+  // 赤/青/緑は、同じ色を選択範囲全体へもう一度適用した場合は外し(トグルオフ)、
+  // 別の色を選んだ場合は置き換える。選択範囲の内側に残る色指定も先に剥がしてから掛け直す
+  function applyMemoColor(textarea, color){
+    const start = textarea.selectionStart, end = textarea.selectionEnd;
+    const selected = textarea.value.slice(start, end) || "色をつける文字";
+    const exact = selected.match(/^\[([\s\S]*)\]\{(red|blue|green|black)\}$/);
+    const base = exact ? exact[1] : selected;
+    const cleaned = base.replace(/\[([^\]]*)\]\{(?:red|blue|green|black)\}/g, "$1");
+    const result = (color === "black" || (exact && exact[2] === color))
+      ? cleaned
+      : `[${cleaned}]{${color}}`;
+    textarea.setRangeText(result, start, end, "end");
+    textarea.focus();
+  }
+  // クリップボードのHTML情報(リッチテキストとしてコピーした場合に付随する)から
+  // <a>タグを拾い、[表示文字](URL)記法へ変換する(メモ欄への貼り付け用)
+  function htmlFragmentToMarkdown(html){
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const blockTags = ["P","DIV","LI","TR","H1","H2","H3","H4","H5","H6"];
+    function walk(node){
+      if(node.nodeType === Node.TEXT_NODE) return node.nodeValue;
+      if(node.nodeType !== Node.ELEMENT_NODE) return "";
+      const tag = node.tagName;
+      if(tag === "BR") return "\n";
+      const inner = Array.from(node.childNodes).map(walk).join("");
+      if(tag === "A"){
+        const href = node.getAttribute("href") || "";
+        const label = inner.trim();
+        if(!href || !label) return label;
+        // 表示文字がURLそのものなら、わざわざ[URL](URL)にせず裸のURLのまま返す(既存の自動リンクに任せる)
+        const bare = href.replace(/^https?:\/\//, "");
+        if(label === href || label === bare) return href;
+        return `[${label}](${href})`;
+      }
+      return blockTags.includes(tag) ? inner + "\n" : inner;
+    }
+    const text = Array.from(container.childNodes).map(walk).join("");
+    return text.replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "");
+  }
+  function fitLightboxImageSize(){
+    const natW = lightboxImg.naturalWidth, natH = lightboxImg.naturalHeight;
+    if(!natW || !natH) return;
+    const hasCaption = lightboxCaption.textContent.trim() !== "";
+    const maxW = window.innerWidth * 0.96;
+    const maxH = window.innerHeight * 0.96 - (hasCaption ? LIGHTBOX_CAPTION_RESERVE : 0);
+    const scale = Math.min(maxW / natW, maxH / natH, LIGHTBOX_MAX_UPSCALE);
+    lightboxImg.style.width = Math.round(natW * scale) + "px";
+    lightboxImg.style.height = Math.round(natH * scale) + "px";
+  }
+
+  function openLightbox(imgEl, index){
+    // 矢印キーでの画像切り替え(showLightboxByOffset)は開いたまま何度もopenLightboxを
+    // 呼び直すため、その都度lockBodyScroll()すると開閉回数のカウンターがズレて
+    // 閉じてもスクロールが復活しなくなる。実際に「閉→開」する瞬間だけロックする
+    const alreadyOpen = lightbox.classList.contains("open");
+    const item = imgEl.closest(".item");
+    const textarea = item ? item.querySelector("textarea") : null;
+    const memo = textarea ? textarea.value : "";
+    lightboxCaption.innerHTML = renderMemoMarkdown(memo.trim());
+    lightboxImg.style.width = "";
+    lightboxImg.style.height = "";
+    lightboxImg.onload = fitLightboxImageSize;
+    lightboxImg.src = imgEl.src;
+    lightboxIndex = index !== undefined ? index : -1;
+    lightboxZoom = 1;
+    lightboxPanX = 0;
+    lightboxPanY = 0;
+    applyLightboxTransform();
+    lightbox.classList.add("open");
+    if(!alreadyOpen) lockBodyScroll();
+  }
+  function closeLightbox(){
+    lightbox.classList.remove("open");
+    lightboxImg.src = "";
+    lightboxCaption.textContent = "";
+    unlockBodyScroll();
+  }
+  function showLightboxByOffset(offset){
+    if(lightboxIndex === -1) return;
+    const imgs = getLightboxImages();
+    if(imgs.length === 0) return;
+    const next = (lightboxIndex + offset + imgs.length) % imgs.length;
+    openLightbox(imgs[next], next);
+  }
+  captureList.addEventListener("click", (e) => {
+    const img = e.target.closest("img");
+    if(!img) return;
+    const imgs = getLightboxImages();
+    openLightbox(img, imgs.indexOf(img));
+  });
+  // キャプション上のクリックはライトボックスを閉じない(文字選択・コピーの邪魔をしないため)
+  lightboxCaption.addEventListener("click", (e) => { e.stopPropagation(); });
+  lightbox.addEventListener("click", (e) => {
+    if(lightboxMoved){ lightboxMoved = false; return; } // ドラッグ後のclickでは閉じない
+    closeLightbox();
+  });
+  // ホイールで拡大縮小(0.5〜5倍)
+  lightbox.addEventListener("wheel", (e) => {
+    if(!lightbox.classList.contains("open")) return;
+    e.preventDefault();
+    lightboxZoom = Math.min(5, Math.max(0.5, lightboxZoom + (e.deltaY < 0 ? 0.15 : -0.15)));
+    applyLightboxTransform();
+  }, { passive: false });
+  // ドラッグで表示位置を移動(拡大時に便利。等倍でも動かせる)
+  lightboxImg.addEventListener("pointerdown", (e) => {
+    if(e.button !== 0) return; // 右クリックは素通りさせてブラウザ標準の「画像をコピー」等を使えるようにする
+    e.stopPropagation();
+    lightboxDragging = true;
+    lightboxMoved = false;
+    lightboxDragStart = { x: e.clientX, y: e.clientY };
+    lightboxPanStart = { x: lightboxPanX, y: lightboxPanY };
+    lightboxImg.setPointerCapture(e.pointerId);
+  });
+  lightboxImg.addEventListener("pointermove", (e) => {
+    if(!lightboxDragging) return;
+    const dx = e.clientX - lightboxDragStart.x, dy = e.clientY - lightboxDragStart.y;
+    if(Math.abs(dx) > 3 || Math.abs(dy) > 3) lightboxMoved = true;
+    lightboxPanX = lightboxPanStart.x + dx;
+    lightboxPanY = lightboxPanStart.y + dy;
+    applyLightboxTransform();
+  });
+  lightboxImg.addEventListener("pointerup", () => { lightboxDragging = false; });
+  document.addEventListener("keydown", (e) => {
+    if(lightbox.classList.contains("open") &&
+       !(e.ctrlKey || e.metaKey || e.altKey) &&
+       ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)){
+      e.preventDefault();
+      if(e.key === "ArrowLeft" || e.key === "ArrowUp") showLightboxByOffset(-1);
+      else showLightboxByOffset(1);
+      return;
+    }
+    if(e.key !== "Escape") return;
+    if(versionModal.classList.contains("open")){ closeVersionModal(); return; }
+    if(exportHistoryModal.classList.contains("open")){ closeExportHistoryModal(); return; }
+    if(cropModal.classList.contains("open")){ closeCropModal(); return; }
+    if(lightbox.classList.contains("open")) closeLightbox();
+  });
+
+  // ---------- トリミング(撮影済み画像の切り抜き) ----------
+  const cropModal = $("cropModal");
+  const cropStage = $("cropStage");
+  const cropImage = $("cropImage");
+  const cropSelRect = $("cropSelRect");
+  const btnCropApply = $("btnCropApply");
+  const btnCropCancel = $("btnCropCancel");
+  const btnCropRevert = $("btnCropRevert");
+  const btnCropUseLast = $("btnCropUseLast");
+
+  let cropRecord = null;
+  let cropThumbImg = null;
+  let cropSelection = null;
+  let cropDragging = false;
+  let cropDragStart = null;
+  let cropMoving = false;
+  let cropMoveOffset = { x:0, y:0 };
+  let cropResizingHandle = null;
+  let cropResizeAnchor = null;
+  // 直前にトリミングを適用した範囲を、画像サイズに依存しない比率(0〜1)で覚えておく。
+  // 画像ごとに解像度が異なりうるため、絶対px座標ではなく比率で保持し「前回の範囲」ボタンで
+  // 現在の画像サイズに合わせてスケールし直して適用する
+  let lastCropRatio = null;
+
+  // selRect(共有パネル側の選択範囲、v96で対応済み)と同じ理由・同じ設計。
+  // cropSelectionをpx(絶対値)でcropSelRectのleft/top/width/heightに直接反映すると、
+  // モーダルを開いたままウィンドウをリサイズ(cropStageはvw/vh基準でサイズが変わる)した時に
+  // 枠が追従せず、見た目がずれるだけでなく実際にトリミングされる範囲までずれてしまう。
+  // %(cropStageに対する比率)指定にすることで、リサイズへの追従をブラウザのネイティブな
+  // CSSレイアウト計算に完全に委ね、JS側の再計算を待つ必要が原理的になくなるようにする
+  function updateCropRectVisual(){
+    const r = cropStage.getBoundingClientRect();
+    if(!r.width || !r.height) return;
+    cropSelRect.style.left = (cropSelection.x / r.width * 100) + "%";
+    cropSelRect.style.top = (cropSelection.y / r.height * 100) + "%";
+    cropSelRect.style.width = (cropSelection.w / r.width * 100) + "%";
+    cropSelRect.style.height = (cropSelection.h / r.height * 100) + "%";
+    cropSelRect.style.display = "block";
+  }
+  function setCropSelection(rect){
+    cropSelection = rect;
+    updateCropRectVisual();
+  }
+  // cropSelection(px)は操作開始時点の値のまま変わらないため、次の操作(移動/リサイズ開始・
+  // トリミング確定)を始める直前に、画面に実際に表示されている枠(cropSelRectの実測位置)から
+  // cropSelectionを読み直し、見た目と実際にトリミングされる範囲が常に一致するようにする
+  function syncCropSelectionFromDisplay(){
+    if(!cropSelection) return;
+    const r = cropStage.getBoundingClientRect();
+    if(!r.width || !r.height) return;
+    const sr = cropSelRect.getBoundingClientRect();
+    cropSelection = { x: sr.left - r.left, y: sr.top - r.top, w: sr.width, h: sr.height };
+  }
+
+  function cropCornerPoint(corner, sel){
+    const right = sel.x + sel.w, bottom = sel.y + sel.h;
+    if(corner === "nw") return { x: right, y: bottom };
+    if(corner === "ne") return { x: sel.x, y: bottom };
+    if(corner === "sw") return { x: right, y: sel.y };
+    if(corner === "se") return { x: sel.x, y: sel.y };
+    if(corner === "n") return { x: sel.x, y: bottom }; // 上辺: 下端を固定
+    if(corner === "s") return { x: sel.x, y: sel.y };  // 下辺: 上端を固定
+    if(corner === "e") return { x: sel.x, y: sel.y };  // 右辺: 左端を固定
+    return { x: right, y: sel.y }; // "w" 左辺: 右端を固定
+  }
+
+  function openCropModal(record, imgEl){
+    cropRecord = record;
+    cropThumbImg = imgEl;
+    cropSelection = null;
+    cropSelRect.style.display = "none";
+    cropImage.onload = () => {
+      const r = cropStage.getBoundingClientRect();
+      if(record.cropRect && cropImage.naturalWidth && cropImage.naturalHeight){
+        // 前回のトリミング範囲(元画像の実ピクセル座標)を、現在の表示サイズに合わせて復元
+        const scaleX = r.width / cropImage.naturalWidth;
+        const scaleY = r.height / cropImage.naturalHeight;
+        cropSelection = {
+          x: record.cropRect.x * scaleX,
+          y: record.cropRect.y * scaleY,
+          w: record.cropRect.w * scaleX,
+          h: record.cropRect.h * scaleY
+        };
+      }else{
+        // 初回は全体を初期選択範囲にしておく(そのまま適用すれば無変更)
+        cropSelection = { x:0, y:0, w:r.width, h:r.height };
+      }
+      updateCropRectVisual();
+    };
+    // 一度トリミング済みでも、常に元画像から範囲を選び直せるようにする
+    cropImage.src = record.originalDataURL || record.dataURL;
+    btnCropRevert.style.display = record.originalDataURL ? "inline-block" : "none";
+    btnCropUseLast.style.display = lastCropRatio ? "inline-block" : "none";
+    cropModal.classList.add("open");
+    lockBodyScroll();
+  }
+
+  function closeCropModal(){
+    cropModal.classList.remove("open");
+    cropImage.src = "";
+    cropRecord = null;
+    cropThumbImg = null;
+    cropSelection = null;
+    unlockBodyScroll();
+  }
+
+  cropStage.addEventListener("pointerdown", (e) => {
+    syncCropSelectionFromDisplay();
+    const r = cropStage.getBoundingClientRect();
+    const cx = e.clientX - r.left, cy = e.clientY - r.top;
+    if(cropSelection && cx >= cropSelection.x && cx <= cropSelection.x + cropSelection.w &&
+       cy >= cropSelection.y && cy <= cropSelection.y + cropSelection.h){
+      cropMoving = true;
+      cropMoveOffset = { x: cx - cropSelection.x, y: cy - cropSelection.y };
+      return;
+    }
+    cropMoving = false;
+    cropDragging = true;
+    cropDragStart = { x: cx, y: cy };
+    setCropSelection({ x: cx, y: cy, w: 0, h: 0 });
+  });
+
+  window.addEventListener("pointermove", (e) => {
+    if(!cropMoving && !cropDragging) return;
+    const r = cropStage.getBoundingClientRect();
+    // 画像範囲外までカーソルが出ても追跡が止まらないよう、座標をステージ範囲内にクランプする
+    const cx = Math.max(0, Math.min(e.clientX - r.left, r.width));
+    const cy = Math.max(0, Math.min(e.clientY - r.top, r.height));
+
+    if(cropMoving && cropSelection){
+      let x = Math.max(0, Math.min(cx - cropMoveOffset.x, r.width - cropSelection.w));
+      let y = Math.max(0, Math.min(cy - cropMoveOffset.y, r.height - cropSelection.h));
+      setCropSelection({ x, y, w: cropSelection.w, h: cropSelection.h });
+      return;
+    }
+    const dx = cx - cropDragStart.x, dy = cy - cropDragStart.y;
+    const w = Math.abs(dx), h = Math.abs(dy);
+    const x = dx < 0 ? cropDragStart.x - w : cropDragStart.x;
+    const y = dy < 0 ? cropDragStart.y - h : cropDragStart.y;
+    setCropSelection({ x, y, w, h });
+  });
+
+  document.querySelectorAll("#cropSelRect .handle").forEach((h) => {
+    h.addEventListener("pointerdown", (e) => {
+      if(!cropSelection) return;
+      e.stopPropagation();
+      e.preventDefault();
+      syncCropSelectionFromDisplay();
+      cropResizingHandle = h.dataset.corner;
+      cropResizeAnchor = cropCornerPoint(cropResizingHandle, cropSelection);
+    });
+  });
+
+  window.addEventListener("pointermove", (e) => {
+    if(!cropResizingHandle || !cropSelection || !cropResizeAnchor) return;
+    const r = cropStage.getBoundingClientRect();
+    const cx = Math.max(0, Math.min(e.clientX - r.left, r.width));
+    const cy = Math.max(0, Math.min(e.clientY - r.top, r.height));
+    const MIN = 10;
+    const corner = cropResizingHandle;
+    let { x, y, w, h } = cropSelection;
+
+    if(corner === "n" || corner === "s"){
+      // 辺ハンドル(上下): 高さだけを変更し、x/幅は固定したまま平行にサイズ変更する
+      const ay = cropResizeAnchor.y;
+      let newH = Math.max(MIN, Math.abs(cy - ay));
+      let newY = cy < ay ? ay - newH : ay;
+      if(newY < 0){ newH += newY; newY = 0; }
+      if(newY + newH > r.height){ newH = r.height - newY; }
+      y = newY; h = newH;
+    }else if(corner === "e" || corner === "w"){
+      // 辺ハンドル(左右): 幅だけを変更し、y/高さは固定したまま平行にサイズ変更する
+      const ax = cropResizeAnchor.x;
+      let newW = Math.max(MIN, Math.abs(cx - ax));
+      let newX = cx < ax ? ax - newW : ax;
+      if(newX < 0){ newW += newX; newX = 0; }
+      if(newX + newW > r.width){ newW = r.width - newX; }
+      x = newX; w = newW;
+    }else{
+      // 四隅ハンドル: 従来通り幅・高さ両方を変更
+      const ax = cropResizeAnchor.x, ay = cropResizeAnchor.y;
+      const dx = cx - ax, dy = cy - ay;
+      w = Math.max(MIN, Math.abs(dx));
+      h = Math.max(MIN, Math.abs(dy));
+      x = dx < 0 ? ax - w : ax;
+      y = dy < 0 ? ay - h : ay;
+      if(x < 0){ w += x; x = 0; }
+      if(y < 0){ h += y; y = 0; }
+      if(x + w > r.width){ w = r.width - x; }
+      if(y + h > r.height){ h = r.height - y; }
+    }
+    setCropSelection({ x, y, w, h });
+  });
+
+  window.addEventListener("pointerup", () => {
+    cropDragging = false;
+    cropMoving = false;
+    cropResizingHandle = null;
+    cropResizeAnchor = null;
+  });
+
+  btnCropCancel.addEventListener("click", closeCropModal);
+  let cropBackdropDownTarget = null;
+  cropModal.addEventListener("pointerdown", (e) => {
+    cropBackdropDownTarget = e.target;
+  });
+  cropModal.addEventListener("pointerup", (e) => {
+    // ドラッグ中にモーダル背景まで出てからリリースしても、
+    // 開始(pointerdown)も背景自体でない限りは閉じないようにする
+    if(cropBackdropDownTarget === cropModal && e.target === cropModal){
+      closeCropModal();
+    }
+    cropBackdropDownTarget = null;
+  });
+
+  btnCropApply.addEventListener("click", async () => {
+    if(!cropRecord || !cropSelection || cropSelection.w < 5 || cropSelection.h < 5) return;
+    // 実際に画面に見えている枠(cropSelRectの実測位置)から選択範囲を読み直してから
+    // 確定する。これにより、見た目の枠と実際にトリミングされる範囲が常に一致する
+    syncCropSelectionFromDisplay();
+    const r = cropStage.getBoundingClientRect();
+    const scaleX = cropImage.naturalWidth / r.width;
+    const scaleY = cropImage.naturalHeight / r.height;
+    const sx = Math.round(cropSelection.x * scaleX);
+    const sy = Math.round(cropSelection.y * scaleY);
+    const sw = Math.round(cropSelection.w * scaleX);
+    const sh = Math.round(cropSelection.h * scaleY);
+
+    workCanvas.width = sw;
+    workCanvas.height = sh;
+    ctx.drawImage(cropImage, sx, sy, sw, sh, 0, 0, sw, sh);
+    const newDataURL = canvasToOptimizedDataURL(workCanvas);
+
+    // 初回トリミング時のみ元画像を保存しておく(以後は削除するまで保持し、何度でも選び直せる)
+    if(!cropRecord.originalDataURL){
+      cropRecord.originalDataURL = cropRecord.dataURL;
+    }
+    cropRecord.dataURL = newDataURL;
+    cropRecord.cropRect = { x: sx, y: sy, w: sw, h: sh }; // 次回開いた時にこの範囲から再開できるように
+    // 画像サイズに依存しない比率で記憶し、「前回の範囲」ボタンで別の画像にも適用できるようにする
+    lastCropRatio = {
+      x: sx / cropImage.naturalWidth, y: sy / cropImage.naturalHeight,
+      w: sw / cropImage.naturalWidth, h: sh / cropImage.naturalHeight
+    };
+    showAllCropLastButtons(); // 既に表示済みの行の「🔁前回の範囲」ボタンをここで初めて出す
+    await saveRecordPreservingOrder(cropRecord);
+    if(cropThumbImg) cropThumbImg.src = newDataURL;
+    closeCropModal();
+  });
+
+  btnCropRevert.addEventListener("click", async () => {
+    if(!cropRecord || !cropRecord.originalDataURL) return;
+    if(!(await confirmAsync("トリミング前の元画像に戻します。よろしいですか？"))) return;
+    cropRecord.dataURL = cropRecord.originalDataURL;
+    cropRecord.cropRect = null;
+    await saveRecordPreservingOrder(cropRecord);
+    if(cropThumbImg) cropThumbImg.src = cropRecord.dataURL;
+    closeCropModal();
+  });
+
+  // 直前にトリミングした範囲(比率)を、この画像のサイズに合わせて選択範囲へ反映する。
+  // その場で確定はせず、プレビューとして表示するだけ(必要なら微調整してから「この範囲でトリミング」)
+  btnCropUseLast.addEventListener("click", () => {
+    if(!lastCropRatio || !cropImage.naturalWidth || !cropImage.naturalHeight) return;
+    const r = cropStage.getBoundingClientRect();
+    const MIN = 10;
+    let w = Math.min(r.width, Math.max(MIN, lastCropRatio.w * r.width));
+    let h = Math.min(r.height, Math.max(MIN, lastCropRatio.h * r.height));
+    let x = Math.max(0, Math.min(lastCropRatio.x * r.width, r.width - w));
+    let y = Math.max(0, Math.min(lastCropRatio.y * r.height, r.height - h));
+    setCropSelection({ x, y, w, h });
+  });
+
+  // モーダルを開かず、記録一覧の行から直接「前回の範囲」を適用するためのクイックボタン用。
+  // 比率は元画像サイズ基準で保持されているため、cropStageの表示サイズを介さず直接計算する
+  async function applyLastCropRatio(record, imgEl){
+    if(!lastCropRatio) return;
+    const srcUrl = record.originalDataURL || record.dataURL;
+    const img = new Image();
+    await new Promise((resolve) => { img.onload = resolve; img.src = srcUrl; });
+    const natW = img.naturalWidth, natH = img.naturalHeight;
+    const sw = Math.max(1, Math.round(lastCropRatio.w * natW));
+    const sh = Math.max(1, Math.round(lastCropRatio.h * natH));
+    const sx = Math.max(0, Math.min(Math.round(lastCropRatio.x * natW), natW - sw));
+    const sy = Math.max(0, Math.min(Math.round(lastCropRatio.y * natH), natH - sh));
+
+    workCanvas.width = sw;
+    workCanvas.height = sh;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    const newDataURL = canvasToOptimizedDataURL(workCanvas);
+
+    if(!record.originalDataURL) record.originalDataURL = record.dataURL;
+    record.dataURL = newDataURL;
+    record.cropRect = { x: sx, y: sy, w: sw, h: sh };
+    await saveRecordPreservingOrder(record);
+    if(imgEl) imgEl.src = newDataURL;
+  }
+  function showAllCropLastButtons(){
+    captureList.querySelectorAll(".btn-crop-last").forEach((btn) => { btn.style.display = "inline-block"; });
+  }
+
+  // タイトル・日付: 前回値をlocalStorageに保持し、リロードしても保持されるように
+  const TITLE_KEY = "screen-capture-memo-export-title";
+  const DATE_KEY = "screen-capture-memo-export-date";
+
+  function todayString(){
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  (() => {
+    const savedTitle = localStorage.getItem(TITLE_KEY);
+    const savedDate = localStorage.getItem(DATE_KEY);
+    exportTitleInput.value = savedTitle || "";
+    exportDateInput.value = savedDate || todayString();
+  })();
+
+  exportTitleInput.addEventListener("input", () => {
+    localStorage.setItem(TITLE_KEY, exportTitleInput.value);
+  });
+  exportDateInput.addEventListener("input", () => {
+    localStorage.setItem(DATE_KEY, exportDateInput.value);
+  });
+
+  // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
+  const VERSION_HISTORY = [
+    ["v01","初版。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し"],
+    ["v02","メモの自動保存を修正"],
+    ["v03","記録順を撮影順に統一"],
+    ["v04","範囲指定に比率固定を追加"],
+    ["v05","ライトモード対応"],
+    ["v06","UI文言を簡略化、テーマ切替ボタン追加"],
+    ["v07","共有ダイアログで画面全体を優先選択"],
+    ["v08","常時表示ウィンドウ(PiP)を追加"],
+    ["v09","ライトモードのボタン視認性を修正"],
+    ["v10","キャプチャボタンをスクロール追従に"],
+    ["v11","エクスポートにPDF向けレイアウトを追加"],
+    ["v12","保存ボタン廃止、PDFレイアウトを刷新"],
+    ["v13","資料タイトル入力とタイムスタンプ非表示化"],
+    ["v14","PDFグリッドの列数計算を修正"],
+    ["v15","ノート形式の余白調整"],
+    ["v16","ボタン文言短縮でレイアウト改善"],
+    ["v17","画像拡大表示・全画面固定ボタン追加"],
+    ["v18","全画面固定時の選択枠クリア"],
+    ["v19","PiPで映像フレームの鮮度を維持"],
+    ["v20","範囲固定と同時にPiP自動起動、共有停止ボタン追加"],
+    ["v21","共有停止時のインジケーター残留を修正"],
+    ["v22","共有停止で範囲もクリア、範囲移動/リサイズ/矢印キー対応"],
+    ["v23","パネル開閉をヘッダークリックに統一"],
+    ["v24","開閉バーをパネル下部の帯に変更"],
+    ["v25","範囲選択に四隅リサイズハンドル追加"],
+    ["v26","開閉バーを常時表示の統一バーに"],
+    ["v27","ウィンドウ/タブ共有時の注意表示を追加"],
+    ["v28","画像のトリミング機能を追加"],
+    ["v29","記録一覧をドラッグ&ドロップで並び替え可能に"],
+    ["v30","トリミングを非破壊化"],
+    ["v31","トリミング範囲を記憶し再開可能に"],
+    ["v32","注意文言を改行して読みやすく"],
+    ["v33","保存ファイル名にタイトル・日付を反映"],
+    ["v34","画像なしの見出し/メモを追加可能に"],
+    ["v35","見出し/メモの表示を切替可能に"],
+    ["v36","エクスポートHTMLのインポート機能を追加"],
+    ["v37","常時表示ボタンをパネル1へ移動"],
+    ["v38","メモ欄でEsc対応、自動拡大、インポートでタイトル/日付復元"],
+    ["v39","日付欄の幅を縮小"],
+    ["v40","削除ボタンを控えめなデザインに"],
+    ["v41","画像拡大表示にホイールズーム追加"],
+    ["v42","画像をJPEG化・解像度上限で軽量化"],
+    ["v43","インポート画像にも軽量化を適用"],
+    ["v44","バージョン表記クリックで更新履歴を表示"],
+    ["v45","保存ファイル名の順序変更、保存先フォルダ記憶機能(裏コマンド)を追加"],
+    ["v46","記録一覧にエクスポートサイズの目安を表示"],
+    ["v47","タイトル/日付の永続化、保存トースト通知、フォルダ登録解除機能を追加"],
+    ["v48","エクスポートH1に日付併記、PDFレイアウトの各ページに印刷用ヘッダー帯を追加"],
+    ["v49","キャプチャサイズ表示を見出し行へ移動しボタンの折り返しを解消"],
+    ["v50","記録一覧の見出しをキャプチャパネル直下にスティッキー表示"],
+    ["v51","書き出し系ボタンをキャプチャパネルから記録一覧の見出しへ移動"],
+    ["v52","記録一覧のボタン列を独立ツールバー化し縦中央揃えに"],
+    ["v53","PiP中も共有パネルに映像プレビューが表示され続けるよう変更"],
+    ["v54","保存失敗時の通知を明確化、トーストをクリックで閉じられるように"],
+    ["v55","保存結果の通知をHTML保存ボタン横のインライン表示に変更"],
+    ["v56","保存の重さを改善(N回の全件読み込みを1回に、フォルダ登録を軽量化)"],
+    ["v57","登録フォルダへの保存時、同名ファイルがあれば上書き確認を表示"],
+    ["v58","キャプチャ元の映像未準備時に共有パネル側へ自動フォールバック"],
+    ["v59","PiP二重video方式を撤回、videoを実際に移動する方式へ復帰"],
+    ["v60","原因は別PC固有の問題と判明、PiP二重video方式(v58相当)へ復帰"],
+    ["v61","ライトボックスにドラッグでのパン(表示位置移動)機能を追加"],
+    ["v62","ライトボックスで矢印キーによる前後の画像切り替えに対応"],
+    ["v63","トリミングで範囲外リリース時に誤キャンセルされる不具合を修正"],
+    ["v64","トリミングに辺ハンドルを追加し幅/高さの片方だけ変更可能に"],
+    ["v65","キャプチャの範囲選択にも辺ハンドルを追加。インポート時のタイトル/日付保存漏れを修正"],
+    ["v66","保存先フォルダを毎回ピッカーで確認する方式に再設計(権限失効の不安定さを解消)"],
+    ["v67","記録一覧をCtrl(⌘)+Alt+↑/↓でも並び替え可能に(⠿ハンドルにフォーカスして操作)"],
+    ["v68","メモ欄でEscを押した後もそのまま並び替えできるよう修正"],
+    ["v69","並び替えのキー組み合わせをShift+Alt+↑/↓に変更(OneNote同様)"],
+    ["v70","行選択中のキャプチャ/貼り付け/見出しは、その行の直後に挿入されるように"],
+    ["v71","トリミングに「前回の範囲」ボタンを追加(直前の範囲を比率で他画像にも適用可能)"],
+    ["v72","モーダル表示中に背景ページがスクロールしてしまう不具合を修正"],
+    ["v73","ライトボックス/トリミング画像のネイティブドラッグを無効化しドラッグ操作を安定化"],
+    ["v74","ライトボックスで小さい画像も上限倍率まで画面いっぱいに拡大表示"],
+    ["v75","「見出し」追加が選択行を無視して末尾に入ってしまう不具合を修正"],
+    ["v76","ライトボックスに画像下のメモキャプション表示を追加(3行で省略)"],
+    ["v77","矢印キーで画像切替後、閉じてもスクロールが復活しない不具合を修正"],
+    ["v78","書き出したHTMLの拡大表示にもメモキャプションを反映"],
+    ["v79","ヘッダー(タイトル・バージョン)をスクロールしても固定表示に"],
+    ["v80","ライトボックス画像の右クリックコピーができない不具合を修正"],
+    ["v81","書き出しHTMLの一覧表示に見出しの目次パネルを追加"],
+    ["v82","メモ・見出し内のURLを自動でハイパーリンク化"],
+    ["v83","書き出しHTMLが白紙になる重大バグを修正(v82の正規表現不具合)"],
+    ["v84","記録一覧の行に「前回の範囲」クイックトリミングボタンを追加"],
+    ["v85","「見出し」の横に「メモ」ボタンを追加し、最初からメモ種別で追加可能に"],
+    ["v86","メモに太字・マーカー・文字色・リンク等のMarkdown風記法を追加"],
+    ["v87","メモ装飾ボタンをトグル式に変更し、入れ子の重複を自動解消"],
+    ["v88","文字色の「黒」ボタンが色タグで囲んでしまう不具合を修正(常にプレーン文字に)"],
+    ["v89","グリッド形式(A4にN枚/ページ)でコメント表示のON/OFFを選択可能に"],
+    ["v90","使い方ヘルプページ(help.html)を追加し、ヘッダーからリンク"],
+    ["v91","並び替え後にメモ編集/トリミングすると書き出しHTMLの順序が画面表示とズレる不具合を修正"],
+    ["v92","書き出しHTMLの目次パネルを改善(現在地ハイライト・狭幅時は右端スワイプ/ホバーで表示)"],
+    ["v93","メモ装飾に取り消し線・下線を追加"],
+    ["v94","マーカー+文字色の組み合わせ表示と装飾トグルボタンの不具合を修正"],
+    ["v95","メモ装飾ツールバーを本文下の専用行(区切り線あり)に変更し、編集時の先頭行ズレを解消"],
+    ["v96","共有パネルのスティッキー化・段階的開示、共有開始/停止ボタンの統合、狭い幅での画像+メモ縦並び、ウィンドウリサイズ時の選択枠ズレ修正"],
+    ["v97","記録一覧に一覧更新ボタンを追加(複数タブ/ウィンドウでの共有・範囲固定を維持したまま反映)、トリミング範囲(選択枠)の各種不具合を修正(リサイズ時のズレ、ハンドルの見切れ、狭い画面での右端まで届かない問題)"],
+    ["v98","📸キャプチャボタン・クリップボード貼り付けで、選択行があってもボタンへのフォーカス移動により無視され常に最下段に入ってしまう不具合を修正(見出し/メモ追加と同じ仕組みに統一)"],
+    ["v99","HTML保存の書き出し履歴(日時・ファイル名・件数)を記録一覧ヘッダーの🕘履歴ボタンから確認できるように追加"],
+    ["v100","保存先フォルダ設定時、書き出し履歴をフォルダ内のJSONファイルにも保存し、他端末(同じOneDriveフォルダ等)とも共有できるように対応"],
+    ["v101","書き出し履歴一覧で、保存先フォルダ内に実ファイルが見つからないエントリへ取り消し線を表示するように対応"],
+    ["v102","書き出し履歴一覧で、同じファイル名で複数回保存された場合に「同名X/Y」バッジを表示するように対応"],
+    ["v103","書き出し履歴一覧で同名ファイルを折りたたみ表示に変更、🕘履歴ボタンを開くたびに保存先フォルダと同期するように対応"],
+    ["v104","書き出し履歴モーダルを開く際の自動フォルダ同期をやめ、モーダル内の🔄アイコンで明示的に同期する方式に変更"]
+  ];
+
+  const verLabel = $("verLabel");
+  const versionModal = $("versionModal");
+  const versionList = $("versionList");
+  const btnVersionClose = $("btnVersionClose");
+
+  function openVersionModal(){
+    versionList.innerHTML = VERSION_HISTORY.slice().reverse().map(([v, t]) =>
+      `<li><span class="v-tag">${v}</span><span>${t}</span></li>`
+    ).join("");
+    versionModal.classList.add("open");
+    lockBodyScroll();
+  }
+  function closeVersionModal(){
+    versionModal.classList.remove("open");
+    unlockBodyScroll();
+  }
+  verLabel.addEventListener("click", openVersionModal);
+  verLabel.addEventListener("keydown", (e) => {
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); openVersionModal(); }
+  });
+  btnVersionClose.addEventListener("click", closeVersionModal);
+  versionModal.addEventListener("click", (e) => {
+    if(e.target === versionModal) closeVersionModal();
+  });
+
+  // ---------- 書き出し履歴モーダル ----------
+  const btnExportHistory = $("btnExportHistory");
+  const exportHistoryModal = $("exportHistoryModal");
+  const exportHistoryList = $("exportHistoryList");
+  const btnExportHistoryClose = $("btnExportHistoryClose");
+  const btnExportHistorySync = $("btnExportHistorySync");
+
+  let expandedHistoryGroups = new Set(); // 展開中(同名を畳まず表示中)のファイル名。再描画をまたいで状態を覚えておく
+
+  function historyRowHtml(h, { isPrimary, expandBtn }){
+    return `
+      <li class="hist-row${isPrimary ? "" : " hist-child"}" data-id="${h.id}" ${isPrimary ? "" : "hidden"}>
+        <span class="hist-time">${fmtTime(h.timestamp)}</span>
+        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${h.fileName}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}">${h.fileName}(${h.count}件)</span>
+        ${expandBtn || ""}
+        <button class="hist-del" data-id="${h.id}" title="この履歴を削除">🗑</button>
+      </li>
+    `;
+  }
+
+  async function renderExportHistoryList(){
+    const items = await historyGetAll();
+    items.sort((a, b) => b.timestamp - a.timestamp); // 新しい書き出しを上に
+    if(items.length === 0){
+      exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">まだ書き出し履歴がありません</div>`;
+      return;
+    }
+    // 同じファイル名の履歴は1件(最新)だけを表示し、残りは畳んでおく。
+    // グループの並び順はグループ内最新のtimestampで決める(新しい書き出しが上)。
+    const byName = new Map();
+    items.forEach((h) => {
+      if(!byName.has(h.fileName)) byName.set(h.fileName, []);
+      byName.get(h.fileName).push(h); // itemsは既にtimestamp降順なので、各グループも自然に新しい順になる
+    });
+    const groups = Array.from(byName.values()).sort((a, b) => b[0].timestamp - a[0].timestamp);
+
+    exportHistoryList.innerHTML = groups.map((group, gi) => {
+      const latest = group[0];
+      const isOpen = group.length > 1 && expandedHistoryGroups.has(latest.fileName);
+      const expandBtn = group.length > 1
+        ? `<button class="hist-expand${isOpen ? " open" : ""}" type="button" data-group="${gi}">同名${group.length}件 <span class="hist-expand-arrow">${isOpen ? "▾" : "▸"}</span></button>`
+        : "";
+      const rows = [historyRowHtml(latest, { isPrimary: true, expandBtn })];
+      group.slice(1).forEach((h) => rows.push(historyRowHtml(h, { isPrimary: false })));
+      return rows.join("");
+    }).join("");
+
+    // 初期描画がisOpenのグループは、子要素のhidden属性を外して表示状態にする
+    groups.forEach((group, gi) => {
+      if(group.length <= 1 || !expandedHistoryGroups.has(group[0].fileName)) return;
+      const btn = exportHistoryList.querySelector(`.hist-expand[data-group="${gi}"]`);
+      let sib = btn ? btn.closest("li").nextElementSibling : null;
+      while(sib && sib.classList.contains("hist-child")){ sib.hidden = false; sib = sib.nextElementSibling; }
+    });
+
+    // 同名グループの開閉トグル
+    exportHistoryList.querySelectorAll(".hist-expand").forEach((btn) => {
+      const group = groups[Number(btn.dataset.group)];
+      btn.addEventListener("click", () => {
+        const fileName = group[0].fileName;
+        const willOpen = !expandedHistoryGroups.has(fileName);
+        if(willOpen) expandedHistoryGroups.add(fileName); else expandedHistoryGroups.delete(fileName);
+        btn.classList.toggle("open", willOpen);
+        btn.querySelector(".hist-expand-arrow").textContent = willOpen ? "▾" : "▸";
+        let sib = btn.closest("li").nextElementSibling;
+        while(sib && sib.classList.contains("hist-child")){ sib.hidden = !willOpen; sib = sib.nextElementSibling; }
+      });
+    });
+
+    // 削除(グループ化・開閉状態がズレないよう、削除後は丸ごと再描画する)
+    exportHistoryList.querySelectorAll(".hist-del").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await historyDelete(Number(btn.dataset.id));
+        await renderExportHistoryList();
+      });
+    });
+  }
+
+  // 保存先フォルダが登録済みの場合のみ、フォルダへの一時アクセスを取得して
+  // 他端末分のJSON履歴を取り込み・ファイル消失状況を再確認する(モーダルは開かない/閉じない)。
+  // 未登録時やピッカーをキャンセルした場合は何もせず静かに終わる(ローカルの履歴はそのまま)。
+  async function syncExportHistoryWithFolder(){
+    const fsSupported = "showDirectoryPicker" in window;
+    const savedHandle = fsSupported ? await kvGet("saveDirHandle") : null;
+    if(!savedHandle) return;
+    try{
+      const dirHandle = await window.showDirectoryPicker({ mode: "read", startIn: savedHandle });
+      await syncHistoryWithDir(dirHandle);
+      await refreshMissingFlags(dirHandle);
+    }catch(err){
+      if(err && err.name !== "AbortError"){
+        console.error("履歴の同期に失敗しました(ローカルの履歴のみ表示します)", err);
+      }
+    }
+  }
+  async function openExportHistoryModal(){
+    // 開く時点ではローカルの履歴だけを即表示する(フォルダピッカーは出さない)。
+    // 最新状態への同期はモーダル内の🔄ボタンを押した時だけ行う。
+    await renderExportHistoryList();
+    exportHistoryModal.classList.add("open");
+    lockBodyScroll();
+  }
+  function closeExportHistoryModal(){
+    exportHistoryModal.classList.remove("open");
+    unlockBodyScroll();
+  }
+  btnExportHistory.addEventListener("click", openExportHistoryModal);
+  btnExportHistoryClose.addEventListener("click", closeExportHistoryModal);
+  btnExportHistorySync.addEventListener("click", async () => {
+    btnExportHistorySync.disabled = true;
+    try{
+      await syncExportHistoryWithFolder();
+      await renderExportHistoryList();
+    }finally{
+      btnExportHistorySync.disabled = false;
+    }
+  });
+  exportHistoryModal.addEventListener("click", (e) => {
+    if(e.target === exportHistoryModal) closeExportHistoryModal();
+  });
+
+  // ヘッダー(タイトル/バージョン)の実高さを監視し、その直下に「2. キャプチャ」
+  // パネルがぴったり貼り付くようCSS変数へ反映する(折り返し等で高さが変わっても追従)
+  function updateHeaderHeight(){
+    document.documentElement.style.setProperty("--header-h", appHeaderEl.offsetHeight + "px");
+  }
+  if(typeof ResizeObserver !== "undefined"){
+    new ResizeObserver(updateHeaderHeight).observe(appHeaderEl);
+  }else{
+    window.addEventListener("resize", updateHeaderHeight);
+  }
+  updateHeaderHeight();
+
+  // 共有パネルの実高さを監視し、「2. キャプチャ」パネルがその直下に貼り付くよう
+  // CSS変数へ反映する(段階的開示・折りたたみ・映像プレビュー表示等で高さが変わっても追従)
+  function updateSharePanelHeight(){
+    document.documentElement.style.setProperty("--share-panel-h", sharePanel.offsetHeight + "px");
+  }
+  if(typeof ResizeObserver !== "undefined"){
+    new ResizeObserver(updateSharePanelHeight).observe(sharePanel);
+  }else{
+    window.addEventListener("resize", updateSharePanelHeight);
+  }
+  updateSharePanelHeight();
+
+  // 「2. キャプチャ」パネルの実高さを監視し、記録一覧の見出しがその直下に
+  // ぴったり貼り付くようCSS変数へ反映する(ボタンが折り返す等で高さが変わっても追従)
+  function updateCapturePanelHeight(){
+    document.documentElement.style.setProperty("--capture-panel-h", capturePanelEl.offsetHeight + "px");
+  }
+  if(typeof ResizeObserver !== "undefined"){
+    new ResizeObserver(updateCapturePanelHeight).observe(capturePanelEl);
+  }else{
+    window.addEventListener("resize", updateCapturePanelHeight);
+  }
+  updateCapturePanelHeight();
+
+  // ---------- init ----------
+  (async () => {
+    db = await openDB();
+    await loadAll();
+  })();
+
+})();
+</script>
+</body>
+</html>
