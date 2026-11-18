@@ -715,6 +715,7 @@
       <div class="row">
         <input type="search" id="historySearch" placeholder="ファイル名で検索">
         <button class="secondary iconBtn" id="btnExportHistorySync" type="button" title="保存先フォルダと同期(他端末分の履歴・ファイル消失状況を反映)">🔄</button>
+        <button class="secondary" id="btnHistoryScan" type="button" title="保存先フォルダ内のHTMLのうち、履歴に無いものを追加(日時はファイルの保存日時)">📂 フォルダから追加</button>
       </div>
       <div class="hint" id="historyFolderNote"></div>
     </div>
@@ -3008,9 +3009,7 @@
           // 保存直後のこの時点でフォルダ内の実ファイルの有無を再確認し、
           // 削除済み(見つからない)エントリにはmissingフラグを立てる(一覧で取り消し線表示に使う)。
           // 今回保存したファイルは当然存在するのでmissing=falseになる。
-          const withMissing = await refreshMissingFlags(pendingDirHandle);
-          const forJson = withMissing.map(({ id, ...rest }) => rest); // ローカルのautoIncrement idは端末固有なのでJSONには含めない
-          await writeFileToDir(pendingDirHandle, HISTORY_SYNC_FILE, new Blob([JSON.stringify(forJson)], { type: "application/json" }));
+          await writeHistoryJson(pendingDirHandle);
         }catch(syncErr){
           console.error("書き出し履歴JSONの保存に失敗しました(HTML本体の保存は成功しています)", syncErr);
         }
@@ -3859,7 +3858,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18.9"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.10"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
     ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
@@ -3870,7 +3869,8 @@
     ["v02_2026-11-18.6","日付・資料タイトル・HTML保存・⋯メニューをスクロール追従のツールバーへ移動し、一覧のどこからでも保存できるように"],
     ["v02_2026-11-18.7","狭い幅(サイドパネル)でキャプチャ等の5ボタンを行の幅いっぱいに均等配置"],
     ["v02_2026-11-18.8","htmlpreviewでプレビュー中にHTML保存すると、書き出したHTMLのスクリプトが動かず画像が表示されない不具合を修正"],
-    ["v02_2026-11-18.9","書き出しHTMLのデザインを本体に合わせて刷新(ヘッダー+表示モードのタブ、左の目次に件数、カード型の行)"]
+    ["v02_2026-11-18.9","書き出しHTMLのデザインを本体に合わせて刷新(ヘッダー+表示モードのタブ、左の目次に件数、カード型の行)"],
+    ["v02_2026-11-18.10","履歴に「📂 フォルダから追加」を追加(保存先フォルダ内の未登録のHTMLを、ファイルの保存日時で履歴へ追加)"]
   ];
 
   const verLabel = $("verLabel");
@@ -4100,6 +4100,64 @@
       console.error("履歴の同期に失敗しました(ローカルの履歴のみ表示します)", err);
     }
   }
+
+  // 保存先フォルダの履歴JSONを、ローカルの全履歴(消失フラグ更新済み)で書き直す
+  async function writeHistoryJson(dirHandle){
+    const withMissing = await refreshMissingFlags(dirHandle);
+    const forJson = withMissing.map(({ id, ...rest }) => rest); // ローカルのautoIncrement idは端末固有なのでJSONには含めない
+    await writeFileToDir(dirHandle, HISTORY_SYNC_FILE, new Blob([JSON.stringify(forJson)], { type: "application/json" }));
+  }
+
+  // 保存先フォルダ内のHTMLのうち、履歴に無いファイルを履歴へ追加する(旧ツールや他の場所で書き出したファイル等)。
+  // このツール(旧Screen Capture Memo含む)で書き出したHTMLだけを対象とし、日時はファイルの保存日時(lastModified)、
+  // タイトル・日付・件数はファイル内のMETA/DATAから読み取る。読み取れないHTMLは対象外として数だけ知らせる
+  const btnHistoryScan = $("btnHistoryScan");
+  btnHistoryScan.addEventListener("click", async () => {
+    const dir = await getSaveDirWithPermission("readwrite");
+    if(dir === null){ await alertAsync("保存先フォルダが登録されていません。⚙設定で登録してください。"); return; }
+    if(!dir) return;
+    btnHistoryScan.disabled = true;
+    const label = btnHistoryScan.textContent;
+    btnHistoryScan.textContent = "⏳ 読み込み中…";
+    try{
+      await syncHistoryWithDir(dir); // 他端末分を先に取り込んでから、まだ無いファイルだけを追加する
+      const known = new Set((await historyGetAll()).map((h) => h.fileName));
+      let added = 0, skipped = 0;
+      for await (const [name, handle] of dir.entries()){
+        if(handle.kind !== "file" || !/\.html?$/i.test(name) || known.has(name)) continue;
+        try{
+          const file = await handle.getFile();
+          const text = await file.text();
+          const arrText = extractBalanced(text, "var DATA = ", "[", "]");
+          const items = arrText ? JSON.parse(arrText) : null;
+          if(!Array.isArray(items)){ skipped++; continue; }
+          let meta = null;
+          const metaText = extractBalanced(text, "var META = ", "{", "}");
+          if(metaText){ try{ meta = JSON.parse(metaText); }catch(e){} }
+          await historyAdd({
+            uid: genUid(), timestamp: file.lastModified, fileName: name,
+            title: (meta && meta.title) || "", date: (meta && meta.date) || "", count: items.length, missing: false
+          });
+          known.add(name);
+          added++;
+        }catch(err){
+          console.error("履歴への追加に失敗しました", name, err);
+          skipped++;
+        }
+      }
+      if(added) await writeHistoryJson(dir);
+      await renderExportHistoryList();
+      await alertAsync(added
+        ? `${added}件のファイルを履歴に追加しました。${skipped ? `\n(このツールで書き出したHTMLではない等の理由で${skipped}件は対象外)` : ""}`
+        : `追加できるファイルはありませんでした。${skipped ? `\n(このツールで書き出したHTMLではない等の理由で${skipped}件は対象外)` : ""}`);
+    }catch(err){
+      console.error(err);
+      await alertAsync("フォルダの読み込みに失敗しました。");
+    }finally{
+      btnHistoryScan.disabled = false;
+      btnHistoryScan.textContent = label;
+    }
+  });
 
   btnExportHistorySync.addEventListener("click", async () => {
     btnExportHistorySync.disabled = true;
