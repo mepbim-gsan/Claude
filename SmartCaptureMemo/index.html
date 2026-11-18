@@ -259,6 +259,31 @@
     font-weight:700; font-size:14px; min-height:32px; background:transparent; border:none; padding:4px 2px;
   }
   .item.item-heading.type-memo .memoPreview{font-weight:400; font-size:13px;}
+  .item{scroll-margin-top:calc(var(--header-h, 0px) + var(--record-toolbar-h, 0px) + 10px);}
+  .item[hidden]{display:none;}
+  .item.item-heading{position:relative;}
+  .item.item-heading .itemactions{position:absolute; top:4px; right:6px;}
+  .item.item-heading .memoPreview, .item.item-heading .heading-text{min-height:0;}
+  .item.item-heading .itembody{gap:2px;}
+  .btn-fold{
+    background:transparent; color:var(--sub); border:1px solid var(--border); border-radius:4px;
+    padding:0 6px; font-size:11px; line-height:1.5; margin-right:4px;
+  }
+  .btn-fold:hover:not(:disabled){color:var(--accent); border-color:var(--accent); opacity:1;}
+  .item.type-memo .btn-fold, .item:not(.item-heading) .btn-fold{display:none;}
+  .secCount{margin-left:6px; color:var(--sub);}
+  .item.item-heading.is-current{background:color-mix(in srgb, var(--accent) 12%, transparent);}
+  .item.item-heading.is-current .type-badge::after{content:" ・📍現在"; color:var(--accent); font-weight:700;}
+  #tocList{display:flex; flex-direction:column; gap:1px;}
+  #tocList a{
+    display:flex; gap:6px; align-items:baseline; padding:6px 8px; border-radius:6px; text-decoration:none;
+    color:var(--text); font-size:12px; border-left:3px solid transparent;
+  }
+  #tocList a:hover{background:var(--surface2);}
+  #tocList a.active{border-left-color:var(--accent); color:var(--accent); font-weight:700; background:var(--surface2);}
+  #tocList .tocLabel{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  #tocList .tocCount{flex-shrink:0; font-size:10px; color:var(--sub); font-weight:400;}
+  .tocEmpty{font-size:11px; color:var(--sub); padding:4px 8px;}
   .type-badge{
     cursor:pointer; padding:1px 6px; border-radius:10px; background:var(--surface2);
     border:1px solid var(--border);
@@ -1353,7 +1378,12 @@
   // ボタン自身へフォーカスが移ってしまい、その時点でgetFocusedItem()しても
   // 選択していた行を検出できないため、pointerdown時点で先に検出して渡す用途
   async function addCaptureRecord(dataURL, anchorItemOverride, opts){
-    const anchorItem = anchorItemOverride !== undefined ? anchorItemOverride : getFocusedItem();
+    let anchorItem = anchorItemOverride !== undefined ? anchorItemOverride : getFocusedItem();
+    const isNewHeading = !dataURL && !(opts && opts.heading === false);
+    // 行の選択が無い場合: キャプチャ・メモは「現在の見出し」のセクション末尾へ入れる
+    // (見出しの追加は従来通り一覧の末尾=新しいセクションとして追加)
+    const userAnchored = !!anchorItem;
+    if(!anchorItem && !isNewHeading) anchorItem = currentSectionEndItem();
     const record = { dataURL, memo:"", timestamp: Date.now() };
     if(opts && opts.heading !== undefined) record.heading = opts.heading;
     const id = await dbAdd(record);
@@ -1364,7 +1394,8 @@
     // 関わらず常に同期する。以前はanchorItemがある時だけ呼んでいたため、選択なしで
     // 追加したレコードのorderが未設定のまま残ることがあった)
     await persistOrderFromDom();
-    if(anchorItem){
+    afterRecordInserted(div);
+    if(userAnchored){
       // 続けてキャプチャ/見出し追加した場合も同じ行の直後に連続して挿入されるよう、
       // フォーカスを新しい行の⠿ハンドルへ移す
       const handle = div.querySelector(".drag-handle");
@@ -1541,14 +1572,16 @@
     const isHeading = !record.dataURL;
     div.className = "item" + (isHeading ? " item-heading" : "");
     div.dataset.id = record.id;
+    div._record = record; // 見出しの折りたたみ状態などを一覧側(DOM)から参照するため
     if(isHeading){
       const asHeading = record.heading !== false; // 未設定(既存データ含む)はデフォルトで見出し扱い
       div.innerHTML = `
         <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてShift+Alt+↑/↓で並び替え">⠿</span>
         <div class="itembody">
           <div class="meta">
+            <button class="btn-fold" type="button" title="このセクションを折りたたむ/開く">▾</button>
             <span class="type-badge" title="クリックで見出し/メモを切替">${asHeading ? "📝 見出し" : "💬 メモ"}</span>
-            ／ ${fmtTime(record.timestamp)} <span class="saveState"></span>
+            ／ ${fmtTime(record.timestamp)} <span class="secCount"></span> <span class="saveState"></span>
           </div>
           <div class="memoField">
             <textarea class="heading-text" placeholder="見出し・メモを入力(例: 発表者が交代、テーマが変わった、など)" hidden>${record.memo || ""}</textarea>
@@ -1589,7 +1622,12 @@
         await saveRecordPreservingOrder(record);
         typeBadge.textContent = record.heading ? "📝 見出し" : "💬 メモ";
         div.classList.toggle("type-memo", !record.heading);
+        scheduleSectionRefresh();
       });
+    }
+    const foldBtn = div.querySelector(".btn-fold");
+    if(foldBtn){
+      foldBtn.addEventListener("click", () => setSectionCollapsed(div, !record.collapsed));
     }
     const textarea = div.querySelector("textarea");
     const saveState = div.querySelector(".saveState");
@@ -1599,6 +1637,7 @@
     const doSave = async () => {
       record.memo = textarea.value;
       await saveRecordPreservingOrder(record);
+      if(isHeading) scheduleSectionRefresh();
       saveState.textContent = "保存済";
       setTimeout(() => { saveState.textContent = ""; }, 1200);
     };
@@ -1650,6 +1689,17 @@
     // Escでメモ欄からフォーカスを外す(ライトボックス等の他のEsc処理と競合しないようstopPropagation)。
     // 抜けた後そのままShift+Alt+↑/↓で並び替えできるよう、フォーカスをこの行の⠿ハンドルへ移す
     textarea.addEventListener("keydown", (e) => {
+      // 見出しの入力中にEnterで、すぐ下(このセクションの末尾)に次の見出しを作って入力を続ける。
+      // 空のままEnterで入力終了。Shift+Enterは通常の改行。IME変換確定のEnterは対象外
+      if(e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing &&
+         isSectionHeading(div)){
+        e.preventDefault();
+        // 空の見出しでEnter=入力終了。空のまま残さないよう、その見出し行は削除する
+        if(textarea.value.trim() === ""){ textarea.blur(); div.querySelector(".btn-del").click(); return; }
+        textarea.blur();
+        addHeadingsAfterSection(div, [""], true);
+        return;
+      }
       if(e.key === "Escape"){
         e.stopPropagation();
         textarea.blur();
@@ -1661,6 +1711,18 @@
     // <a>タグを拾って[表示文字](URL)記法へ自動変換する。リンクを含まない貼り付けは
     // ブラウザの既定動作(プレーンテキスト貼り付け)に任せる
     textarea.addEventListener("paste", (e) => {
+      // 見出しに複数行のテキストを貼り付けたら、1行ずつ別々の見出しに分ける(会議案内の議題をまとめて登録)
+      const plain = e.clipboardData && e.clipboardData.getData("text/plain");
+      const lines = (plain || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      if(isSectionHeading(div) && lines.length >= 2){
+        e.preventDefault();
+        const start = textarea.selectionStart, end = textarea.selectionEnd;
+        textarea.setRangeText(lines[0], start, end, "end");
+        handleMemoChanged();
+        textarea.blur();
+        addHeadingsAfterSection(div, lines.slice(1), false);
+        return;
+      }
       const html = e.clipboardData && e.clipboardData.getData("text/html");
       if(!html || !/<a[\s>]/i.test(html)) return;
       e.preventDefault();
@@ -1716,6 +1778,7 @@
       await dbDelete(record.id);
       div.remove();
       updateCount();
+      scheduleSectionRefresh();
       if(captureList.children.length === 0){
         captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
       }
@@ -1727,6 +1790,7 @@
     }else{
       captureList.appendChild(div);
     }
+    scheduleSectionRefresh();
     return div;
   }
 
@@ -1763,6 +1827,242 @@
     if(bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   }
+
+  // ---------- 見出し(セクション) ----------
+  // データは従来通り1列に並んだレコードのまま、並び順から「見出し〜次の見出しの手前まで」を
+  // 1つのセクションとして扱う(メモ種別の行はセクションの区切りにならない)。
+  // 「現在の見出し」を選んでおくと、行を選択していないときのキャプチャ・メモはそのセクションの末尾に入る
+  const CUR_SECTION_KEY = "smart-capture-memo-current-section";
+  const sectionSelect = $("sectionSelect");
+  const tocList = $("tocList");
+  let currentSectionId = null;
+  try{
+    const saved = Number(localStorage.getItem(CUR_SECTION_KEY));
+    if(saved) currentSectionId = saved;
+  }catch(e){}
+
+  function isSectionHeading(div){
+    return !!div && div.classList.contains("item-heading") && !div.classList.contains("type-memo");
+  }
+  function listItems(){
+    return Array.from(captureList.querySelectorAll(":scope > .item"));
+  }
+  // 行が属するセクションの見出し行(見出しより前の行ならnull)
+  function sectionHeadingOf(div){
+    let el = div;
+    while(el){
+      if(isSectionHeading(el)) return el;
+      el = el.previousElementSibling;
+    }
+    return null;
+  }
+  function headingDivById(id){
+    const div = id ? captureList.querySelector(`:scope > .item[data-id="${id}"]`) : null;
+    return isSectionHeading(div) ? div : null;
+  }
+  // セクションの最後の行(中身が無ければ見出し行そのもの)
+  function sectionEndItem(headDiv){
+    let last = headDiv, el = headDiv.nextElementSibling;
+    while(el && !isSectionHeading(el)){
+      if(el.classList.contains("item")) last = el;
+      el = el.nextElementSibling;
+    }
+    return last;
+  }
+  function currentSectionEndItem(){
+    const head = headingDivById(currentSectionId);
+    return head ? sectionEndItem(head) : null;
+  }
+
+  // 見出しの表示用テキスト(装飾記法を外した1行目)
+  function headingLabel(div){
+    const ta = div.querySelector("textarea");
+    const firstLine = ((ta && ta.value) || "").split("\n")[0];
+    const tmp = document.createElement("div");
+    tmp.innerHTML = renderMemoMarkdown(firstLine);
+    return tmp.textContent.trim() || "(無題の見出し)";
+  }
+
+  function setCurrentSection(id, opts){
+    // 目次・◀▶などで明示的に見出しを選んだときは、一覧の行選択(フォーカス)を外して
+    // 次のキャプチャが選んだ見出しへ確実に入るようにする(行選択の方が優先されるため)
+    if(opts){
+      const el = document.activeElement;
+      if(el && captureList.contains(el)) el.blur();
+    }
+    currentSectionId = id || null;
+    try{
+      if(currentSectionId) localStorage.setItem(CUR_SECTION_KEY, String(currentSectionId));
+      else localStorage.removeItem(CUR_SECTION_KEY);
+    }catch(e){}
+    refreshSections();
+    if(opts && opts.scroll){
+      const head = headingDivById(currentSectionId);
+      if(head) head.scrollIntoView({ block:"start", behavior:"smooth" });
+    }
+  }
+
+  // レコードを追加した直後: 追加先のセクションを現在の見出しにし、折りたたみ中なら開く。
+  // 見出しを追加した場合は、まだ現在の見出しが無いときだけそれを現在にする
+  // (議題を3〜4つ先に登録したとき、最初の議題が現在の見出しになる)
+  function afterRecordInserted(div){
+    if(isSectionHeading(div)){
+      if(!headingDivById(currentSectionId)) setCurrentSection(Number(div.dataset.id));
+      return;
+    }
+    const head = sectionHeadingOf(div);
+    if(head){
+      if(head._record && head._record.collapsed) setSectionCollapsed(head, false);
+      if(Number(head.dataset.id) !== currentSectionId) setCurrentSection(Number(head.dataset.id));
+    }
+  }
+
+  async function setSectionCollapsed(headDiv, collapsed){
+    const rec = headDiv._record;
+    if(!rec) return;
+    rec.collapsed = collapsed;
+    refreshSections();
+    await saveRecordPreservingOrder(rec);
+  }
+  async function setAllSectionsCollapsed(collapsed){
+    const heads = listItems().filter(isSectionHeading);
+    heads.forEach((h) => { if(h._record) h._record.collapsed = collapsed; });
+    refreshSections();
+    for(const h of heads) await saveRecordPreservingOrder(h._record);
+  }
+
+  // 見出しのセクション末尾(=次の見出しの直前)に見出しを順に追加する。
+  // editLast=trueなら最後に追加した見出しをすぐ入力状態にする
+  async function addHeadingsAfterSection(headDiv, texts, editLast){
+    let anchor = sectionEndItem(headDiv);
+    let lastDiv = null;
+    for(const text of texts){
+      const record = await addCaptureRecord(null, anchor);
+      lastDiv = captureList.querySelector(`.item[data-id="${record.id}"]`);
+      if(text){
+        record.memo = text;
+        lastDiv.querySelector("textarea").value = text;
+        await saveRecordPreservingOrder(record);
+        const preview = lastDiv.querySelector(".memoPreview");
+        if(preview) preview.innerHTML = renderMemoMarkdown(text);
+      }
+      anchor = lastDiv;
+    }
+    refreshSections();
+    if(editLast && lastDiv){
+      const preview = lastDiv.querySelector(".memoPreview");
+      if(preview) preview.click();
+    }
+  }
+
+  let sectionRefreshTimer = null;
+  function scheduleSectionRefresh(){
+    clearTimeout(sectionRefreshTimer);
+    sectionRefreshTimer = setTimeout(refreshSections, 0);
+  }
+
+  // 折りたたみ・件数・現在の見出しの強調・目次・見出し選択欄・常時表示ウィンドウの表示を一括で更新する
+  function refreshSections(){
+    clearTimeout(sectionRefreshTimer);
+    const items = listItems();
+    const sections = []; // { head, caps, memos }
+    let cur = null, collapsed = false;
+    items.forEach((div) => {
+      if(isSectionHeading(div)){
+        cur = { head: div, caps: 0, memos: 0 };
+        sections.push(cur);
+        collapsed = !!(div._record && div._record.collapsed);
+        div.hidden = false;
+        return;
+      }
+      div.hidden = collapsed;
+      if(cur){
+        if(div.classList.contains("item-heading")) cur.memos++; else cur.caps++;
+      }
+    });
+    if(currentSectionId && !sections.some((sec) => Number(sec.head.dataset.id) === currentSectionId)){
+      currentSectionId = null; // 現在の見出しが削除・メモ化された
+      try{ localStorage.removeItem(CUR_SECTION_KEY); }catch(e){}
+    }
+    const countText = (sec) => [sec.caps ? `📸${sec.caps}` : "", sec.memos ? `💬${sec.memos}` : ""].filter(Boolean).join(" ");
+    sections.forEach((sec) => {
+      const head = sec.head, isCollapsed = !!(head._record && head._record.collapsed);
+      head.classList.toggle("is-current", Number(head.dataset.id) === currentSectionId);
+      head.classList.toggle("is-collapsed", isCollapsed);
+      const fb = head.querySelector(".btn-fold");
+      if(fb){ fb.textContent = isCollapsed ? "▸" : "▾"; fb.title = isCollapsed ? "このセクションを開く" : "このセクションを折りたたむ"; }
+      const sc = head.querySelector(".secCount");
+      if(sc) sc.textContent = countText(sec);
+    });
+    // 見出し以外(メモ化した行)に残った強調・件数表示を消す
+    items.forEach((div) => {
+      if(isSectionHeading(div)) return;
+      div.classList.remove("is-current", "is-collapsed");
+      const sc = div.querySelector(".secCount");
+      if(sc) sc.textContent = "";
+    });
+
+    sectionSelect.innerHTML = `<option value="">${sections.length ? "⤓ 見出しを指定しない(末尾に追加)" : "見出しがありません(📝見出しで議題を登録)"}</option>` +
+      sections.map((sec) => {
+        const id = sec.head.dataset.id, c = countText(sec);
+        return `<option value="${id}">📍 ${escapeHtml(headingLabel(sec.head))}${c ? "  " + c : ""}</option>`;
+      }).join("");
+    sectionSelect.value = currentSectionId ? String(currentSectionId) : "";
+
+    tocList.innerHTML = sections.length
+      ? sections.map((sec) => {
+          const id = sec.head.dataset.id, c = countText(sec);
+          return `<a href="#" data-id="${id}" class="${Number(id) === currentSectionId ? "active" : ""}">` +
+            `<span class="tocLabel">${escapeHtml(headingLabel(sec.head))}</span><span class="tocCount">${c}</span></a>`;
+        }).join("")
+      : `<div class="tocEmpty">📝見出しを追加すると目次になります</div>`;
+
+    updatePipSection();
+  }
+
+  function escapeHtml(t){
+    return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function currentSectionText(){
+    const head = headingDivById(currentSectionId);
+    return head ? headingLabel(head) : "見出しなし(末尾に追加)";
+  }
+
+  // 前後の見出しへ移動(現在の見出しが無いときは、次=最初の見出し・前=最後の見出し)
+  function moveSection(delta, scroll){
+    const heads = listItems().filter(isSectionHeading);
+    if(heads.length === 0) return;
+    const idx = heads.findIndex((h) => Number(h.dataset.id) === currentSectionId);
+    let next;
+    if(idx === -1) next = delta > 0 ? 0 : heads.length - 1;
+    else next = Math.max(0, Math.min(heads.length - 1, idx + delta));
+    setCurrentSection(Number(heads[next].dataset.id), { scroll });
+  }
+
+  sectionSelect.addEventListener("change", () => {
+    setCurrentSection(Number(sectionSelect.value) || null, { scroll: true });
+  });
+  tocList.addEventListener("click", (e) => {
+    const a = e.target.closest("a[data-id]");
+    if(!a) return;
+    e.preventDefault();
+    setCurrentSection(Number(a.dataset.id), { scroll: true });
+  });
+  $("btnSectionPrev").addEventListener("click", () => moveSection(-1, true));
+  $("btnSectionNext").addEventListener("click", () => moveSection(1, true));
+  $("btnFoldAll").addEventListener("click", () => setAllSectionsCollapsed(true));
+  $("btnUnfoldAll").addEventListener("click", () => setAllSectionsCollapsed(false));
+  // Alt+↑/↓で前後の見出しへ(入力欄の操作中は除く。Shift+Alt+↑/↓は行の並び替え)
+  document.addEventListener("keydown", (e) => {
+    if(currentTab !== "record") return;
+    if(!e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) return;
+    if(e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    const tag = document.activeElement && document.activeElement.tagName;
+    if(tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+    e.preventDefault();
+    moveSection(e.key === "ArrowUp" ? -1 : 1, true);
+  });
 
   // ---------- 記録一覧のドラッグ&ドロップ並び替え ----------
   let draggingItem = null;
@@ -1821,6 +2121,7 @@
     if(!draggingItem) return;
     draggingItem.classList.remove("dragging");
     draggingItem = null;
+    refreshSections();
     await persistOrderFromDom();
   });
 
@@ -1834,7 +2135,9 @@
     if(!handle) return;
     const item = handle.closest(".item");
     if(!item) return;
-    const sibling = e.key === "ArrowUp" ? item.previousElementSibling : item.nextElementSibling;
+    // 折りたたみで隠れている行は飛ばして、見えている隣の行と入れ替える
+    let sibling = e.key === "ArrowUp" ? item.previousElementSibling : item.nextElementSibling;
+    while(sibling && sibling.hidden) sibling = e.key === "ArrowUp" ? sibling.previousElementSibling : sibling.nextElementSibling;
     if(!sibling) return; // 端まで来たら何もしない
     e.preventDefault();
     if(e.key === "ArrowUp"){
@@ -1842,6 +2145,10 @@
     }else{
       captureList.insertBefore(item, sibling.nextSibling); // nextSiblingがnullなら末尾へ移動
     }
+    // 折りたたみ中のセクションへ移動した場合は、行が見えなくならないようそのセクションを開く
+    const sec = sectionHeadingOf(item);
+    if(sec && sec !== item && sec._record && sec._record.collapsed) await setSectionCollapsed(sec, false);
+    refreshSections();
     handle.focus(); // 同じノードを再配置しているだけだがブラウザ差異に備えて明示的に再フォーカス
     await persistOrderFromDom();
   });
@@ -1855,6 +2162,7 @@
       captureList.innerHTML = "";
       records.forEach(r => renderItem(r, false));
     }
+    refreshSections();
     updateCount();
   }
 
@@ -1873,6 +2181,7 @@
     await dbClear();
     captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
     updateCount();
+    setCurrentSection(null);
     // 全削除は「新しく始める」操作とみなし、タイトル・日付も初期状態へ戻す
     exportTitleInput.value = "";
     exportDateInput.value = todayString();
@@ -2738,12 +3047,23 @@
         }
         button:active{opacity:.85;}
         .st{font-size:11px; opacity:.7; text-align:center;}
+        .sec{display:flex; align-items:center; gap:6px; width:92%;}
+        .sec .nav{width:auto; padding:4px 9px; font-size:12px; border-radius:6px; background:${theme === "light" ? "#e7e9ee" : "#262b38"}; color:inherit; font-weight:400;}
+        #pipSec{flex:1; min-width:0; font-size:12px; font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
       </style>
     `;
     win.document.body.innerHTML = `
+      <div class="sec">
+        <button class="nav" id="pipPrev" title="前の見出し">◀</button>
+        <span id="pipSec" title="現在の見出し(キャプチャの追加先)"></span>
+        <button class="nav" id="pipNext" title="次の見出し">▶</button>
+      </div>
       <button id="pipCaptureBtn">📸 キャプチャ</button>
       <div class="st" id="pipStatusText">Spaceキーでも撮影できます</div>
     `;
+    win.document.getElementById("pipPrev").addEventListener("click", () => moveSection(-1, false));
+    win.document.getElementById("pipNext").addEventListener("click", () => moveSection(1, false));
+    updatePipSection();
 
     // 共有パネル側のvideoは動かさず、PiPウィンドウ側に「別のvideo要素」を新設して
     // 同じMediaStreamを流す。1本のstreamは複数のvideo要素へ同時に紐付けられるため、
@@ -2763,7 +3083,9 @@
     const pipBtn = win.document.getElementById("pipCaptureBtn");
     const pipStatus = win.document.getElementById("pipStatusText");
     const flash = async () => {
-      const ok = await captureNow();
+      // 常時表示ウィンドウからの撮影は、本体側に残っている行のフォーカスではなく
+      // 「現在の見出し」(小窓に表示中の追加先)へ入れる
+      const ok = await captureNow(null);
       pipStatus.textContent = ok ? "撮影しました" : "範囲が未固定です";
       setTimeout(() => { pipStatus.textContent = "Spaceキーでも撮影できます"; }, 900);
     };
@@ -2771,6 +3093,13 @@
     win.document.addEventListener("keydown", (e) => {
       if(e.code === "Space"){ e.preventDefault(); flash(); }
     });
+  }
+
+  // 常時表示ウィンドウに現在の見出し(キャプチャの追加先)を表示する
+  function updatePipSection(){
+    if(!pipWindow) return;
+    const el = pipWindow.document.getElementById("pipSec");
+    if(el) el.textContent = "📍 " + currentSectionText();
   }
 
   function restoreVideoFromPip(){
@@ -2791,7 +3120,7 @@
       pipWindow.focus();
       return;
     }
-    pipWindow = await documentPictureInPicture.requestWindow({ width:220, height:110 });
+    pipWindow = await documentPictureInPicture.requestWindow({ width:260, height:150 });
     buildPipDocument(pipWindow);
     setPipButtonActive(true);
     pipWindow.addEventListener("pagehide", () => {
