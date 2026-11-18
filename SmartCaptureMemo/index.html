@@ -282,7 +282,9 @@
   #tocList a:hover{background:var(--surface2);}
   #tocList a.active{border-left-color:var(--accent); color:var(--accent); font-weight:700; background:var(--surface2);}
   #tocList .tocLabel{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  #tocList .tocCount{flex-shrink:0; font-size:10px; color:var(--sub); font-weight:400;}
+  #tocList .tocCount{flex-shrink:0; display:flex; gap:6px; font-size:10px; color:var(--sub); font-weight:400;}
+  #tocList .tocNum{display:inline-flex; align-items:baseline; gap:1px;}
+  #tocList .tocNum b{display:inline-block; min-width:2ch; text-align:right; font-weight:400; font-variant-numeric:tabular-nums;}
   .tocEmpty{font-size:11px; color:var(--sub); padding:4px 8px;}
   .type-badge{
     cursor:pointer; padding:1px 6px; border-radius:10px; background:var(--surface2);
@@ -2021,11 +2023,16 @@
       }).join("");
     sectionSelect.value = currentSectionId ? String(currentSectionId) : "";
 
+    // 目次の件数は📸・💬をそれぞれ固定幅の列にして、桁数や有無が違ってもアイコンの位置を揃える
+    // (どのセクションにもメモが無ければ💬列は出さない)
+    const anyMemos = sections.some((sec) => sec.memos);
+    const countCell = (icon, n) => `<span class="tocNum"${n ? "" : " style=\"visibility:hidden\""}>${icon}<b>${n || 0}</b></span>`;
     tocList.innerHTML = sections.length
       ? sections.map((sec) => {
-          const id = sec.head.dataset.id, c = countText(sec);
+          const id = sec.head.dataset.id;
           return `<a href="#" data-id="${id}" class="${Number(id) === currentSectionId ? "active" : ""}">` +
-            `<span class="tocLabel">${escapeHtml(headingLabel(sec.head))}</span><span class="tocCount">${c}</span></a>`;
+            `<span class="tocLabel">${escapeHtml(headingLabel(sec.head))}</span>` +
+            `<span class="tocCount">${countCell("📸", sec.caps)}${anyMemos ? countCell("💬", sec.memos) : ""}</span></a>`;
         }).join("")
       : `<div class="tocEmpty">📝見出しを追加すると目次になります</div>`;
 
@@ -3754,11 +3761,12 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
     ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
-    ["v02_2026-11-18.2","見出しの◀▶(常時表示ウィンドウ・Alt+↑/↓含む)を、端まで行ったら反対側へ循環するように変更"]
+    ["v02_2026-11-18.2","見出しの◀▶(常時表示ウィンドウ・Alt+↑/↓含む)を、端まで行ったら反対側へ循環するように変更"],
+    ["v02_2026-11-18.3","目次の件数(📸・💬)を固定幅の列にし、桁数が違ってもアイコンの位置が揃うように"]
   ];
 
   const verLabel = $("verLabel");
