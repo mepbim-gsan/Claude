@@ -410,14 +410,16 @@
   mark .memo-col-blue, .memo-col-blue mark{color:var(--memo-col-blue) !important;}
   mark .memo-col-green, .memo-col-green mark{color:var(--memo-col-green) !important;}
 
-  /* ヘッダーのタイトル下にバージョンを常時表示(クリックで更新履歴)。
-     前回見たバージョンから更新されていたら「NEW」を付けて知らせる */
+  /* ヘッダーのタイトル下にバージョンを常時表示。前回見たバージョンから更新されていたら「NEW」を付けて知らせる
+     (クリックでNEWを既読に)。更新履歴は表に出さず、バージョン表記の5回連続クリックで開くイースターエッグ */
   .brand{display:flex; flex-direction:column; align-items:flex-start; min-width:0; line-height:1.2;}
   .verBtn{
     background:transparent; color:var(--sub); border:none; padding:1px 0 0; font-size:10.5px; font-weight:400;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; white-space:nowrap;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; cursor:default; white-space:nowrap;
+    -webkit-user-select:none; user-select:none;
   }
-  .verBtn:hover:not(:disabled){color:var(--accent); text-decoration:underline; opacity:1;}
+  .verBtn:hover:not(:disabled){opacity:1;}
+  .verBtn.is-new{cursor:pointer;}
   .verBtn.is-new::after{
     content:"NEW"; margin-left:6px; padding:0 5px; border-radius:8px; background:var(--accent); color:#fff;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:9px; font-weight:700; vertical-align:1px;
@@ -595,7 +597,7 @@
   <div class="appBar">
     <div class="brand">
       <h1>SmartCaptureMemo</h1>
-      <button class="verBtn" id="verLabel" type="button" title="更新履歴を見る"></button>
+      <button class="verBtn" id="verLabel" type="button" tabindex="-1"></button>
     </div>
     <span class="chip" id="shareChip" tabindex="0" role="button" title="範囲タブを開く">🖥 未共有</span>
     <button class="iconBtn" id="btnSettings" type="button" title="設定">⚙</button>
@@ -638,10 +640,9 @@
         </div>
       </section>
       <section class="setSec">
-        <h3>ヘルプ・バージョン</h3>
+        <h3>ヘルプ</h3>
         <div class="row">
           <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
-          <button class="secondary" id="btnVersion" type="button" title="更新履歴">更新履歴</button>
         </div>
       </section>
     </div>
@@ -3967,8 +3968,21 @@
     versionModal.classList.remove("open");
     unlockBodyScroll();
   }
-  $("btnVersion").addEventListener("click", openVersionModal);
-  verLabel.addEventListener("click", openVersionModal);
+  // バージョン表記: 1回のクリックでNEWを既読にするだけ。2秒以内に5回連続でクリックすると更新履歴が開く
+  let verClicks = 0, verClickTimer = null;
+  verLabel.addEventListener("click", () => {
+    if(verLabel.classList.contains("is-new")){
+      verLabel.classList.remove("is-new");
+      try{ localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION); }catch(e){}
+    }
+    verClicks++;
+    clearTimeout(verClickTimer);
+    verClickTimer = setTimeout(() => { verClicks = 0; }, 2000);
+    if(verClicks >= 5){
+      verClicks = 0;
+      openVersionModal();
+    }
+  });
   btnVersionClose.addEventListener("click", closeVersionModal);
   versionModal.addEventListener("click", (e) => {
     if(e.target === versionModal) closeVersionModal();
