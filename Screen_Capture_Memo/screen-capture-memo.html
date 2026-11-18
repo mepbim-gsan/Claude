@@ -7,11 +7,11 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9D</text></svg>">
 <!--
   @tool      Screen Capture Memo
-  @version   v101
+  @version   v102
+  @changelog v102: ユーザーから「同じ名前で複数回保存されたものは、わかるように記載できますか」と要望。`renderExportHistoryList()`で、取得した全履歴エントリを`fileName`ごとにグループ化し、タイムスタンプ昇順で通し番号(例: 同じ名前が3件なら1回目〜3回目)を振る。重複が無いファイル名はバッジを表示せず、重複がある場合のみ各行のファイル名の横に`同名X/Y`(X=この行の通し番号、Y=その名前の総保存回数)という小さなバッジを表示し、最新(X=Y)のものだけアクセントカラーの枠にして視認性を上げる。ツールチップで「同じファイル名でY回保存されています(これはX回目)」と案内。保存先フォルダの有無に関わらずローカルの履歴データだけで計算できる純粋な表示ロジックのため、DBスキーマやJSON同期ロジックへの変更は無し。Playwrightで、同じタイトル・日付のまま3回エクスポート+別タイトルで1回エクスポートし、重複の3件には「同名1/3」「同名2/3」「同名3/3」(最新のみ強調スタイル)、重複の無い1件にはバッジが出ないことをスクリーンショット付きで確認。
   @changelog v101: ユーザーから「json更新時に、フォルダ内にファイルが存在していない場合、取り消し線を入れられますか」と要望。保存先フォルダ(v100でJSON履歴同期に使っているのと同じフォルダ)へHTML保存するたびに、ローカルDBの全履歴エントリについてファイル名が実際にフォルダ内に存在するか`fileExistsInDir()`で確認し(同名ファイルは重複排除して1回だけ確認)、見つからなければ`missing:true`をローカルDB・JSON両方に保存する`refreshMissingFlags(dirHandle)`を新設。既存のadd専用`historyAdd`に加え、既存エントリを更新できる`historyPut`も新設。履歴一覧モーダルでは`missing`なエントリのファイル名部分に取り消し線(`.hist-missing`、色も薄く)を表示し、ツールチップで「保存先フォルダに見つかりません。移動・削除された可能性があります」と案内。ユーザーが後でファイルを元に戻せば、次回のHTML保存時に再チェックされ取り消し線は自動的に消える(missing:falseへ復帰)。この判定は保存先フォルダへの書き込みが成功した経路でのみ実行され、通常ダウンロード(保存先フォルダ未設定時)の履歴は対象外。内部関数を一時的に公開したテスト専用コピー(本番には含めない使い捨てコピー)に対しPlaywrightで、存在する2件はmissing:false・存在しない1件はmissing:trueになること、ローカルDBにも反映されること、ファイルを後から削除すると次回チェックでmissing:trueに変わること、逆に復活させるとmissing:falseに戻ることを確認。あわせて本番ファイルに対しても通常ダウンロード経路でのエクスポート履歴記録・モーダル表示・個別削除に回帰がないことを確認。
   @changelog v100: v99の書き出し履歴機能について、ユーザーから「OneDriveのどこに保存したか分かる記録が欲しい」と相談。File System Access APIはブラウザ仕様上フォルダの絶対パスを取得できない(取得できるのはフォルダ名のみ)ことを説明したうえで、ユーザーから「保存先フォルダにJSONを置いて都度読み書きすれば、ブラウザのキャッシュに依存せずOneDrive経由で他端末とも共有できるのでは」との提案があり、さらに「HTML保存クリック時にまずJSONをロードして履歴を更新し、保存と同時にJSONへ追記する」という具体的な流れの提案を受け実装。保存先フォルダ(`pendingDirHandle`)へ書き込み成功する経路でのみ、保存するHTML本体とあわせて`screen-capture-memo-history.json`という配列ファイルを読み書きする。各履歴エントリに端末をまたいで衝突しないuid(`genUid()`、時刻+乱数)を付与し、`syncHistoryWithDir()`で「JSON内のuidを持つがローカルDBに無いエントリ」だけをローカルへ取り込み(他端末分の取り込み)、ローカル全件+新規エントリをuidで重複排除してJSONへ書き戻す。JSON書き込みが失敗してもHTML本体の保存自体は成功扱いとし、コンソールログのみに留める。保存先フォルダ未設定時やフォルダへの書き込み自体が失敗した場合(通常ダウンロードへのフォールバック)は従来通りローカルのみの記録。
-  @changelog v99: ユーザーから「HTMLで保存したリストをキャッシュで残せますか」と相談。意図を確認したところ、記録一覧(キャプチャ/メモ)自体ではなく「いつ・どのファイル名でHTML保存したか」という書き出し履歴を残したい、という要望と判明。IndexedDBに新しいストア`exportHistory`(DBバージョンを2→3に上げて追加、既存2ストアはそのまま)を新設し、`btnExport`の3つの成功パス(保存先フォルダへの書き込み成功/書き込み失敗時のダウンロードへのフォールバック/通常ダウンロード)それぞれで、日時・ファイル名・資料タイトル・日付・件数を記録。記録一覧ヘッダー行に既存の🔄更新ボタンと並べて🕘履歴ボタンを新設し、クリックで`VERSION_HISTORY`の更新履歴モーダルと同じ構造・スタイルの一覧モーダルを表示(新しい書き出しが上、各行に個別削除ボタン付き)。同名ファイルの上書き確認でキャンセルした場合(実際には保存されない)は記録しないよう分岐。Playwrightで、エクスポート前は履歴が空であること、2回エクスポートすると2件記録されダイアログに新しい順で表示されること、個別削除で1件だけ消えること、ページエラーが発生しないことを確認。
-  ※ v01〜v98の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v99の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -417,6 +417,13 @@
   #exportHistoryList .hist-missing{
     text-decoration:line-through; color:var(--sub);
   }
+  #exportHistoryList .hist-dup{
+    flex-shrink:0; font-size:10px; line-height:1; white-space:nowrap;
+    color:var(--sub); border:1px solid var(--border); border-radius:4px; padding:3px 5px;
+  }
+  #exportHistoryList .hist-dup-latest{
+    color:var(--accent); border-color:var(--accent);
+  }
   #exportHistoryList .hist-del{
     flex-shrink:0; background:transparent; color:var(--sub); border:1px solid transparent;
     padding:4px 8px; font-size:13px; cursor:pointer; border-radius:6px;
@@ -491,7 +498,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v101</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v102</span>
 </header>
 
 <div id="versionModal">
@@ -3544,7 +3551,8 @@
     ["v98","📸キャプチャボタン・クリップボード貼り付けで、選択行があってもボタンへのフォーカス移動により無視され常に最下段に入ってしまう不具合を修正(見出し/メモ追加と同じ仕組みに統一)"],
     ["v99","HTML保存の書き出し履歴(日時・ファイル名・件数)を記録一覧ヘッダーの🕘履歴ボタンから確認できるように追加"],
     ["v100","保存先フォルダ設定時、書き出し履歴をフォルダ内のJSONファイルにも保存し、他端末(同じOneDriveフォルダ等)とも共有できるように対応"],
-    ["v101","書き出し履歴一覧で、保存先フォルダ内に実ファイルが見つからないエントリへ取り消し線を表示するように対応"]
+    ["v101","書き出し履歴一覧で、保存先フォルダ内に実ファイルが見つからないエントリへ取り消し線を表示するように対応"],
+    ["v102","書き出し履歴一覧で、同じファイル名で複数回保存された場合に「同名X/Y」バッジを表示するように対応"]
   ];
 
   const verLabel = $("verLabel");
@@ -3585,13 +3593,30 @@
       exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">まだ書き出し履歴がありません</div>`;
       return;
     }
-    exportHistoryList.innerHTML = items.map((h) => `
+    // 同じファイル名で複数回保存されている場合に分かるよう、古い順の通し番号(何回目/計何回)を振る
+    const byName = new Map();
+    items.forEach((h) => {
+      if(!byName.has(h.fileName)) byName.set(h.fileName, []);
+      byName.get(h.fileName).push(h);
+    });
+    byName.forEach((list) => {
+      list.sort((a, b) => a.timestamp - b.timestamp); // 古い順
+      list.forEach((h, i) => { h._dupIndex = i + 1; h._dupTotal = list.length; });
+    });
+
+    exportHistoryList.innerHTML = items.map((h) => {
+      const dupBadge = h._dupTotal > 1
+        ? `<span class="hist-dup${h._dupIndex === h._dupTotal ? " hist-dup-latest" : ""}" title="同じファイル名で${h._dupTotal}回保存されています(これは${h._dupIndex}回目)">同名${h._dupIndex}/${h._dupTotal}</span>`
+        : "";
+      return `
       <li data-id="${h.id}">
         <span class="hist-time">${fmtTime(h.timestamp)}</span>
         <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${h.fileName}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}">${h.fileName}(${h.count}件)</span>
+        ${dupBadge}
         <button class="hist-del" title="この履歴を削除">🗑</button>
       </li>
-    `).join("");
+    `;
+    }).join("");
     exportHistoryList.querySelectorAll("li").forEach((li) => {
       li.querySelector(".hist-del").addEventListener("click", async () => {
         await historyDelete(Number(li.dataset.id));
