@@ -89,6 +89,8 @@
     padding:4px 0 8px; margin-bottom:6px; border-bottom:1px solid var(--border);
   }
   #sectionNav{margin-top:8px;}
+  /* キャプチャ・貼り付け・見出し・メモ・常時表示は同じ幅に揃える(狭い幅では行を等分) */
+  #captureRow > button{flex:0 0 124px; padding-left:6px; padding-right:6px;}
   #sectionSelect{flex:1; min-width:0; max-width:420px;}
   .navBtn{padding:7px 10px; font-size:12px;}
   #recordLayout{display:flex; gap:16px; align-items:flex-start;}
@@ -149,6 +151,7 @@
     #page-range:not(.active){width:100vw;}
     .iconable .btnLabel{display:none;}
     .iconable{padding-left:11px; padding-right:11px;}
+    #captureRow > button{flex:1 1 0; min-width:0; max-width:64px;}
     #docBar #exportDate{width:118px;}
     #docBar #exportTitle{min-width:80px;}
   }
@@ -3761,12 +3764,13 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
     ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
     ["v02_2026-11-18.2","見出しの◀▶(常時表示ウィンドウ・Alt+↑/↓含む)を、端まで行ったら反対側へ循環するように変更"],
-    ["v02_2026-11-18.3","目次の件数(📸・💬)を固定幅の列にし、桁数が違ってもアイコンの位置が揃うように"]
+    ["v02_2026-11-18.3","目次の件数(📸・💬)を固定幅の列にし、桁数が違ってもアイコンの位置が揃うように"],
+    ["v02_2026-11-18.4","記録タブのキャプチャ/貼り付け/見出し/メモ/常時表示ボタンの幅を統一"]
   ];
 
   const verLabel = $("verLabel");
