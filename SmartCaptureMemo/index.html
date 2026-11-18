@@ -2048,7 +2048,7 @@
     const idx = heads.findIndex((h) => Number(h.dataset.id) === currentSectionId);
     let next;
     if(idx === -1) next = delta > 0 ? 0 : heads.length - 1;
-    else next = Math.max(0, Math.min(heads.length - 1, idx + delta));
+    else next = (idx + delta + heads.length) % heads.length; // 端まで行ったら反対側へ循環(最後の次は最初、最初の前は最後)
     setCurrentSection(Number(heads[next].dataset.id), { scroll });
   }
 
@@ -3754,10 +3754,11 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
-    ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"]
+    ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
+    ["v02_2026-11-18.2","見出しの◀▶(常時表示ウィンドウ・Alt+↑/↓含む)を、端まで行ったら反対側へ循環するように変更"]
   ];
 
   const verLabel = $("verLabel");
