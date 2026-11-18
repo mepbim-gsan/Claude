@@ -2389,49 +2389,70 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${docTitleEsc}</title>
 <style>
-  :root{--bg:#0f1115;--text:#e6e8ec;--sub:#9aa0ac;--panel:#171a21;--border:#2a2e3a;--accent:#4f8cff;--mark-bg:#fde047;--mark-fg:#1c1f26;--memo-col-red:#e5484d;--memo-col-blue:#3b82f6;--memo-col-green:#2fa360;}
+  /* 配色・部品はSmartCaptureMemo本体と同じトークン/見た目に揃える */
+  :root{--bg:#0f1115;--panel:#171a21;--surface2:#1c2029;--border:#2a2e3a;--text:#e6e8ec;--sub:#9aa0ac;--accent:#4f8cff;--secondary-bg:#262b38;--mark-bg:#fde047;--mark-fg:#1c1f26;--memo-col-red:#e5484d;--memo-col-blue:#3b82f6;--memo-col-green:#2fa360;}
   @media (prefers-color-scheme: light){
-    :root{--bg:#f5f6f8;--text:#1c1f26;--sub:#6b7280;--panel:#ffffff;--border:#d8dbe2;--accent:#3b6fe0;}
+    :root{--bg:#f5f6f8;--panel:#ffffff;--surface2:#eef0f4;--border:#d8dbe2;--text:#1c1f26;--sub:#6b7280;--accent:#3b6fe0;--secondary-bg:#e7e9ee;}
   }
-  html[data-theme="light"]{--bg:#f5f6f8;--text:#1c1f26;--sub:#6b7280;--panel:#ffffff;--border:#d8dbe2;--accent:#3b6fe0;}
-  html[data-theme="dark"]{--bg:#0f1115;--text:#e6e8ec;--sub:#9aa0ac;--panel:#171a21;--border:#2a2e3a;--accent:#4f8cff;}
+  html[data-theme="light"]{--bg:#f5f6f8;--panel:#ffffff;--surface2:#eef0f4;--border:#d8dbe2;--text:#1c1f26;--sub:#6b7280;--accent:#3b6fe0;--secondary-bg:#e7e9ee;}
+  html[data-theme="dark"]{--bg:#0f1115;--panel:#171a21;--surface2:#1c2029;--border:#2a2e3a;--text:#e6e8ec;--sub:#9aa0ac;--accent:#4f8cff;--secondary-bg:#262b38;}
   *{box-sizing:border-box;}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);margin:0;}
+
   .controls{
-    position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+    position:sticky; top:0; z-index:10; background:var(--bg);
+    border-bottom:1px solid var(--border); box-shadow:0 6px 14px rgba(0,0,0,.18);
   }
-  .controls strong{font-size:14px;}
-  .controls select, .controls button{
-    background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px;
-    padding:7px 12px; font-size:13px; cursor:pointer; font-family:inherit;
+  .appBar{display:flex; align-items:center; gap:10px; padding:10px 16px 6px;}
+  .appBar h1{font-size:15px; margin:0; font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .appBar .chip{font-size:11px; color:var(--sub); border:1px solid var(--border); border-radius:12px; padding:3px 9px; white-space:nowrap;}
+  .appBar .rightGroup{margin-left:auto; display:flex; gap:8px; flex-shrink:0;}
+  .controls button, .controls select{
+    background:var(--secondary-bg); color:var(--text); border:1px solid var(--border); border-radius:8px;
+    padding:6px 11px; font-size:13px; cursor:pointer; font-family:inherit;
   }
-  .controls .rightGroup{margin-left:auto; display:flex; gap:10px;}
+  .modeBar{display:flex; align-items:center; gap:2px 12px; padding:0 12px; flex-wrap:wrap;}
+  .modeTabs{display:flex; gap:2px;}
+  .controls .modeTab{
+    background:transparent; color:var(--sub); border:none; border-radius:0; border-bottom:3px solid transparent;
+    padding:8px 10px 7px; font-size:13px; font-weight:500;
+  }
+  .controls .modeTab:hover{color:var(--text);}
+  .controls .modeTab.active{color:var(--accent); border-bottom-color:var(--accent); font-weight:700;}
+  #layoutSelect{display:none;}
   #perPageWrap{display:none; align-items:center; gap:6px; font-size:12px; color:var(--sub);}
   #gridCommentWrap{display:none; align-items:center; gap:6px; font-size:12px; color:var(--sub); cursor:pointer;}
+  .controls #perPageSelect{padding:4px 8px;}
 
-  main{max-width:900px; margin:0 auto; padding:24px;}
-  #docTitle{font-size:18px; margin:0 0 16px; padding-bottom:10px; border-bottom:2px solid var(--border);}
+  .layout{display:flex; gap:16px; align-items:flex-start; max-width:1180px; margin:0 auto; padding:14px 16px;}
+  main{flex:1; min-width:0; max-width:900px; margin:0 auto;}
+  #docTitle{font-size:18px; margin:4px 0 14px; padding-bottom:10px; border-bottom:2px solid var(--border);}
   .docDateTag{font-size:13px; font-weight:400; color:var(--sub);}
 
   #tocPanel{
-    display:block; position:fixed; top:76px; right:24px; width:200px; max-height:calc(100vh - 100px);
-    overflow-y:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px;
-    padding:12px 14px; z-index:5;
+    display:block; position:sticky; top:calc(var(--controls-h, 90px) + 10px); width:220px; flex-shrink:0;
+    max-height:calc(100vh - var(--controls-h, 90px) - 24px); overflow-y:auto;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 8px; z-index:5;
   }
   #tocPanel.toc-hidden{ display:none !important; }
-  #tocPanel h2{font-size:11px; color:var(--sub); margin:0 0 8px; font-weight:600; letter-spacing:.02em;}
-  #tocPanel nav{display:flex; flex-direction:column;}
+  #tocPanel h2{font-size:11px; color:var(--sub); margin:0 6px 6px; font-weight:600;}
+  #tocPanel nav{display:flex; flex-direction:column; gap:1px;}
   #tocPanel a{
-    display:block; color:var(--text); text-decoration:none; font-size:12px; line-height:1.4;
-    padding:4px 0 4px 8px; margin-left:-1px; border-left:2px solid transparent; opacity:.85;
+    display:flex; gap:6px; align-items:baseline; padding:6px 8px; border-radius:6px; text-decoration:none;
+    color:var(--text); font-size:12px; line-height:1.4; border-left:3px solid transparent;
   }
-  #tocPanel a:hover{opacity:1; border-left-color:var(--accent);}
-  #tocPanel a.active{opacity:1; font-weight:700; color:var(--accent); border-left-color:var(--accent);}
+  #tocPanel a:hover{background:var(--surface2);}
+  #tocPanel a.active{border-left-color:var(--accent); color:var(--accent); font-weight:700; background:var(--surface2);}
+  #tocPanel .tocLabel{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  #tocPanel .tocCount{flex-shrink:0; display:flex; gap:6px; font-size:10px; color:var(--sub); font-weight:400;}
+  #tocPanel .tocNum{display:inline-flex; align-items:baseline; gap:1px;}
+  #tocPanel .tocNum b{display:inline-block; min-width:2ch; text-align:right; font-weight:400; font-variant-numeric:tabular-nums;}
   #tocEdgeTrigger{ display:none; }
-  @media (max-width:1300px){
+  @media (max-width:899px){
+    .layout{display:block;}
+    #tocPanel{position:fixed; max-height:none;}
     #tocPanel{
-      top:0; right:0; width:240px; max-height:none; height:100vh; border-radius:10px 0 0 10px;
+      top:0; right:0; width:260px; max-height:none; height:100vh; border-radius:10px 0 0 10px;
       transform:translateX(100%); transition:transform .25s ease; box-shadow:-6px 0 20px rgba(0,0,0,.3);
       z-index:40; padding-top:20px;
     }
@@ -2448,15 +2469,17 @@
   }
   @media print{ .pageHeaderPrint{display:block;} }
 
-  .rec{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;break-inside:avoid;}
+  .rec{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px;break-inside:avoid;}
   .rec-meta{font-size:12px;color:var(--sub);margin-bottom:8px;}
-  .rec img{max-width:100%;border-radius:6px;border:1px solid var(--border);}
-  .rec-memo{margin-top:10px;font-size:14px;white-space:pre-wrap;}
+  .rec img{display:block;max-width:100%;border-radius:6px;border:1px solid var(--border);}
+  .rec-memo{margin-top:8px;font-size:14px;line-height:1.5;white-space:pre-wrap;}
+  .rec-memo.is-empty{display:none;}
   .recHeading{
-    font-weight:700; font-size:16px; padding:10px 0 10px 12px; margin:22px 0 12px;
+    font-weight:700; font-size:16px; padding:8px 12px; margin:20px 0 10px; border-radius:4px;
     border-left:4px solid var(--accent); white-space:pre-wrap; break-inside:avoid;
+    scroll-margin-top:calc(var(--controls-h, 90px) + 10px);
   }
-  .recHeading.is-memo{font-weight:400; font-size:14px; border-left-color:var(--border); margin:12px 0;}
+  .recHeading.is-memo{font-weight:400; font-size:14px; border-left-color:var(--border); margin:10px 0;}
 
   .gridPage{display:grid; gap:8mm; margin-bottom:14mm;}
   .gridPage:not(:last-child){break-after:page;}
@@ -2499,7 +2522,9 @@
   @media print{
     :root{--bg:#fff; --panel:#fff; --text:#111; --sub:#555; --border:#ccc;}
     .controls{display:none !important;}
+    .layout{display:block; max-width:none; padding:0;}
     main{max-width:none; padding:0;}
+    .rec{background:#fff;}
     #lightbox{display:none !important;}
   }
 
@@ -2523,7 +2548,20 @@
 <body>
 
 <div class="controls">
-  <strong>${docTitleEsc} — ${records.length}件</strong>
+  <div class="appBar">
+    <h1>${docTitleEsc}</h1>
+    <span class="chip">${records.length}件</span>
+    <div class="rightGroup">
+      <button id="btnTheme" type="button" title="ライト/ダーク切替">🌙</button>
+      <button id="btnPrint" type="button" title="印刷 / PDF保存">🖨 印刷/PDF</button>
+    </div>
+  </div>
+  <div class="modeBar">
+  <div class="modeTabs">
+    <button type="button" class="modeTab" data-mode="list">📝 一覧</button>
+    <button type="button" class="modeTab" data-mode="grid">▦ PDF: N枚/ページ</button>
+    <button type="button" class="modeTab" data-mode="notes">▤ PDF: ノート</button>
+  </div>
   <select id="layoutSelect">
     <option value="list">一覧表示</option>
     <option value="grid">PDF用: A4にN枚/ページ</option>
@@ -2541,22 +2579,20 @@
   <label id="gridCommentWrap" style="display:none;">
     <input type="checkbox" id="gridCommentToggle" checked> コメント表示
   </label>
-  <div class="rightGroup">
-    <button id="btnTheme" type="button" title="ライト/ダーク切替">🌙</button>
-    <button id="btnPrint" type="button">🖨 印刷 / PDF保存</button>
   </div>
 </div>
 
-<main>
-  <h1 id="docTitle">${docTitleEsc}${dateValue ? ` <span class="docDateTag">・${dateValue}</span>` : ""}</h1>
-  <div id="viewRoot"></div>
-</main>
-
-<div id="tocEdgeTrigger"></div>
+<div class="layout">
 <div id="tocPanel">
   <h2>目次</h2>
   <nav id="tocList"></nav>
 </div>
+<main>
+  <h1 id="docTitle">${docTitleEsc}${dateValue ? ` <span class="docDateTag">・${dateValue}</span>` : ""}</h1>
+  <div id="viewRoot"></div>
+</main>
+</div>
+<div id="tocEdgeTrigger"></div>
 
 <div id="lightbox">
   <img id="lightboxImg" alt="拡大表示" draggable="false">
@@ -2697,7 +2733,7 @@
       if(r.d){
         var rec = el("div", "rec");
         rec.appendChild(makeImg(r.d));
-        rec.appendChild(elLinked("div", "rec-memo", r.m || "(メモなし)"));
+        rec.appendChild(elLinked("div", r.m ? "rec-memo" : "rec-memo is-empty", r.m || ""));
         root.appendChild(rec);
       }else{
         var headingEl = elLinked("div", r.h === false ? "recHeading is-memo" : "recHeading", r.m || "");
@@ -2759,10 +2795,34 @@
       .filter(function(x){ return !x.r.d && x.r.h !== false; });
     if(headings.length === 0){ tocPanel.classList.add("toc-hidden"); return; }
     var links = {};
+    // 各見出しのセクション内の画像・メモ件数(次の見出しまで)
+    function sectionCounts(idx){
+      var caps = 0, memos = 0;
+      for(var i = idx + 1; i < DATA.length; i++){
+        var r = DATA[i];
+        if(!r.d && r.h !== false) break;
+        if(r.d) caps++; else memos++;
+      }
+      return { caps: caps, memos: memos };
+    }
+    var anyMemos = DATA.some(function(r){ return !r.d && r.h === false; });
+    function countCell(icon, n){
+      var s = document.createElement("span");
+      s.className = "tocNum";
+      if(!n) s.style.visibility = "hidden";
+      s.textContent = icon;
+      var b = document.createElement("b"); b.textContent = String(n || 0); s.appendChild(b);
+      return s;
+    }
     headings.forEach(function(h){
       var a = document.createElement("a");
       a.href = "#toc-" + h.idx;
-      a.textContent = h.r.m || "(無題)";
+      var tmp = document.createElement("div"); tmp.innerHTML = renderMemoMarkdown((h.r.m || "").split("\\n")[0]);
+      var label = el("span", "tocLabel", tmp.textContent.trim() || "(無題)");
+      var cnt = sectionCounts(h.idx), cc = el("span", "tocCount");
+      cc.appendChild(countCell("📸", cnt.caps));
+      if(anyMemos) cc.appendChild(countCell("💬", cnt.memos));
+      a.appendChild(label); a.appendChild(cc);
       a.addEventListener("click", function(ev){
         ev.preventDefault();
         var target = document.getElementById("toc-" + h.idx);
@@ -2885,6 +2945,25 @@
     else if(mode === "notes"){ renderNotes(viewRoot, parseInt(perPageSelect.value, 10)); hideToc(); }
   }
   layoutSelect.addEventListener("change", render);
+  // 表示モードはタブで切り替える(内部的には従来のlayoutSelectの値を使う)
+  var modeTabs = Array.prototype.slice.call(document.querySelectorAll(".modeTab"));
+  function syncModeTabs(){
+    modeTabs.forEach(function(t){ t.classList.toggle("active", t.getAttribute("data-mode") === layoutSelect.value); });
+  }
+  modeTabs.forEach(function(t){
+    t.addEventListener("click", function(){
+      layoutSelect.value = t.getAttribute("data-mode");
+      syncModeTabs();
+      render();
+      window.scrollTo(0, 0);
+    });
+  });
+  syncModeTabs();
+  // ヘッダーの高さを目次・見出しの貼り付き位置に反映
+  var controlsEl = document.querySelector(".controls");
+  function updateControlsH(){ document.documentElement.style.setProperty("--controls-h", controlsEl.offsetHeight + "px"); }
+  updateControlsH();
+  if(window.ResizeObserver) new ResizeObserver(updateControlsH).observe(controlsEl);
   perPageSelect.addEventListener("change", render);
   gridCommentToggle.addEventListener("change", render);
   render();
@@ -3780,7 +3859,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18.8"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.9"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
     ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
@@ -3790,7 +3869,8 @@
     ["v02_2026-11-18.5","常時表示ボタンの開いている間の表示を、赤背景から淡いアクセント色+枠・「表示中」表記に変更(文字・アイコンの視認性改善)"],
     ["v02_2026-11-18.6","日付・資料タイトル・HTML保存・⋯メニューをスクロール追従のツールバーへ移動し、一覧のどこからでも保存できるように"],
     ["v02_2026-11-18.7","狭い幅(サイドパネル)でキャプチャ等の5ボタンを行の幅いっぱいに均等配置"],
-    ["v02_2026-11-18.8","htmlpreviewでプレビュー中にHTML保存すると、書き出したHTMLのスクリプトが動かず画像が表示されない不具合を修正"]
+    ["v02_2026-11-18.8","htmlpreviewでプレビュー中にHTML保存すると、書き出したHTMLのスクリプトが動かず画像が表示されない不具合を修正"],
+    ["v02_2026-11-18.9","書き出しHTMLのデザインを本体に合わせて刷新(ヘッダー+表示モードのタブ、左の目次に件数、カード型の行)"]
   ];
 
   const verLabel = $("verLabel");
