@@ -7,11 +7,11 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9D</text></svg>">
 <!--
   @tool      Screen Capture Memo
-  @version   v102
+  @version   v103
+  @changelog v103: ユーザーから「同名は畳んでほしいな」と要望(v102のバッジ表示では不十分で、実際に折りたたんでほしいとのこと)。`renderExportHistoryList()`を書き直し、同じファイル名の履歴は最新1件だけを常時表示する行(primary行)とし、残りは`hidden`属性付きの子行(`.hist-child`)として畳んでおく方式に変更。primary行に「同名N件 ▸/▾」の展開ボタン(`.hist-expand`)を付け、クリックで子行の`hidden`を外す/戻す。展開状態は`expandedHistoryGroups`というファイル名のSetで再描画(削除時など)をまたいで保持。削除は手動DOM操作ではなく丸ごと再描画(`renderExportHistoryList()`再実行)に統一し、primary行を削除した場合に次点の子行が自動的に新しいprimaryへ昇格する(通し番号・展開ボタンも再計算される)ことをPlaywrightで確認。実装中、CSSの`#exportHistoryList li{display:flex}`というID+タグのルールが、ブラウザ標準の`[hidden]{display:none}`より詳細度が高く`hidden`属性を無効化してしまう(JS上はhidden:trueなのに画面には表示されたままになる)不具合をスクリーンショット比較で発見し、`#exportHistoryList li[hidden]{display:none}`を明示的に追加して解消。続けてユーザーから「これは履歴を押したときに、履歴だけ更新する処理も可能ですか」と相談があり、🕘履歴ボタン(`openExportHistoryModal`)のクリック自体をHTML保存と同じ同期のトリガーに追加。保存先フォルダが登録済みの場合のみ、モーダルを開く直前に`showDirectoryPicker({mode:"read"})`でフォルダへの一時アクセスを取得し、`syncHistoryWithDir()`(他端末分のJSON履歴取り込み)・`refreshMissingFlags()`(ファイル消失状況の再確認)を実行してからモーダルを表示する(書き込みは行わないため`readwrite`ではなく`read`モードで十分)。ピッカーをキャンセルした場合(AbortError)はエラー表示せずローカルの履歴のみで表示を続行。Playwrightでは、kvストアへ直接ダミーの`saveDirHandle`を書き込み`showDirectoryPicker`をモックしたうえで🕘履歴ボタンをクリックし、他端末のみに存在するエントリがローカルDBへ取り込まれモーダルに反映されること、missing判定(フォルダ内に実ファイルが無いため`missing:true`)も同時に行われることを確認。あわせて保存先フォルダ未登録時はピッカーが出ず従来通り瞬時にローカル履歴のみ表示されることも確認。
   @changelog v102: ユーザーから「同じ名前で複数回保存されたものは、わかるように記載できますか」と要望。`renderExportHistoryList()`で、取得した全履歴エントリを`fileName`ごとにグループ化し、タイムスタンプ昇順で通し番号(例: 同じ名前が3件なら1回目〜3回目)を振る。重複が無いファイル名はバッジを表示せず、重複がある場合のみ各行のファイル名の横に`同名X/Y`(X=この行の通し番号、Y=その名前の総保存回数)という小さなバッジを表示し、最新(X=Y)のものだけアクセントカラーの枠にして視認性を上げる。ツールチップで「同じファイル名でY回保存されています(これはX回目)」と案内。保存先フォルダの有無に関わらずローカルの履歴データだけで計算できる純粋な表示ロジックのため、DBスキーマやJSON同期ロジックへの変更は無し。Playwrightで、同じタイトル・日付のまま3回エクスポート+別タイトルで1回エクスポートし、重複の3件には「同名1/3」「同名2/3」「同名3/3」(最新のみ強調スタイル)、重複の無い1件にはバッジが出ないことをスクリーンショット付きで確認。
   @changelog v101: ユーザーから「json更新時に、フォルダ内にファイルが存在していない場合、取り消し線を入れられますか」と要望。保存先フォルダ(v100でJSON履歴同期に使っているのと同じフォルダ)へHTML保存するたびに、ローカルDBの全履歴エントリについてファイル名が実際にフォルダ内に存在するか`fileExistsInDir()`で確認し(同名ファイルは重複排除して1回だけ確認)、見つからなければ`missing:true`をローカルDB・JSON両方に保存する`refreshMissingFlags(dirHandle)`を新設。既存のadd専用`historyAdd`に加え、既存エントリを更新できる`historyPut`も新設。履歴一覧モーダルでは`missing`なエントリのファイル名部分に取り消し線(`.hist-missing`、色も薄く)を表示し、ツールチップで「保存先フォルダに見つかりません。移動・削除された可能性があります」と案内。ユーザーが後でファイルを元に戻せば、次回のHTML保存時に再チェックされ取り消し線は自動的に消える(missing:falseへ復帰)。この判定は保存先フォルダへの書き込みが成功した経路でのみ実行され、通常ダウンロード(保存先フォルダ未設定時)の履歴は対象外。内部関数を一時的に公開したテスト専用コピー(本番には含めない使い捨てコピー)に対しPlaywrightで、存在する2件はmissing:false・存在しない1件はmissing:trueになること、ローカルDBにも反映されること、ファイルを後から削除すると次回チェックでmissing:trueに変わること、逆に復活させるとmissing:falseに戻ることを確認。あわせて本番ファイルに対しても通常ダウンロード経路でのエクスポート履歴記録・モーダル表示・個別削除に回帰がないことを確認。
-  @changelog v100: v99の書き出し履歴機能について、ユーザーから「OneDriveのどこに保存したか分かる記録が欲しい」と相談。File System Access APIはブラウザ仕様上フォルダの絶対パスを取得できない(取得できるのはフォルダ名のみ)ことを説明したうえで、ユーザーから「保存先フォルダにJSONを置いて都度読み書きすれば、ブラウザのキャッシュに依存せずOneDrive経由で他端末とも共有できるのでは」との提案があり、さらに「HTML保存クリック時にまずJSONをロードして履歴を更新し、保存と同時にJSONへ追記する」という具体的な流れの提案を受け実装。保存先フォルダ(`pendingDirHandle`)へ書き込み成功する経路でのみ、保存するHTML本体とあわせて`screen-capture-memo-history.json`という配列ファイルを読み書きする。各履歴エントリに端末をまたいで衝突しないuid(`genUid()`、時刻+乱数)を付与し、`syncHistoryWithDir()`で「JSON内のuidを持つがローカルDBに無いエントリ」だけをローカルへ取り込み(他端末分の取り込み)、ローカル全件+新規エントリをuidで重複排除してJSONへ書き戻す。JSON書き込みが失敗してもHTML本体の保存自体は成功扱いとし、コンソールログのみに留める。保存先フォルダ未設定時やフォルダへの書き込み自体が失敗した場合(通常ダウンロードへのフォールバック)は従来通りローカルのみの記録。
-  ※ v01〜v99の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v100の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -407,6 +407,7 @@
     display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border);
     color:var(--sub); line-height:1.5;
   }
+  #exportHistoryList li[hidden]{display:none;} /* li{display:flex}の方が詳細度が高くhidden属性が無効化されるため明示的に上書き */
   #exportHistoryList li:last-child{border-bottom:none;}
   #exportHistoryList .hist-time{
     flex-shrink:0; color:var(--accent); font-weight:700; font-family:monospace; font-size:11px;
@@ -417,12 +418,15 @@
   #exportHistoryList .hist-missing{
     text-decoration:line-through; color:var(--sub);
   }
-  #exportHistoryList .hist-dup{
+  #exportHistoryList .hist-expand{
     flex-shrink:0; font-size:10px; line-height:1; white-space:nowrap;
-    color:var(--sub); border:1px solid var(--border); border-radius:4px; padding:3px 5px;
+    color:var(--sub); border:1px solid var(--border); border-radius:4px; padding:4px 6px;
+    background:transparent; cursor:pointer;
   }
-  #exportHistoryList .hist-dup-latest{
-    color:var(--accent); border-color:var(--accent);
+  #exportHistoryList .hist-expand:hover{ border-color:var(--accent); color:var(--accent); }
+  #exportHistoryList .hist-expand.open{ color:var(--accent); border-color:var(--accent); }
+  #exportHistoryList li.hist-child{
+    padding-left:14px; opacity:.85;
   }
   #exportHistoryList .hist-del{
     flex-shrink:0; background:transparent; color:var(--sub); border:1px solid transparent;
@@ -498,7 +502,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v102</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v103</span>
 </header>
 
 <div id="versionModal">
@@ -3552,7 +3556,8 @@
     ["v99","HTML保存の書き出し履歴(日時・ファイル名・件数)を記録一覧ヘッダーの🕘履歴ボタンから確認できるように追加"],
     ["v100","保存先フォルダ設定時、書き出し履歴をフォルダ内のJSONファイルにも保存し、他端末(同じOneDriveフォルダ等)とも共有できるように対応"],
     ["v101","書き出し履歴一覧で、保存先フォルダ内に実ファイルが見つからないエントリへ取り消し線を表示するように対応"],
-    ["v102","書き出し履歴一覧で、同じファイル名で複数回保存された場合に「同名X/Y」バッジを表示するように対応"]
+    ["v102","書き出し履歴一覧で、同じファイル名で複数回保存された場合に「同名X/Y」バッジを表示するように対応"],
+    ["v103","書き出し履歴一覧で同名ファイルを折りたたみ表示に変更、🕘履歴ボタンを開くたびに保存先フォルダと同期するように対応"]
   ];
 
   const verLabel = $("verLabel");
@@ -3586,6 +3591,19 @@
   const exportHistoryList = $("exportHistoryList");
   const btnExportHistoryClose = $("btnExportHistoryClose");
 
+  let expandedHistoryGroups = new Set(); // 展開中(同名を畳まず表示中)のファイル名。再描画をまたいで状態を覚えておく
+
+  function historyRowHtml(h, { isPrimary, expandBtn }){
+    return `
+      <li class="hist-row${isPrimary ? "" : " hist-child"}" data-id="${h.id}" ${isPrimary ? "" : "hidden"}>
+        <span class="hist-time">${fmtTime(h.timestamp)}</span>
+        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${h.fileName}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}">${h.fileName}(${h.count}件)</span>
+        ${expandBtn || ""}
+        <button class="hist-del" data-id="${h.id}" title="この履歴を削除">🗑</button>
+      </li>
+    `;
+  }
+
   async function renderExportHistoryList(){
     const items = await historyGetAll();
     items.sort((a, b) => b.timestamp - a.timestamp); // 新しい書き出しを上に
@@ -3593,41 +3611,73 @@
       exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">まだ書き出し履歴がありません</div>`;
       return;
     }
-    // 同じファイル名で複数回保存されている場合に分かるよう、古い順の通し番号(何回目/計何回)を振る
+    // 同じファイル名の履歴は1件(最新)だけを表示し、残りは畳んでおく。
+    // グループの並び順はグループ内最新のtimestampで決める(新しい書き出しが上)。
     const byName = new Map();
     items.forEach((h) => {
       if(!byName.has(h.fileName)) byName.set(h.fileName, []);
-      byName.get(h.fileName).push(h);
+      byName.get(h.fileName).push(h); // itemsは既にtimestamp降順なので、各グループも自然に新しい順になる
     });
-    byName.forEach((list) => {
-      list.sort((a, b) => a.timestamp - b.timestamp); // 古い順
-      list.forEach((h, i) => { h._dupIndex = i + 1; h._dupTotal = list.length; });
+    const groups = Array.from(byName.values()).sort((a, b) => b[0].timestamp - a[0].timestamp);
+
+    exportHistoryList.innerHTML = groups.map((group, gi) => {
+      const latest = group[0];
+      const isOpen = group.length > 1 && expandedHistoryGroups.has(latest.fileName);
+      const expandBtn = group.length > 1
+        ? `<button class="hist-expand${isOpen ? " open" : ""}" type="button" data-group="${gi}">同名${group.length}件 <span class="hist-expand-arrow">${isOpen ? "▾" : "▸"}</span></button>`
+        : "";
+      const rows = [historyRowHtml(latest, { isPrimary: true, expandBtn })];
+      group.slice(1).forEach((h) => rows.push(historyRowHtml(h, { isPrimary: false })));
+      return rows.join("");
+    }).join("");
+
+    // 初期描画がisOpenのグループは、子要素のhidden属性を外して表示状態にする
+    groups.forEach((group, gi) => {
+      if(group.length <= 1 || !expandedHistoryGroups.has(group[0].fileName)) return;
+      const btn = exportHistoryList.querySelector(`.hist-expand[data-group="${gi}"]`);
+      let sib = btn ? btn.closest("li").nextElementSibling : null;
+      while(sib && sib.classList.contains("hist-child")){ sib.hidden = false; sib = sib.nextElementSibling; }
     });
 
-    exportHistoryList.innerHTML = items.map((h) => {
-      const dupBadge = h._dupTotal > 1
-        ? `<span class="hist-dup${h._dupIndex === h._dupTotal ? " hist-dup-latest" : ""}" title="同じファイル名で${h._dupTotal}回保存されています(これは${h._dupIndex}回目)">同名${h._dupIndex}/${h._dupTotal}</span>`
-        : "";
-      return `
-      <li data-id="${h.id}">
-        <span class="hist-time">${fmtTime(h.timestamp)}</span>
-        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${h.fileName}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}">${h.fileName}(${h.count}件)</span>
-        ${dupBadge}
-        <button class="hist-del" title="この履歴を削除">🗑</button>
-      </li>
-    `;
-    }).join("");
-    exportHistoryList.querySelectorAll("li").forEach((li) => {
-      li.querySelector(".hist-del").addEventListener("click", async () => {
-        await historyDelete(Number(li.dataset.id));
-        li.remove();
-        if(!exportHistoryList.querySelector("li")){
-          exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">まだ書き出し履歴がありません</div>`;
-        }
+    // 同名グループの開閉トグル
+    exportHistoryList.querySelectorAll(".hist-expand").forEach((btn) => {
+      const group = groups[Number(btn.dataset.group)];
+      btn.addEventListener("click", () => {
+        const fileName = group[0].fileName;
+        const willOpen = !expandedHistoryGroups.has(fileName);
+        if(willOpen) expandedHistoryGroups.add(fileName); else expandedHistoryGroups.delete(fileName);
+        btn.classList.toggle("open", willOpen);
+        btn.querySelector(".hist-expand-arrow").textContent = willOpen ? "▾" : "▸";
+        let sib = btn.closest("li").nextElementSibling;
+        while(sib && sib.classList.contains("hist-child")){ sib.hidden = !willOpen; sib = sib.nextElementSibling; }
+      });
+    });
+
+    // 削除(グループ化・開閉状態がズレないよう、削除後は丸ごと再描画する)
+    exportHistoryList.querySelectorAll(".hist-del").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await historyDelete(Number(btn.dataset.id));
+        await renderExportHistoryList();
       });
     });
   }
+
   async function openExportHistoryModal(){
+    // 保存先フォルダが登録済みなら、開くたびに他端末分のJSON履歴を取り込み・ファイル消失状況も再確認する。
+    // (HTML保存時と同じ仕組みを、履歴を開く操作だけでも使えるようにしたもの)
+    const fsSupported = "showDirectoryPicker" in window;
+    const savedHandle = fsSupported ? await kvGet("saveDirHandle") : null;
+    if(savedHandle){
+      try{
+        const dirHandle = await window.showDirectoryPicker({ mode: "read", startIn: savedHandle });
+        await syncHistoryWithDir(dirHandle);
+        await refreshMissingFlags(dirHandle);
+      }catch(err){
+        if(err && err.name !== "AbortError"){
+          console.error("履歴の同期に失敗しました(ローカルの履歴のみ表示します)", err);
+        }
+      }
+    }
     await renderExportHistoryList();
     exportHistoryModal.classList.add("open");
     lockBodyScroll();
