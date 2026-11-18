@@ -404,8 +404,18 @@
   mark .memo-col-blue, .memo-col-blue mark{color:var(--memo-col-blue) !important;}
   mark .memo-col-green, .memo-col-green mark{color:var(--memo-col-green) !important;}
 
-  .ver{cursor:pointer;}
-  .ver:hover{text-decoration:underline;}
+  /* ヘッダーのタイトル下にバージョンを常時表示(クリックで更新履歴)。
+     前回見たバージョンから更新されていたら「NEW」を付けて知らせる */
+  .brand{display:flex; flex-direction:column; align-items:flex-start; min-width:0; line-height:1.2;}
+  .verBtn{
+    background:transparent; color:var(--sub); border:none; padding:1px 0 0; font-size:10.5px; font-weight:400;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; white-space:nowrap;
+  }
+  .verBtn:hover:not(:disabled){color:var(--accent); text-decoration:underline; opacity:1;}
+  .verBtn.is-new::after{
+    content:"NEW"; margin-left:6px; padding:0 5px; border-radius:8px; background:var(--accent); color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:9px; font-weight:700; vertical-align:1px;
+  }
   #versionModal{
     display:none; position:fixed; inset:0; z-index:120;
     background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:24px;
@@ -559,7 +569,10 @@
 <body>
 <header id="appHeader">
   <div class="appBar">
-    <h1>SmartCaptureMemo</h1>
+    <div class="brand">
+      <h1>SmartCaptureMemo</h1>
+      <button class="verBtn" id="verLabel" type="button" title="更新履歴を見る"></button>
+    </div>
     <span class="chip" id="shareChip" tabindex="0" role="button" title="範囲タブを開く">🖥 未共有</span>
     <button class="iconBtn" id="btnSettings" type="button" title="設定">⚙</button>
   </div>
@@ -599,7 +612,7 @@
         <h3>ヘルプ・バージョン</h3>
         <div class="row">
           <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
-          <button class="secondary" id="btnVersion" type="button" title="更新履歴">更新履歴 <span class="ver" id="verLabel"></span></button>
+          <button class="secondary" id="btnVersion" type="button" title="更新履歴">更新履歴</button>
         </div>
       </section>
     </div>
@@ -3858,7 +3871,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18.10"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.11"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
     ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
@@ -3870,11 +3883,18 @@
     ["v02_2026-11-18.7","狭い幅(サイドパネル)でキャプチャ等の5ボタンを行の幅いっぱいに均等配置"],
     ["v02_2026-11-18.8","htmlpreviewでプレビュー中にHTML保存すると、書き出したHTMLのスクリプトが動かず画像が表示されない不具合を修正"],
     ["v02_2026-11-18.9","書き出しHTMLのデザインを本体に合わせて刷新(ヘッダー+表示モードのタブ、左の目次に件数、カード型の行)"],
-    ["v02_2026-11-18.10","履歴に「📂 フォルダから追加」を追加(保存先フォルダ内の未登録のHTMLを、ファイルの保存日時で履歴へ追加)"]
+    ["v02_2026-11-18.10","履歴に「📂 フォルダから追加」を追加(保存先フォルダ内の未登録のHTMLを、ファイルの保存日時で履歴へ追加)"],
+    ["v02_2026-11-18.11","バージョンをヘッダーのタイトル下に常時表示(クリックで更新履歴)。更新があった場合は「NEW」を表示"]
   ];
 
   const verLabel = $("verLabel");
   verLabel.textContent = APP_VERSION;
+  const SEEN_VERSION_KEY = "smart-capture-memo-seen-version";
+  try{
+    const seen = localStorage.getItem(SEEN_VERSION_KEY);
+    if(!seen) localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION); // 初回利用時は既読扱い
+    else if(seen !== APP_VERSION) verLabel.classList.add("is-new");
+  }catch(e){}
   const versionModal = $("versionModal");
   const versionList = $("versionList");
   const btnVersionClose = $("btnVersionClose");
@@ -3885,12 +3905,15 @@
     ).join("");
     versionModal.classList.add("open");
     lockBodyScroll();
+    verLabel.classList.remove("is-new");
+    try{ localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION); }catch(e){}
   }
   function closeVersionModal(){
     versionModal.classList.remove("open");
     unlockBodyScroll();
   }
   $("btnVersion").addEventListener("click", openVersionModal);
+  verLabel.addEventListener("click", openVersionModal);
   btnVersionClose.addEventListener("click", closeVersionModal);
   versionModal.addEventListener("click", (e) => {
     if(e.target === versionModal) closeVersionModal();
