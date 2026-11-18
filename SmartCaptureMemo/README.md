@@ -1,0 +1,40 @@
+# SmartCaptureMemo
+
+画面共有→範囲固定→連写キャプチャを、議題(見出し)ごとに整理しながらメモと一緒に記録し、自己完結型HTML(一覧/A4グリッド/ノート形式、印刷・PDF対応)として書き出すWebツールです。
+Screen Capture Memo v104 をベースに、UIを全面的に見直した後継ツールです(旧ツールとは保存データが別)。
+
+## 機能
+
+- 上部タブ「範囲 / 記録 / 履歴」+ ⚙設定 の構成(サイドパネル等の狭い幅にも対応)
+- 範囲: `getDisplayMedia` による画面共有 → 範囲固定(比率指定 or 全画面)
+- 記録: 📸キャプチャ / 📋貼り付け / 📝見出し / 💬メモ、メモ装飾、トリミング、並び替え
+- 見出し(セクション): Enterで連続登録・複数行貼り付けで一括登録、現在の見出しへの自動追加、目次・◀▶・Alt+↑/↓での移動、折りたたみ
+- 常時表示ウィンドウ(Document Picture-in-Picture): 現在の見出しの表示・切替と撮影
+- 履歴: 期間フィルタ(週は月曜始まり)・ファイル名検索・保存先フォルダ内のファイルを開く/読み込む・他端末との同期
+- ⚙設定: 保存先フォルダ(File System Access API)・テーマ・ヘルプ・更新履歴
+
+## 使い方
+
+GitHub Pages でホスティングしているため、以下のURLからアクセスできます。
+
+```
+https://mepbim-gsan.github.io/Claude/SmartCaptureMemo/
+```
+
+操作方法はツール内の ⚙設定 →「❓ ヘルプ」(`help.html`)を参照してください。
+データはブラウザ内 IndexedDB にのみ保存され、サーバーへの送信はありません。
+
+## 対象ブラウザ
+
+Edge / Chrome 限定(`getDisplayMedia`・Document Picture-in-Picture API・File System Access API 等を使用)。
+`https://` または `localhost` 等の secureContext でのみ動作します。
+
+## 技術スタック
+
+- HTML / CSS / Vanilla JS(単一ファイル、ビルド不要、外部ライブラリ依存なし)
+- IndexedDB(`smart-capture-memo-db`)
+- GitHub Pages
+
+## 開発メモ
+
+このツール固有の技術情報(データモデル、設計判断、開発経緯など)は Knowledge リポジトリの `knowledge/Repo_Claude-SmartCaptureMemo.md` を参照してください。
