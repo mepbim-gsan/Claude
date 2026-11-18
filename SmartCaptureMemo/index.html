@@ -88,14 +88,13 @@
     position:sticky; top:var(--header-h, 0px); z-index:20; background:var(--bg);
     padding:4px 0 8px; margin-bottom:6px; border-bottom:1px solid var(--border);
   }
-  #sectionNav{margin-top:8px;}
   /* キャプチャ・貼り付け・見出し・メモ・常時表示は同じ幅に揃える(狭い幅では行を等分) */
   #captureRow > button{flex:0 0 124px; padding-left:6px; padding-right:6px;}
   #btnPip.is-on{
     background:color-mix(in srgb, var(--accent) 16%, var(--panel)); color:var(--accent);
     box-shadow:inset 0 0 0 2px var(--accent); font-weight:700;
   }
-  #sectionSelect{flex:1; min-width:0; max-width:420px;}
+  #sectionSelect{flex:1; min-width:0;}
   .navBtn{padding:7px 10px; font-size:12px;}
   #recordLayout{display:flex; gap:16px; align-items:flex-start;}
   #recordMain{flex:1; min-width:0;}
@@ -109,11 +108,14 @@
   @media (min-width:900px){
     #tocAside{display:block;}
   }
-  #docBar{
-    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:12px;
-  }
+  /* 日付・タイトル・HTML保存もスクロール追従のツールバー内に置き、一覧のどこからでも保存できるようにする。
+     広い幅では見出しナビと同じ行、狭い幅では折り返して次の行に並ぶ */
+  #navDocRow{margin-top:8px; gap:8px 16px; align-items:center;}
+  #sectionNav, #docRow{flex-wrap:nowrap;}
+  #sectionNav{flex:1 1 380px; min-width:0;}
+  #docRow{flex:1 1 360px; min-width:0;}
   .docInfo{font-size:11px; color:var(--sub); margin-top:6px;}
-  #docBar #exportTitle{flex:1; min-width:120px; width:auto;}
+  #docRow #exportTitle{flex:1; min-width:80px; width:auto;}
   .moreWrap{position:relative;}
   #moreMenu{
     position:absolute; right:0; top:calc(100% + 4px); z-index:30; min-width:190px;
@@ -156,8 +158,7 @@
     .iconable .btnLabel{display:none;}
     .iconable{padding-left:11px; padding-right:11px;}
     #captureRow > button{flex:1 1 0; min-width:0; max-width:64px;}
-    #docBar #exportDate{width:118px;}
-    #docBar #exportTitle{min-width:80px;}
+    #docRow #exportDate{width:118px;}
   }
 
   .panel{
@@ -663,6 +664,7 @@
         <button id="btnPip" class="iconable secondary" disabled title="常時表示">📌 <span class="btnLabel">常時表示</span></button>
         <span class="status row-right" id="captureStatus"></span>
       </div>
+      <div class="row" id="navDocRow">
       <div class="row" id="sectionNav">
         <button class="secondary navBtn" id="btnSectionPrev" type="button" title="前の見出しへ(Alt+↑)">◀</button>
         <select id="sectionSelect" aria-label="現在の見出し"></select>
@@ -670,15 +672,7 @@
         <button class="secondary navBtn" id="btnFoldAll" type="button" title="すべて折りたたむ">⊟</button>
         <button class="secondary navBtn" id="btnUnfoldAll" type="button" title="すべて開く">⊞</button>
       </div>
-    </div>
-    <div id="recordLayout">
-      <aside id="tocAside">
-        <div class="tocHead">目次</div>
-        <nav id="tocList"></nav>
-      </aside>
-      <div id="recordMain">
-        <div id="docBar">
-          <div class="row">
+      <div class="row" id="docRow">
             <input type="date" id="exportDate">
             <input type="text" id="exportTitle" placeholder="資料タイトル(任意)">
             <button class="ok iconable" id="btnExport" title="まとめてHTML保存(保存先フォルダは⚙設定で登録)">💾 <span class="btnLabel">HTML保存</span></button>
@@ -692,8 +686,15 @@
             </div>
             <input type="file" id="importFileInput" accept=".html,text/html" style="display:none;">
           </div>
+      </div>
           <div class="docInfo"><span id="countLabel">0</span>件 ／ 書き出し目安 <span id="sizeEstimate">-</span> <span id="exportStatusMsg"></span></div>
-        </div>
+    </div>
+    <div id="recordLayout">
+      <aside id="tocAside">
+        <div class="tocHead">目次</div>
+        <nav id="tocList"></nav>
+      </aside>
+      <div id="recordMain">
         <div id="captureList"><div class="empty">まだキャプチャがありません</div></div>
       </div>
     </div>
@@ -3773,14 +3774,15 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18.5"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.6"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
     ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
     ["v02_2026-11-18.2","見出しの◀▶(常時表示ウィンドウ・Alt+↑/↓含む)を、端まで行ったら反対側へ循環するように変更"],
     ["v02_2026-11-18.3","目次の件数(📸・💬)を固定幅の列にし、桁数が違ってもアイコンの位置が揃うように"],
     ["v02_2026-11-18.4","記録タブのキャプチャ/貼り付け/見出し/メモ/常時表示ボタンの幅を統一"],
-    ["v02_2026-11-18.5","常時表示ボタンの開いている間の表示を、赤背景から淡いアクセント色+枠・「表示中」表記に変更(文字・アイコンの視認性改善)"]
+    ["v02_2026-11-18.5","常時表示ボタンの開いている間の表示を、赤背景から淡いアクセント色+枠・「表示中」表記に変更(文字・アイコンの視認性改善)"],
+    ["v02_2026-11-18.6","日付・資料タイトル・HTML保存・⋯メニューをスクロール追従のツールバーへ移動し、一覧のどこからでも保存できるように"]
   ];
 
   const verLabel = $("verLabel");
