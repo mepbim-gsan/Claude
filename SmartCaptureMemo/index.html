@@ -148,6 +148,12 @@
   .setSec h3{font-size:12px; color:var(--sub); margin:0 0 8px; font-weight:600;}
   .setRow{margin-bottom:8px;}
   .setValue{font-size:13px;}
+  .setLabel{display:block; font-size:12px; color:var(--sub); margin-bottom:4px;}
+  #saveDirPathInput{width:100%;}
+  #btnCopyDirPath[hidden]{display:none;}
+  @media (max-width:600px){
+    #historyToolbar #historySearch{flex:1 1 100%; max-width:none;} /* 狭い幅では検索欄を1行に、ボタン類は次の行へ */
+  }
 
   /* 狭い幅(サイドパネル等)ではボタンをアイコンだけにして1行に収める */
   @media (max-width:600px){
@@ -600,6 +606,11 @@
           <button class="secondary" id="btnSaveDirClear" type="button">登録を解除</button>
         </div>
         <div class="hint">登録すると「HTML保存」はこのフォルダへ直接保存され、書き出し履歴からファイルを開いたり読み込んだりできます。OneDrive等の同期フォルダにすると他端末と履歴を共有できます</div>
+        <div class="setRow" style="margin-top:10px;">
+          <label class="setLabel" for="saveDirPathInput">フォルダのパス(コピー用・任意)</label>
+          <input type="text" id="saveDirPathInput" placeholder="例: C:\Users\name\OneDrive\会議メモ">
+        </div>
+        <div class="hint">ブラウザからはフォルダの場所を取得できないため、エクスプローラーのアドレス欄からコピーして貼り付けてください。入力すると履歴タブに「📋 パスをコピー」ボタンが表示されます(この端末にのみ保存)</div>
       </section>
       <section class="setSec">
         <h3>表示</h3>
@@ -728,6 +739,7 @@
       <div class="row">
         <input type="search" id="historySearch" placeholder="ファイル名で検索">
         <button class="secondary iconBtn" id="btnExportHistorySync" type="button" title="保存先フォルダと同期(他端末分の履歴・ファイル消失状況を反映)">🔄</button>
+        <button class="secondary" id="btnCopyDirPath" type="button" title="保存先フォルダのパスをコピー(エクスプローラーのアドレス欄に貼り付けて開けます)" hidden>📋 パスをコピー</button>
         <button class="secondary" id="btnHistoryScan" type="button" title="保存先フォルダ内のHTMLのうち、履歴に無いものを追加(日時はファイルの保存日時)">📂 フォルダから追加</button>
       </div>
       <div class="hint" id="historyFolderNote"></div>
@@ -3871,7 +3883,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18.11"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.12"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
     ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"],
@@ -3884,7 +3896,8 @@
     ["v02_2026-11-18.8","htmlpreviewでプレビュー中にHTML保存すると、書き出したHTMLのスクリプトが動かず画像が表示されない不具合を修正"],
     ["v02_2026-11-18.9","書き出しHTMLのデザインを本体に合わせて刷新(ヘッダー+表示モードのタブ、左の目次に件数、カード型の行)"],
     ["v02_2026-11-18.10","履歴に「📂 フォルダから追加」を追加(保存先フォルダ内の未登録のHTMLを、ファイルの保存日時で履歴へ追加)"],
-    ["v02_2026-11-18.11","バージョンをヘッダーのタイトル下に常時表示(クリックで更新履歴)。更新があった場合は「NEW」を表示"]
+    ["v02_2026-11-18.11","バージョンをヘッダーのタイトル下に常時表示(クリックで更新履歴)。更新があった場合は「NEW」を表示"],
+    ["v02_2026-11-18.12","設定に保存先フォルダのパス(任意入力)を追加し、履歴タブに「📋 パスをコピー」ボタンを表示"]
   ];
 
   const verLabel = $("verLabel");
@@ -4239,6 +4252,51 @@
   const btnSaveDirClear = $("btnSaveDirClear");
   const historyFolderNote = $("historyFolderNote");
   const fsAccessSupported = "showDirectoryPicker" in window;
+
+  // 保存先フォルダのパス(コピー用)。ブラウザからは取得できないため利用者が入力し、端末ごとにlocalStorageへ保存する
+  const SAVE_DIR_PATH_KEY = "smart-capture-memo-save-dir-path";
+  const saveDirPathInput = $("saveDirPathInput");
+  const btnCopyDirPath = $("btnCopyDirPath");
+  function savedDirPath(){
+    try{ return (localStorage.getItem(SAVE_DIR_PATH_KEY) || "").trim(); }catch(e){ return ""; }
+  }
+  function syncCopyDirPathButton(){
+    const path = savedDirPath();
+    btnCopyDirPath.hidden = !path;
+    btnCopyDirPath.title = path ? `「${path}」をコピー(エクスプローラーのアドレス欄に貼り付けて開けます)` : "";
+  }
+  saveDirPathInput.value = savedDirPath();
+  saveDirPathInput.addEventListener("input", () => {
+    // 前後の空白や、エクスプローラーからコピーした際に付く引用符は取り除いて保存する
+    const v = saveDirPathInput.value.trim().replace(/^"(.*)"$/, "$1");
+    try{ v ? localStorage.setItem(SAVE_DIR_PATH_KEY, v) : localStorage.removeItem(SAVE_DIR_PATH_KEY); }catch(e){}
+    syncCopyDirPathButton();
+  });
+  syncCopyDirPathButton();
+  async function copyText(text){
+    try{
+      await navigator.clipboard.writeText(text);
+      return true;
+    }catch(err){
+      // クリップボードAPIが使えない環境(サイドパネル等)向けの従来方式
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      let ok = false;
+      try{ ok = document.execCommand("copy"); }catch(e){}
+      ta.remove();
+      return ok;
+    }
+  }
+  btnCopyDirPath.addEventListener("click", async () => {
+    const path = savedDirPath();
+    if(!path) return;
+    const ok = await copyText(path);
+    const label = "📋 パスをコピー";
+    btnCopyDirPath.textContent = ok ? "✅ コピーしました" : "⚠️ コピー失敗";
+    setTimeout(() => { btnCopyDirPath.textContent = label; }, 1500);
+    if(!ok) await alertAsync(`コピーできませんでした。次のパスを手動でコピーしてください。\n${path}`);
+  });
 
   async function refreshSaveDirState(){
     const handle = fsAccessSupported ? await kvGet("saveDirHandle") : null;
