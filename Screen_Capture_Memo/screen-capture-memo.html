@@ -7,11 +7,11 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9D</text></svg>">
 <!--
   @tool      Screen Capture Memo
-  @version   v99
+  @version   v100
+  @changelog v100: v99の書き出し履歴機能について、ユーザーから「OneDriveのどこに保存したか分かる記録が欲しい」と相談。File System Access APIはブラウザ仕様上フォルダの絶対パスを取得できない(取得できるのはフォルダ名のみ)ことを説明したうえで、ユーザーから「保存先フォルダにJSONを置いて都度読み書きすれば、ブラウザのキャッシュに依存せずOneDrive経由で他端末とも共有できるのでは」との提案があり、さらに「HTML保存クリック時にまずJSONをロードして履歴を更新し、保存と同時にJSONへ追記する」という具体的な流れの提案を受け実装。保存先フォルダ(`pendingDirHandle`)へ書き込み成功する経路でのみ、保存するHTML本体とあわせて`screen-capture-memo-history.json`という配列ファイルを読み書きする。各履歴エントリに端末をまたいで衝突しないuid(`genUid()`、時刻+乱数)を付与し、`syncHistoryWithDir()`で「JSON内のuidを持つがローカルDBに無いエントリ」だけをローカルへ取り込み(他端末分の取り込み)、ローカル全件+新規エントリをuidで重複排除してJSONへ書き戻す。JSON書き込みが失敗してもHTML本体の保存自体は成功扱いとし、コンソールログのみに留める。保存先フォルダ未設定時やフォルダへの書き込み自体が失敗した場合(通常ダウンロードへのフォールバック)は従来通りローカルのみの記録。内部関数を一時的に公開したテスト専用コピー(本番には含めない)に対しPlaywrightで、JSON未作成時の空読み込み、ローカルのみのマージ結果、他端末想定の「JSON内にのみ存在するエントリ」がローカルDBへ正しく取り込まれること、同じuidのエントリが再同期で重複しないこと、genUidの一意性を確認。あわせて本番ファイルに対しても通常ダウンロード経路でのエクスポート履歴記録・モーダル表示・個別削除が引き続き壊れていないことを確認。
   @changelog v99: ユーザーから「HTMLで保存したリストをキャッシュで残せますか」と相談。意図を確認したところ、記録一覧(キャプチャ/メモ)自体ではなく「いつ・どのファイル名でHTML保存したか」という書き出し履歴を残したい、という要望と判明。IndexedDBに新しいストア`exportHistory`(DBバージョンを2→3に上げて追加、既存2ストアはそのまま)を新設し、`btnExport`の3つの成功パス(保存先フォルダへの書き込み成功/書き込み失敗時のダウンロードへのフォールバック/通常ダウンロード)それぞれで、日時・ファイル名・資料タイトル・日付・件数を記録。記録一覧ヘッダー行に既存の🔄更新ボタンと並べて🕘履歴ボタンを新設し、クリックで`VERSION_HISTORY`の更新履歴モーダルと同じ構造・スタイルの一覧モーダルを表示(新しい書き出しが上、各行に個別削除ボタン付き)。同名ファイルの上書き確認でキャンセルした場合(実際には保存されない)は記録しないよう分岐。Playwrightで、エクスポート前は履歴が空であること、2回エクスポートすると2件記録されダイアログに新しい順で表示されること、個別削除で1件だけ消えること、ページエラーが発生しないことを確認。
   @changelog v98: ユーザーから「キャプチャや見出しを追加したとき、選択行の下ではなく、最下段に入るようになっていませんか」と指摘。調査の結果、「📝見出し」「💬メモ」ボタンはv75で対応済み(pointerdown時点で選択行を検出し、click発火前にフォーカスがボタン自身へ移る前の状態を保持してからaddCaptureRecord()へ渡す仕組み)だったが、📸キャプチャボタン(btnCapture)とクリップボード貼り付け(btnPaste・ページ上でのCtrl+V)はこの対応が漏れていたことが判明。click/pasteハンドラ内でgetFocusedItem()を呼ぶ時点では既にフォーカスがボタン自身等へ移ってしまっており、選択行の有無に関わらず常にnull(=末尾追加)として扱われていたのが原因。btnCapture・btnPasteにも同じpointerdown時点検出の仕組みを追加し、captureNow()を検出済みの行を引数で受け取れるよう変更。Spaceキーでのキャプチャ(ボタンを介さないショートカット)はフォーカス移動が発生しないため、keydown発火時点でgetFocusedItem()を呼ぶだけで対応。貼り付けで複数枚の画像が一度に貼られた場合も、1枚挿入するたびにその行を次のanchorとして更新し、選択行の直後に貼り付け順のまま連続して挿入されるようにした。Playwrightで、キャプチャ中の行をフォーカスしてから📸キャプチャ→その行の直後に挿入されること、見出し追加との組み合わせでも同様に直後へ挿入されること、ページエラーが発生しないことを確認。
-  @changelog v95: ユーザー指摘「文字装飾ツールバーが右上にあるせいで、編集画面に入ったとき先頭行の位置がずれる」に対応。原因は、メモ欄のtextareaがツールバー分の余白をpadding-top(28px)で確保していたのに対し、プレビュー表示(.memoPreview)側のpadding-topは8px(画像付き行)または4px(見出し/メモ行)と異なっており、プレビュー→編集の切替時に先頭行のY座標が20px前後ズレていたこと。当初はツールバーを右下へフロート配置する案で対応したが、ユーザーからSlack風(ツールバーを本文の下に専用行として分離し、区切り線で仕切る)のレイアウト案を提示され比較検討のうえ、そちらへ変更。`.memoToolbar`をtextareaの下にHTML上も実際に続く専用の行として配置(absolute配置をやめ通常のフローに戻す)し、textarea側は上下左右8pxの通常paddingに戻した。続けてユーザーから「デザインはフラットの方がよくない？右寄せする必要あるかな？」と指摘を受け、画像付き行のツールバーに付けていた背景色・左右下の枠線・丸角を撤去して区切り線のみのフラット表示に統一し、ボタンの配置もflex-end(右寄せ)からflex-start(左寄せ)に変更
-  ※ v01〜v94の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v95の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -488,7 +488,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v99</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v100</span>
 </header>
 
 <div id="versionModal">
@@ -745,7 +745,13 @@
   const STORE = "captures";
   const KV_STORE = "kv"; // 保存先フォルダハンドル等、少量の設定値を保持
   const HISTORY_STORE = "exportHistory"; // HTML保存の書き出し履歴(ファイル名・日時・件数)
+  const HISTORY_SYNC_FILE = "screen-capture-memo-history.json"; // 保存先フォルダに書き出す履歴の同期用JSON(他端末との共有に使う)
   let db = null;
+
+  // 端末をまたいでも衝突しない履歴エントリの識別子(IndexedDBのid autoIncrementは端末ごとに独立するため別途付与)
+  function genUid(){
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
 
   function openDB(){
     return new Promise((resolve, reject) => {
@@ -2592,8 +2598,18 @@
           showToast("保存を中止しました(同名ファイルが既に存在します)。タイトルや日付を変えて再度お試しください。");
           return;
         }
+        // 保存先フォルダ内のJSON履歴(他端末分を含む)を先に読み込みローカルへ取り込んでから、
+        // HTML本体の保存とあわせて新しいエントリを追記してJSONを書き戻す(ユーザー提案の流れ)
+        const mergedHistory = await syncHistoryWithDir(pendingDirHandle);
         await writeFileToDir(pendingDirHandle, fileName, blob);
-        await historyAdd({ timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
+        const newEntry = { uid: genUid(), timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length };
+        await historyAdd(newEntry);
+        mergedHistory.push(newEntry);
+        try{
+          await writeFileToDir(pendingDirHandle, HISTORY_SYNC_FILE, new Blob([JSON.stringify(mergedHistory)], { type: "application/json" }));
+        }catch(syncErr){
+          console.error("書き出し履歴JSONの保存に失敗しました(HTML本体の保存は成功しています)", syncErr);
+        }
         showToast(`✅「${pendingDirHandle.name}」に保存しました: ${fileName}`);
         return;
       }catch(err){
@@ -2602,7 +2618,7 @@
         const a2 = document.createElement("a");
         a2.href = url2; a2.download = fileName; a2.click();
         URL.revokeObjectURL(url2);
-        await historyAdd({ timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
+        await historyAdd({ uid: genUid(), timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
         showToast(`⚠️ 保存に失敗し、通常のダウンロードに切り替えました: ${fileName}`);
         return;
       }
@@ -2614,7 +2630,7 @@
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
-    await historyAdd({ timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
+    await historyAdd({ uid: genUid(), timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
     showToast(dirPickCancelled
       ? `保存先の選択をキャンセルしたため、通常のダウンロードに切り替えました: ${fileName}`
       : `ダウンロードしました: ${fileName}`);
@@ -2635,6 +2651,37 @@
     const writable = await fileHandle.createWritable();
     await writable.write(blob);
     await writable.close();
+  }
+
+  // 保存先フォルダ内のJSON履歴ファイルを読む。無い/壊れている場合は空配列(新規作成扱い)
+  async function readJsonFromDir(dirHandle, name){
+    try{
+      const fileHandle = await dirHandle.getFileHandle(name, { create: false });
+      const file = await fileHandle.getFile();
+      const data = JSON.parse(await file.text());
+      return Array.isArray(data) ? data : [];
+    }catch(err){
+      return [];
+    }
+  }
+
+  // 保存先フォルダのJSON履歴(他端末が書いたものを含む)をローカルのexportHistoryへ取り込み、
+  // 統合済みの配列(ローカル+JSON由来、uidで重複排除)を返す。この戻り値に新規エントリを足して
+  // 書き戻せば、他端末分も含めた最新状態をJSONに残せる。
+  async function syncHistoryWithDir(dirHandle){
+    const remote = await readJsonFromDir(dirHandle, HISTORY_SYNC_FILE);
+    const local = await historyGetAll();
+    const byUid = new Map();
+    local.forEach((e) => { if(e.uid) byUid.set(e.uid, e); });
+    const knownUids = new Set(byUid.keys());
+    for(const e of remote){
+      if(e && e.uid && !knownUids.has(e.uid)){
+        const { id, ...rest } = e; // 他端末のローカルidを持ち込まない(自端末でautoIncrement採番させる)
+        await historyAdd(rest);
+        byUid.set(e.uid, rest);
+      }
+    }
+    return Array.from(byUid.values());
   }
 
   // 保存結果を知らせる一時メッセージ。HTML保存ボタンのすぐ右側に表示することで、
@@ -3462,7 +3509,8 @@
     ["v96","共有パネルのスティッキー化・段階的開示、共有開始/停止ボタンの統合、狭い幅での画像+メモ縦並び、ウィンドウリサイズ時の選択枠ズレ修正"],
     ["v97","記録一覧に一覧更新ボタンを追加(複数タブ/ウィンドウでの共有・範囲固定を維持したまま反映)、トリミング範囲(選択枠)の各種不具合を修正(リサイズ時のズレ、ハンドルの見切れ、狭い画面での右端まで届かない問題)"],
     ["v98","📸キャプチャボタン・クリップボード貼り付けで、選択行があってもボタンへのフォーカス移動により無視され常に最下段に入ってしまう不具合を修正(見出し/メモ追加と同じ仕組みに統一)"],
-    ["v99","HTML保存の書き出し履歴(日時・ファイル名・件数)を記録一覧ヘッダーの🕘履歴ボタンから確認できるように追加"]
+    ["v99","HTML保存の書き出し履歴(日時・ファイル名・件数)を記録一覧ヘッダーの🕘履歴ボタンから確認できるように追加"],
+    ["v100","保存先フォルダ設定時、書き出し履歴をフォルダ内のJSONファイルにも保存し、他端末(同じOneDriveフォルダ等)とも共有できるように対応"]
   ];
 
   const verLabel = $("verLabel");
