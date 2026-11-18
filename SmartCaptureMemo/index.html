@@ -2586,7 +2586,8 @@
     cursor:zoom-out;
   }
   #lightbox.open{display:flex;}
-  #lightbox img{max-width:96vw; max-height:96vh; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .08s ease-out; transform-origin:center; cursor:grab; touch-action:none;}
+  /* 画像の表示サイズはJSで画面に収まる最大サイズ(小さい画像は拡大)に合わせる。ホイールで拡大縮小 */
+  #lightbox img{max-width:none; max-height:none; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .08s ease-out; transform-origin:center; cursor:grab; touch-action:none;}
   #lightbox img:active{cursor:grabbing;}
   #lightboxCaption{
     max-width:min(96vw, 700px); color:#e6e8ec; background:rgba(23,26,33,.85);
@@ -2596,6 +2597,15 @@
     cursor:default; flex-shrink:0;
   }
   #lightboxCaption:empty{display:none;}
+  #lightbox.no-caption #lightboxCaption{display:none;}
+  #lbTools{position:fixed; top:12px; right:12px; z-index:101; display:flex; align-items:center; gap:8px; cursor:default;}
+  #lbTools button{
+    background:rgba(23,26,33,.85); color:#e6e8ec; border:1px solid rgba(255,255,255,.25); border-radius:8px;
+    padding:6px 12px; font-size:13px; cursor:pointer; font-family:inherit;
+  }
+  #lbTools button:hover{border-color:#fff;}
+  #lbTools #lbCaptionToggle.on{background:#4f8cff; border-color:#4f8cff; color:#fff;}
+  #lbCounter{color:#e6e8ec; font-size:12px; background:rgba(23,26,33,.85); border-radius:8px; padding:6px 10px; font-variant-numeric:tabular-nums;}
 </style></head>
 <body>
 
@@ -2647,6 +2657,11 @@
 <div id="tocEdgeTrigger"></div>
 
 <div id="lightbox">
+  <div id="lbTools">
+    <span id="lbCounter"></span>
+    <button id="lbCaptionToggle" type="button" title="コメントの表示/非表示(Cキー)">💬 コメント</button>
+    <button id="lbClose" type="button" title="閉じる(Esc)">✕</button>
+  </div>
   <img id="lightboxImg" alt="拡大表示" draggable="false">
   <div id="lightboxCaption"></div>
 </div>
@@ -2667,6 +2682,41 @@
   var lightboxIndex = -1;
   lightboxCaption.addEventListener("click", function(e){ e.stopPropagation(); });
 
+  // スライドショーのコメント表示ON/OFF(この書き出しファイルを開くブラウザに記憶)と、画面に合わせた表示サイズ
+  var lbTools = document.getElementById("lbTools");
+  var lbCaptionToggle = document.getElementById("lbCaptionToggle");
+  var lbCounter = document.getElementById("lbCounter");
+  var CAPTION_KEY = "smart-capture-memo-export-caption";
+  var showCaption = true;
+  try{ showCaption = localStorage.getItem(CAPTION_KEY) !== "off"; }catch(e){}
+  function applyCaptionState(){
+    lightbox.classList.toggle("no-caption", !showCaption);
+    lbCaptionToggle.classList.toggle("on", showCaption);
+    lbCaptionToggle.textContent = showCaption ? "💬 コメント ON" : "💬 コメント OFF";
+  }
+  function toggleCaption(){
+    showCaption = !showCaption;
+    try{ localStorage.setItem(CAPTION_KEY, showCaption ? "on" : "off"); }catch(e){}
+    applyCaptionState();
+    fitLightboxImage();
+  }
+  lbTools.addEventListener("click", function(e){ e.stopPropagation(); });
+  lbCaptionToggle.addEventListener("click", toggleCaption);
+  document.getElementById("lbClose").addEventListener("click", function(){ closeLightbox(); });
+  applyCaptionState();
+  // 小さい画像も含めて、画面(コメント表示分を除く)に収まる最大サイズで表示する。拡大縮小はこのサイズを基準にホイールで行う
+  function fitLightboxImage(){
+    var nw = lightboxImg.naturalWidth, nh = lightboxImg.naturalHeight;
+    if(!nw || !nh || !lightbox.classList.contains("open")) return;
+    var capH = (showCaption && lightboxCaption.textContent.trim()) ? lightboxCaption.offsetHeight + 10 : 0;
+    var availW = window.innerWidth - 48, availH = window.innerHeight - 48 - capH;
+    var sc = Math.max(0.05, Math.min(availW / nw, availH / nh));
+    lightboxImg.style.width = Math.floor(nw * sc) + "px";
+    lightboxImg.style.height = Math.floor(nh * sc) + "px";
+  }
+  lightboxImg.addEventListener("load", fitLightboxImage);
+  window.addEventListener("resize", fitLightboxImage);
+
   function applyLightboxTransform(){
     lightboxImg.style.transform = "translate(" + lightboxPanX + "px, " + lightboxPanY + "px) scale(" + lightboxZoom + ")";
   }
@@ -2680,6 +2730,8 @@
     lightboxPanY = 0;
     applyLightboxTransform();
     lightbox.classList.add("open");
+    lbCounter.textContent = (lightboxIndex + 1) + " / " + IMG_SRC_LIST.length;
+    fitLightboxImage();
   }
   function closeLightbox(){
     lightbox.classList.remove("open");
@@ -2728,6 +2780,7 @@
       else showLightboxByOffset(1);
       return;
     }
+    if((e.key === "c" || e.key === "C") && lightbox.classList.contains("open") && !e.ctrlKey && !e.metaKey && !e.altKey){ toggleCaption(); return; }
     if(e.key === "Escape" && lightbox.classList.contains("open")) closeLightbox();
   });
 
@@ -3909,7 +3962,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v02_2026-11-18.14"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v02_2026-11-18.15"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -3925,7 +3978,8 @@
     ["v02_2026-11-18.11","バージョンをヘッダーのタイトル下に常時表示(クリックで更新履歴)。更新があった場合は「NEW」を表示"],
     ["v02_2026-11-18.12","設定に保存先フォルダのパス(任意入力)を追加し、履歴タブに「📋 パスをコピー」ボタンを表示"],
     ["v02_2026-11-18.13","ヘッダーの⚙の右にヘルプ(❓)を追加。履歴タブの「パスをコピー」「フォルダから追加」を狭い幅ではアイコン表示にし、🔄ボタンの高さを他のボタンと統一"],
-    ["v02_2026-11-18.14","狭い幅(サイドパネル)の履歴一覧で、各行のボタンを右寄せにして位置を揃える"]
+    ["v02_2026-11-18.14","狭い幅(サイドパネル)の履歴一覧で、各行のボタンを右寄せにして位置を揃える"],
+    ["v02_2026-11-18.15",["書き出しHTMLのスライドショー(画像の拡大表示)でコメントのON/OFFを切替可能に(💬ボタン・Cキー)","小さい画像も画面に収まる最大サイズで表示するのを標準に(ホイールで拡大縮小)","表示中の位置(N / 全体)と閉じるボタンを追加"]]
   ];
 
   const verLabel = $("verLabel");
