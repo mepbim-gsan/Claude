@@ -7,11 +7,11 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9D</text></svg>">
 <!--
   @tool      Screen Capture Memo
-  @version   v103
+  @version   v104
+  @changelog v104: ユーザーから「履歴で更新かけるとき、再度フォルダを開く動作が必要？」と質問。v103の実装(🕘履歴ボタンを開くたびに毎回`showDirectoryPicker`を呼ぶ)はその通り毎回ダイアログが出る仕様だったため率直に回答したところ、ユーザーから「そっちの方がいいかも。更新アイコンだけでいいかもね」と、モーダルを開く時点では同期せずローカル即表示にし、同期は明示的なアイコンボタンだけで行う方式への変更を要望され対応。`openExportHistoryModal()`からフォルダ同期処理を分離して`syncExportHistoryWithFolder()`という独立関数にし(保存先フォルダ未登録時やピッカーキャンセル時は何もせず静かに終わる)、モーダルを開く処理自体は`renderExportHistoryList()`のみを呼ぶ軽量な処理に戻した。モーダルヘッダー(`#exportHistoryPanelHead`)の閉じるボタンの隣に🔄アイコンボタン(`#btnExportHistorySync`、`.exportHistoryHeadBtns`でグループ化)を新設し、クリックで`syncExportHistoryWithFolder()`→`renderExportHistoryList()`を実行(実行中は二重クリック防止のため`disabled`)。Playwrightで、モーダルを開いただけでは`showDirectoryPicker`が一切呼ばれずローカル履歴のみ即表示されること、🔄ボタンを押すと初めてピッカーが呼ばれ他端末限定エントリが反映されることを、`showDirectoryPicker`呼び出し回数のカウントで確認。
   @changelog v103: ユーザーから「同名は畳んでほしいな」と要望(v102のバッジ表示では不十分で、実際に折りたたんでほしいとのこと)。`renderExportHistoryList()`を書き直し、同じファイル名の履歴は最新1件だけを常時表示する行(primary行)とし、残りは`hidden`属性付きの子行(`.hist-child`)として畳んでおく方式に変更。primary行に「同名N件 ▸/▾」の展開ボタン(`.hist-expand`)を付け、クリックで子行の`hidden`を外す/戻す。展開状態は`expandedHistoryGroups`というファイル名のSetで再描画(削除時など)をまたいで保持。削除は手動DOM操作ではなく丸ごと再描画(`renderExportHistoryList()`再実行)に統一し、primary行を削除した場合に次点の子行が自動的に新しいprimaryへ昇格する(通し番号・展開ボタンも再計算される)ことをPlaywrightで確認。実装中、CSSの`#exportHistoryList li{display:flex}`というID+タグのルールが、ブラウザ標準の`[hidden]{display:none}`より詳細度が高く`hidden`属性を無効化してしまう(JS上はhidden:trueなのに画面には表示されたままになる)不具合をスクリーンショット比較で発見し、`#exportHistoryList li[hidden]{display:none}`を明示的に追加して解消。続けてユーザーから「これは履歴を押したときに、履歴だけ更新する処理も可能ですか」と相談があり、🕘履歴ボタン(`openExportHistoryModal`)のクリック自体をHTML保存と同じ同期のトリガーに追加。保存先フォルダが登録済みの場合のみ、モーダルを開く直前に`showDirectoryPicker({mode:"read"})`でフォルダへの一時アクセスを取得し、`syncHistoryWithDir()`(他端末分のJSON履歴取り込み)・`refreshMissingFlags()`(ファイル消失状況の再確認)を実行してからモーダルを表示する(書き込みは行わないため`readwrite`ではなく`read`モードで十分)。ピッカーをキャンセルした場合(AbortError)はエラー表示せずローカルの履歴のみで表示を続行。Playwrightでは、kvストアへ直接ダミーの`saveDirHandle`を書き込み`showDirectoryPicker`をモックしたうえで🕘履歴ボタンをクリックし、他端末のみに存在するエントリがローカルDBへ取り込まれモーダルに反映されること、missing判定(フォルダ内に実ファイルが無いため`missing:true`)も同時に行われることを確認。あわせて保存先フォルダ未登録時はピッカーが出ず従来通り瞬時にローカル履歴のみ表示されることも確認。
   @changelog v102: ユーザーから「同じ名前で複数回保存されたものは、わかるように記載できますか」と要望。`renderExportHistoryList()`で、取得した全履歴エントリを`fileName`ごとにグループ化し、タイムスタンプ昇順で通し番号(例: 同じ名前が3件なら1回目〜3回目)を振る。重複が無いファイル名はバッジを表示せず、重複がある場合のみ各行のファイル名の横に`同名X/Y`(X=この行の通し番号、Y=その名前の総保存回数)という小さなバッジを表示し、最新(X=Y)のものだけアクセントカラーの枠にして視認性を上げる。ツールチップで「同じファイル名でY回保存されています(これはX回目)」と案内。保存先フォルダの有無に関わらずローカルの履歴データだけで計算できる純粋な表示ロジックのため、DBスキーマやJSON同期ロジックへの変更は無し。Playwrightで、同じタイトル・日付のまま3回エクスポート+別タイトルで1回エクスポートし、重複の3件には「同名1/3」「同名2/3」「同名3/3」(最新のみ強調スタイル)、重複の無い1件にはバッジが出ないことをスクリーンショット付きで確認。
-  @changelog v101: ユーザーから「json更新時に、フォルダ内にファイルが存在していない場合、取り消し線を入れられますか」と要望。保存先フォルダ(v100でJSON履歴同期に使っているのと同じフォルダ)へHTML保存するたびに、ローカルDBの全履歴エントリについてファイル名が実際にフォルダ内に存在するか`fileExistsInDir()`で確認し(同名ファイルは重複排除して1回だけ確認)、見つからなければ`missing:true`をローカルDB・JSON両方に保存する`refreshMissingFlags(dirHandle)`を新設。既存のadd専用`historyAdd`に加え、既存エントリを更新できる`historyPut`も新設。履歴一覧モーダルでは`missing`なエントリのファイル名部分に取り消し線(`.hist-missing`、色も薄く)を表示し、ツールチップで「保存先フォルダに見つかりません。移動・削除された可能性があります」と案内。ユーザーが後でファイルを元に戻せば、次回のHTML保存時に再チェックされ取り消し線は自動的に消える(missing:falseへ復帰)。この判定は保存先フォルダへの書き込みが成功した経路でのみ実行され、通常ダウンロード(保存先フォルダ未設定時)の履歴は対象外。内部関数を一時的に公開したテスト専用コピー(本番には含めない使い捨てコピー)に対しPlaywrightで、存在する2件はmissing:false・存在しない1件はmissing:trueになること、ローカルDBにも反映されること、ファイルを後から削除すると次回チェックでmissing:trueに変わること、逆に復活させるとmissing:falseに戻ることを確認。あわせて本番ファイルに対しても通常ダウンロード経路でのエクスポート履歴記録・モーダル表示・個別削除に回帰がないことを確認。
-  ※ v01〜v100の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v101の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -400,6 +400,7 @@
     display:flex; align-items:center; justify-content:space-between;
     padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600;
   }
+  .exportHistoryHeadBtns{display:flex; align-items:center; gap:2px;}
   #exportHistoryList{
     list-style:none; margin:0; padding:8px 14px 14px; overflow-y:auto; font-size:12px;
   }
@@ -502,7 +503,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v103</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v104</span>
 </header>
 
 <div id="versionModal">
@@ -519,7 +520,10 @@
   <div id="exportHistoryPanel">
     <div id="exportHistoryPanelHead">
       <span>書き出し履歴</span>
-      <button class="close-btn" id="btnExportHistoryClose" title="閉じる">✕</button>
+      <div class="exportHistoryHeadBtns">
+        <button class="close-btn" id="btnExportHistorySync" type="button" title="保存先フォルダと同期(他端末分の履歴・ファイル消失状況を反映)">🔄</button>
+        <button class="close-btn" id="btnExportHistoryClose" title="閉じる">✕</button>
+      </div>
     </div>
     <ul id="exportHistoryList"></ul>
   </div>
@@ -3557,7 +3561,8 @@
     ["v100","保存先フォルダ設定時、書き出し履歴をフォルダ内のJSONファイルにも保存し、他端末(同じOneDriveフォルダ等)とも共有できるように対応"],
     ["v101","書き出し履歴一覧で、保存先フォルダ内に実ファイルが見つからないエントリへ取り消し線を表示するように対応"],
     ["v102","書き出し履歴一覧で、同じファイル名で複数回保存された場合に「同名X/Y」バッジを表示するように対応"],
-    ["v103","書き出し履歴一覧で同名ファイルを折りたたみ表示に変更、🕘履歴ボタンを開くたびに保存先フォルダと同期するように対応"]
+    ["v103","書き出し履歴一覧で同名ファイルを折りたたみ表示に変更、🕘履歴ボタンを開くたびに保存先フォルダと同期するように対応"],
+    ["v104","書き出し履歴モーダルを開く際の自動フォルダ同期をやめ、モーダル内の🔄アイコンで明示的に同期する方式に変更"]
   ];
 
   const verLabel = $("verLabel");
@@ -3590,6 +3595,7 @@
   const exportHistoryModal = $("exportHistoryModal");
   const exportHistoryList = $("exportHistoryList");
   const btnExportHistoryClose = $("btnExportHistoryClose");
+  const btnExportHistorySync = $("btnExportHistorySync");
 
   let expandedHistoryGroups = new Set(); // 展開中(同名を畳まず表示中)のファイル名。再描画をまたいで状態を覚えておく
 
@@ -3662,22 +3668,26 @@
     });
   }
 
-  async function openExportHistoryModal(){
-    // 保存先フォルダが登録済みなら、開くたびに他端末分のJSON履歴を取り込み・ファイル消失状況も再確認する。
-    // (HTML保存時と同じ仕組みを、履歴を開く操作だけでも使えるようにしたもの)
+  // 保存先フォルダが登録済みの場合のみ、フォルダへの一時アクセスを取得して
+  // 他端末分のJSON履歴を取り込み・ファイル消失状況を再確認する(モーダルは開かない/閉じない)。
+  // 未登録時やピッカーをキャンセルした場合は何もせず静かに終わる(ローカルの履歴はそのまま)。
+  async function syncExportHistoryWithFolder(){
     const fsSupported = "showDirectoryPicker" in window;
     const savedHandle = fsSupported ? await kvGet("saveDirHandle") : null;
-    if(savedHandle){
-      try{
-        const dirHandle = await window.showDirectoryPicker({ mode: "read", startIn: savedHandle });
-        await syncHistoryWithDir(dirHandle);
-        await refreshMissingFlags(dirHandle);
-      }catch(err){
-        if(err && err.name !== "AbortError"){
-          console.error("履歴の同期に失敗しました(ローカルの履歴のみ表示します)", err);
-        }
+    if(!savedHandle) return;
+    try{
+      const dirHandle = await window.showDirectoryPicker({ mode: "read", startIn: savedHandle });
+      await syncHistoryWithDir(dirHandle);
+      await refreshMissingFlags(dirHandle);
+    }catch(err){
+      if(err && err.name !== "AbortError"){
+        console.error("履歴の同期に失敗しました(ローカルの履歴のみ表示します)", err);
       }
     }
+  }
+  async function openExportHistoryModal(){
+    // 開く時点ではローカルの履歴だけを即表示する(フォルダピッカーは出さない)。
+    // 最新状態への同期はモーダル内の🔄ボタンを押した時だけ行う。
     await renderExportHistoryList();
     exportHistoryModal.classList.add("open");
     lockBodyScroll();
@@ -3688,6 +3698,15 @@
   }
   btnExportHistory.addEventListener("click", openExportHistoryModal);
   btnExportHistoryClose.addEventListener("click", closeExportHistoryModal);
+  btnExportHistorySync.addEventListener("click", async () => {
+    btnExportHistorySync.disabled = true;
+    try{
+      await syncExportHistoryWithFolder();
+      await renderExportHistoryList();
+    }finally{
+      btnExportHistorySync.disabled = false;
+    }
+  });
   exportHistoryModal.addEventListener("click", (e) => {
     if(e.target === exportHistoryModal) closeExportHistoryModal();
   });
