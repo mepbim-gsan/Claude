@@ -264,7 +264,7 @@
   .item.item-heading{position:relative;}
   .item.item-heading .itemactions{position:absolute; top:4px; right:6px;}
   .item.item-heading .memoPreview, .item.item-heading .heading-text{min-height:0;}
-  .item.item-heading .itembody{gap:2px;}
+  .item.item-heading .itembody{gap:2px; padding-right:30px;}
   .btn-fold{
     background:transparent; color:var(--sub); border:1px solid var(--border); border-radius:4px;
     padding:0 6px; font-size:11px; line-height:1.5; margin-right:4px;
@@ -302,6 +302,9 @@
     .item{flex-direction:column;}
     .item img{width:100%; max-width:none;}
     .drag-handle{align-self:flex-start;}
+    /* 見出し・メモ行は画像が無いため、⠿ハンドルを左に置いた横並びのまま(縦に間延びさせない) */
+    .item.item-heading{flex-direction:row;}
+    .item.item-heading .drag-handle{align-self:center;}
   }
   .item textarea{
     width:100%; background:var(--surface3); color:var(--text); border:1px solid var(--border);
@@ -3754,7 +3757,7 @@
   const APP_VERSION = "v02_2026-11-18"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"],
-    ["v02_2026-11-18","SmartCaptureMemoとして新規作成(Screen Capture Memo v104をベースに、保存データを旧ツールと分離)"]
+    ["v02_2026-11-18","SmartCaptureMemoとして新規作成。上部タブ(範囲/記録/履歴)+⚙設定へ再編、見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enter連続登録)、履歴の期間フィルタ/検索/ファイルを開く・読み込み、保存先フォルダの許可確認方式化"]
   ];
 
   const verLabel = $("verLabel");
