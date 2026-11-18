@@ -7,11 +7,11 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9D</text></svg>">
 <!--
   @tool      Screen Capture Memo
-  @version   v98
+  @version   v99
+  @changelog v99: ユーザーから「HTMLで保存したリストをキャッシュで残せますか」と相談。意図を確認したところ、記録一覧(キャプチャ/メモ)自体ではなく「いつ・どのファイル名でHTML保存したか」という書き出し履歴を残したい、という要望と判明。IndexedDBに新しいストア`exportHistory`(DBバージョンを2→3に上げて追加、既存2ストアはそのまま)を新設し、`btnExport`の3つの成功パス(保存先フォルダへの書き込み成功/書き込み失敗時のダウンロードへのフォールバック/通常ダウンロード)それぞれで、日時・ファイル名・資料タイトル・日付・件数を記録。記録一覧ヘッダー行に既存の🔄更新ボタンと並べて🕘履歴ボタンを新設し、クリックで`VERSION_HISTORY`の更新履歴モーダルと同じ構造・スタイルの一覧モーダルを表示(新しい書き出しが上、各行に個別削除ボタン付き)。同名ファイルの上書き確認でキャンセルした場合(実際には保存されない)は記録しないよう分岐。Playwrightで、エクスポート前は履歴が空であること、2回エクスポートすると2件記録されダイアログに新しい順で表示されること、個別削除で1件だけ消えること、ページエラーが発生しないことを確認。
   @changelog v98: ユーザーから「キャプチャや見出しを追加したとき、選択行の下ではなく、最下段に入るようになっていませんか」と指摘。調査の結果、「📝見出し」「💬メモ」ボタンはv75で対応済み(pointerdown時点で選択行を検出し、click発火前にフォーカスがボタン自身へ移る前の状態を保持してからaddCaptureRecord()へ渡す仕組み)だったが、📸キャプチャボタン(btnCapture)とクリップボード貼り付け(btnPaste・ページ上でのCtrl+V)はこの対応が漏れていたことが判明。click/pasteハンドラ内でgetFocusedItem()を呼ぶ時点では既にフォーカスがボタン自身等へ移ってしまっており、選択行の有無に関わらず常にnull(=末尾追加)として扱われていたのが原因。btnCapture・btnPasteにも同じpointerdown時点検出の仕組みを追加し、captureNow()を検出済みの行を引数で受け取れるよう変更。Spaceキーでのキャプチャ(ボタンを介さないショートカット)はフォーカス移動が発生しないため、keydown発火時点でgetFocusedItem()を呼ぶだけで対応。貼り付けで複数枚の画像が一度に貼られた場合も、1枚挿入するたびにその行を次のanchorとして更新し、選択行の直後に貼り付け順のまま連続して挿入されるようにした。Playwrightで、キャプチャ中の行をフォーカスしてから📸キャプチャ→その行の直後に挿入されること、見出し追加との組み合わせでも同様に直後へ挿入されること、ページエラーが発生しないことを確認。
   @changelog v95: ユーザー指摘「文字装飾ツールバーが右上にあるせいで、編集画面に入ったとき先頭行の位置がずれる」に対応。原因は、メモ欄のtextareaがツールバー分の余白をpadding-top(28px)で確保していたのに対し、プレビュー表示(.memoPreview)側のpadding-topは8px(画像付き行)または4px(見出し/メモ行)と異なっており、プレビュー→編集の切替時に先頭行のY座標が20px前後ズレていたこと。当初はツールバーを右下へフロート配置する案で対応したが、ユーザーからSlack風(ツールバーを本文の下に専用行として分離し、区切り線で仕切る)のレイアウト案を提示され比較検討のうえ、そちらへ変更。`.memoToolbar`をtextareaの下にHTML上も実際に続く専用の行として配置(absolute配置をやめ通常のフローに戻す)し、textarea側は上下左右8pxの通常paddingに戻した。続けてユーザーから「デザインはフラットの方がよくない？右寄せする必要あるかな？」と指摘を受け、画像付き行のツールバーに付けていた背景色・左右下の枠線・丸角を撤去して区切り線のみのフラット表示に統一し、ボタンの配置もflex-end(右寄せ)からflex-start(左寄せ)に変更
-  @changelog v94: ユーザー指摘「マーカーに文字色を反映できない」「マーカーのトグルも上手く動かない」の2件に対応。(1)renderMemoMarkdown()で文字色([文字]{色})の処理がマーカー(==文字==)より先に走っていたため、色の<span style="...">が生成する"="がマーカーの正規表現[^=\n]を分断して入れ子を解析できないケースがあり、かつmark要素自体のcolorがハードコードされ色指定を常に上書きしていた。マーカーの処理を文字色より先に行う順序に変更し、色指定をinline styleからclass="memo-col-{色}"に変更のうえ、`.memo-col-{色} mark`/`mark .memo-col-{色}`という入れ子順を問わない上書きルール(!important、既存のmark色指定より詳細度が低いため)を本体・exportHtmlの両<style>に追加し、どちらの入れ子順でも文字色がマーカーの背景色の上に正しく反映されるよう修正。(2)太字/マーカー/取り消し線/下線の共通トグル関数toggleWrapMemoSelection()は、選択範囲の前後にちょうど装飾記号が隣接している場合に既存の装飾を検出できず、押すたびに記号が二重三重に増殖する不具合があった。選択範囲の直前・直後が同じ記号ならそれも含めて剥がすよう修正し、4ボタン全てに適用
-  ※ v01〜v93の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
+  ※ v01〜v94の全履歴は Knowledge リポジトリの knowledge/Repo_Claude-Screen_Capture_Memo.md を参照
 -->
 <style>
   :root{
@@ -386,6 +386,41 @@
     flex-shrink:0; color:var(--accent); font-weight:700; font-family:monospace; font-size:11px;
   }
 
+  #exportHistoryModal{
+    display:none; position:fixed; inset:0; z-index:120;
+    background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:24px;
+  }
+  #exportHistoryModal.open{display:flex;}
+  #exportHistoryPanel{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    width:460px; max-width:90vw; max-height:78vh; display:flex; flex-direction:column;
+    box-shadow:0 12px 40px rgba(0,0,0,.3);
+  }
+  #exportHistoryPanelHead{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600;
+  }
+  #exportHistoryList{
+    list-style:none; margin:0; padding:8px 14px 14px; overflow-y:auto; font-size:12px;
+  }
+  #exportHistoryList li{
+    display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border);
+    color:var(--sub); line-height:1.5;
+  }
+  #exportHistoryList li:last-child{border-bottom:none;}
+  #exportHistoryList .hist-time{
+    flex-shrink:0; color:var(--accent); font-weight:700; font-family:monospace; font-size:11px;
+  }
+  #exportHistoryList .hist-detail{
+    flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);
+  }
+  #exportHistoryList .hist-del{
+    flex-shrink:0; background:transparent; color:var(--sub); border:1px solid transparent;
+    padding:4px 8px; font-size:13px; cursor:pointer; border-radius:6px;
+  }
+  #exportHistoryList .hist-del:hover{background:var(--danger); color:#fff;}
+  #exportHistoryEmpty{color:var(--sub); font-size:12px; padding:4px 0;}
+
   #exportStatusMsg{
     font-size:12px; color:var(--sub); opacity:0; transition:opacity .2s;
     max-width:280px; line-height:1.4;
@@ -453,7 +488,7 @@
   <h1>SCREEN CAPTURE MEMO</h1>
   <a class="headerLink" id="btnHelp" href="help.html" target="_blank" rel="noopener" title="使い方ヘルプを別タブで開く">❓ ヘルプ</a>
   <button class="secondary" id="btnTheme" title="ライト/ダークモード切替" type="button">🌙</button>
-  <span class="ver" id="verLabel" tabindex="0" role="button">v98</span>
+  <span class="ver" id="verLabel" tabindex="0" role="button">v99</span>
 </header>
 
 <div id="versionModal">
@@ -463,6 +498,16 @@
       <button class="close-btn" id="btnVersionClose" title="閉じる">✕</button>
     </div>
     <ul id="versionList"></ul>
+  </div>
+</div>
+
+<div id="exportHistoryModal">
+  <div id="exportHistoryPanel">
+    <div id="exportHistoryPanelHead">
+      <span>書き出し履歴</span>
+      <button class="close-btn" id="btnExportHistoryClose" title="閉じる">✕</button>
+    </div>
+    <ul id="exportHistoryList"></ul>
   </div>
 </div>
 
@@ -540,6 +585,7 @@
         <input type="text" id="exportTitle" placeholder="資料タイトル(任意)">
         <button class="secondary" id="btnClearAll">全削除</button>
         <button class="ok" id="btnExport" title="まとめてHTML保存(Shift+クリックで保存先フォルダを設定/Ctrl+Shift+クリックで解除。設定済みの場合、保存のたびにそのフォルダを起点にフォルダ選択ダイアログで確認します)">HTML保存</button>
+        <button class="secondary iconable" id="btnExportHistory" type="button" title="書き出し履歴を表示(過去にHTML保存した日時・ファイル名・件数)">🕘 <span class="btnLabel">履歴</span></button>
         <span id="exportStatusMsg"></span>
       </div>
       <div class="hint" style="margin:8px 0 0;">左端の ⠿ をドラッグすると並び替えできます／⠿ にフォーカスしてShift+Alt+↑/↓でも並び替え可能です(OneNote同様)</div>
@@ -698,11 +744,12 @@
   const DB_NAME = "screen-capture-memo-db";
   const STORE = "captures";
   const KV_STORE = "kv"; // 保存先フォルダハンドル等、少量の設定値を保持
+  const HISTORY_STORE = "exportHistory"; // HTML保存の書き出し履歴(ファイル名・日時・件数)
   let db = null;
 
   function openDB(){
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 2);
+      const req = indexedDB.open(DB_NAME, 3);
       req.onupgradeneeded = (e) => {
         const _db = e.target.result;
         if(!_db.objectStoreNames.contains(STORE)){
@@ -710,6 +757,9 @@
         }
         if(!_db.objectStoreNames.contains(KV_STORE)){
           _db.createObjectStore(KV_STORE, { keyPath:"key" });
+        }
+        if(!_db.objectStoreNames.contains(HISTORY_STORE)){
+          _db.createObjectStore(HISTORY_STORE, { keyPath:"id", autoIncrement:true });
         }
       };
       req.onsuccess = (e) => resolve(e.target.result);
@@ -771,6 +821,32 @@
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
       const req = tx.objectStore(STORE).clear();
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e);
+    });
+  }
+
+  // ---------- 書き出し履歴(HTML保存のたびに記録、記録一覧とは別のキャッシュ) ----------
+  function historyAdd(record){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HISTORY_STORE, "readwrite");
+      const req = tx.objectStore(HISTORY_STORE).add(record);
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function historyGetAll(){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HISTORY_STORE, "readonly");
+      const req = tx.objectStore(HISTORY_STORE).getAll();
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e);
+    });
+  }
+  function historyDelete(id){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HISTORY_STORE, "readwrite");
+      const req = tx.objectStore(HISTORY_STORE).delete(id);
       req.onsuccess = () => resolve();
       req.onerror = (e) => reject(e);
     });
@@ -2517,6 +2593,7 @@
           return;
         }
         await writeFileToDir(pendingDirHandle, fileName, blob);
+        await historyAdd({ timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
         showToast(`✅「${pendingDirHandle.name}」に保存しました: ${fileName}`);
         return;
       }catch(err){
@@ -2525,6 +2602,7 @@
         const a2 = document.createElement("a");
         a2.href = url2; a2.download = fileName; a2.click();
         URL.revokeObjectURL(url2);
+        await historyAdd({ timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
         showToast(`⚠️ 保存に失敗し、通常のダウンロードに切り替えました: ${fileName}`);
         return;
       }
@@ -2536,6 +2614,7 @@
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
+    await historyAdd({ timestamp: Date.now(), fileName, title: docTitle, date: dateValue || "", count: records.length });
     showToast(dirPickCancelled
       ? `保存先の選択をキャンセルしたため、通常のダウンロードに切り替えました: ${fileName}`
       : `ダウンロードしました: ${fileName}`);
@@ -2953,6 +3032,7 @@
     }
     if(e.key !== "Escape") return;
     if(versionModal.classList.contains("open")){ closeVersionModal(); return; }
+    if(exportHistoryModal.classList.contains("open")){ closeExportHistoryModal(); return; }
     if(cropModal.classList.contains("open")){ closeCropModal(); return; }
     if(lightbox.classList.contains("open")) closeLightbox();
   });
@@ -3381,7 +3461,8 @@
     ["v95","メモ装飾ツールバーを本文下の専用行(区切り線あり)に変更し、編集時の先頭行ズレを解消"],
     ["v96","共有パネルのスティッキー化・段階的開示、共有開始/停止ボタンの統合、狭い幅での画像+メモ縦並び、ウィンドウリサイズ時の選択枠ズレ修正"],
     ["v97","記録一覧に一覧更新ボタンを追加(複数タブ/ウィンドウでの共有・範囲固定を維持したまま反映)、トリミング範囲(選択枠)の各種不具合を修正(リサイズ時のズレ、ハンドルの見切れ、狭い画面での右端まで届かない問題)"],
-    ["v98","📸キャプチャボタン・クリップボード貼り付けで、選択行があってもボタンへのフォーカス移動により無視され常に最下段に入ってしまう不具合を修正(見出し/メモ追加と同じ仕組みに統一)"]
+    ["v98","📸キャプチャボタン・クリップボード貼り付けで、選択行があってもボタンへのフォーカス移動により無視され常に最下段に入ってしまう不具合を修正(見出し/メモ追加と同じ仕組みに統一)"],
+    ["v99","HTML保存の書き出し履歴(日時・ファイル名・件数)を記録一覧ヘッダーの🕘履歴ボタンから確認できるように追加"]
   ];
 
   const verLabel = $("verLabel");
@@ -3407,6 +3488,51 @@
   btnVersionClose.addEventListener("click", closeVersionModal);
   versionModal.addEventListener("click", (e) => {
     if(e.target === versionModal) closeVersionModal();
+  });
+
+  // ---------- 書き出し履歴モーダル ----------
+  const btnExportHistory = $("btnExportHistory");
+  const exportHistoryModal = $("exportHistoryModal");
+  const exportHistoryList = $("exportHistoryList");
+  const btnExportHistoryClose = $("btnExportHistoryClose");
+
+  async function renderExportHistoryList(){
+    const items = await historyGetAll();
+    items.sort((a, b) => b.timestamp - a.timestamp); // 新しい書き出しを上に
+    if(items.length === 0){
+      exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">まだ書き出し履歴がありません</div>`;
+      return;
+    }
+    exportHistoryList.innerHTML = items.map((h) => `
+      <li data-id="${h.id}">
+        <span class="hist-time">${fmtTime(h.timestamp)}</span>
+        <span class="hist-detail" title="${h.fileName}">${h.fileName}(${h.count}件)</span>
+        <button class="hist-del" title="この履歴を削除">🗑</button>
+      </li>
+    `).join("");
+    exportHistoryList.querySelectorAll("li").forEach((li) => {
+      li.querySelector(".hist-del").addEventListener("click", async () => {
+        await historyDelete(Number(li.dataset.id));
+        li.remove();
+        if(!exportHistoryList.querySelector("li")){
+          exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">まだ書き出し履歴がありません</div>`;
+        }
+      });
+    });
+  }
+  async function openExportHistoryModal(){
+    await renderExportHistoryList();
+    exportHistoryModal.classList.add("open");
+    lockBodyScroll();
+  }
+  function closeExportHistoryModal(){
+    exportHistoryModal.classList.remove("open");
+    unlockBodyScroll();
+  }
+  btnExportHistory.addEventListener("click", openExportHistoryModal);
+  btnExportHistoryClose.addEventListener("click", closeExportHistoryModal);
+  exportHistoryModal.addEventListener("click", (e) => {
+    if(e.target === exportHistoryModal) closeExportHistoryModal();
   });
 
   // ヘッダー(タイトル/バージョン)の実高さを監視し、その直下に「2. キャプチャ」
