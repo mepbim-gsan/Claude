@@ -463,6 +463,15 @@
   #exportHistoryList li.hist-child{
     padding-left:14px; opacity:.85;
   }
+  #exportHistoryList .hist-act{
+    flex-shrink:0; background:transparent; color:var(--sub); border:1px solid var(--border);
+    padding:3px 7px; font-size:13px; cursor:pointer; border-radius:6px;
+  }
+  #exportHistoryList .hist-act:hover{border-color:var(--accent); background:var(--surface2); opacity:1;}
+  @media (max-width:600px){
+    #exportHistoryList li{flex-wrap:wrap; row-gap:2px;}
+    #exportHistoryList .hist-detail{flex-basis:100%; order:-1; white-space:normal;}
+  }
   #exportHistoryList .hist-del{
     flex-shrink:0; background:transparent; color:var(--sub); border:1px solid transparent;
     padding:4px 8px; font-size:13px; cursor:pointer; border-radius:6px;
@@ -2224,12 +2233,16 @@
     const file = importFileInput.files[0];
     importFileInput.value = ""; // 同じファイルを連続で選んでもchangeが発火するように
     if(!file) return;
+    await importFromHtmlText(await file.text());
+  });
 
-    const text = await file.text();
+  // 書き出したHTMLの中身(テキスト)を記録一覧の末尾へ取り込む(ファイル選択・書き出し履歴の📥共通)。
+  // 取り込んだ場合true、中止・失敗した場合false
+  async function importFromHtmlText(text){
     const arrText = extractBalanced(text, "var DATA = ", "[", "]");
     if(!arrText){
       alertAsync("このHTMLからデータを読み取れませんでした。このツールで書き出したHTMLファイルを選んでください。");
-      return;
+      return false;
     }
     let items;
     try{
@@ -2237,11 +2250,11 @@
     }catch(err){
       console.error(err);
       alertAsync("データの読み込みに失敗しました(形式が壊れている可能性があります)。");
-      return;
+      return false;
     }
     if(!Array.isArray(items) || items.length === 0){
       alertAsync("読み込めるキャプチャが見つかりませんでした。");
-      return;
+      return false;
     }
 
     // タイトル・日付(META)も読み込めれば併せて復元する(古い形式のファイルには無い場合もある)
@@ -2251,7 +2264,7 @@
       try{ meta = JSON.parse(metaText); }catch(err){ console.error(err); }
     }
     const metaNote = meta ? `\nタイトル「${meta.title || ""}」・日付「${meta.date || "未設定"}」も読み込みます。` : "";
-    if(!(await confirmAsync(`${items.length}件を記録一覧の末尾に追加します。${metaNote}よろしいですか？`))) return;
+    if(!(await confirmAsync(`${items.length}件を記録一覧の末尾に追加します。${metaNote}よろしいですか？`))) return false;
 
     for(const it of items){
       let dataURL = it.d || null;
@@ -2293,29 +2306,18 @@
         localStorage.setItem(DATE_KEY, meta.date);
       }
     }
+    await persistOrderFromDom();
     updateCount();
-  });
+    return true;
+  }
 
   btnExport.addEventListener("click", async () => {
-    const fsSupported = "showDirectoryPicker" in window;
-
     // 保存先フォルダが登録済みなら、クリック直後(ブラウザのuser activationが有効なうち)に
-    // ピッカーを前回のフォルダを起点(startIn)にして開き、書き込み先を確定させておく。
-    // 実際の書き込みはこの後の重い処理(全件読み込み・HTML生成)の後に行うが、
-    // フォルダの選び直し自体はここで確認済みのため、権限の失効(requestPermissionが
-    // クリックから離れすぎて無反応になる)を気にする必要がなくなる。
-    let pendingDirHandle = null;
-    let dirPickCancelled = false;
-    const savedHandle = fsSupported ? await kvGet("saveDirHandle") : null;
-    if(savedHandle){
-      try{
-        pendingDirHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: savedHandle });
-        await kvSet("saveDirHandle", pendingDirHandle); // 選び直した場合に備え最新のハンドルを覚え直す
-      }catch(err){
-        if(err && err.name !== "AbortError") console.error("保存先フォルダの選択に失敗しました", err);
-        dirPickCancelled = true;
-      }
-    }
+    // 書き込みの許可を確認しておく。実際の書き込みはこの後の重い処理(全件読み込み・HTML生成)の
+    // 後に行うが、許可はここで確定済みのため、クリックから離れすぎて許可確認が無反応になる問題を避けられる
+    const dirResult = await getSaveDirWithPermission("readwrite");
+    const pendingDirHandle = dirResult || null;
+    const dirPickCancelled = dirResult === undefined;
 
     // エクスポート前に画面上の全textareaを強制保存(debounce未確定分の取りこぼし防止)。
     // 以前は項目ごとにdbGetAll()(全件読み込み)していたため、件数が多いほど
@@ -3784,22 +3786,61 @@
 
   let expandedHistoryGroups = new Set(); // 展開中(同名を畳まず表示中)のファイル名。再描画をまたいで状態を覚えておく
 
-  function historyRowHtml(h, { isPrimary, expandBtn }){
+  // 期間フィルタ(週は月曜始まり)と、ファイル名の検索
+  const HISTORY_RANGE_KEY = "smart-capture-memo-history-range";
+  const historySearch = $("historySearch");
+  let historyRange = "all";
+  try{ historyRange = localStorage.getItem(HISTORY_RANGE_KEY) || "all"; }catch(e){}
+  function historyRangeBounds(range){
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const DAY = 86400000;
+    const weekStart = today - ((now.getDay() + 6) % 7) * DAY; // 月曜0:00
+    if(range === "today") return [today, today + DAY];
+    if(range === "thisWeek") return [weekStart, weekStart + 7 * DAY];
+    if(range === "lastWeek") return [weekStart - 7 * DAY, weekStart];
+    if(range === "thisMonth") return [new Date(now.getFullYear(), now.getMonth(), 1).getTime(), new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime()];
+    return [-Infinity, Infinity];
+  }
+  function syncHistoryFilterButtons(){
+    document.querySelectorAll("#historyFilters .chipBtn").forEach((b) => b.classList.toggle("active", b.dataset.range === historyRange));
+  }
+  document.querySelectorAll("#historyFilters .chipBtn").forEach((b) => {
+    b.addEventListener("click", () => {
+      historyRange = b.dataset.range;
+      try{ localStorage.setItem(HISTORY_RANGE_KEY, historyRange); }catch(e){}
+      syncHistoryFilterButtons();
+      renderExportHistoryList();
+    });
+  });
+  historySearch.addEventListener("input", () => renderExportHistoryList());
+  syncHistoryFilterButtons();
+
+  function historyRowHtml(h, { isPrimary, expandBtn, canUseFile }){
+    const fileBtns = canUseFile && !h.missing
+      ? `<button class="hist-act hist-open" type="button" data-file="${escapeHtml(h.fileName)}" title="このファイルを新しいタブで開く">📄</button>` +
+        `<button class="hist-act hist-import" type="button" data-file="${escapeHtml(h.fileName)}" title="このファイルを記録一覧に読み込む(続きから編集)">📥</button>`
+      : "";
     return `
       <li class="hist-row${isPrimary ? "" : " hist-child"}" data-id="${h.id}" ${isPrimary ? "" : "hidden"}>
         <span class="hist-time">${fmtTime(h.timestamp)}</span>
-        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${h.fileName}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}">${h.fileName}(${h.count}件)</span>
+        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${escapeHtml(h.fileName)}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}">${escapeHtml(h.fileName)}(${h.count}件)</span>
         ${expandBtn || ""}
+        ${fileBtns}
         <button class="hist-del" data-id="${h.id}" title="この履歴を削除">🗑</button>
       </li>
     `;
   }
 
   async function renderExportHistoryList(){
-    const items = await historyGetAll();
+    const all = await historyGetAll();
+    const canUseFile = fsAccessSupported && !!(await kvGet("saveDirHandle"));
+    const [from, to] = historyRangeBounds(historyRange);
+    const q = historySearch.value.trim().toLowerCase();
+    const items = all.filter((h) => h.timestamp >= from && h.timestamp < to && (!q || (h.fileName || "").toLowerCase().includes(q)));
     items.sort((a, b) => b.timestamp - a.timestamp); // 新しい書き出しを上に
     if(items.length === 0){
-      exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">まだ書き出し履歴がありません</div>`;
+      exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">${all.length ? "条件に合う履歴がありません" : "まだ書き出し履歴がありません"}</div>`;
       return;
     }
     // 同じファイル名の履歴は1件(最新)だけを表示し、残りは畳んでおく。
@@ -3817,8 +3858,9 @@
       const expandBtn = group.length > 1
         ? `<button class="hist-expand${isOpen ? " open" : ""}" type="button" data-group="${gi}">同名${group.length}件 <span class="hist-expand-arrow">${isOpen ? "▾" : "▸"}</span></button>`
         : "";
-      const rows = [historyRowHtml(latest, { isPrimary: true, expandBtn })];
-      group.slice(1).forEach((h) => rows.push(historyRowHtml(h, { isPrimary: false })));
+      // 同名の古い行は同じファイル(上書き済み)を指すため、開く/読み込みは最新行にだけ出す
+      const rows = [historyRowHtml(latest, { isPrimary: true, expandBtn, canUseFile })];
+      group.slice(1).forEach((h) => rows.push(historyRowHtml(h, { isPrimary: false, canUseFile: false })));
       return rows.join("");
     }).join("");
 
@@ -3851,25 +3893,98 @@
         await renderExportHistoryList();
       });
     });
+    exportHistoryList.querySelectorAll(".hist-open").forEach((btn) => {
+      btn.addEventListener("click", () => openHistoryFile(btn.dataset.file));
+    });
+    exportHistoryList.querySelectorAll(".hist-import").forEach((btn) => {
+      btn.addEventListener("click", () => importHistoryFile(btn.dataset.file));
+    });
   }
 
-  // 保存先フォルダが登録済みの場合のみ、フォルダへの一時アクセスを取得して
-  // 他端末分のJSON履歴を取り込み・ファイル消失状況を再確認する(モーダルは開かない/閉じない)。
-  // 未登録時やピッカーをキャンセルした場合は何もせず静かに終わる(ローカルの履歴はそのまま)。
-  async function syncExportHistoryWithFolder(){
-    const fsSupported = "showDirectoryPicker" in window;
-    const savedHandle = fsSupported ? await kvGet("saveDirHandle") : null;
-    if(!savedHandle) return;
+  // 保存先フォルダから履歴のファイルを読み出す。見つからなければ履歴に消失フラグを立てて知らせる
+  async function readHistoryFile(fileName){
+    const dir = await getSaveDirWithPermission("readwrite");
+    if(dir === null){
+      await alertAsync("保存先フォルダが登録されていません。⚙設定で登録してください。");
+      return null;
+    }
+    if(!dir) return null; // フォルダの許可・選択をキャンセル
     try{
-      const dirHandle = await window.showDirectoryPicker({ mode: "read", startIn: savedHandle });
+      const fh = await dir.getFileHandle(fileName, { create: false });
+      return await fh.getFile();
+    }catch(err){
+      if(err && err.name === "NotFoundError"){
+        await refreshMissingFlags(dir);
+        await renderExportHistoryList();
+        await alertAsync(`「${fileName}」が保存先フォルダ「${dir.name}」に見つかりません。移動・削除された可能性があります。`);
+      }else{
+        console.error(err);
+        await alertAsync("ファイルの読み込みに失敗しました。");
+      }
+      return null;
+    }
+  }
+
+  // 書き出したHTMLを新しいタブで開く(https上のページからfile://のリンクは開けないため、
+  // フォルダから読み出した内容をBlob URLにして開く。画像は中に埋め込まれているのでそのまま表示できる)
+  async function openHistoryFile(fileName){
+    const file = await readHistoryFile(fileName);
+    if(!file) return;
+    const url = URL.createObjectURL(new Blob([await file.text()], { type: "text/html" }));
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    let win = window.open(url, "_blank");
+    // 許可ダイアログを挟んだ場合などはポップアップとしてブロックされることがあるため、確認を挟んで開き直す
+    if(!win && await confirmAsync(`「${fileName}」を新しいタブで開きます。`)){
+      win = window.open(url, "_blank");
+    }
+  }
+
+  async function importHistoryFile(fileName){
+    const file = await readHistoryFile(fileName);
+    if(!file) return;
+    const imported = await importFromHtmlText(await file.text());
+    if(imported) switchTab("record");
+  }
+
+  // 登録済みの保存先フォルダを、指定モードの権限付きで取得する(ボタン操作の直後に呼ぶこと)。
+  // 以前の権限が残っていればそのまま、無ければ小さな許可確認を出す。許可確認が使えない・拒否された
+  // 場合だけ、従来どおり前回のフォルダを起点にフォルダ選択を出して確定し直す。
+  // 戻り値: ハンドル / null(未登録・非対応) / undefined(キャンセル)
+  async function getSaveDirWithPermission(mode){
+    if(!fsAccessSupported) return null;
+    const handle = await kvGet("saveDirHandle");
+    if(!handle) return null;
+    const opts = { mode };
+    try{
+      if(await handle.queryPermission(opts) === "granted") return handle;
+      if(await handle.requestPermission(opts) === "granted") return handle;
+    }catch(err){
+      console.error("保存先フォルダの許可確認に失敗しました", err);
+    }
+    try{
+      const picked = await window.showDirectoryPicker({ mode, startIn: handle });
+      await kvSet("saveDirHandle", picked);
+      refreshSaveDirState();
+      return picked;
+    }catch(err){
+      if(err && err.name !== "AbortError") console.error("保存先フォルダの選択に失敗しました", err);
+      return undefined;
+    }
+  }
+
+  // 保存先フォルダが登録済みの場合のみ、他端末分のJSON履歴を取り込み・ファイル消失状況を再確認する。
+  // 未登録時や許可をキャンセルした場合は何もせず静かに終わる(ローカルの履歴はそのまま)。
+  async function syncExportHistoryWithFolder(){
+    const dirHandle = await getSaveDirWithPermission("readwrite");
+    if(!dirHandle) return;
+    try{
       await syncHistoryWithDir(dirHandle);
       await refreshMissingFlags(dirHandle);
     }catch(err){
-      if(err && err.name !== "AbortError"){
-        console.error("履歴の同期に失敗しました(ローカルの履歴のみ表示します)", err);
-      }
+      console.error("履歴の同期に失敗しました(ローカルの履歴のみ表示します)", err);
     }
   }
+
   btnExportHistorySync.addEventListener("click", async () => {
     btnExportHistorySync.disabled = true;
     try{
