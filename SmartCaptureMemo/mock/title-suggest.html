@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>資料タイトル候補 モック</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280;
+    --accent:#3b6fe0; --ok:#1f9d5c; --secondary-bg:#e7e9ee; --hl:#fde68a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac;
+      --accent:#4f8cff; --ok:#2fbf71; --secondary-bg:#262b38; --hl:#7a5d00; }
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text);}
+  header{padding:12px 16px; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:5;}
+  header h1{font-size:15px; margin:0;}
+  header p{margin:4px 0 0; font-size:12px; color:var(--sub);}
+  main{max-width:1100px; margin:0 auto; padding:14px 16px; display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:16px;}
+  @media (max-width:860px){ main{grid-template-columns:1fr;} }
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 14px;}
+  .card h2{font-size:13px; color:var(--sub); margin:0 0 10px; font-weight:600;}
+  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  input[type=text], input[type=date]{
+    height:36px; background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:8px;
+    padding:0 10px; font-size:13px; font-family:inherit;
+  }
+  button{height:36px; border:none; border-radius:8px; padding:0 12px; font-size:13px; cursor:pointer; font-family:inherit;}
+  .btnSave{background:var(--ok); color:#fff;}
+  .btnSec{background:var(--secondary-bg); color:var(--text);}
+  .titleWrap{position:relative; flex:1; min-width:220px;}
+  #title{width:100%;}
+  /* 区切りの案内(どの項目を入力中か) */
+  .segGuide{display:flex; gap:4px; margin-top:6px; font-size:11px; color:var(--sub); align-items:center; flex-wrap:wrap;}
+  .seg{padding:1px 8px; border-radius:10px; border:1px solid var(--border);}
+  .seg.on{border-color:var(--accent); color:var(--accent); font-weight:700; background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  .seg.done{color:var(--text);}
+  /* 候補リスト */
+  #suggest{
+    position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:20; background:var(--panel);
+    border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 30px rgba(0,0,0,.18); overflow:hidden;
+  }
+  #suggest[hidden]{display:none;}
+  .sgHead{font-size:11px; color:var(--sub); padding:6px 10px; border-bottom:1px solid var(--border); background:var(--surface2);}
+  .sgList{max-height:calc(34px * 4 + 2px); overflow-y:auto; list-style:none; margin:0; padding:2px 0;}
+  .sgList li{height:34px; display:flex; align-items:center; gap:8px; padding:0 10px; cursor:pointer; font-size:13px;}
+  .sgList li .ctx{margin-left:auto; font-size:11px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%;}
+  .sgList li.active{background:var(--surface2); box-shadow:inset 3px 0 0 var(--accent);}
+  .sgList li .star{color:#d97706; width:1em; text-align:center;}
+  .sgList mark{background:var(--hl); color:inherit; border-radius:2px; padding:0 1px;}
+  .sgEmpty{padding:8px 10px; font-size:12px; color:var(--sub);}
+  .note{font-size:12px; color:var(--sub); line-height:1.6;}
+  .note b{color:var(--text);}
+  ul.plain{list-style:none; margin:0; padding:0;}
+  ul.plain li{display:flex; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid var(--border); font-size:12px;}
+  ul.plain li:last-child{border-bottom:none;}
+  ul.plain li span{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .mini{height:24px; padding:0 8px; font-size:11px;}
+  .tag{font-size:10px; color:#fff; background:#d97706; border-radius:8px; padding:0 6px;}
+  kbd{background:var(--surface2); border:1px solid var(--border); border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:11px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>資料タイトルの入力候補(モック)</h1>
+  <p>動作確認用のモックです。本体(SmartCaptureMemo)には未反映。右側のサンプル履歴・定番タイトルは自由に追加・削除できます(このページを閉じると元に戻ります)。</p>
+</header>
+<main>
+  <section class="card">
+    <h2>記録タブの「日付・資料タイトル」欄(イメージ)</h2>
+    <div class="row">
+      <input type="date" id="date">
+      <div class="titleWrap">
+        <input type="text" id="title" placeholder="大項目_中項目_小項目(例: DD_週次_BIM)" autocomplete="off">
+        <div id="suggest" hidden>
+          <div class="sgHead" id="sgHead"></div>
+          <ul class="sgList" id="sgList"></ul>
+        </div>
+      </div>
+      <button class="btnSave" id="btnSave" type="button">💾 HTML保存</button>
+    </div>
+    <div class="segGuide" id="segGuide"></div>
+    <div class="note" style="margin-top:14px;">
+      <b>試し方</b><br>
+      ・「設備」と入力 → 大項目の候補(設備を含むもの)<br>
+      ・「DD_」と入力 → 大項目が DD の履歴にある中項目の候補<br>
+      ・「DD_週次_」と入力 → DD_週次 の小項目の候補<br>
+      ・候補は <kbd>↑</kbd><kbd>↓</kbd> で選択、<kbd>Enter</kbd> / <kbd>Tab</kbd> で確定(大・中項目は確定すると自動で「_」が付いて次の項目へ)、<kbd>Esc</kbd> で閉じる<br>
+      ・★は定番タイトルに登録した項目(上位に表示)。並びは 定番 → 最近使った順<br>
+      ・「💾 HTML保存」を押すと、入力したタイトルが履歴に追加されます(モック上のみ)
+    </div>
+  </section>
+
+  <aside style="display:flex; flex-direction:column; gap:16px;">
+    <section class="card">
+      <h2>⚙設定:定番タイトル(登録可)</h2>
+      <div class="row" style="margin-bottom:8px;">
+        <input type="text" id="favInput" placeholder="例: 設備コンサル_P1_UC" style="flex:1;">
+        <button class="btnSec" id="favAdd" type="button">追加</button>
+      </div>
+      <ul class="plain" id="favList"></ul>
+      <p class="note" style="margin:8px 0 0;">途中まで(例: 「設備コンサル」「DD_週次」)の登録も可。各項目の候補で優先表示されます。</p>
+    </section>
+    <section class="card">
+      <h2>書き出し履歴(サンプル・新しい順)</h2>
+      <ul class="plain" id="histList"></ul>
+    </section>
+  </aside>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const SEG_NAMES = ["大項目(分類)", "中項目(会議体名称)", "小項目(分科会・補足)"];
+  const DAY = 86400000, now = Date.now();
+  // サンプル: 書き出し履歴(タイトル・保存日時)
+  let history = [
+    ["DD_週次_BIM", 0.2], ["設備コンサル_P1_UC", 1], ["DD_週次_構造", 2], ["設備生産設計_定例_空調", 3],
+    ["DD_月例_全体", 5], ["Mtg設備_社内_勉強会", 6], ["設備コンサル_ユースケース", 8], ["設備生産設計_定例_衛生", 9],
+    ["DD_週次_設備", 10], ["設備コンサル_P2_UC", 12], ["P1_UC", 15], ["DD_キックオフ", 20], ["設備生産設計_施主定例_電気", 22]
+  ].map(([t, d]) => ({ title: t, at: now - d * DAY }));
+  let favorites = ["設備コンサル_P1_UC", "DD_週次"];
+
+  const titleEl = $("title"), sgBox = $("suggest"), sgHead = $("sgHead"), sgList = $("sgList"), segGuide = $("segGuide");
+  let items = [], active = -1;
+
+  const esc = (t) => String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const splitSeg = (t) => t.split("_");
+
+  // 今カーソルがある項目(区切りの何番目か)と、それより前の確定済み項目
+  function context(){
+    const v = titleEl.value.slice(0, titleEl.selectionStart ?? titleEl.value.length);
+    const parts = splitSeg(v);
+    const idx = Math.min(parts.length - 1, 2);
+    const prefix = parts.slice(0, idx).map((s) => s.toLowerCase());
+    return { idx, prefix, typed: idx === 2 ? parts.slice(2).join("_") : parts[idx] };
+  }
+
+  // 候補を作る: 前の項目が一致するタイトルから、その位置の項目を集める(部分一致・重複除去)
+  function buildCandidates(){
+    const { idx, prefix, typed } = context();
+    const q = typed.toLowerCase();
+    const map = new Map(); // 値 → { value, fav, at, sample }
+    const add = (title, at, fav) => {
+      const segs = splitSeg(title);
+      if(segs.length <= idx) return;
+      for(let i = 0; i < idx; i++){ if((segs[i] || "").toLowerCase() !== prefix[i]) return; }
+      const value = idx === 2 ? segs.slice(2).join("_") : segs[idx];
+      if(!value || (q && !value.toLowerCase().includes(q))) return;
+      const cur = map.get(value) || { value, fav:false, at:0, sample:title };
+      cur.fav = cur.fav || fav; if(at > cur.at){ cur.at = at; cur.sample = title; }
+      map.set(value, cur);
+    };
+    favorites.forEach((t) => add(t, 0, true));
+    history.forEach((h) => add(h.title, h.at, false));
+    const list = Array.from(map.values()).sort((a, b) => (b.fav - a.fav) || (b.at - a.at));
+    return { idx, typed, list };
+  }
+
+  function relDate(at){
+    if(!at) return "";
+    const d = Math.floor((now - at) / DAY);
+    return d <= 0 ? "今日" : d === 1 ? "昨日" : d < 7 ? `${d}日前` : d < 30 ? `${Math.floor(d / 7)}週間前` : `${Math.floor(d / 30)}か月前`;
+  }
+
+  function render(){
+    const { idx, typed, list } = buildCandidates();
+    renderGuide(idx);
+    items = list;
+    if(document.activeElement !== titleEl){ sgBox.hidden = true; return; }
+    sgHead.textContent = `${SEG_NAMES[idx]}の候補` + (idx > 0 ? `(「${titleEl.value.split("_").slice(0, idx).join("_")}_」の履歴から)` : "");
+    if(list.length === 0){
+      sgList.innerHTML = `<div class="sgEmpty">候補がありません。新しい${SEG_NAMES[idx].replace(/\(.*\)/, "")}として入力できます</div>`;
+    }else{
+      const q = typed.toLowerCase();
+      sgList.innerHTML = list.map((c, i) => {
+        let label = esc(c.value);
+        if(q){ const k = c.value.toLowerCase().indexOf(q); label = esc(c.value.slice(0, k)) + "<mark>" + esc(c.value.slice(k, k + q.length)) + "</mark>" + esc(c.value.slice(k + q.length)); }
+        const ctx = c.fav && !c.at ? "定番" : `${relDate(c.at)}・${esc(c.sample)}`;
+        return `<li data-i="${i}" class="${i === active ? "active" : ""}"><span class="star">${c.fav ? "★" : ""}</span><span>${label}</span><span class="ctx">${ctx}</span></li>`;
+      }).join("");
+    }
+    sgBox.hidden = false;
+  }
+
+  function renderGuide(idx){
+    segGuide.innerHTML = SEG_NAMES.map((n, i) => `<span class="seg ${i === idx ? "on" : i < idx ? "done" : ""}">${n}</span>`).join("<span>›</span>");
+  }
+
+  // 候補を確定: 今の項目を置き換え、大・中項目なら「_」を付けて次の項目へ
+  function choose(i){
+    const c = items[i]; if(!c) return;
+    const { idx } = context();
+    const parts = splitSeg(titleEl.value);
+    const head = parts.slice(0, idx);
+    head.push(c.value);
+    titleEl.value = head.join("_") + (idx < 2 ? "_" : "");
+    titleEl.setSelectionRange(titleEl.value.length, titleEl.value.length);
+    active = -1;
+    render();
+    if(idx === 2) sgBox.hidden = true; // 小項目まで確定したら閉じる
+  }
+
+  titleEl.addEventListener("input", () => { active = -1; render(); });
+  titleEl.addEventListener("focus", () => { active = -1; render(); });
+  titleEl.addEventListener("click", () => render());
+  titleEl.addEventListener("blur", () => setTimeout(() => { sgBox.hidden = true; }, 150));
+  titleEl.addEventListener("keydown", (e) => {
+    if(sgBox.hidden || items.length === 0){ if(e.key === "ArrowDown"){ render(); } return; }
+    if(e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      active = (active + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+      render();
+      const el = sgList.querySelector("li.active"); if(el) el.scrollIntoView({ block:"nearest" });
+    }else if((e.key === "Enter" || e.key === "Tab") && active >= 0){
+      e.preventDefault(); choose(active);
+    }else if(e.key === "Tab" && items.length > 0 && !e.shiftKey){
+      e.preventDefault(); choose(0); // Tabは選択が無くても先頭の候補で確定
+    }else if(e.key === "Escape"){
+      sgBox.hidden = true;
+    }
+  });
+  sgList.addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li[data-i]"); if(!li) return;
+    e.preventDefault(); choose(Number(li.dataset.i)); titleEl.focus();
+  });
+
+  // サイドの一覧
+  function renderSide(){
+    $("favList").innerHTML = favorites.length ? favorites.map((t, i) => `<li><span>★ ${esc(t)}</span><button class="btnSec mini" data-del="${i}">削除</button></li>`).join("") : '<li><span style="color:var(--sub)">未登録</span></li>';
+    $("histList").innerHTML = history.slice().sort((a, b) => b.at - a.at).map((h) => `<li><span>${esc(h.title)}</span><span style="flex:0;color:var(--sub);white-space:nowrap">${relDate(h.at)}</span><button class="btnSec mini" data-fav="${esc(h.title)}" title="定番に登録">★</button></li>`).join("");
+  }
+  $("favAdd").addEventListener("click", () => { const v = $("favInput").value.trim(); if(v && !favorites.includes(v)){ favorites.push(v); $("favInput").value = ""; renderSide(); } });
+  $("favList").addEventListener("click", (e) => { const b = e.target.closest("[data-del]"); if(b){ favorites.splice(Number(b.dataset.del), 1); renderSide(); } });
+  $("histList").addEventListener("click", (e) => { const b = e.target.closest("[data-fav]"); if(b && !favorites.includes(b.dataset.fav)){ favorites.push(b.dataset.fav); renderSide(); } });
+  $("btnSave").addEventListener("click", () => {
+    const v = titleEl.value.replace(/_+$/, "").trim(); if(!v) return;
+    history.push({ title: v, at: Date.now() }); renderSide(); titleEl.value = ""; renderGuide(0);
+  });
+
+  $("date").value = new Date().toISOString().slice(0, 10);
+  renderGuide(0);
+  renderSide();
+})();
+</script>
+</body>
+</html>
