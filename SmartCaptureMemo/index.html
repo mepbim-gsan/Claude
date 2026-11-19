@@ -586,7 +586,7 @@
   #exportHistoryList .hist-count{flex-shrink:0; width:3.6em; text-align:right; color:var(--sub); font-variant-numeric:tabular-nums;}
   #exportHistoryList .hist-time{width:6.4em;}
   #exportHistoryList .hist-saved{flex-shrink:0; color:var(--sub); opacity:.75; font-size:11px; font-variant-numeric:tabular-nums;}
-  #exportHistoryList .hist-count{margin-left:auto;}
+  #exportHistoryList .hist-exp-slot{margin-left:auto;}
   #exportHistoryList .hist-detail{flex:0 1 auto;}
   @media (max-width:600px){
     #exportHistoryList .hist-detail{flex-basis:100%;}
@@ -594,13 +594,14 @@
     #exportHistoryList li.hist-child .hist-time{display:none;}
     #exportHistoryList .hist-count{width:auto;}
     #exportHistoryList .hist-exp-slot, #exportHistoryList .hist-acts{width:auto;}
-    #exportHistoryList .hist-exp-slot:empty, #exportHistoryList .hist-acts:empty{display:none;}
+    #exportHistoryList .hist-exp-slot:empty{width:0; overflow:hidden;}
+    #exportHistoryList .hist-acts:empty{display:none;}
     #exportHistoryList li{gap:6px;}
     #exportHistoryList .hist-acts{gap:4px;}
     #exportHistoryList .hist-del{padding:4px 4px;}
   }
   /* 件数・同名・ボタン類の位置をどの行でも揃える(無い行も幅を確保) */
-  #exportHistoryList .hist-exp-slot{flex-shrink:0; width:52px; display:flex; justify-content:flex-end;}
+  #exportHistoryList .hist-exp-slot{flex-shrink:0; width:52px; display:flex; justify-content:flex-start;}
   #exportHistoryList .hist-acts{flex-shrink:0; width:116px; display:flex; justify-content:flex-end; gap:6px;}
   #exportHistoryList li.hist-editing{flex-wrap:wrap;}
   #exportHistoryList .hist-rename-in{
@@ -4345,7 +4346,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.18"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.19"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4378,7 +4379,8 @@
     ["v03_2026-11-19.15",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に変更(並び順・期間フィルタも)。ファイル名とファイル内の情報がずれている行に⚠","⚙設定に資料タイトルの入力補助のON/OFF"]],
     ["v03_2026-11-19.16",["履歴の件数を右端に揃えて表示","同名を開いたときの過去の行は、書き出したときの名前と日時で表示(「書き出し」の文字は省略)","名前を変更したファイルに「旧名」の印(マウスを乗せると旧名一覧)","🧹 見つからない履歴をまとめて削除"]],
     ["v03_2026-11-19.17","履歴: 左は資料の日付、ファイル名の後ろに保存日時をグレーで表示(同名の過去の行もファイル名の位置を揃える)"],
-    ["v03_2026-11-19.18",["履歴: 保存日時は日付・ファイル名にマウスを乗せたときに表示(同名の過去の行のみ常に表示)","「同名N件」を「N版」に、旧名の印をファイル名の隣へ","見つからない履歴の削除をアイコン(🧹)だけにして右端へ。対象が無いときは非表示"]]
+    ["v03_2026-11-19.18",["履歴: 保存日時は日付・ファイル名にマウスを乗せたときに表示(同名の過去の行のみ常に表示)","「同名N件」を「N版」に、旧名の印をファイル名の隣へ","見つからない履歴の削除をアイコン(🧹)だけにして右端へ。対象が無いときは非表示"]],
+    ["v03_2026-11-19.19","履歴: 版を件数の左へ"]
   ];
 
   const verLabel = $("verLabel");
@@ -4523,8 +4525,8 @@
         ${isPrimary && oldList.length ? `<span class="hist-renamed" title="${escapeHtml("旧名:\n" + oldList.join("\n"))}">旧名</span>` : ""}
         ${savedHtml}
         ${warns.length ? `<span class="hist-warn" title="ファイル名とファイル内の情報が違います\n${escapeHtml(warns.join("\n"))}\n(✏️で名前を変更すると揃います)">⚠</span>` : ""}
-        <span class="hist-count">${h.count}件</span>
         <span class="hist-exp-slot">${expandBtn || ""}</span>
+        <span class="hist-count">${h.count}件</span>
         <span class="hist-acts">${fileBtns}</span>
         <button class="hist-del" data-id="${h.id}" title="この履歴を削除">🗑</button>
       </li>
