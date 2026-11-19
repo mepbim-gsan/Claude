@@ -1645,24 +1645,31 @@
     return true;
   }
 
-  // 画面の比較用に、32×18 に縮小した画素(RGB)を取り出す
+  // 画面の比較用に、横480px(縦横比維持・元が小さければ等倍)に縮小した画素(RGB)を取り出す。
+  // 最小化中は同じ1コマがそのまま返るため、マウスカーソルの移動のような小さな違いも区別できる細かさで比べる
   let lastCaptureSig = null, lastCaptureSame = false, sameNoticeTimer = null;
+  const SIG_MAX_W = 480;
   const sigCanvas = document.createElement("canvas");
-  sigCanvas.width = 32; sigCanvas.height = 18;
   const sigCtx = sigCanvas.getContext("2d", { willReadFrequently: true });
   function captureSignature(canvas){
-    sigCtx.drawImage(canvas, 0, 0, sigCanvas.width, sigCanvas.height);
-    const d = sigCtx.getImageData(0, 0, sigCanvas.width, sigCanvas.height).data;
-    const out = new Uint8Array(sigCanvas.width * sigCanvas.height * 3);
-    for(let i = 0, k = 0; i < d.length; i += 4){ out[k++] = d[i]; out[k++] = d[i + 1]; out[k++] = d[i + 2]; }
-    return out;
+    const scale = Math.min(1, SIG_MAX_W / canvas.width);
+    const w = Math.max(1, Math.round(canvas.width * scale)), h = Math.max(1, Math.round(canvas.height * scale));
+    sigCanvas.width = w; sigCanvas.height = h;
+    sigCtx.drawImage(canvas, 0, 0, w, h);
+    const d = sigCtx.getImageData(0, 0, w, h).data;
+    const px = new Uint8Array(w * h * 3);
+    for(let i = 0, k = 0; i < d.length; i += 4){ px[k++] = d[i]; px[k++] = d[i + 1]; px[k++] = d[i + 2]; }
+    return { w, h, px };
   }
-  // 平均の差がごくわずか(1画素あたり1.5未満)なら同じ画面とみなす
+  // 1か所でもはっきり違う画素(色の差が24を超える)があれば別の画面とみなす。
+  // 差が小さいだけの画素(圧縮・縮小の誤差)は無視する
   function sigSimilar(a, b){
-    if(a.length !== b.length) return false;
-    let sum = 0;
-    for(let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
-    return sum / a.length < 1.5;
+    if(a.w !== b.w || a.h !== b.h) return false;
+    const x = a.px, y = b.px;
+    for(let i = 0; i < x.length; i++){
+      if(Math.abs(x[i] - y[i]) > 24) return false;
+    }
+    return true;
   }
   function notifySameAsPrevious(){
     captureStatus.classList.add("warn");
@@ -4185,7 +4192,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.10"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.11"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4210,7 +4217,8 @@
     ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"],
     ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]],
     ["v03_2026-11-19.9","ウィンドウを共有中にサイズが変わっても追従するように(全画面固定は常に全体を撮影、範囲固定ははみ出す部分を切り詰めて余白を出さない)"],
-    ["v03_2026-11-19.10","映像停止の常時警告(マウスを止めるだけで出ていた)をやめ、撮影時に前回と同じ画面なら「最小化していませんか?」と知らせる方式に変更"]
+    ["v03_2026-11-19.10","映像停止の常時警告(マウスを止めるだけで出ていた)をやめ、撮影時に前回と同じ画面なら「最小化していませんか?」と知らせる方式に変更"],
+    ["v03_2026-11-19.11","「前回と同じ画面」の判定を細かくし、マウスカーソルの移動など小さな違いも別の画面として扱うように"]
   ];
 
   const verLabel = $("verLabel");
