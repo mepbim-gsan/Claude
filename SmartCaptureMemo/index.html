@@ -54,6 +54,10 @@
     padding:3px 9px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%;
   }
   .chip.live{color:var(--ok); border-color:var(--ok);}
+  /* 共有中の映像が止まっている(キャプチャ対象のウィンドウが最小化されている等)ときの警告表示 */
+  .chip.stalled{color:#fff; background:#d97706; border-color:#d97706;}
+  #btnCapture.is-stalled{background:#d97706; color:#fff; box-shadow:0 0 0 2px rgba(217,119,6,.35);}
+  #captureStatus.warn{color:#d97706; font-weight:600;}
   .chip:hover{border-color:var(--accent);}
   .iconBtn{background:transparent; color:var(--sub); border:1px solid var(--border); padding:5px 9px; font-size:14px; line-height:1;}
   .iconBtn:hover:not(:disabled){color:var(--text); border-color:var(--sub); opacity:1;}
@@ -1080,6 +1084,12 @@
 
   // ヘッダーの共有状態チップ(どのタブからでも共有・範囲の状態が分かり、クリックで範囲タブへ移れる)
   function updateShareChip(){
+    shareChip.classList.toggle("stalled", isSharing() && streamStalled);
+    if(isSharing() && streamStalled){
+      shareChip.textContent = "⚠ 映像が止まっています";
+      shareChip.classList.remove("live");
+      return;
+    }
     if(!isSharing()){
       shareChip.textContent = "🖥 未共有";
       shareChip.classList.remove("live");
@@ -1092,7 +1102,59 @@
     }
   }
 
+  // ---------- 映像の停止検知(キャプチャ対象のウィンドウが最小化されると映像が更新されなくなる) ----------
+  // 共有中の映像トラックに届いたフレーム数を1秒ごとに確認し、一定時間増えなければ「止まっている」とみなして
+  // 📸ボタン・ヘッダーのチップ・常時表示ウィンドウに警告を出す。最小化が起きうるウィンドウ/タブ共有のときだけ監視する
+  const STALL_SECONDS = 3;
+  let streamStalled = false;
+  let stallTimer = null;
+  let stallLastCount = -1;
+  let stallSameSeconds = 0;
+  function currentFrameCount(){
+    const track = stream && stream.getVideoTracks()[0];
+    if(track && track.stats && typeof track.stats.totalFrames === "number") return track.stats.totalFrames;
+    const el = captureSourceEl || video;
+    if(el && el.getVideoPlaybackQuality) return el.getVideoPlaybackQuality().totalVideoFrames;
+    return -1;
+  }
+  function setStreamStalled(stalled){
+    if(streamStalled === stalled) return;
+    streamStalled = stalled;
+    btnCapture.classList.toggle("is-stalled", stalled);
+    btnCapture.title = stalled ? "キャプチャ対象の映像が止まっています(ウィンドウが最小化されていないか確認してください)" : "キャプチャ(Space)";
+    captureStatus.classList.toggle("warn", stalled);
+    if(stalled) captureStatus.textContent = "⚠ 映像が更新されていません。キャプチャ対象のウィンドウが最小化されていないか確認してください";
+    else if(captureStatus.classList) captureStatus.textContent = "";
+    updateShareChip();
+    updatePipStall();
+  }
+  function startStallMonitor(surface){
+    stopStallMonitor();
+    if(surface !== "window" && surface !== "browser") return;
+    stallLastCount = -1; stallSameSeconds = 0;
+    const track = stream && stream.getVideoTracks()[0];
+    if(track){
+      track.addEventListener("mute", () => setStreamStalled(true));
+      track.addEventListener("unmute", () => { stallSameSeconds = 0; setStreamStalled(false); });
+    }
+    stallTimer = setInterval(() => {
+      const n = currentFrameCount();
+      if(n < 0) return;
+      if(n !== stallLastCount){
+        stallLastCount = n; stallSameSeconds = 0;
+        if(!(track && track.muted)) setStreamStalled(false);
+      }else if(++stallSameSeconds >= STALL_SECONDS){
+        setStreamStalled(true);
+      }
+    }, 1000);
+  }
+  function stopStallMonitor(){
+    clearInterval(stallTimer); stallTimer = null;
+    setStreamStalled(false);
+  }
+
   function onShareEnded(){
+    stopStallMonitor();
     stopAllTracks();
     shareStatus.textContent = "共有終了";
     shareStatus.classList.remove("live");
@@ -1121,10 +1183,20 @@
       return;
     }
     try{
-      stream = await navigator.mediaDevices.getDisplayMedia({
+      // ウィンドウ/タブを共有すると、ブラウザは既定で共有先へフォーカスを移してしまい、
+      // このページで範囲指定を続けられない。CaptureController(Edge/Chrome)で
+      // 「フォーカスを移さない」を指定する。共有開始直後(awaitを挟まない同じタスク内)に呼ぶ必要がある
+      const captureController = ("CaptureController" in window) ? new CaptureController() : null;
+      const displayMediaOptions = {
         video:{ frameRate:5, displaySurface:"monitor" },
         audio:false
-      });
+      };
+      if(captureController) displayMediaOptions.controller = captureController;
+      stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      if(captureController && captureController.setFocusBehavior){
+        try{ captureController.setFocusBehavior("no-focus-change"); }
+        catch(e){ /* 画面全体の共有など、フォーカス指定の対象外の場合は何もしない */ }
+      }
       video.srcObject = stream;
       selectStage.style.display = "block";
       shareStatus.textContent = "共有中";
@@ -1155,6 +1227,7 @@
       }
 
       stream.getVideoTracks()[0].addEventListener("ended", onShareEnded);
+      startStallMonitor(displaySurface);
     }catch(err){
       shareStatus.textContent = "キャンセルしました";
       console.error(err);
@@ -3310,12 +3383,26 @@
       // 「現在の見出し」(小窓に表示中の追加先)へ入れる
       const ok = await captureNow(null);
       pipStatus.textContent = ok ? "撮影しました" : "範囲が未固定です";
-      setTimeout(() => { pipStatus.textContent = "Spaceキーでも撮影できます"; }, 900);
+      setTimeout(updatePipStall, 900);
     };
+    updatePipStall();
     pipBtn.addEventListener("click", flash);
     win.document.addEventListener("keydown", (e) => {
       if(e.code === "Space"){ e.preventDefault(); flash(); }
     });
+  }
+
+  // 常時表示ウィンドウにも映像停止(最小化)の警告を出す
+  function updatePipStall(){
+    if(!pipWindow) return;
+    const btn = pipWindow.document.getElementById("pipCaptureBtn");
+    const st = pipWindow.document.getElementById("pipStatusText");
+    if(!btn || !st) return;
+    btn.style.background = streamStalled ? "#d97706" : "#4f8cff";
+    st.textContent = streamStalled ? "⚠ 映像が止まっています(最小化?)" : "Spaceキーでも撮影できます";
+    st.style.color = streamStalled ? "#d97706" : "";
+    st.style.opacity = streamStalled ? "1" : "";
+    st.style.fontWeight = streamStalled ? "700" : "";
   }
 
   // 常時表示ウィンドウに現在の見出し(キャプチャの追加先)を表示する
@@ -3977,7 +4064,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -3997,7 +4084,9 @@
     ["v02_2026-11-18.15",["書き出しHTMLのスライドショー(画像の拡大表示)でコメントのON/OFFを切替可能に(💬ボタン・Cキー)","小さい画像も画面に収まる最大サイズで表示するのを標準に(ホイールで拡大縮小)","表示中の位置(N / 全体)と閉じるボタンを追加"]],
     ["v03_2026-11-18","一般公開版(v03)。v02の改善一式を含む正式リリース"],
     ["v03_2026-11-18.2","メモをキーボードだけで続けて入力できるように(Ctrl+Enter/Escで入力終了→Spaceでキャプチャ→Enterで次のメモ入力)"],
-    ["v03_2026-11-19","記録タブのツールバー(HTML保存・⋯・日付・タイトル・見出しナビ等)のボタンと入力欄の高さを統一"]
+    ["v03_2026-11-19","記録タブのツールバー(HTML保存・⋯・日付・タイトル・見出しナビ等)のボタンと入力欄の高さを統一"],
+    ["v03_2026-11-19.2","ウィンドウ/タブを共有したとき、フォーカスが共有先へ移らずこの画面に残るように(続けて範囲指定できる)"],
+    ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"]
   ];
 
   const verLabel = $("verLabel");
