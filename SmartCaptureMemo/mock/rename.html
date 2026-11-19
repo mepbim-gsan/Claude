@@ -94,7 +94,7 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const HISTORY_SYNC_FILE = "smart-capture-memo-history.json";
-  const SEG_NAMES = ["大項目(分類)", "中項目(会議体名称)", "小項目(分科会・補足)"];
+  const SEG_NAMES = ["大項目", "中項目", "小項目"];
   let dir = null, files = []; // { name, datePart, title, done }
   let editing = null;          // 編集中のファイル名
 
