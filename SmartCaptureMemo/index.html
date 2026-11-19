@@ -1127,6 +1127,9 @@
     if(!isSharing()){
       shareChip.textContent = "🖥 未共有";
       shareChip.classList.remove("live");
+    }else if(fixedRect && fixedIsFull){
+      shareChip.textContent = "🖥 全画面で撮影";
+      shareChip.classList.add("live");
     }else if(fixedRect){
       shareChip.textContent = `🖥 ${fixedRect.w}×${fixedRect.h} 固定中`;
       shareChip.classList.add("live");
@@ -1201,6 +1204,7 @@
     // 共有が切れた以上、範囲指定も意味を持たないためクリア
     selection = null;
     fixedRect = null;
+    fixedIsFull = false;
     selRect.style.display = "none";
     selRect.style.width = "0px";
     selRect.style.height = "0px";
@@ -1511,8 +1515,12 @@
     setSelection({ x, y, w, h });
   });
 
-  function applyFixedRect(rect){
+  // 「🖥 全画面」で固定中か。true の間は撮影のたびに映像の実サイズ全体を使い、共有中のウィンドウの
+  // サイズが変わっても欠けたり余白が出たりしないよう追従する
+  let fixedIsFull = false;
+  function applyFixedRect(rect, isFull){
     fixedRect = rect;
+    fixedIsFull = !!isFull;
     btnCapture.disabled = false;
     btnPip.disabled = false;
     captureStatus.textContent = ""; // 範囲のサイズはヘッダーの共有チップに表示する
@@ -1550,7 +1558,7 @@
     selRect.style.display = "none";
     selRect.style.width = "0px";
     selRect.style.height = "0px";
-    applyFixedRect({ x:0, y:0, w:video.videoWidth, h:video.videoHeight });
+    applyFixedRect({ x:0, y:0, w:video.videoWidth, h:video.videoHeight }, true);
   });
 
   // ---------- レコード追加共通処理(キャプチャ/貼り付け共通) ----------
@@ -1660,13 +1668,24 @@
       return false;
     }
 
-    workCanvas.width = fixedRect.w;
-    workCanvas.height = fixedRect.h;
+    // 共有中のウィンドウのサイズが変わった場合の追従:
+    // ・全画面固定なら、撮影時点の映像全体を使う
+    // ・範囲固定なら、位置(左上基準)はそのままに、映像からはみ出す部分だけ切り詰める(黒い余白を出さない)
+    const vw = src.videoWidth, vh = src.videoHeight;
+    let rect;
+    if(fixedIsFull){
+      rect = { x:0, y:0, w:vw, h:vh };
+    }else{
+      const x = Math.min(fixedRect.x, Math.max(0, vw - 1)), y = Math.min(fixedRect.y, Math.max(0, vh - 1));
+      rect = { x, y, w: Math.max(1, Math.min(fixedRect.w, vw - x)), h: Math.max(1, Math.min(fixedRect.h, vh - y)) };
+    }
+    workCanvas.width = rect.w;
+    workCanvas.height = rect.h;
     try{
       ctx.drawImage(
         src,
-        fixedRect.x, fixedRect.y, fixedRect.w, fixedRect.h,
-        0, 0, fixedRect.w, fixedRect.h
+        rect.x, rect.y, rect.w, rect.h,
+        0, 0, rect.w, rect.h
       );
     }catch(err){
       console.error("キャプチャの描画に失敗しました", err);
@@ -4191,7 +4210,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.9"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4214,7 +4233,8 @@
     ["v03_2026-11-19","記録タブのツールバー(HTML保存・⋯・日付・タイトル・見出しナビ等)のボタンと入力欄の高さを統一"],
     ["v03_2026-11-19.2","ウィンドウ/タブを共有したとき、フォーカスが共有先へ移らずこの画面に残るように(続けて範囲指定できる)"],
     ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"],
-    ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]]
+    ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]],
+    ["v03_2026-11-19.9","ウィンドウを共有中にサイズが変わっても追従するように(全画面固定は常に全体を撮影、範囲固定ははみ出す部分を切り詰めて余白を出さない)"]
   ];
 
   const verLabel = $("verLabel");
