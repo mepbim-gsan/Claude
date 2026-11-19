@@ -4901,7 +4901,7 @@
 
   // ----- 定番タイトル・タイトル整理(履歴タブのカラムビュー) -----
   const titleOrg = $("titleOrg"), titleOrgToggle = $("titleOrgToggle"), titleOrgBody = $("titleOrgBody"), titleOrgArrow = $("titleOrgArrow"), titleOrgFilter = $("titleOrgFilter");
-  let titleColSel = []; // 選択中の項目(例: ["DD","週次"])
+  let titleColSel = []; // 選択中の項目(例: ["定例","週次"])
   function matchesTitleColSel(h){
     if(!titleAssistOn || !titleColSel.length) return true;
     const segs = titleSegs(histTitle(h));
