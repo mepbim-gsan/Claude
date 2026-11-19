@@ -1769,8 +1769,47 @@
         <button class="memoColorDot" type="button" data-memo-color="blue" style="--dot:var(--memo-col-blue);" title="青"></button>
         <button class="memoColorDot" type="button" data-memo-color="green" style="--dot:var(--memo-col-green);" title="緑"></button>
       </span>
+      <button class="memoToolBtn" type="button" data-memo-action="clear" title="書式をクリア(太字・取り消し線・下線・マーカー・文字色を外す。選択範囲、選択していなければメモ全体。リンクは残す)">🧹 クリア</button>
     </div>
   `;
+
+  // 書式(太字・取り消し線・下線・マーカー・文字色)を外す。選択範囲があればそこに掛かっている書式だけ、
+  // 無ければメモ全体が対象。リンク([文字](URL))は内容に関わる情報なので残す
+  const MEMO_FORMAT_PATTERNS = [
+    /\*\*([^*\n]+?)\*\*/g, /~~([^~\n]+?)~~/g, /__([^_\n]+?)__/g, /==([^=\n]+?)==/g,
+    /\[([^\]\n]+)\]\{(?:red|blue|green|black)\}/g
+  ];
+  function clearMemoFormatting(textarea){
+    let text = textarea.value;
+    let s = textarea.selectionStart, e = textarea.selectionEnd;
+    const whole = s === e;
+    if(whole){ s = 0; e = text.length; }
+    let changed = true;
+    while(changed){
+      changed = false;
+      for(const re of MEMO_FORMAT_PATTERNS){
+        re.lastIndex = 0;
+        let m;
+        while((m = re.exec(text))){
+          const ms = m.index, me = ms + m[0].length;
+          if(me <= s || ms >= e) continue; // 対象範囲に掛かっていない書式はそのまま
+          const pre = m[0].indexOf(m[1]);          // 先頭側の記号の長さ
+          const post = m[0].length - pre - m[1].length; // 末尾側の記号の長さ
+          text = text.slice(0, ms) + m[1] + text.slice(me);
+          // 選択範囲の位置を、取り除いた記号の分だけ詰める
+          const shift = (pos) => pos <= ms ? pos : pos >= me ? pos - pre - post : Math.max(ms, pos - pre);
+          s = shift(s); e = whole ? text.length : shift(e);
+          changed = true;
+          break;
+        }
+        if(changed) break;
+      }
+    }
+    textarea.value = text;
+    textarea.focus();
+    if(whole) textarea.setSelectionRange(text.length, text.length);
+    else textarea.setSelectionRange(s, e);
+  }
 
   function renderItem(record, prepend, afterEl){
     clearEmptyState();
@@ -1975,6 +2014,10 @@
       const label = textarea.value.slice(start, end) || "リンク文字";
       textarea.setRangeText(`[${label}](https://)`, start, end, "end");
       textarea.focus();
+      handleMemoChanged();
+    });
+    memoToolbar.querySelector('[data-memo-action="clear"]').addEventListener("click", () => {
+      clearMemoFormatting(textarea);
       handleMemoChanged();
     });
     memoToolbar.querySelectorAll(".memoColorDot").forEach((dot) => {
@@ -4203,7 +4246,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.13"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.14"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4231,7 +4274,8 @@
     ["v03_2026-11-19.10","映像停止の常時警告(マウスを止めるだけで出ていた)をやめ、撮影時に前回と同じ画面なら「最小化していませんか?」と知らせる方式に変更"],
     ["v03_2026-11-19.11","「前回と同じ画面」の判定を細かくし、マウスカーソルの移動など小さな違いも別の画面として扱うように"],
     ["v03_2026-11-19.12","⋯メニューの項目を左寄せに"],
-    ["v03_2026-11-19.13","「前回と同じ画面」の知らせを短くし、📸ボタンの下に重ねて表示(ボタン等の位置がずれないように)"]
+    ["v03_2026-11-19.13","「前回と同じ画面」の知らせを短くし、📸ボタンの下に重ねて表示(ボタン等の位置がずれないように)"],
+    ["v03_2026-11-19.14","メモの装飾ツールバーに「🧹 クリア」(書式をまとめて外す)を追加"]
   ];
 
   const verLabel = $("verLabel");
