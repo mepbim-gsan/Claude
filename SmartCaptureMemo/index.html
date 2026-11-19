@@ -1266,6 +1266,7 @@
 
       stream.getVideoTracks()[0].addEventListener("ended", onShareEnded);
       startStallMonitor(displaySurface);
+      if(diagEnabled) startDiag(stream);
     }catch(err){
       shareStatus.textContent = "キャンセルしました";
       console.error(err);
@@ -4738,6 +4739,66 @@
     window.addEventListener("resize", updateRecordToolbarHeight);
   }
   updateRecordToolbarHeight();
+
+  // ---------- 【診断用・一時的】最小化時にブラウザが出す合図を調べるパネル(URL末尾に #diag を付けたときだけ表示) ----------
+  // 最小化と「画面に変化が無いだけ」を区別できる合図(mute、映像サイズの変化など)があるかを実機で確認するためのもの
+  const diagEnabled = location.hash.indexOf("diag") !== -1;
+  let diagTimer = null;
+  function startDiag(st){
+    let panel = document.getElementById("diagPanel");
+    if(!panel){
+      panel = document.createElement("div");
+      panel.id = "diagPanel";
+      panel.style.cssText = "position:fixed;left:8px;bottom:8px;z-index:200;width:min(560px,96vw);max-height:46vh;overflow:auto;" +
+        "background:rgba(10,12,16,.92);color:#d6f5d6;font:11px/1.45 ui-monospace,Menlo,monospace;border:1px solid #3a3;border-radius:8px;padding:8px;white-space:pre-wrap;";
+      panel.innerHTML = '<div style="display:flex;gap:6px;margin-bottom:6px;"><b style="flex:1;color:#fff;">診断パネル(最小化の合図の確認)</b>' +
+        '<button id="diagCopy" type="button" style="padding:2px 8px;font-size:11px;">ログをコピー</button>' +
+        '<button id="diagClear" type="button" style="padding:2px 8px;font-size:11px;">ログ消去</button></div>' +
+        '<div id="diagNow"></div><hr style="border-color:#3a3;"><div id="diagLog"></div>';
+      document.body.appendChild(panel);
+    }
+    const nowEl = document.getElementById("diagNow"), logEl = document.getElementById("diagLog");
+    const lines = [];
+    const t0 = performance.now();
+    const ts = () => ((performance.now() - t0) / 1000).toFixed(1).padStart(6) + "s";
+    const log = (msg) => { lines.push(ts() + "  " + msg); logEl.textContent = lines.slice(-200).join("\n"); logEl.scrollTop = logEl.scrollHeight; };
+    document.getElementById("diagCopy").onclick = () => copyText(lines.join("\n") + "\n---\n" + nowEl.textContent);
+    document.getElementById("diagClear").onclick = () => { lines.length = 0; logEl.textContent = ""; };
+    const track = st.getVideoTracks()[0];
+    const settingsText = () => { const g = track.getSettings(); return `${g.width}x${g.height} fps=${g.frameRate} surface=${g.displaySurface}`; };
+    log("共有開始: " + settingsText() + " muted=" + track.muted + " stats=" + (track.stats ? "あり" : "なし"));
+    track.addEventListener("mute", () => log("★ track mute イベント (muted=" + track.muted + ")"));
+    track.addEventListener("unmute", () => log("★ track unmute イベント (muted=" + track.muted + ")"));
+    track.addEventListener("ended", () => log("★ track ended イベント"));
+    track.addEventListener("configurationchange", () => log("★ configurationchange イベント: " + settingsText()));
+    video.addEventListener("resize", () => log("★ video resize イベント: " + video.videoWidth + "x" + video.videoHeight));
+    document.addEventListener("visibilitychange", () => log("このページの表示状態: " + document.visibilityState));
+    // 新しいフレームが届いた時刻を記録(常時表示ウィンドウの video があればそちら、無ければ本体の video)
+    let lastFrameAt = performance.now(), frames = 0, lastSettings = settingsText();
+    const watchFrames = (el) => {
+      if(!el || !el.requestVideoFrameCallback) return;
+      const cb = () => { lastFrameAt = performance.now(); frames++; el.requestVideoFrameCallback(cb); };
+      el.requestVideoFrameCallback(cb);
+    };
+    watchFrames(video);
+    let watchedPip = null;
+    clearInterval(diagTimer);
+    diagTimer = setInterval(() => {
+      if(pipVideoEl && pipVideoEl !== watchedPip){ watchedPip = pipVideoEl; watchFrames(pipVideoEl); log("常時表示ウィンドウの映像も監視開始"); }
+      const cur = settingsText();
+      if(cur !== lastSettings){ log("★ 設定値が変化: " + lastSettings + " → " + cur); lastSettings = cur; }
+      const stats = track.stats ? `totalFrames=${track.stats.totalFrames} delivered=${track.stats.deliveredFrames} discarded=${track.stats.discardedFrames}` : "(stats なし)";
+      const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality().totalVideoFrames : "-";
+      const pq = pipVideoEl && pipVideoEl.getVideoPlaybackQuality ? pipVideoEl.getVideoPlaybackQuality().totalVideoFrames : "-";
+      nowEl.textContent =
+        `track: readyState=${track.readyState} muted=${track.muted} enabled=${track.enabled}\n` +
+        `settings: ${cur}\n` +
+        `stats: ${stats}\n` +
+        `最後のフレームから: ${((performance.now() - lastFrameAt) / 1000).toFixed(1)}秒 (受信フレーム計 ${frames})\n` +
+        `本体video: ${video.videoWidth}x${video.videoHeight} 再生フレーム=${q} / 常時表示video 再生フレーム=${pq}\n` +
+        `ページ表示状態: ${document.visibilityState} / フォーカス: ${document.hasFocus()}`;
+    }, 500);
+  }
 
   // ---------- init ----------
   (async () => {
