@@ -56,6 +56,13 @@
   .chip.live{color:var(--ok); border-color:var(--ok);}
   /* 撮影した画面が前回と同じだったとき(最小化している可能性)の知らせ */
   #btnCapture.same-flash{background:#d97706; color:#fff; box-shadow:0 0 0 2px rgba(217,119,6,.35);}
+  /* 📸ボタンのすぐ下に重ねて出す(行の高さを変えないので、ボタンや入力欄の位置がずれない) */
+  #sameNotice{
+    position:absolute; left:0; top:var(--same-notice-top, 44px); z-index:26; pointer-events:none;
+    background:#d97706; color:#fff; font-size:12px; font-weight:700; padding:4px 10px; border-radius:8px;
+    box-shadow:0 4px 12px rgba(0,0,0,.25); white-space:nowrap;
+  }
+  #sameNotice[hidden]{display:none;}
   #captureStatus.warn{color:#d97706; font-weight:600;}
   .chip:hover{border-color:var(--accent);}
   .iconBtn{background:transparent; color:var(--sub); border:1px solid var(--border); padding:5px 9px; font-size:14px; line-height:1;}
@@ -753,6 +760,7 @@
         <button id="btnPip" class="iconable secondary" disabled title="常時表示">📌 <span class="btnLabel">常時表示</span></button>
         <span class="status row-right" id="captureStatus"></span>
       </div>
+      <div id="sameNotice" hidden>⚠ 前回と同じ画面です(最小化?)</div>
       <div class="row" id="navDocRow">
       <div class="row" id="sectionNav">
         <button class="secondary navBtn" id="btnSectionPrev" type="button" title="前の見出しへ(Alt+↑)">◀</button>
@@ -1672,15 +1680,18 @@
     return true;
   }
   function notifySameAsPrevious(){
-    captureStatus.classList.add("warn");
-    captureStatus.textContent = "⚠ 前回と同じ画面です。キャプチャ対象のウィンドウが最小化されていないか確認してください";
+    const notice = $("sameNotice");
+    // 📸ボタンの真下(ツールバー内の位置)に合わせて重ねる
+    const tb = $("recordToolbar").getBoundingClientRect(), br = btnCapture.getBoundingClientRect();
+    notice.style.setProperty("--same-notice-top", Math.round(br.bottom - tb.top + 4) + "px");
+    notice.style.left = Math.round(br.left - tb.left) + "px";
+    notice.hidden = false;
     btnCapture.classList.add("same-flash");
     clearTimeout(sameNoticeTimer);
     sameNoticeTimer = setTimeout(() => {
-      captureStatus.classList.remove("warn");
-      captureStatus.textContent = "";
+      notice.hidden = true;
       btnCapture.classList.remove("same-flash");
-    }, 4000);
+    }, 3000);
   }
   // 📸ボタンもクリックでフォーカスがボタン自身へ移ってしまうため、見出し/メモ追加と
   // 同様にpointerdown時点で選択行を検出しておく(click発火時点では検出できない)
@@ -4192,7 +4203,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.12"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.13"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4219,7 +4230,8 @@
     ["v03_2026-11-19.9","ウィンドウを共有中にサイズが変わっても追従するように(全画面固定は常に全体を撮影、範囲固定ははみ出す部分を切り詰めて余白を出さない)"],
     ["v03_2026-11-19.10","映像停止の常時警告(マウスを止めるだけで出ていた)をやめ、撮影時に前回と同じ画面なら「最小化していませんか?」と知らせる方式に変更"],
     ["v03_2026-11-19.11","「前回と同じ画面」の判定を細かくし、マウスカーソルの移動など小さな違いも別の画面として扱うように"],
-    ["v03_2026-11-19.12","⋯メニューの項目を左寄せに"]
+    ["v03_2026-11-19.12","⋯メニューの項目を左寄せに"],
+    ["v03_2026-11-19.13","「前回と同じ画面」の知らせを短くし、📸ボタンの下に重ねて表示(ボタン等の位置がずれないように)"]
   ];
 
   const verLabel = $("verLabel");
