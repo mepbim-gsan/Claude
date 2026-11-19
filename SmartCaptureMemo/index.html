@@ -4350,7 +4350,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-19.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-20"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4382,7 +4382,8 @@
     ["v03_2026-11-19.14","メモの装飾ツールバーに「🧹 クリア」(書式をまとめて外す)を追加"],
     ["v04_2026-11-19",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから。⚙設定でON、初期値OFF)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏️で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に(並び順・期間フィルタも)。保存日時はマウスを乗せると表示、上書き保存は「N版」で折りたたみ","ファイル名とファイル内の情報がずれている行に⚠、見つからない履歴の一括削除(🧹)"]],
     ["v04_2026-11-19.2","ヘッダー右上(共有チップ・⚙・?)を大きく"],
-    ["v04_2026-11-19.3","資料タイトルの小項目は3つ目の「_」の手前まで(例: 大項目_中項目_小項目_#01 → 小項目)。4つ目以降は候補・整理の対象外"]
+    ["v04_2026-11-19.3","資料タイトルの小項目は3つ目の「_」の手前まで(例: 大項目_中項目_小項目_#01 → 小項目)。4つ目以降は候補・整理の対象外"],
+    ["v04_2026-11-20","定番タイトル(★)を保存先フォルダの同期ファイルでも共有(🔄同期で他の端末・ブラウザの★を取り込み、削除も反映)"]
   ];
 
   const verLabel = $("verLabel");
@@ -4698,6 +4699,7 @@
     }catch(err){
       console.error("履歴の同期に失敗しました(ローカルの履歴のみ表示します)", err);
     }
+    try{ await syncTitleFavoritesWithDir(dirHandle); }catch(err){ console.error("定番タイトルの同期に失敗しました", err); }
   }
 
   // 保存先フォルダの履歴JSONを、ローカルの全履歴(消失フラグ更新済み)で書き直す
@@ -4761,9 +4763,54 @@
   // ---------- 資料タイトル: 入力候補・定番タイトル・タイトル整理・リネーム ----------
   const TITLE_FAV_KEY = "smart-capture-memo-title-favorites"; // 定番タイトル(この端末に保存)
   const TITLE_ASSIST_KEY = "smart-capture-memo-title-assist"; // 入力補助のON/OFF("1"でON。初期値はOFF)
+  // 定番タイトルは保存先フォルダの「smart-capture-memo-favorites.json」でも共有する(🔄同期で取り込み)。
+  // 削除も伝わるよう、項目ごとに { on: 登録中か, at: 最後に変更した時刻 } を持ち、新しい方を採用して統合する
+  const TITLE_FAV_META_KEY = "smart-capture-memo-title-favorites-meta";
+  const TITLE_FAV_FILE = "smart-capture-memo-favorites.json";
   let titleFavorites = [];
   try{ const v = JSON.parse(localStorage.getItem(TITLE_FAV_KEY) || "[]"); if(Array.isArray(v)) titleFavorites = v.filter((x) => typeof x === "string"); }catch(e){}
-  function saveTitleFavorites(){ try{ localStorage.setItem(TITLE_FAV_KEY, JSON.stringify(titleFavorites)); }catch(e){} }
+  let titleFavMeta = {};
+  try{ const v = JSON.parse(localStorage.getItem(TITLE_FAV_META_KEY) || "{}"); if(v && typeof v === "object") titleFavMeta = v; }catch(e){}
+  titleFavorites.forEach((t) => { if(!titleFavMeta[t]) titleFavMeta[t] = { on: true, at: 0 }; }); // 旧形式(配列のみ)からの移行
+  function saveTitleFavorites(){
+    try{
+      localStorage.setItem(TITLE_FAV_KEY, JSON.stringify(titleFavorites));
+      localStorage.setItem(TITLE_FAV_META_KEY, JSON.stringify(titleFavMeta));
+    }catch(e){}
+  }
+  function setTitleFavorite(path, on){
+    titleFavMeta[path] = { on, at: Date.now() };
+    titleFavorites = on ? (titleFavorites.includes(path) ? titleFavorites : [...titleFavorites, path]) : titleFavorites.filter((x) => x !== path);
+    saveTitleFavorites();
+    // 保存先フォルダの許可が既にあれば、確認を出さずにそのまま書き出す(無ければ次の🔄同期で反映)
+    (async () => {
+      try{
+        if(!fsAccessSupported) return;
+        const dir = await kvGet("saveDirHandle");
+        if(dir && await dir.queryPermission({ mode: "readwrite" }) === "granted") await syncTitleFavoritesWithDir(dir);
+      }catch(e){ console.error("定番タイトルの書き出しに失敗しました", e); }
+    })();
+  }
+  async function syncTitleFavoritesWithDir(dir){
+    let remote = {};
+    try{
+      const fh = await dir.getFileHandle(TITLE_FAV_FILE, { create: false });
+      const data = JSON.parse(await (await fh.getFile()).text());
+      if(data && data.items && typeof data.items === "object") remote = data.items;
+    }catch(e){ /* ファイルが無い・壊れている場合はローカル分で作り直す */ }
+    const merged = { ...titleFavMeta };
+    Object.entries(remote).forEach(([path, r]) => {
+      if(!r || typeof r.on !== "boolean") return;
+      const l = merged[path];
+      if(!l || (r.at || 0) > (l.at || 0)) merged[path] = { on: r.on, at: r.at || 0 };
+    });
+    titleFavMeta = merged;
+    const order = titleFavorites.filter((t) => merged[t] && merged[t].on);
+    Object.keys(merged).forEach((t) => { if(merged[t].on && !order.includes(t)) order.push(t); });
+    titleFavorites = order;
+    saveTitleFavorites();
+    await writeFileToDir(dir, TITLE_FAV_FILE, new Blob([JSON.stringify({ items: merged })], { type: "application/json" }));
+  }
   let titleAssistOn = false;
   try{ titleAssistOn = localStorage.getItem(TITLE_ASSIST_KEY) === "1"; }catch(e){}
 
@@ -4960,8 +5007,7 @@
     const level = Number(li.dataset.level), v = li.dataset.v;
     if(e.target.closest("[data-star]")){
       const path = [...titleColSel.slice(0, level), v].join("_");
-      titleFavorites = titleFavorites.includes(path) ? titleFavorites.filter((x) => x !== path) : [...titleFavorites, path];
-      saveTitleFavorites();
+      setTitleFavorite(path, !titleFavorites.includes(path));
       renderTitleOrg();
       return;
     }
