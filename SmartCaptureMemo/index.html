@@ -738,8 +738,8 @@
           </div>
         </div>
       </div>
-      <div class="hint idleHint">「画面共有を開始」で撮影したい画面を選ぶと、すぐに全画面で撮影できる状態になります。範囲を絞りたい場合は、映像をドラッグして「範囲固定」を押してください(範囲を決めると自動で「記録」タブへ移ります)</div>
-      <div class="hint">共有を始めた時点で全画面で撮影できます(📸・Spaceキー)。範囲を絞る場合は映像をドラッグして「範囲固定」／範囲内をドラッグすると位置だけ移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます(比率指定時は辺ドラッグでも比率を保持)、矢印キーでも位置を微調整できます／範囲固定後に全画面へ戻す場合は「🖥 全画面」</div>
+      <div class="hint idleHint">「画面共有を開始」で撮影したい画面を選び、キャプチャする範囲を決めます。範囲を決めると自動で「記録」タブへ移ります</div>
+      <div class="hint">映像をドラッグして範囲指定 → 「範囲固定」で以降は連写できます／範囲内をドラッグすると位置だけ移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます(比率指定時は辺ドラッグでも比率を保持)、矢印キーでも位置を微調整できます／範囲を選ばず全画面をそのまま使いたい場合は「🖥 全画面」</div>
       <div class="hint" id="pipHint">範囲固定と同時に対応ブラウザでは自動的に「常時表示ウィンドウ」が開き、他のアプリを操作中でも最前面の小窓からワンクリックで撮影できます</div>
     </div>
   </section>
@@ -1127,9 +1127,6 @@
     if(!isSharing()){
       shareChip.textContent = "🖥 未共有";
       shareChip.classList.remove("live");
-    }else if(fixedRect && fixedIsFull){
-      shareChip.textContent = "🖥 全画面で撮影";
-      shareChip.classList.add("live");
     }else if(fixedRect){
       shareChip.textContent = `🖥 ${fixedRect.w}×${fixedRect.h} 固定中`;
       shareChip.classList.add("live");
@@ -1142,21 +1139,16 @@
   // ---------- 映像の停止検知(キャプチャ対象のウィンドウが最小化されると映像が更新されなくなる) ----------
   // 共有中の映像トラックに届いたフレーム数を1秒ごとに確認し、一定時間増えなければ「止まっている」とみなして
   // 📸ボタン・ヘッダーのチップ・常時表示ウィンドウに警告を出す。最小化が起きうるウィンドウ/タブ共有のときだけ監視する
-  // 判定は常に見えている常時表示ウィンドウの映像(またはトラックの統計)で行うため、このページが背面に
-  // 隠れても誤判定しない。静止画面で更新が多少まばらになっても点滅しないよう、少し余裕を持たせた秒数にする
-  const STALL_SECONDS = 4;
+  const STALL_SECONDS = 3;
   let streamStalled = false;
   let stallTimer = null;
   let stallLastCount = -1;
   let stallSameSeconds = 0;
-  // 映像トラックに届いたフレーム数(-1=今は判定しない)。video要素の再生フレーム数は、このページが
-  // 背面に隠れて描画が止まると増えなくなり誤検知の原因になるため、ページが見えている間だけ使う
   function currentFrameCount(){
     const track = stream && stream.getVideoTracks()[0];
     if(track && track.stats && typeof track.stats.totalFrames === "number") return track.stats.totalFrames;
-    if(pipVideoEl && pipVideoEl.getVideoPlaybackQuality) return pipVideoEl.getVideoPlaybackQuality().totalVideoFrames;
-    if(document.visibilityState !== "visible") return -1;
-    if(video.getVideoPlaybackQuality) return video.getVideoPlaybackQuality().totalVideoFrames;
+    const el = captureSourceEl || video;
+    if(el && el.getVideoPlaybackQuality) return el.getVideoPlaybackQuality().totalVideoFrames;
     return -1;
   }
   function setStreamStalled(stalled){
@@ -1181,7 +1173,7 @@
     }
     stallTimer = setInterval(() => {
       const n = currentFrameCount();
-      if(n < 0){ stallLastCount = -1; stallSameSeconds = 0; return; } // 判定できない間は数え直し
+      if(n < 0) return;
       if(n !== stallLastCount){
         stallLastCount = n; stallSameSeconds = 0;
         if(!(track && track.muted)) setStreamStalled(false);
@@ -1196,7 +1188,6 @@
   }
 
   function onShareEnded(){
-    pipPendingOpen = false;
     stopStallMonitor();
     stopAllTracks();
     shareStatus.textContent = "共有終了";
@@ -1210,8 +1201,6 @@
     // 共有が切れた以上、範囲指定も意味を持たないためクリア
     selection = null;
     fixedRect = null;
-    fixedIsFull = false;
-    imageCapture = null;
     selRect.style.display = "none";
     selRect.style.width = "0px";
     selRect.style.height = "0px";
@@ -1272,9 +1261,6 @@
       }
 
       stream.getVideoTracks()[0].addEventListener("ended", onShareEnded);
-      // 映像のサイズが分かった時点で全画面撮影を有効にする
-      if(video.videoWidth) applyAutoFull();
-      else video.addEventListener("loadedmetadata", applyAutoFull, { once:true });
       startStallMonitor(displaySurface);
     }catch(err){
       shareStatus.textContent = "キャンセルしました";
@@ -1525,42 +1511,8 @@
     setSelection({ x, y, w, h });
   });
 
-  // 全画面で撮影中か(true の間は撮影のたびに映像の実サイズ全体を使う。共有先のサイズが変わっても追従)
-  let fixedIsFull = false;
-  // 画面共有を始めたら、範囲指定を待たずに全画面で撮影できる状態にする(範囲タブにとどまり、
-  // 範囲を絞りたい場合はそのままドラッグ→範囲固定で上書きできる)
-  function applyAutoFull(){
-    if(!isSharing() || !video.videoWidth || !video.videoHeight) return;
-    if(fixedRect && !fixedIsFull) return; // すでに範囲を固定済みなら変えない
-    fixedRect = { x:0, y:0, w:video.videoWidth, h:video.videoHeight };
-    fixedIsFull = true;
-    btnCapture.disabled = false;
-    btnPip.disabled = false;
-    updateShareChip();
-    shareStatus.textContent = "共有中(全画面で撮影できます)";
-    tryAutoOpenPip();
-  }
-
-  // 共有開始と同時に常時表示ウィンドウも開く。ブラウザはクリック直後(数秒以内)しか小窓を開かせないため、
-  // 共有ダイアログで時間がかかって開けなかった場合は、このページで次にクリック/キー操作したときに開く
-  let pipPendingOpen = false;
-  function tryAutoOpenPip(){
-    if(!pipSupported || pipWindow) return;
-    openPipWindow().catch(() => { pipPendingOpen = true; });
-  }
-  const openPendingPip = (e) => {
-    if(!pipPendingOpen) return;
-    if(e.target && e.target.closest && e.target.closest("#btnPip, #btnShareToggle")) return; // 小窓の開閉・共有停止ボタンは本来の動作を優先
-    pipPendingOpen = false;
-    if(isSharing() && fixedRect && !pipWindow) openPipWindow().catch((err) => console.error("常時表示ウィンドウを開けませんでした", err));
-  };
-  document.addEventListener("pointerup", openPendingPip, true);
-  document.addEventListener("keydown", openPendingPip, true);
-
-  function applyFixedRect(rect, isFull){
+  function applyFixedRect(rect){
     fixedRect = rect;
-    fixedIsFull = !!isFull;
-    shareStatus.textContent = fixedIsFull ? "共有中(全画面で撮影)" : "共有中(範囲を固定)";
     btnCapture.disabled = false;
     btnPip.disabled = false;
     captureStatus.textContent = ""; // 範囲のサイズはヘッダーの共有チップに表示する
@@ -1598,7 +1550,7 @@
     selRect.style.display = "none";
     selRect.style.width = "0px";
     selRect.style.height = "0px";
-    applyFixedRect({ x:0, y:0, w:video.videoWidth, h:video.videoHeight }, true);
+    applyFixedRect({ x:0, y:0, w:video.videoWidth, h:video.videoHeight });
   });
 
   // ---------- レコード追加共通処理(キャプチャ/貼り付け共通) ----------
@@ -1693,60 +1645,32 @@
   }
 
   // ---------- キャプチャ ----------
-  // 映像トラックから直接最新のフレームを取り出す(ImageCapture.grabFrame)。video要素の表示に頼らないため、
-  // このページ(Edge)が他のウィンドウの裏に隠れて描画が止められていても、新しいフレームを撮影できる。
-  // 非対応ブラウザや、一定時間フレームが来ない(最小化等)場合は null を返し、従来のvideo要素から撮る
-  let imageCapture = null;
-  async function grabLatestFrame(){
-    const track = stream && stream.getVideoTracks()[0];
-    if(!track || track.readyState !== "live" || !("ImageCapture" in window)) return null;
-    try{
-      if(!imageCapture || imageCapture.track !== track) imageCapture = new ImageCapture(track);
-      return await Promise.race([
-        imageCapture.grabFrame(),
-        new Promise((resolve) => setTimeout(() => resolve(null), 1000))
-      ]);
-    }catch(err){
-      console.warn("映像トラックからのフレーム取得に失敗、video要素から撮影します", err);
-      return null;
-    }
-  }
-
   async function captureNow(anchorItemOverride){
     if(!fixedRect) return false;
 
-    let src = await grabLatestFrame();
-    let srcW = src ? src.width : 0, srcH = src ? src.height : 0;
-    if(!src){
-      // captureSourceEl(PiP側等)がまだ映像データを持っていない場合(切替直後の一瞬など)は、
-      // 常に映像を表示し続けている共有パネル側のvideoへフォールバックする。
-      // これによりPiP切替のタイミング次第でキャプチャが失敗する事態を防ぐ。
-      src = captureSourceEl;
-      if(!src || src.readyState < 2 || !src.videoWidth){
-        src = video;
-      }
-      if(!src || !src.videoWidth){
-        console.error("キャプチャ元の映像がまだ準備できていません");
-        return false;
-      }
-      srcW = src.videoWidth; srcH = src.videoHeight;
+    // captureSourceEl(PiP側等)がまだ映像データを持っていない場合(切替直後の一瞬など)は、
+    // 常に映像を表示し続けている共有パネル側のvideoへフォールバックする。
+    // これによりPiP切替のタイミング次第でキャプチャが失敗する事態を防ぐ。
+    let src = captureSourceEl;
+    if(!src || src.readyState < 2 || !src.videoWidth){
+      src = video;
+    }
+    if(!src || !src.videoWidth){
+      console.error("キャプチャ元の映像がまだ準備できていません");
+      return false;
     }
 
-    // 全画面撮影中は、撮影時点の映像サイズ全体を使う(共有中にウィンドウサイズが変わっても欠けない)
-    const rect = fixedIsFull ? { x:0, y:0, w:srcW, h:srcH } : fixedRect;
-    workCanvas.width = rect.w;
-    workCanvas.height = rect.h;
+    workCanvas.width = fixedRect.w;
+    workCanvas.height = fixedRect.h;
     try{
       ctx.drawImage(
         src,
-        rect.x, rect.y, rect.w, rect.h,
-        0, 0, rect.w, rect.h
+        fixedRect.x, fixedRect.y, fixedRect.w, fixedRect.h,
+        0, 0, fixedRect.w, fixedRect.h
       );
     }catch(err){
       console.error("キャプチャの描画に失敗しました", err);
       return false;
-    }finally{
-      if(src && src.close) src.close(); // grabFrameのImageBitmapは使い終わったら解放
     }
     const dataURL = canvasToOptimizedDataURL(workCanvas);
     await addCaptureRecord(dataURL, anchorItemOverride);
@@ -4267,7 +4191,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.8"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4290,11 +4214,7 @@
     ["v03_2026-11-19","記録タブのツールバー(HTML保存・⋯・日付・タイトル・見出しナビ等)のボタンと入力欄の高さを統一"],
     ["v03_2026-11-19.2","ウィンドウ/タブを共有したとき、フォーカスが共有先へ移らずこの画面に残るように(続けて範囲指定できる)"],
     ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"],
-    ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]],
-    ["v03_2026-11-19.5","画面共有を始めたら範囲指定なしですぐ全画面で撮影できるように(範囲を絞る場合は従来どおりドラッグ→範囲固定)"],
-    ["v03_2026-11-19.6","このページが他のウィンドウの裏に隠れていても、最新の画面を撮影できるように(映像から直接フレームを取得)"],
-    ["v03_2026-11-19.7","映像停止の警告が、このページを背面に隠しただけで点いたり消えたりする問題を修正(判定時間を延長・背面時の誤判定を防止)"],
-    ["v03_2026-11-19.8","画面共有の開始と同時に常時表示ウィンドウも開くように。映像停止の警告を約4秒で出るよう短縮"]
+    ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]]
   ];
 
   const verLabel = $("verLabel");
