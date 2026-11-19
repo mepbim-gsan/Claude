@@ -761,7 +761,7 @@
       <section class="setSec">
         <h3>資料タイトル</h3>
         <label class="setCheck"><input type="checkbox" id="titleAssistToggle"> 入力補助(履歴・定番タイトルからの候補)</label>
-        <div class="hint">「_」で区切ると(例: 大項目_中項目_小項目)、区切りごとに候補を切り替えます。定番タイトルの登録・整理は履歴タブの「★ 定番タイトル・タイトル整理」から行えます。OFFにすると候補と整理パネルを表示しません</div>
+        <div class="hint">「_」で区切ると(例: 大項目_中項目_小項目)、区切りごとに候補を切り替えます。ONにすると候補と、履歴タブの「★ 定番タイトル・タイトル整理」(定番タイトルの登録・整理)が表示されます(初期値はOFF)</div>
       </section>
       <section class="setSec">
         <h3>表示</h3>
@@ -4376,7 +4376,7 @@
     ["v03_2026-11-19.12","⋯メニューの項目を左寄せに"],
     ["v03_2026-11-19.13","「前回と同じ画面」の知らせを短くし、📸ボタンの下に重ねて表示(ボタン等の位置がずれないように)"],
     ["v03_2026-11-19.14","メモの装飾ツールバーに「🧹 クリア」(書式をまとめて外す)を追加"],
-    ["v04_2026-11-19",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから。⚙設定でON/OFF)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏️で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に(並び順・期間フィルタも)。保存日時はマウスを乗せると表示、上書き保存は「N版」で折りたたみ","ファイル名とファイル内の情報がずれている行に⚠、見つからない履歴の一括削除(🧹)"]]
+    ["v04_2026-11-19",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから。⚙設定でON、初期値OFF)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏️で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に(並び順・期間フィルタも)。保存日時はマウスを乗せると表示、上書き保存は「N版」で折りたたみ","ファイル名とファイル内の情報がずれている行に⚠、見つからない履歴の一括削除(🧹)"]]
   ];
 
   const verLabel = $("verLabel");
@@ -4754,12 +4754,12 @@
 
   // ---------- 資料タイトル: 入力候補・定番タイトル・タイトル整理・リネーム ----------
   const TITLE_FAV_KEY = "smart-capture-memo-title-favorites"; // 定番タイトル(この端末に保存)
-  const TITLE_ASSIST_KEY = "smart-capture-memo-title-assist"; // 入力補助のON/OFF("0"でOFF)
+  const TITLE_ASSIST_KEY = "smart-capture-memo-title-assist"; // 入力補助のON/OFF("1"でON。初期値はOFF)
   let titleFavorites = [];
   try{ const v = JSON.parse(localStorage.getItem(TITLE_FAV_KEY) || "[]"); if(Array.isArray(v)) titleFavorites = v.filter((x) => typeof x === "string"); }catch(e){}
   function saveTitleFavorites(){ try{ localStorage.setItem(TITLE_FAV_KEY, JSON.stringify(titleFavorites)); }catch(e){} }
-  let titleAssistOn = true;
-  try{ titleAssistOn = localStorage.getItem(TITLE_ASSIST_KEY) !== "0"; }catch(e){}
+  let titleAssistOn = false;
+  try{ titleAssistOn = localStorage.getItem(TITLE_ASSIST_KEY) === "1"; }catch(e){}
 
   // 「大項目_中項目_小項目」に分ける(4つ目以降の「_」は小項目に含める)
   function titleSegs(t){ const p = String(t || "").split("_"); return p.length > 3 ? [p[0], p[1], p.slice(2).join("_")] : p; }
