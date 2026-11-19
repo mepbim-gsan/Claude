@@ -653,6 +653,8 @@
   .tcList li.tcEmpty:hover{background:none;}
   .tcName{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .tcMore{color:var(--sub); font-size:12px;}
+  .tcName.noHist{color:var(--sub);}
+  .tcNoHist{font-size:10px; color:var(--sub); border:1px solid var(--border); border-radius:4px; padding:0 4px; margin-left:6px;}
   button.tcStar{background:none; border:none; height:26px; width:26px; min-width:26px; padding:0; font-size:15px; color:var(--sub); cursor:pointer; flex:none;}
   button.tcStar.on{color:#d97706;}
   #titleOrgFilter{margin-top:8px; font-size:12px; color:var(--accent); display:flex; align-items:center; gap:8px;}
@@ -4350,7 +4352,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-20"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-20.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4383,7 +4385,8 @@
     ["v04_2026-11-19",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから。⚙設定でON、初期値OFF)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏️で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に(並び順・期間フィルタも)。保存日時はマウスを乗せると表示、上書き保存は「N版」で折りたたみ","ファイル名とファイル内の情報がずれている行に⚠、見つからない履歴の一括削除(🧹)"]],
     ["v04_2026-11-19.2","ヘッダー右上(共有チップ・⚙・?)を大きく"],
     ["v04_2026-11-19.3","資料タイトルの小項目は3つ目の「_」の手前まで(例: 大項目_中項目_小項目_#01 → 小項目)。4つ目以降は候補・整理の対象外"],
-    ["v04_2026-11-20","定番タイトル(★)を保存先フォルダの同期ファイルでも共有(🔄同期で他の端末・ブラウザの★を取り込み、削除も反映)"]
+    ["v04_2026-11-20","定番タイトル(★)を保存先フォルダの同期ファイルでも共有(🔄同期で他の端末・ブラウザの★を取り込み、削除も反映)"],
+    ["v04_2026-11-20.2","タイトル整理: 履歴にファイルが無く★だけで残っている項目に「履歴なし」の印(★を外すと消える)"]
   ];
 
   const verLabel = $("verLabel");
@@ -4964,15 +4967,17 @@
   function titleColItems(level, titles){
     const prefix = titleColSel.slice(0, level);
     const map = new Map(); // 値 → 下の階層があるか
-    const add = (t) => {
+    const inHist = new Set(); // 履歴にある値(無いものは★だけで残っている項目)
+    const add = (t, fromHist) => {
       const s = titleSegs(t);
       if(s.length <= level || !s[level]) return;
       for(let i = 0; i < level; i++){ if(s[i] !== prefix[i]) return; }
       map.set(s[level], (map.get(s[level]) || false) || s.length > level + 1);
+      if(fromHist) inHist.add(s[level]);
     };
-    titles.forEach(add);
-    titleFavorites.forEach(add); // 定番だけにある項目も表示
-    return Array.from(map.entries()).map(([v, hasChild]) => ({ v, hasChild, fav: titleFavorites.includes([...prefix, v].join("_")) }))
+    titles.forEach((t) => add(t, true));
+    titleFavorites.forEach((t) => add(t, false)); // 定番だけにある項目も表示(★を外すと消える)
+    return Array.from(map.entries()).map(([v, hasChild]) => ({ v, hasChild, noHist: !inHist.has(v), fav: titleFavorites.includes([...prefix, v].join("_")) }))
       .sort((a, b) => (b.fav - a.fav) || a.v.localeCompare(b.v, "ja"));
   }
   let titleOrgTitles = [];
@@ -4991,7 +4996,7 @@
       ul.innerHTML = items.length ? items.map((it) => `
         <li data-level="${level}" data-v="${escapeHtml(it.v)}" class="${titleColSel[level] === it.v ? "sel" : ""}">
           <button class="tcStar${it.fav ? " on" : ""}" data-star type="button" title="${it.fav ? "定番から外す" : "定番に登録"}">${it.fav ? "★" : "☆"}</button>
-          <span class="tcName">${escapeHtml(it.v)}</span>${it.hasChild ? '<span class="tcMore">›</span>' : ""}
+          <span class="tcName${it.noHist ? " noHist" : ""}"${it.noHist ? ' title="履歴にファイルが無い定番タイトル(★を外すと一覧から消えます)"' : ""}>${escapeHtml(it.v)}${it.noHist ? '<span class="tcNoHist">履歴なし</span>' : ""}</span>${it.hasChild ? '<span class="tcMore">›</span>' : ""}
         </li>`).join("") : `<li class="tcEmpty">${level === 0 ? "履歴がありません" : "(この下の項目なし)"}</li>`;
     });
   }
