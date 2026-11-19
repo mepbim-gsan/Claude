@@ -1142,9 +1142,9 @@
   // ---------- 映像の停止検知(キャプチャ対象のウィンドウが最小化されると映像が更新されなくなる) ----------
   // 共有中の映像トラックに届いたフレーム数を1秒ごとに確認し、一定時間増えなければ「止まっている」とみなして
   // 📸ボタン・ヘッダーのチップ・常時表示ウィンドウに警告を出す。最小化が起きうるウィンドウ/タブ共有のときだけ監視する
-  // 内容に変化が無い静止画面では映像の更新がまばらになるブラウザがあるため、短すぎると
-  // 最小化していなくても警告が点いたり消えたりする。最小化のように「完全に止まった」ときだけ出るよう長めにする
-  const STALL_SECONDS = 8;
+  // 判定は常に見えている常時表示ウィンドウの映像(またはトラックの統計)で行うため、このページが背面に
+  // 隠れても誤判定しない。静止画面で更新が多少まばらになっても点滅しないよう、少し余裕を持たせた秒数にする
+  const STALL_SECONDS = 4;
   let streamStalled = false;
   let stallTimer = null;
   let stallLastCount = -1;
@@ -1196,6 +1196,7 @@
   }
 
   function onShareEnded(){
+    pipPendingOpen = false;
     stopStallMonitor();
     stopAllTracks();
     shareStatus.textContent = "共有終了";
@@ -1537,7 +1538,24 @@
     btnPip.disabled = false;
     updateShareChip();
     shareStatus.textContent = "共有中(全画面で撮影できます)";
+    tryAutoOpenPip();
   }
+
+  // 共有開始と同時に常時表示ウィンドウも開く。ブラウザはクリック直後(数秒以内)しか小窓を開かせないため、
+  // 共有ダイアログで時間がかかって開けなかった場合は、このページで次にクリック/キー操作したときに開く
+  let pipPendingOpen = false;
+  function tryAutoOpenPip(){
+    if(!pipSupported || pipWindow) return;
+    openPipWindow().catch(() => { pipPendingOpen = true; });
+  }
+  const openPendingPip = (e) => {
+    if(!pipPendingOpen) return;
+    if(e.target && e.target.closest && e.target.closest("#btnPip, #btnShareToggle")) return; // 小窓の開閉・共有停止ボタンは本来の動作を優先
+    pipPendingOpen = false;
+    if(isSharing() && fixedRect && !pipWindow) openPipWindow().catch((err) => console.error("常時表示ウィンドウを開けませんでした", err));
+  };
+  document.addEventListener("pointerup", openPendingPip, true);
+  document.addEventListener("keydown", openPendingPip, true);
 
   function applyFixedRect(rect, isFull){
     fixedRect = rect;
@@ -4249,7 +4267,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.7"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.8"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4275,7 +4293,8 @@
     ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]],
     ["v03_2026-11-19.5","画面共有を始めたら範囲指定なしですぐ全画面で撮影できるように(範囲を絞る場合は従来どおりドラッグ→範囲固定)"],
     ["v03_2026-11-19.6","このページが他のウィンドウの裏に隠れていても、最新の画面を撮影できるように(映像から直接フレームを取得)"],
-    ["v03_2026-11-19.7","映像停止の警告が、このページを背面に隠しただけで点いたり消えたりする問題を修正(判定時間を延長・背面時の誤判定を防止)"]
+    ["v03_2026-11-19.7","映像停止の警告が、このページを背面に隠しただけで点いたり消えたりする問題を修正(判定時間を延長・背面時の誤判定を防止)"],
+    ["v03_2026-11-19.8","画面共有の開始と同時に常時表示ウィンドウも開くように。映像停止の警告を約4秒で出るよう短縮"]
   ];
 
   const verLabel = $("verLabel");
