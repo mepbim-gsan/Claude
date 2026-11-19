@@ -1205,6 +1205,7 @@
     selection = null;
     fixedRect = null;
     fixedIsFull = false;
+    imageCapture = null;
     selRect.style.display = "none";
     selRect.style.width = "0px";
     selRect.style.height = "0px";
@@ -1669,23 +1670,47 @@
   }
 
   // ---------- キャプチャ ----------
+  // 映像トラックから直接最新のフレームを取り出す(ImageCapture.grabFrame)。video要素の表示に頼らないため、
+  // このページ(Edge)が他のウィンドウの裏に隠れて描画が止められていても、新しいフレームを撮影できる。
+  // 非対応ブラウザや、一定時間フレームが来ない(最小化等)場合は null を返し、従来のvideo要素から撮る
+  let imageCapture = null;
+  async function grabLatestFrame(){
+    const track = stream && stream.getVideoTracks()[0];
+    if(!track || track.readyState !== "live" || !("ImageCapture" in window)) return null;
+    try{
+      if(!imageCapture || imageCapture.track !== track) imageCapture = new ImageCapture(track);
+      return await Promise.race([
+        imageCapture.grabFrame(),
+        new Promise((resolve) => setTimeout(() => resolve(null), 1000))
+      ]);
+    }catch(err){
+      console.warn("映像トラックからのフレーム取得に失敗、video要素から撮影します", err);
+      return null;
+    }
+  }
+
   async function captureNow(anchorItemOverride){
     if(!fixedRect) return false;
 
-    // captureSourceEl(PiP側等)がまだ映像データを持っていない場合(切替直後の一瞬など)は、
-    // 常に映像を表示し続けている共有パネル側のvideoへフォールバックする。
-    // これによりPiP切替のタイミング次第でキャプチャが失敗する事態を防ぐ。
-    let src = captureSourceEl;
-    if(!src || src.readyState < 2 || !src.videoWidth){
-      src = video;
-    }
-    if(!src || !src.videoWidth){
-      console.error("キャプチャ元の映像がまだ準備できていません");
-      return false;
+    let src = await grabLatestFrame();
+    let srcW = src ? src.width : 0, srcH = src ? src.height : 0;
+    if(!src){
+      // captureSourceEl(PiP側等)がまだ映像データを持っていない場合(切替直後の一瞬など)は、
+      // 常に映像を表示し続けている共有パネル側のvideoへフォールバックする。
+      // これによりPiP切替のタイミング次第でキャプチャが失敗する事態を防ぐ。
+      src = captureSourceEl;
+      if(!src || src.readyState < 2 || !src.videoWidth){
+        src = video;
+      }
+      if(!src || !src.videoWidth){
+        console.error("キャプチャ元の映像がまだ準備できていません");
+        return false;
+      }
+      srcW = src.videoWidth; srcH = src.videoHeight;
     }
 
     // 全画面撮影中は、撮影時点の映像サイズ全体を使う(共有中にウィンドウサイズが変わっても欠けない)
-    const rect = fixedIsFull ? { x:0, y:0, w:src.videoWidth, h:src.videoHeight } : fixedRect;
+    const rect = fixedIsFull ? { x:0, y:0, w:srcW, h:srcH } : fixedRect;
     workCanvas.width = rect.w;
     workCanvas.height = rect.h;
     try{
@@ -1697,6 +1722,8 @@
     }catch(err){
       console.error("キャプチャの描画に失敗しました", err);
       return false;
+    }finally{
+      if(src && src.close) src.close(); // grabFrameのImageBitmapは使い終わったら解放
     }
     const dataURL = canvasToOptimizedDataURL(workCanvas);
     await addCaptureRecord(dataURL, anchorItemOverride);
@@ -4217,7 +4244,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.5"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.6"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4241,7 +4268,8 @@
     ["v03_2026-11-19.2","ウィンドウ/タブを共有したとき、フォーカスが共有先へ移らずこの画面に残るように(続けて範囲指定できる)"],
     ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"],
     ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]],
-    ["v03_2026-11-19.5","画面共有を始めたら範囲指定なしですぐ全画面で撮影できるように(範囲を絞る場合は従来どおりドラッグ→範囲固定)"]
+    ["v03_2026-11-19.5","画面共有を始めたら範囲指定なしですぐ全画面で撮影できるように(範囲を絞る場合は従来どおりドラッグ→範囲固定)"],
+    ["v03_2026-11-19.6","このページが他のウィンドウの裏に隠れていても、最新の画面を撮影できるように(映像から直接フレームを取得)"]
   ];
 
   const verLabel = $("verLabel");
