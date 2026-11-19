@@ -4350,7 +4350,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-19.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-19.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4381,7 +4381,8 @@
     ["v03_2026-11-19.13","「前回と同じ画面」の知らせを短くし、📸ボタンの下に重ねて表示(ボタン等の位置がずれないように)"],
     ["v03_2026-11-19.14","メモの装飾ツールバーに「🧹 クリア」(書式をまとめて外す)を追加"],
     ["v04_2026-11-19",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから。⚙設定でON、初期値OFF)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏️で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に(並び順・期間フィルタも)。保存日時はマウスを乗せると表示、上書き保存は「N版」で折りたたみ","ファイル名とファイル内の情報がずれている行に⚠、見つからない履歴の一括削除(🧹)"]],
-    ["v04_2026-11-19.2","ヘッダー右上(共有チップ・⚙・?)を大きく"]
+    ["v04_2026-11-19.2","ヘッダー右上(共有チップ・⚙・?)を大きく"],
+    ["v04_2026-11-19.3","資料タイトルの小項目は3つ目の「_」の手前まで(例: 大項目_中項目_小項目_#01 → 小項目)。4つ目以降は候補・整理の対象外"]
   ];
 
   const verLabel = $("verLabel");
@@ -4766,8 +4767,8 @@
   let titleAssistOn = false;
   try{ titleAssistOn = localStorage.getItem(TITLE_ASSIST_KEY) === "1"; }catch(e){}
 
-  // 「大項目_中項目_小項目」に分ける(4つ目以降の「_」は小項目に含める)
-  function titleSegs(t){ const p = String(t || "").split("_"); return p.length > 3 ? [p[0], p[1], p.slice(2).join("_")] : p; }
+  // 「大項目_中項目_小項目」に分ける(4つ目以降の「_」の後ろ(例: _#01)は使わない)
+  function titleSegs(t){ return String(t || "").split("_").slice(0, 3); }
   // 書き出しファイル名「YYYY-MMDD_タイトル.html」を日付部分とタイトル部分に分ける
   function fileNameParts(name){
     const m = /^(\d{4}-\d{4})_(.*)\.html?$/i.exec(name || "");
@@ -4809,8 +4810,8 @@
   function tsContext(input){
     const v = input.value.slice(0, input.selectionStart ?? input.value.length);
     const parts = v.split("_");
-    const idx = Math.min(parts.length - 1, 2);
-    return { idx, prefix: parts.slice(0, idx).map((x) => x.toLowerCase()), typed: idx === 2 ? parts.slice(2).join("_") : parts[idx], head: parts.slice(0, idx).join("_") };
+    const idx = parts.length - 1; // 3(4つ目の項目)以降は候補を出さない
+    return { idx, prefix: parts.slice(0, Math.min(idx, 3)).map((x) => x.toLowerCase()), typed: parts[idx], head: parts.slice(0, idx).join("_") };
   }
   // 前の項目が一致するタイトル(定番・履歴)から、今の位置の項目を集める。並びは 定番 → 最近使った順
   function tsCandidates(input){
@@ -4843,6 +4844,7 @@
   function tsRender(){
     const input = tsInput;
     if(!input || !titleAssistOn || document.activeElement !== input || input.value === ""){ tsHide(); return; } // 1文字入力してから表示
+    if(tsContext(input).idx > 2){ tsHide(); return; } // 小項目より後ろ(例: _#01)は候補なし
     const { idx, typed, head, list } = tsCandidates(input);
     tsItems = list;
     if(list.length === 0){ tsHide(); return; }
