@@ -118,6 +118,11 @@
   #docRow{flex:1 1 360px; min-width:0;}
   .docInfo{font-size:11px; color:var(--sub); margin-top:6px;}
   #docRow #exportTitle{flex:1; min-width:80px; width:auto;}
+  /* 記録タブのツールバー内のボタン・入力欄・選択欄は高さを揃える(絵文字だけのボタンや⋯も同じ高さに) */
+  #recordToolbar button, #recordToolbar input, #recordToolbar select{height:36px;}
+  #recordToolbar button{display:inline-flex; align-items:center; justify-content:center; gap:4px;}
+  #docRow #btnMore{padding:0 12px; font-size:14px;}
+  #moreMenu button{height:auto;}
   .moreWrap{position:relative;}
   #moreMenu{
     position:absolute; right:0; top:calc(100% + 4px); z-index:30; min-width:190px;
@@ -3972,7 +3977,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-18.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -3991,7 +3996,8 @@
     ["v02_2026-11-18.14","狭い幅(サイドパネル)の履歴一覧で、各行のボタンを右寄せにして位置を揃える"],
     ["v02_2026-11-18.15",["書き出しHTMLのスライドショー(画像の拡大表示)でコメントのON/OFFを切替可能に(💬ボタン・Cキー)","小さい画像も画面に収まる最大サイズで表示するのを標準に(ホイールで拡大縮小)","表示中の位置(N / 全体)と閉じるボタンを追加"]],
     ["v03_2026-11-18","一般公開版(v03)。v02の改善一式を含む正式リリース"],
-    ["v03_2026-11-18.2","メモをキーボードだけで続けて入力できるように(Ctrl+Enter/Escで入力終了→Spaceでキャプチャ→Enterで次のメモ入力)"]
+    ["v03_2026-11-18.2","メモをキーボードだけで続けて入力できるように(Ctrl+Enter/Escで入力終了→Spaceでキャプチャ→Enterで次のメモ入力)"],
+    ["v03_2026-11-19","記録タブのツールバー(HTML保存・⋯・日付・タイトル・見出しナビ等)のボタンと入力欄の高さを統一"]
   ];
 
   const verLabel = $("verLabel");
