@@ -1142,16 +1142,21 @@
   // ---------- 映像の停止検知(キャプチャ対象のウィンドウが最小化されると映像が更新されなくなる) ----------
   // 共有中の映像トラックに届いたフレーム数を1秒ごとに確認し、一定時間増えなければ「止まっている」とみなして
   // 📸ボタン・ヘッダーのチップ・常時表示ウィンドウに警告を出す。最小化が起きうるウィンドウ/タブ共有のときだけ監視する
-  const STALL_SECONDS = 3;
+  // 内容に変化が無い静止画面では映像の更新がまばらになるブラウザがあるため、短すぎると
+  // 最小化していなくても警告が点いたり消えたりする。最小化のように「完全に止まった」ときだけ出るよう長めにする
+  const STALL_SECONDS = 8;
   let streamStalled = false;
   let stallTimer = null;
   let stallLastCount = -1;
   let stallSameSeconds = 0;
+  // 映像トラックに届いたフレーム数(-1=今は判定しない)。video要素の再生フレーム数は、このページが
+  // 背面に隠れて描画が止まると増えなくなり誤検知の原因になるため、ページが見えている間だけ使う
   function currentFrameCount(){
     const track = stream && stream.getVideoTracks()[0];
     if(track && track.stats && typeof track.stats.totalFrames === "number") return track.stats.totalFrames;
-    const el = captureSourceEl || video;
-    if(el && el.getVideoPlaybackQuality) return el.getVideoPlaybackQuality().totalVideoFrames;
+    if(pipVideoEl && pipVideoEl.getVideoPlaybackQuality) return pipVideoEl.getVideoPlaybackQuality().totalVideoFrames;
+    if(document.visibilityState !== "visible") return -1;
+    if(video.getVideoPlaybackQuality) return video.getVideoPlaybackQuality().totalVideoFrames;
     return -1;
   }
   function setStreamStalled(stalled){
@@ -1176,7 +1181,7 @@
     }
     stallTimer = setInterval(() => {
       const n = currentFrameCount();
-      if(n < 0) return;
+      if(n < 0){ stallLastCount = -1; stallSameSeconds = 0; return; } // 判定できない間は数え直し
       if(n !== stallLastCount){
         stallLastCount = n; stallSameSeconds = 0;
         if(!(track && track.muted)) setStreamStalled(false);
@@ -4244,7 +4249,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.6"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.7"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4269,7 +4274,8 @@
     ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"],
     ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]],
     ["v03_2026-11-19.5","画面共有を始めたら範囲指定なしですぐ全画面で撮影できるように(範囲を絞る場合は従来どおりドラッグ→範囲固定)"],
-    ["v03_2026-11-19.6","このページが他のウィンドウの裏に隠れていても、最新の画面を撮影できるように(映像から直接フレームを取得)"]
+    ["v03_2026-11-19.6","このページが他のウィンドウの裏に隠れていても、最新の画面を撮影できるように(映像から直接フレームを取得)"],
+    ["v03_2026-11-19.7","映像停止の警告が、このページを背面に隠しただけで点いたり消えたりする問題を修正(判定時間を延長・背面時の誤判定を防止)"]
   ];
 
   const verLabel = $("verLabel");
