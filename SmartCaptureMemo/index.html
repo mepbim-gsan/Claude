@@ -105,15 +105,27 @@
   #recordLayout{display:flex; gap:16px; align-items:flex-start;}
   #recordMain{flex:1; min-width:0;}
   #tocAside{
-    display:none; width:220px; flex-shrink:0; position:sticky;
+    display:none; width:var(--toc-w, 220px); flex-shrink:0; position:sticky;
     top:calc(var(--header-h, 0px) + var(--record-toolbar-h, 0px) + 8px);
     max-height:calc(100vh - var(--header-h, 0px) - var(--record-toolbar-h, 0px) - 24px); overflow-y:auto;
     background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 8px;
   }
   .tocHead{font-size:11px; color:var(--sub); font-weight:600; margin:0 6px 6px;}
+  /* 目次と一覧の間の幅調整バー(ドラッグで目次の幅を変更、ダブルクリックで標準に戻す) */
+  #tocSplitter{
+    display:none; flex-shrink:0; width:8px; margin:0 -12px 0 -8px; align-self:stretch; cursor:col-resize;
+    position:relative; touch-action:none;
+  }
+  #tocSplitter::after{
+    content:""; position:absolute; top:0; bottom:0; left:3px; width:2px; border-radius:2px; background:transparent;
+  }
+  #tocSplitter:hover::after, #tocSplitter.dragging::after{background:var(--accent);}
   @media (min-width:900px){
     #tocAside{display:block;}
+    #tocSplitter{display:block;}
   }
+  /* 見出しが無いときは目次欄を出さず、一覧を横いっぱいに使う */
+  #recordLayout.no-toc #tocAside, #recordLayout.no-toc #tocSplitter{display:none;}
   /* 日付・タイトル・HTML保存もスクロール追従のツールバー内に置き、一覧のどこからでも保存できるようにする。
      広い幅では見出しナビと同じ行、狭い幅では折り返して次の行に並ぶ */
   #navDocRow{margin-top:8px; gap:8px 16px; align-items:center;}
@@ -322,10 +334,16 @@
   }
   .type-badge:hover{background:var(--accent-soft, var(--surface2)); color:var(--accent);}
   .item img{
-    width:160px; height:auto; border-radius:6px; border:1px solid var(--border);
+    width:var(--thumb-w, 160px); height:auto; align-self:flex-start; border-radius:6px; border:1px solid var(--border);
     flex-shrink:0; object-fit:contain; background:var(--img-bg);
   }
   .item .itembody{flex:1; display:flex; flex-direction:column; gap:6px; min-width:0;}
+  /* 画像とメモの間の幅調整バー(どの行で動かしても全キャプチャ共通の画像幅になる) */
+  .item .thumbSplit{
+    flex-shrink:0; width:8px; margin:0 -8px; align-self:stretch; cursor:col-resize; position:relative; touch-action:none;
+  }
+  .item .thumbSplit::after{content:""; position:absolute; top:4px; bottom:4px; left:3px; width:2px; border-radius:2px;}
+  .item .thumbSplit:hover::after, .thumbSplit.dragging::after{background:var(--accent);}
   .item .meta{font-size:11px; color:var(--sub);}
   .item .saveState{color:var(--ok); font-weight:600;}
   /* サイドパネルのように幅を狭くして使うと画像とメモが横に圧縮されるため、
@@ -333,6 +351,7 @@
   @media (max-width:600px){
     .item{flex-direction:column;}
     .item img{width:100%; max-width:none;}
+    .item .thumbSplit{display:none;}
     .drag-handle{align-self:flex-start;}
     /* 見出し・メモ行は画像が無いため、⠿ハンドルを左に置いた横並びのまま(縦に間延びさせない) */
     .item.item-heading{flex-direction:row;}
@@ -403,14 +422,23 @@
   #lightbox.open{display:flex;}
   #lightbox img{max-width:96vw; max-height:96vh; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .08s ease-out; transform-origin:center; cursor:grab; touch-action:none;}
   #lightbox img:active{cursor:grabbing;}
+  /* コメント欄は常に同じ高さ(約5行)を確保し、コメントの有無で画像の大きさが変わらないようにする。
+     はみ出した分は欄の中でスクロール。OFFのときは欄ごと消して画像を画面いっぱいに表示 */
   #lightboxCaption{
-    max-width:min(96vw, 700px); color:#e6e8ec; background:rgba(23,26,33,.85);
+    width:min(96vw, 700px); height:112px; color:#e6e8ec; background:rgba(23,26,33,.85);
     border-radius:8px; padding:8px 14px; font-size:13px; line-height:1.5; white-space:pre-wrap;
-    overflow:hidden; text-overflow:ellipsis;
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
-    cursor:default; flex-shrink:0;
+    overflow-y:auto; overscroll-behavior:contain; cursor:default; flex-shrink:0;
   }
-  #lightboxCaption:empty{display:none;}
+  #lightboxCaption.is-empty{background:transparent;}
+  #lightbox.no-caption #lightboxCaption{display:none;}
+  #lbTools{position:fixed; top:12px; right:12px; z-index:101; display:flex; align-items:center; gap:8px; cursor:default;}
+  #lbTools button{
+    background:rgba(23,26,33,.85); color:#e6e8ec; border:1px solid rgba(255,255,255,.25); border-radius:8px;
+    padding:6px 12px; font-size:13px; cursor:pointer;
+  }
+  #lbTools button:hover:not(:disabled){border-color:#fff; opacity:1;}
+  #lbTools #lbCaptionToggle.on{background:var(--accent); border-color:var(--accent); color:#fff;}
+  #lbCounter{color:#e6e8ec; font-size:12px; background:rgba(23,26,33,.85); border-radius:8px; padding:6px 10px; font-variant-numeric:tabular-nums;}
   #lightboxCaption a{color:var(--accent); text-decoration:underline;}
   #lightboxCaption b{font-weight:700;}
   #lightboxCaption mark{background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;}
@@ -756,6 +784,7 @@
         <div class="tocHead">目次</div>
         <nav id="tocList"></nav>
       </aside>
+      <div id="tocSplitter" title="ドラッグで目次の幅を変更(ダブルクリックで標準に戻す)"></div>
       <div id="recordMain">
         <div id="captureList"><div class="empty">まだキャプチャがありません</div></div>
       </div>
@@ -787,6 +816,11 @@
 <canvas id="workCanvas" style="display:none;"></canvas>
 
 <div id="lightbox">
+  <div id="lbTools">
+    <span id="lbCounter"></span>
+    <button id="lbCaptionToggle" type="button" title="コメントの表示/非表示(Cキー)">💬 コメント</button>
+    <button id="lbClose" type="button" title="閉じる(Esc)">✕</button>
+  </div>
   <img id="lightboxImg" alt="拡大表示" draggable="false">
   <div id="lightboxCaption"></div>
 </div>
@@ -1753,6 +1787,7 @@
       div.innerHTML = `
         <span class="drag-handle" draggable="true" tabindex="0" role="button" title="ドラッグ、またはフォーカスしてShift+Alt+↑/↓で並び替え/Enterでメモを入力">⠿</span>
         <img src="${record.dataURL}" alt="capture">
+        <div class="thumbSplit" title="ドラッグで画像の幅を変更(全キャプチャ共通・ダブルクリックで標準に戻す)"></div>
         <div class="itembody">
           <div class="meta">${fmtTime(record.timestamp)} <span class="saveState"></span></div>
           <div class="memoField">
@@ -1934,6 +1969,7 @@
     if(cropBtn){
       cropBtn.addEventListener("click", () => openCropModal(record, div.querySelector("img")));
     }
+    attachThumbSplitter(div);
     const cropLastBtn = div.querySelector(".btn-crop-last");
     if(cropLastBtn){
       cropLastBtn.style.display = lastCropRatio ? "inline-block" : "none";
@@ -2178,6 +2214,7 @@
     // (どのセクションにもメモが無ければ💬列は出さない)
     const anyMemos = sections.some((sec) => sec.memos);
     const countCell = (icon, n) => `<span class="tocNum"${n ? "" : " style=\"visibility:hidden\""}>${icon}<b>${n || 0}</b></span>`;
+    $("recordLayout").classList.toggle("no-toc", sections.length === 0);
     tocList.innerHTML = sections.length
       ? sections.map((sec) => {
           const id = sec.head.dataset.id;
@@ -2233,6 +2270,63 @@
     e.preventDefault();
     moveSection(e.key === "ArrowUp" ? -1 : 1, true);
   });
+
+  // ---------- 幅の調整(目次の幅・画像の幅)。表示の好みなのでブラウザに保存し、全削除しても残す ----------
+  const TOC_W_KEY = "smart-capture-memo-toc-w", THUMB_W_KEY = "smart-capture-memo-thumb-w";
+  const TOC_W_DEFAULT = 220, THUMB_W_DEFAULT = 160;
+  function applyStoredWidth(key, cssVar){
+    try{
+      const v = Number(localStorage.getItem(key));
+      if(v) document.documentElement.style.setProperty(cssVar, v + "px");
+    }catch(e){}
+  }
+  applyStoredWidth(TOC_W_KEY, "--toc-w");
+  applyStoredWidth(THUMB_W_KEY, "--thumb-w");
+  // ドラッグで幅を変える共通処理。つかんだ時点の幅にマウスの移動量を足した幅を clamp() で範囲内に収め、
+  // CSS変数に反映する(つかんだ瞬間に幅が跳ねないよう、位置ではなく移動量で計算)。離したときに保存する
+  function makeWidthDragger(handle, getCurrentWidth, clamp, cssVar, key, defaultW){
+    handle.addEventListener("pointerdown", (e) => {
+      if(e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handle.classList.add("dragging");
+      handle.setPointerCapture(e.pointerId);
+      const startX = e.clientX, startW = getCurrentWidth();
+      let lastW = null;
+      const move = (ev) => {
+        lastW = Math.round(clamp(startW + ev.clientX - startX));
+        if(lastW) document.documentElement.style.setProperty(cssVar, lastW + "px");
+      };
+      const up = () => {
+        handle.classList.remove("dragging");
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", up);
+        handle.removeEventListener("pointercancel", up);
+        if(lastW){ try{ localStorage.setItem(key, String(lastW)); }catch(err){} }
+      };
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", up);
+      handle.addEventListener("pointercancel", up);
+    });
+    handle.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      document.documentElement.style.setProperty(cssVar, defaultW + "px");
+      try{ localStorage.removeItem(key); }catch(err){}
+    });
+  }
+  // 目次の幅: 160px〜480px
+  const tocAsideEl = $("tocAside");
+  makeWidthDragger($("tocSplitter"), () => tocAsideEl.getBoundingClientRect().width,
+    (w) => Math.max(160, Math.min(480, w)), "--toc-w", TOC_W_KEY, TOC_W_DEFAULT);
+  // 画像の幅: 120px〜行の幅の50%(どの行で動かしても全キャプチャ共通)
+  function attachThumbSplitter(div){
+    const handle = div.querySelector(".thumbSplit");
+    const img = div.querySelector("img");
+    if(!handle || !img) return;
+    makeWidthDragger(handle, () => img.getBoundingClientRect().width,
+      (w) => Math.max(120, Math.min(Math.max(120, div.getBoundingClientRect().width * 0.5), w)),
+      "--thumb-w", THUMB_W_KEY, THUMB_W_DEFAULT);
+  }
 
   // ---------- 記録一覧のドラッグ&ドロップ並び替え ----------
   let draggingItem = null;
@@ -2678,13 +2772,11 @@
   #lightbox img{max-width:none; max-height:none; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,.5); transition:transform .08s ease-out; transform-origin:center; cursor:grab; touch-action:none;}
   #lightbox img:active{cursor:grabbing;}
   #lightboxCaption{
-    max-width:min(96vw, 700px); color:#e6e8ec; background:rgba(23,26,33,.85);
+    width:min(96vw, 700px); height:112px; color:#e6e8ec; background:rgba(23,26,33,.85);
     border-radius:8px; padding:8px 14px; font-size:13px; line-height:1.5; white-space:pre-wrap;
-    overflow:hidden; text-overflow:ellipsis;
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
-    cursor:default; flex-shrink:0;
+    overflow-y:auto; overscroll-behavior:contain; cursor:default; flex-shrink:0;
   }
-  #lightboxCaption:empty{display:none;}
+  #lightboxCaption.is-empty{background:transparent;}
   #lightbox.no-caption #lightboxCaption{display:none;}
   #lbTools{position:fixed; top:12px; right:12px; z-index:101; display:flex; align-items:center; gap:8px; cursor:default;}
   #lbTools button{
@@ -2796,8 +2888,9 @@
   function fitLightboxImage(){
     var nw = lightboxImg.naturalWidth, nh = lightboxImg.naturalHeight;
     if(!nw || !nh || !lightbox.classList.contains("open")) return;
-    var capH = (showCaption && lightboxCaption.textContent.trim()) ? lightboxCaption.offsetHeight + 10 : 0;
-    var availW = window.innerWidth - 48, availH = window.innerHeight - 48 - capH;
+    // コメントON時はコメントの有無に関わらずコメント欄の固定高さ分を空け、画像の大きさを揃える(上部のボタン分も確保)
+    var capH = showCaption ? 112 + 10 : 0;
+    var availW = window.innerWidth - 48, availH = window.innerHeight - 48 - 44 - capH;
     var sc = Math.max(0.05, Math.min(availW / nw, availH / nh));
     lightboxImg.style.width = Math.floor(nw * sc) + "px";
     lightboxImg.style.height = Math.floor(nh * sc) + "px";
@@ -2813,6 +2906,8 @@
     lightboxImg.src = src;
     lightboxIndex = (index !== undefined) ? index : IMG_SRC_LIST.indexOf(src);
     lightboxCaption.innerHTML = renderMemoMarkdown((IMG_MEMO_LIST[lightboxIndex] || "").trim());
+    lightboxCaption.classList.toggle("is-empty", !(IMG_MEMO_LIST[lightboxIndex] || "").trim());
+    lightboxCaption.scrollTop = 0;
     lightboxZoom = 1;
     lightboxPanX = 0;
     lightboxPanY = 0;
@@ -2837,6 +2932,7 @@
   });
   lightbox.addEventListener("wheel", function(e){
     if(!lightbox.classList.contains("open")) return;
+    if(lightboxCaption.contains(e.target)) return; // コメント欄の上ではコメントをスクロール
     e.preventDefault();
     lightboxZoom = Math.min(5, Math.max(0.5, lightboxZoom + (e.deltaY < 0 ? 0.15 : -0.15)));
     applyLightboxTransform();
@@ -3525,7 +3621,7 @@
   // 極端に小さい画像を無理に画面いっぱいまで引き伸ばすとぼやけて粗く見えるのを防ぐため
   const LIGHTBOX_MAX_UPSCALE = 3;
   // キャプション表示分(最大3行+パディング+隙間)として画像の高さ計算から差し引く概算値
-  const LIGHTBOX_CAPTION_RESERVE = 110;
+  const LIGHTBOX_CAPTION_RESERVE = 112; // コメント欄の固定高さ(約5行)。CSSの#lightboxCaptionのheightと同じ値
   // メモ内のMarkdown風記法(太字/黄色マーカー/文字色/リンク/裸のURL)をHTMLに変換する。
   // 必ず先にHTMLエスケープしてから記法を適用することでXSSを防止する
   function renderMemoMarkdown(text){
@@ -3638,12 +3734,35 @@
     const text = Array.from(container.childNodes).map(walk).join("");
     return text.replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "");
   }
+  // コメント表示ON/OFF(Cキーでも切替)。ONのときはコメントの有無に関わらず同じ高さを空けて画像サイズを揃える
+  const LB_CAPTION_KEY = "smart-capture-memo-lightbox-caption";
+  const lbCaptionToggle = $("lbCaptionToggle");
+  const lbCounter = $("lbCounter");
+  let lbShowCaption = true;
+  try{ lbShowCaption = localStorage.getItem(LB_CAPTION_KEY) !== "off"; }catch(e){}
+  function applyLbCaptionState(){
+    lightbox.classList.toggle("no-caption", !lbShowCaption);
+    lbCaptionToggle.classList.toggle("on", lbShowCaption);
+    lbCaptionToggle.textContent = lbShowCaption ? "💬 コメント ON" : "💬 コメント OFF";
+  }
+  function toggleLbCaption(){
+    lbShowCaption = !lbShowCaption;
+    try{ localStorage.setItem(LB_CAPTION_KEY, lbShowCaption ? "on" : "off"); }catch(e){}
+    applyLbCaptionState();
+    fitLightboxImageSize();
+  }
+  $("lbTools").addEventListener("click", (e) => e.stopPropagation());
+  lbCaptionToggle.addEventListener("click", toggleLbCaption);
+  $("lbClose").addEventListener("click", () => closeLightbox());
+  applyLbCaptionState();
+  window.addEventListener("resize", () => { if(lightbox.classList.contains("open")) fitLightboxImageSize(); });
+
   function fitLightboxImageSize(){
     const natW = lightboxImg.naturalWidth, natH = lightboxImg.naturalHeight;
     if(!natW || !natH) return;
-    const hasCaption = lightboxCaption.textContent.trim() !== "";
     const maxW = window.innerWidth * 0.96;
-    const maxH = window.innerHeight * 0.96 - (hasCaption ? LIGHTBOX_CAPTION_RESERVE : 0);
+    // 上部のボタン類(約56px)と、コメントON時はコメント欄の固定高さ+隙間を常に差し引く
+    const maxH = window.innerHeight * 0.96 - 56 - (lbShowCaption ? LIGHTBOX_CAPTION_RESERVE + 10 : 0);
     const scale = Math.min(maxW / natW, maxH / natH, LIGHTBOX_MAX_UPSCALE);
     lightboxImg.style.width = Math.round(natW * scale) + "px";
     lightboxImg.style.height = Math.round(natH * scale) + "px";
@@ -3658,6 +3777,8 @@
     const textarea = item ? item.querySelector("textarea") : null;
     const memo = textarea ? textarea.value : "";
     lightboxCaption.innerHTML = renderMemoMarkdown(memo.trim());
+    lightboxCaption.classList.toggle("is-empty", !memo.trim());
+    lightboxCaption.scrollTop = 0;
     lightboxImg.style.width = "";
     lightboxImg.style.height = "";
     lightboxImg.onload = fitLightboxImageSize;
@@ -3668,6 +3789,7 @@
     lightboxPanY = 0;
     applyLightboxTransform();
     lightbox.classList.add("open");
+    lbCounter.textContent = lightboxIndex >= 0 ? `${lightboxIndex + 1} / ${getLightboxImages().length}` : "";
     if(!alreadyOpen) lockBodyScroll();
   }
   function closeLightbox(){
@@ -3698,6 +3820,7 @@
   // ホイールで拡大縮小(0.5〜5倍)
   lightbox.addEventListener("wheel", (e) => {
     if(!lightbox.classList.contains("open")) return;
+    if(lightboxCaption.contains(e.target)) return; // コメント欄の上ではコメントをスクロール(画像は拡大しない)
     e.preventDefault();
     lightboxZoom = Math.min(5, Math.max(0.5, lightboxZoom + (e.deltaY < 0 ? 0.15 : -0.15)));
     applyLightboxTransform();
@@ -3728,6 +3851,10 @@
       e.preventDefault();
       if(e.key === "ArrowLeft" || e.key === "ArrowUp") showLightboxByOffset(-1);
       else showLightboxByOffset(1);
+      return;
+    }
+    if((e.key === "c" || e.key === "C") && lightbox.classList.contains("open") && !(e.ctrlKey || e.metaKey || e.altKey)){
+      toggleLbCaption();
       return;
     }
     if(e.key !== "Escape") return;
@@ -4064,7 +4191,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4086,7 +4213,8 @@
     ["v03_2026-11-18.2","メモをキーボードだけで続けて入力できるように(Ctrl+Enter/Escで入力終了→Spaceでキャプチャ→Enterで次のメモ入力)"],
     ["v03_2026-11-19","記録タブのツールバー(HTML保存・⋯・日付・タイトル・見出しナビ等)のボタンと入力欄の高さを統一"],
     ["v03_2026-11-19.2","ウィンドウ/タブを共有したとき、フォーカスが共有先へ移らずこの画面に残るように(続けて範囲指定できる)"],
-    ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"]
+    ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"],
+    ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]]
   ];
 
   const verLabel = $("verLabel");
