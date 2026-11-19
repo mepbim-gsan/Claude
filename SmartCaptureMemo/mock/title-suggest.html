@@ -92,6 +92,7 @@
     <div class="segGuide" id="segGuide"></div>
     <div class="note" style="margin-top:14px;">
       <b>試し方</b><br>
+      ・入力欄が空のときは候補を出さず、1文字入力すると表示<br>
       ・「設備」と入力 → 大項目の候補(設備を含むもの)<br>
       ・「DD_」と入力 → 大項目が DD の履歴にある中項目の候補<br>
       ・「DD_週次_」と入力 → DD_週次 の小項目の候補<br>
@@ -178,7 +179,7 @@
     const { idx, typed, list } = buildCandidates();
     renderGuide(idx);
     items = list;
-    if(document.activeElement !== titleEl){ sgBox.hidden = true; return; }
+    if(document.activeElement !== titleEl || titleEl.value === ""){ sgBox.hidden = true; return; } // 1文字入力してから表示
     sgHead.textContent = `${SEG_NAMES[idx]}の候補` + (idx > 0 ? `(「${titleEl.value.split("_").slice(0, idx).join("_")}_」の履歴から)` : "");
     if(list.length === 0){
       sgList.innerHTML = `<div class="sgEmpty">候補がありません。新しい${SEG_NAMES[idx].replace(/\(.*\)/, "")}として入力できます</div>`;
