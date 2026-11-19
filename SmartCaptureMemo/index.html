@@ -69,6 +69,10 @@
   .iconBtn:hover:not(:disabled){color:var(--text); border-color:var(--sub); opacity:1;}
   a.iconBtn{display:inline-flex; align-items:center; justify-content:center; border-radius:8px; text-decoration:none;}
   #btnHelpHeader{min-width:30px; font-weight:700; font-size:14px;}
+  /* ヘッダー右上: タイトル+バージョン表記の高さ(約32px)に合わせて大きめに */
+  .appBar #btnSettings, .appBar #btnHelpHeader{height:32px; min-width:34px; padding:0 8px; font-size:18px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center;}
+  .appBar #btnHelpHeader{font-size:17px;}
+  .appBar #shareChip{height:28px; display:inline-flex; align-items:center; font-size:12.5px; padding:0 12px; border-radius:14px;}
   #tabBar{display:flex; gap:2px; padding:0 12px;}
   .tabBtn{
     flex:1; max-width:160px; background:transparent; color:var(--sub); border-radius:0;
@@ -4346,7 +4350,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-19"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-19.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4376,7 +4380,8 @@
     ["v03_2026-11-19.12","⋯メニューの項目を左寄せに"],
     ["v03_2026-11-19.13","「前回と同じ画面」の知らせを短くし、📸ボタンの下に重ねて表示(ボタン等の位置がずれないように)"],
     ["v03_2026-11-19.14","メモの装飾ツールバーに「🧹 クリア」(書式をまとめて外す)を追加"],
-    ["v04_2026-11-19",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから。⚙設定でON、初期値OFF)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏️で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に(並び順・期間フィルタも)。保存日時はマウスを乗せると表示、上書き保存は「N版」で折りたたみ","ファイル名とファイル内の情報がずれている行に⚠、見つからない履歴の一括削除(🧹)"]]
+    ["v04_2026-11-19",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから。⚙設定でON、初期値OFF)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏️で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に(並び順・期間フィルタも)。保存日時はマウスを乗せると表示、上書き保存は「N版」で折りたたみ","ファイル名とファイル内の情報がずれている行に⚠、見つからない履歴の一括削除(🧹)"]],
+    ["v04_2026-11-19.2","ヘッダー右上(共有チップ・⚙・?)を大きく"]
   ];
 
   const verLabel = $("verLabel");
