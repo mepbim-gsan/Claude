@@ -580,6 +580,12 @@
   #exportHistoryList .hist-del:hover{background:var(--danger); color:#fff;}
   #exportHistoryEmpty{color:var(--sub); font-size:12px; padding:4px 0;}
   #exportHistoryList .hist-warn{flex-shrink:0; color:#d97706; cursor:help; font-size:12px;}
+  #exportHistoryList .hist-renamed{flex-shrink:0; font-size:10px; color:var(--sub); border:1px solid var(--border); border-radius:4px; padding:1px 5px; cursor:help;}
+  #exportHistoryList .hist-count{flex-shrink:0; width:3.6em; text-align:right; color:var(--sub); font-variant-numeric:tabular-nums;}
+  #exportHistoryList li.hist-child .hist-time{min-width:7.2em; text-align:right;}
+  /* 件数・同名・ボタン類の位置をどの行でも揃える(無い行も幅を確保) */
+  #exportHistoryList .hist-exp-slot{flex-shrink:0; width:66px; display:flex; justify-content:flex-end;}
+  #exportHistoryList .hist-acts{flex-shrink:0; width:116px; display:flex; justify-content:flex-end; gap:6px;}
   #exportHistoryList li.hist-editing{flex-wrap:wrap;}
   #exportHistoryList .hist-rename-in{
     flex:1; min-width:140px; height:32px; background:var(--surface2); color:var(--text); border:1px solid var(--accent);
@@ -869,6 +875,7 @@
         <input type="search" id="historySearch" placeholder="ファイル名で検索">
         <button class="secondary" id="btnExportHistorySync" type="button" title="保存先フォルダと同期(他端末分の履歴・ファイル消失状況を反映)">🔄</button>
         <button class="secondary iconable" id="btnCopyDirPath" type="button" title="保存先フォルダのパスをコピー(エクスプローラーのアドレス欄に貼り付けて開けます)" hidden>📋 <span class="btnLabel">パスをコピー</span></button>
+        <button class="secondary iconable" id="btnHistoryPurge" type="button" title="保存先フォルダに見つからない(取り消し線の)履歴をまとめて削除" hidden>🧹 <span class="btnLabel">見つからない履歴を削除</span></button>
         <button class="secondary iconable" id="btnHistoryScan" type="button" title="保存先フォルダ内のHTMLのうち、履歴に無いものを追加(日付はファイル内の日付→ファイル名→ファイルの保存日時の順で判定)">📂 <span class="btnLabel">フォルダから追加</span></button>
       </div>
       <div class="hint" id="historyFolderNote"></div>
@@ -4322,7 +4329,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.15"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.16"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4352,7 +4359,8 @@
     ["v03_2026-11-19.12","⋯メニューの項目を左寄せに"],
     ["v03_2026-11-19.13","「前回と同じ画面」の知らせを短くし、📸ボタンの下に重ねて表示(ボタン等の位置がずれないように)"],
     ["v03_2026-11-19.14","メモの装飾ツールバーに「🧹 クリア」(書式をまとめて外す)を追加"],
-    ["v03_2026-11-19.15",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に変更(並び順・期間フィルタも)。ファイル名とファイル内の情報がずれている行に⚠","⚙設定に資料タイトルの入力補助のON/OFF"]]
+    ["v03_2026-11-19.15",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に変更(並び順・期間フィルタも)。ファイル名とファイル内の情報がずれている行に⚠","⚙設定に資料タイトルの入力補助のON/OFF"]],
+    ["v03_2026-11-19.16",["履歴の件数を右端に揃えて表示","同名を開いたときの過去の行は、書き出したときの名前と日時で表示(「書き出し」の文字は省略)","名前を変更したファイルに「旧名」の印(マウスを乗せると旧名一覧)","🧹 見つからない履歴をまとめて削除"]]
   ];
 
   const verLabel = $("verLabel");
@@ -4460,7 +4468,7 @@
   historySearch.addEventListener("input", () => renderExportHistoryList());
   syncHistoryFilterButtons();
 
-  function historyRowHtml(h, { isPrimary, expandBtn, canUseFile }){
+  function historyRowHtml(h, { isPrimary, expandBtn, canUseFile, group }){
     if(isPrimary && h.fileName === renamingFile){
       return `
       <li class="hist-row hist-editing" data-id="${h.id}">
@@ -4472,22 +4480,31 @@
       </li>`;
     }
     const fileBtns = canUseFile && !h.missing
-      ? (isPrimary ? `<button class="hist-act hist-rename" type="button" data-file="${escapeHtml(h.fileName)}" title="名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更)">✏</button>` : "") +
+      ? (isPrimary ? `<button class="hist-act hist-rename" type="button" data-file="${escapeHtml(h.fileName)}" title="名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更)">✏️</button>` : "") +
         `<button class="hist-act hist-open" type="button" data-file="${escapeHtml(h.fileName)}" title="このファイルを新しいタブで開く">📄</button>` +
         `<button class="hist-act hist-import" type="button" data-file="${escapeHtml(h.fileName)}" title="このファイルを記録一覧に読み込む(続きから編集)">📥</button>`
       : "";
-    const olds = Array.isArray(h.oldNames) && h.oldNames.length ? `\n旧名: ${h.oldNames.map((o) => o.name).join(" → ")}` : "";
     const warns = isPrimary ? histMismatch(h) : [];
+    // 子の行(同じファイルの過去の書き出し)は、書き出したときの名前で表示する
+    const shownName = !isPrimary && Array.isArray(h.oldNames) && h.oldNames.length ? h.oldNames[0].name : h.fileName;
+    // 旧名: グループ内の全エントリの旧名(古い順・重複なし)
+    const oldList = [];
+    (group || [h]).slice().reverse().forEach((x) => (Array.isArray(x.oldNames) ? x.oldNames : []).forEach((o) => { if(!oldList.includes(o.name) && o.name !== h.fileName) oldList.push(o.name); }));
     const timeHtml = isPrimary
       ? `<span class="hist-time" title="書き出し: ${fmtTime(h.timestamp)}">${histDate(h).replace(/-/g, "/")}</span>`
-      : `<span class="hist-time">書き出し ${fmtTime(h.timestamp).slice(5, 16)}</span>`;
+      : `<span class="hist-time" title="書き出し日時">${fmtTime(h.timestamp).slice(5, 16)}</span>`;
+    const detailTitle = !isPrimary && shownName !== h.fileName
+      ? `書き出したときの名前: ${shownName}\n現在の名前: ${h.fileName}`
+      : h.fileName + (h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : "");
     return `
       <li class="hist-row${isPrimary ? "" : " hist-child"}" data-id="${h.id}" ${isPrimary ? "" : "hidden"}>
         ${timeHtml}
-        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${escapeHtml(h.fileName)}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}${escapeHtml(olds)}">${escapeHtml(h.fileName)}(${h.count}件)</span>
-        ${warns.length ? `<span class="hist-warn" title="ファイル名とファイル内の情報が違います\n${escapeHtml(warns.join("\n"))}\n(✏で名前を変更すると揃います)">⚠</span>` : ""}
-        ${expandBtn || ""}
-        ${fileBtns}
+        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${escapeHtml(detailTitle)}">${escapeHtml(shownName)}</span>
+        ${isPrimary && oldList.length ? `<span class="hist-renamed" title="${escapeHtml("旧名:\n" + oldList.join("\n"))}">旧名</span>` : ""}
+        ${warns.length ? `<span class="hist-warn" title="ファイル名とファイル内の情報が違います\n${escapeHtml(warns.join("\n"))}\n(✏️で名前を変更すると揃います)">⚠</span>` : ""}
+        <span class="hist-count">${h.count}件</span>
+        <span class="hist-exp-slot">${expandBtn || ""}</span>
+        <span class="hist-acts">${fileBtns}</span>
         <button class="hist-del" data-id="${h.id}" title="この履歴を削除">🗑</button>
       </li>
     `;
@@ -4499,6 +4516,9 @@
     const [from, to] = historyRangeBounds(historyRange);
     const q = historySearch.value.trim().toLowerCase();
     renderTitleOrg(all);
+    const missingCount = all.filter((h) => h.missing).length;
+    btnHistoryPurge.hidden = missingCount === 0;
+    btnHistoryPurge.title = `保存先フォルダに見つからない(取り消し線の)履歴 ${missingCount}件をまとめて削除`;
     const items = all.filter((h) => {
       const t = histDateMs(h);
       return t >= from && t < to && (!q || (h.fileName || "").toLowerCase().includes(q)) && matchesTitleColSel(h);
@@ -4525,7 +4545,7 @@
         ? `<button class="hist-expand${isOpen ? " open" : ""}" type="button" data-group="${gi}">同名${group.length}件 <span class="hist-expand-arrow">${isOpen ? "▾" : "▸"}</span></button>`
         : "";
       // 同名の古い行は同じファイル(上書き済み)を指すため、開く/読み込みは最新行にだけ出す
-      const rows = [historyRowHtml(latest, { isPrimary: true, expandBtn, canUseFile })];
+      const rows = [historyRowHtml(latest, { isPrimary: true, expandBtn, canUseFile, group })];
       group.slice(1).forEach((h) => rows.push(historyRowHtml(h, { isPrimary: false, canUseFile: false })));
       return rows.join("");
     }).join("");
@@ -5043,6 +5063,28 @@
       return false;
     }
   }
+
+  // 保存先フォルダに見つからない(取り消し線の)履歴をまとめて削除し、フォルダの履歴JSONにも反映する
+  const btnHistoryPurge = $("btnHistoryPurge");
+  btnHistoryPurge.addEventListener("click", async () => {
+    const dir = await getSaveDirWithPermission("readwrite");
+    if(dir === null){ await alertAsync("保存先フォルダが登録されていません。⚙設定で登録してください。"); return; }
+    if(!dir) return;
+    try{
+      await syncHistoryWithDir(dir);
+      const all = await refreshMissingFlags(dir); // 削除前にフォルダの状態を確認し直す
+      const targets = all.filter((h) => h.missing);
+      if(!targets.length){ await renderExportHistoryList(); await alertAsync("見つからない履歴はありません。"); return; }
+      const names = Array.from(new Set(targets.map((h) => h.fileName)));
+      if(!(await confirmAsync(`保存先フォルダに見つからない履歴 ${targets.length}件(${names.length}ファイル分)を削除します。\n(ファイルは削除しません。履歴の記録だけを消します)`))) return;
+      for(const h of targets) await historyDelete(h.id);
+      try{ await writeHistoryJson(dir); }catch(e){ console.error("履歴JSONの更新に失敗しました", e); }
+      await renderExportHistoryList();
+    }catch(err){
+      console.error(err);
+      await alertAsync("履歴の削除に失敗しました。");
+    }
+  });
 
   btnExportHistorySync.addEventListener("click", async () => {
     btnExportHistorySync.disabled = true;
