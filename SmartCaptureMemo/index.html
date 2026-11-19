@@ -738,8 +738,8 @@
           </div>
         </div>
       </div>
-      <div class="hint idleHint">「画面共有を開始」で撮影したい画面を選び、キャプチャする範囲を決めます。範囲を決めると自動で「記録」タブへ移ります</div>
-      <div class="hint">映像をドラッグして範囲指定 → 「範囲固定」で以降は連写できます／範囲内をドラッグすると位置だけ移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます(比率指定時は辺ドラッグでも比率を保持)、矢印キーでも位置を微調整できます／範囲を選ばず全画面をそのまま使いたい場合は「🖥 全画面」</div>
+      <div class="hint idleHint">「画面共有を開始」で撮影したい画面を選ぶと、すぐに全画面で撮影できる状態になります。範囲を絞りたい場合は、映像をドラッグして「範囲固定」を押してください(範囲を決めると自動で「記録」タブへ移ります)</div>
+      <div class="hint">共有を始めた時点で全画面で撮影できます(📸・Spaceキー)。範囲を絞る場合は映像をドラッグして「範囲固定」／範囲内をドラッグすると位置だけ移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます(比率指定時は辺ドラッグでも比率を保持)、矢印キーでも位置を微調整できます／範囲固定後に全画面へ戻す場合は「🖥 全画面」</div>
       <div class="hint" id="pipHint">範囲固定と同時に対応ブラウザでは自動的に「常時表示ウィンドウ」が開き、他のアプリを操作中でも最前面の小窓からワンクリックで撮影できます</div>
     </div>
   </section>
@@ -1127,6 +1127,9 @@
     if(!isSharing()){
       shareChip.textContent = "🖥 未共有";
       shareChip.classList.remove("live");
+    }else if(fixedRect && fixedIsFull){
+      shareChip.textContent = "🖥 全画面で撮影";
+      shareChip.classList.add("live");
     }else if(fixedRect){
       shareChip.textContent = `🖥 ${fixedRect.w}×${fixedRect.h} 固定中`;
       shareChip.classList.add("live");
@@ -1201,6 +1204,7 @@
     // 共有が切れた以上、範囲指定も意味を持たないためクリア
     selection = null;
     fixedRect = null;
+    fixedIsFull = false;
     selRect.style.display = "none";
     selRect.style.width = "0px";
     selRect.style.height = "0px";
@@ -1261,6 +1265,9 @@
       }
 
       stream.getVideoTracks()[0].addEventListener("ended", onShareEnded);
+      // 映像のサイズが分かった時点で全画面撮影を有効にする
+      if(video.videoWidth) applyAutoFull();
+      else video.addEventListener("loadedmetadata", applyAutoFull, { once:true });
       startStallMonitor(displaySurface);
     }catch(err){
       shareStatus.textContent = "キャンセルしました";
@@ -1511,8 +1518,25 @@
     setSelection({ x, y, w, h });
   });
 
-  function applyFixedRect(rect){
+  // 全画面で撮影中か(true の間は撮影のたびに映像の実サイズ全体を使う。共有先のサイズが変わっても追従)
+  let fixedIsFull = false;
+  // 画面共有を始めたら、範囲指定を待たずに全画面で撮影できる状態にする(範囲タブにとどまり、
+  // 範囲を絞りたい場合はそのままドラッグ→範囲固定で上書きできる)
+  function applyAutoFull(){
+    if(!isSharing() || !video.videoWidth || !video.videoHeight) return;
+    if(fixedRect && !fixedIsFull) return; // すでに範囲を固定済みなら変えない
+    fixedRect = { x:0, y:0, w:video.videoWidth, h:video.videoHeight };
+    fixedIsFull = true;
+    btnCapture.disabled = false;
+    btnPip.disabled = false;
+    updateShareChip();
+    shareStatus.textContent = "共有中(全画面で撮影できます)";
+  }
+
+  function applyFixedRect(rect, isFull){
     fixedRect = rect;
+    fixedIsFull = !!isFull;
+    shareStatus.textContent = fixedIsFull ? "共有中(全画面で撮影)" : "共有中(範囲を固定)";
     btnCapture.disabled = false;
     btnPip.disabled = false;
     captureStatus.textContent = ""; // 範囲のサイズはヘッダーの共有チップに表示する
@@ -1550,7 +1574,7 @@
     selRect.style.display = "none";
     selRect.style.width = "0px";
     selRect.style.height = "0px";
-    applyFixedRect({ x:0, y:0, w:video.videoWidth, h:video.videoHeight });
+    applyFixedRect({ x:0, y:0, w:video.videoWidth, h:video.videoHeight }, true);
   });
 
   // ---------- レコード追加共通処理(キャプチャ/貼り付け共通) ----------
@@ -1660,13 +1684,15 @@
       return false;
     }
 
-    workCanvas.width = fixedRect.w;
-    workCanvas.height = fixedRect.h;
+    // 全画面撮影中は、撮影時点の映像サイズ全体を使う(共有中にウィンドウサイズが変わっても欠けない)
+    const rect = fixedIsFull ? { x:0, y:0, w:src.videoWidth, h:src.videoHeight } : fixedRect;
+    workCanvas.width = rect.w;
+    workCanvas.height = rect.h;
     try{
       ctx.drawImage(
         src,
-        fixedRect.x, fixedRect.y, fixedRect.w, fixedRect.h,
-        0, 0, fixedRect.w, fixedRect.h
+        rect.x, rect.y, rect.w, rect.h,
+        0, 0, rect.w, rect.h
       );
     }catch(err){
       console.error("キャプチャの描画に失敗しました", err);
@@ -4191,7 +4217,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.5"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4214,7 +4240,8 @@
     ["v03_2026-11-19","記録タブのツールバー(HTML保存・⋯・日付・タイトル・見出しナビ等)のボタンと入力欄の高さを統一"],
     ["v03_2026-11-19.2","ウィンドウ/タブを共有したとき、フォーカスが共有先へ移らずこの画面に残るように(続けて範囲指定できる)"],
     ["v03_2026-11-19.3","キャプチャ対象のウィンドウが最小化されるなどして映像が止まったら、📸ボタン・ヘッダー・常時表示ウィンドウに警告を表示"],
-    ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]]
+    ["v03_2026-11-19.4",["見出しが無いときは目次欄を隠して一覧を横いっぱいに表示","目次と一覧の間・画像とメモの間のバーをドラッグして幅を変更(ダブルクリックで標準に戻す)","画像の拡大表示でコメントON/OFF(💬ボタン・Cキー)、コメントの有無に関わらず画像サイズを統一、長いコメントは欄の中でスクロール(書き出しHTMLも同様)"]],
+    ["v03_2026-11-19.5","画面共有を始めたら範囲指定なしですぐ全画面で撮影できるように(範囲を絞る場合は従来どおりドラッグ→範囲固定)"]
   ];
 
   const verLabel = $("verLabel");
