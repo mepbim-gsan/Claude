@@ -4352,7 +4352,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-20.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-20.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4387,7 +4387,8 @@
     ["v04_2026-11-19.3","資料タイトルの小項目は3つ目の「_」の手前まで(例: 大項目_中項目_小項目_#01 → 小項目)。4つ目以降は候補・整理の対象外"],
     ["v04_2026-11-20","定番タイトル(★)を保存先フォルダの同期ファイルでも共有(🔄同期で他の端末・ブラウザの★を取り込み、削除も反映)"],
     ["v04_2026-11-20.2","タイトル整理: 履歴にファイルが無く★だけで残っている項目に「履歴なし」の印(★を外すと消える)"],
-    ["v04_2026-11-20.3","タイトル整理・絞り込み・入力候補を、ファイル内のタイトルではなく一覧に見えているファイル名で判定(名前を変えたファイルが旧名の項目に出てしまう不具合を修正)"]
+    ["v04_2026-11-20.3","タイトル整理・絞り込み・入力候補を、ファイル内のタイトルではなく一覧に見えているファイル名で判定(名前を変えたファイルが旧名の項目に出てしまう不具合を修正)"],
+    ["v04_2026-11-20.4","タイトル整理: 下の階層の★だけで残っている「履歴なし」の項目も★で表示し、外すとまとめて外れて消えるように(項目を開いて下の★を外すことも可)"]
   ];
 
   const verLabel = $("verLabel");
@@ -4980,7 +4981,13 @@
     };
     titles.forEach((t) => add(t, true));
     titleFavorites.forEach((t) => add(t, false)); // 定番だけにある項目も表示(★を外すと消える)
-    return Array.from(map.entries()).map(([v, hasChild]) => ({ v, hasChild, noHist: !inHist.has(v), fav: titleFavorites.includes([...prefix, v].join("_")) }))
+    return Array.from(map.entries()).map(([v, hasChild]) => {
+      const path = [...prefix, v].join("_");
+      const noHist = !inHist.has(v);
+      // 履歴なしの項目は、下の階層の★だけで表示されていることがあるため、下の★も含めて★表示にする(外すとまとめて外れて消える)
+      const fav = noHist ? titleFavorites.some((f) => f === path || f.startsWith(path + "_")) : titleFavorites.includes(path);
+      return { v, hasChild, noHist, fav };
+    })
       .sort((a, b) => (b.fav - a.fav) || a.v.localeCompare(b.v, "ja"));
   }
   let titleOrgTitles = [];
@@ -4988,7 +4995,7 @@
     titleOrg.hidden = !titleAssistOn;
     if(all) titleOrgTitles = all.map(histTitle);
     // 選んでいた項目が無くなったら(リネーム等)、1つ上の階層へ戻す
-    while(titleColSel.length && !titleOrgTitles.some((t) => titleColSel.every((v, i) => titleSegs(t)[i] === v)) && !titleFavorites.includes(titleColSel.join("_"))) titleColSel.pop();
+    while(titleColSel.length && !titleOrgTitles.some((t) => titleColSel.every((v, i) => titleSegs(t)[i] === v)) && !titleFavorites.some((f) => f === titleColSel.join("_") || f.startsWith(titleColSel.join("_") + "_"))) titleColSel.pop();
     titleOrgFilter.hidden = !titleAssistOn || !titleColSel.length;
     titleOrgFilter.innerHTML = titleColSel.length ? `<span>「${escapeHtml(titleColSel.join("_"))}」で絞り込み中</span><button type="button" class="secondary" id="titleOrgClear">解除</button>` : "";
     if(!titleAssistOn || titleOrgBody.hidden) return;
@@ -4997,7 +5004,7 @@
       if(level > titleColSel.length){ ul.innerHTML = ""; return; }
       const items = titleColItems(level, titleOrgTitles);
       ul.innerHTML = items.length ? items.map((it) => `
-        <li data-level="${level}" data-v="${escapeHtml(it.v)}" class="${titleColSel[level] === it.v ? "sel" : ""}">
+        <li data-level="${level}" data-v="${escapeHtml(it.v)}"${it.noHist ? " data-nohist" : ""} class="${titleColSel[level] === it.v ? "sel" : ""}">
           <button class="tcStar${it.fav ? " on" : ""}" data-star type="button" title="${it.fav ? "定番から外す" : "定番に登録"}">${it.fav ? "★" : "☆"}</button>
           <span class="tcName${it.noHist ? " noHist" : ""}"${it.noHist ? ' title="履歴にファイルが無い定番タイトル(★を外すと一覧から消えます)"' : ""}>${escapeHtml(it.v)}${it.noHist ? '<span class="tcNoHist">履歴なし</span>' : ""}</span>${it.hasChild ? '<span class="tcMore">›</span>' : ""}
         </li>`).join("") : `<li class="tcEmpty">${level === 0 ? "履歴がありません" : "(この下の項目なし)"}</li>`;
@@ -5015,7 +5022,14 @@
     const level = Number(li.dataset.level), v = li.dataset.v;
     if(e.target.closest("[data-star]")){
       const path = [...titleColSel.slice(0, level), v].join("_");
-      setTitleFavorite(path, !titleFavorites.includes(path));
+      if(li.hasAttribute("data-nohist")){
+        // 履歴なしの項目: その項目と下の階層の★をまとめて外す(★が無ければ登録)
+        const under = titleFavorites.filter((f) => f === path || f.startsWith(path + "_"));
+        if(under.length) under.forEach((f) => setTitleFavorite(f, false));
+        else setTitleFavorite(path, true);
+      }else{
+        setTitleFavorite(path, !titleFavorites.includes(path));
+      }
       renderExportHistoryList(); // ★を外して項目が消えたときは絞り込みも解除されるので一覧も描き直す
       return;
     }
