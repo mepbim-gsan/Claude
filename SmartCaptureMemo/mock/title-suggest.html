@@ -179,8 +179,7 @@
       sgList.innerHTML = list.map((c, i) => {
         let label = esc(c.value);
         if(q){ const k = c.value.toLowerCase().indexOf(q); label = esc(c.value.slice(0, k)) + "<mark>" + esc(c.value.slice(k, k + q.length)) + "</mark>" + esc(c.value.slice(k + q.length)); }
-        const ctx = c.fav && !c.at ? "定番" : `${relDate(c.at)}・${esc(c.sample)}`;
-        return `<li data-i="${i}" class="${i === active ? "active" : ""}"><span class="star">${c.fav ? "★" : ""}</span><span>${label}</span><span class="ctx">${ctx}</span></li>`;
+        return `<li data-i="${i}" class="${i === active ? "active" : ""}"><span class="star">${c.fav ? "★" : ""}</span><span>${label}</span></li>`;
       }).join("");
     }
     sgBox.hidden = false;
