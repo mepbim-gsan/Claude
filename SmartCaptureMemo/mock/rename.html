@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>リネーム モック</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280;
+    --accent:#3b6fe0; --ok:#1f9d5c; --danger:#d14343; --secondary-bg:#e7e9ee; --hl:#fde68a; color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac;
+      --accent:#4f8cff; --ok:#2fbf71; --danger:#ff6b6b; --secondary-bg:#262b38; --hl:#7a5d00; color-scheme:dark; }
+  }
+  html[data-theme="light"]{color-scheme:light; --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280;
+    --accent:#3b6fe0; --ok:#1f9d5c; --danger:#d14343; --secondary-bg:#e7e9ee; --hl:#fde68a;}
+  html[data-theme="dark"]{color-scheme:dark; --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac;
+    --accent:#4f8cff; --ok:#2fbf71; --danger:#ff6b6b; --secondary-bg:#262b38; --hl:#7a5d00;}
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text);}
+  header{padding:12px 120px 12px 16px; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:5;}
+  header h1{font-size:15px; margin:0;}
+  header p{margin:4px 0 0; font-size:12px; color:var(--sub);}
+  .themeBtn{position:absolute; right:16px; top:12px; height:32px;}
+  main{max-width:900px; margin:0 auto; padding:14px 16px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:14px;}
+  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  input[type=text]{height:36px; background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:0 10px; font-size:13px; font-family:inherit;}
+  button{height:36px; border:none; border-radius:8px; padding:0 12px; font-size:13px; cursor:pointer; font-family:inherit;}
+  .btnOk{background:var(--ok); color:#fff;}
+  .btnSec{background:var(--secondary-bg); color:var(--text);}
+  .mini{height:28px; padding:0 9px; font-size:12px;}
+  .sub{font-size:12px; color:var(--sub);}
+  #folderName{font-weight:600;}
+  ul#files{list-style:none; margin:0; padding:0;}
+  #files > li{display:flex; align-items:center; gap:8px; padding:7px 4px; border-bottom:1px solid var(--border); font-size:13px; min-height:44px;}
+  #files > li:last-child{border-bottom:none;}
+  .date{color:var(--sub); font-variant-numeric:tabular-nums; width:6.5em; flex:none; white-space:nowrap; font-size:12px;}
+  .name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .name small{color:var(--sub); margin-left:6px;}
+  li.done .name{color:var(--ok);}
+  .edit{flex:1; min-width:0; display:flex; flex-direction:column; gap:4px;}
+  .edit .row{flex-wrap:nowrap;}
+  .titleWrap{position:relative; flex:1; min-width:0;}
+  .titleWrap input{width:100%;}
+  .preview{font-size:11px; color:var(--sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .preview.warn{color:var(--danger);}
+  /* 候補リスト(タイトル候補モックと同じ) */
+  .suggest{position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:20; background:var(--panel); border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 30px rgba(0,0,0,.18); overflow:hidden;}
+  .suggest[hidden]{display:none;}
+  .sgHead{font-size:11px; color:var(--sub); padding:6px 10px; border-bottom:1px solid var(--border); background:var(--surface2);}
+  .sgList{max-height:calc(34px * 4 + 2px); overflow-y:auto; list-style:none; margin:0; padding:2px 0;}
+  .sgList li{height:34px; display:flex; align-items:center; padding:0 10px; cursor:pointer; font-size:13px;}
+  .sgList li.active{background:var(--surface2); box-shadow:inset 3px 0 0 var(--accent);}
+  .sgList mark{background:var(--hl); color:inherit; border-radius:2px; padding:0 1px;}
+  .sgEmpty{padding:8px 10px; font-size:12px; color:var(--sub);}
+  #log{font-size:12px; color:var(--sub); white-space:pre-wrap; margin:0; max-height:160px; overflow:auto;}
+</style>
+</head>
+<body>
+<header>
+  <button class="btnSec themeBtn" id="btnTheme" type="button"></button>
+  <h1>書き出し済みHTMLのリネーム(モック)</h1>
+  <p>動作確認用のモックです。本体(SmartCaptureMemo)には未反映。<b>実際のファイルの名前を変更します</b>ので、テスト用のフォルダで試してください。</p>
+</header>
+<main>
+  <section class="card">
+    <div class="row">
+      <button class="btnSec" id="btnPick" type="button">📁 フォルダを選ぶ</button>
+      <span class="sub">選択中: <span id="folderName">未選択</span></span>
+      <label class="sub" style="margin-left:auto;">並び順
+        <select id="sort"><option value="date">日付(新しい順)</option><option value="title">タイトル順(ばらつき確認用)</option></select>
+      </label>
+    </div>
+    <p class="sub" style="margin:8px 0 0;">✏ でタイトルを変更 → <b>ファイル名</b>と<b>ファイル内の資料タイトル</b>(タブ名・見出し・📥読み込み時のタイトル)をまとめて変更します。日付部分(2026-1016_ など)はそのまま残ります。入力中はフォルダ内の既存タイトルから候補が出ます。</p>
+  </section>
+  <section class="card">
+    <ul id="files"><li class="sub">フォルダを選ぶと、中のHTMLが一覧表示されます</li></ul>
+  </section>
+  <section class="card">
+    <div class="sub" style="margin-bottom:4px;">操作ログ</div>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const HISTORY_SYNC_FILE = "smart-capture-memo-history.json";
+  const SEG_NAMES = ["大項目(分類)", "中項目(会議体名称)", "小項目(分科会・補足)"];
+  let dir = null, files = []; // { name, datePart, title, done }
+  let editing = null;          // 編集中のファイル名
+
+  const esc = (t) => String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const log = (t) => { $("log").textContent = `${new Date().toLocaleTimeString()} ${t}\n` + $("log").textContent; };
+  const safeName = (t) => t.replace(/[\\/:*?"<>|]/g, "").trim();
+  const splitName = (name) => { const m = name.match(/^(\d{4}-\d{4})_(.*)\.html$/i); return m ? { datePart: m[1], base: m[2] } : { datePart: "", base: name.replace(/\.html$/i, "") }; };
+  const buildName = (datePart, title) => (datePart ? `${datePart}_` : "") + safeName(title) + ".html";
+  const fmtDate = (d) => d ? `${d.slice(0, 4)}-${d.slice(5, 7)}-${d.slice(7, 9)}` : "—";
+
+  // ---------- フォルダ読み込み ----------
+  $("btnPick").addEventListener("click", async () => {
+    if(!window.showDirectoryPicker){ alert("このブラウザはフォルダ操作に対応していません(Edge / Chrome で開いてください)"); return; }
+    try{ dir = await window.showDirectoryPicker({ mode: "readwrite" }); }catch(e){ return; }
+    $("folderName").textContent = dir.name;
+    await loadFiles();
+  });
+
+  async function readMetaTitle(handle){
+    try{
+      const text = await (await handle.getFile()).text();
+      const m = text.match(/var META = (\{.*?\});/);
+      if(m){ const meta = JSON.parse(m[1]); if(meta && meta.title) return meta.title; }
+      const t = text.match(/<title>([^<]*)<\/title>/);
+      if(t) return t[1].replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&amp;/g,"&");
+    }catch(e){ console.error(e); }
+    return null;
+  }
+
+  async function loadFiles(){
+    files = [];
+    for await (const [name, h] of dir.entries()){
+      if(h.kind !== "file" || !/\.html?$/i.test(name)) continue;
+      const { datePart, base } = splitName(name);
+      files.push({ name, datePart, title: (await readMetaTitle(h)) || base, done: false });
+    }
+    log(`「${dir.name}」から ${files.length} 件のHTMLを読み込みました`);
+    editing = null; render();
+  }
+
+  // ---------- 一覧 ----------
+  function sorted(){
+    const a = files.slice();
+    if($("sort").value === "title") a.sort((x, y) => x.title.localeCompare(y.title, "ja") || y.datePart.localeCompare(x.datePart));
+    else a.sort((x, y) => y.datePart.localeCompare(x.datePart) || x.name.localeCompare(y.name, "ja"));
+    return a;
+  }
+  $("sort").addEventListener("change", () => render());
+
+  function render(){
+    if(!dir){ return; }
+    if(files.length === 0){ $("files").innerHTML = '<li class="sub">HTMLがありません</li>'; return; }
+    $("files").innerHTML = sorted().map((f) => {
+      const date = `<span class="date">${fmtDate(f.datePart)}</span>`;
+      if(f.name === editing){
+        return `<li data-name="${esc(f.name)}">${date}<div class="edit">
+          <div class="row"><div class="titleWrap"><input type="text" class="titleIn" value="${esc(f.title)}" autocomplete="off">
+            <div class="suggest" hidden><div class="sgHead"></div><ul class="sgList"></ul></div></div>
+            <button class="btnOk mini" data-act="ok" type="button">変更</button><button class="btnSec mini" data-act="cancel" type="button">取消</button></div>
+          <div class="preview"></div></div></li>`;
+      }
+      const sub = splitName(f.name).base !== safeName(f.title) ? `<small>(中のタイトル: ${esc(f.title)})</small>` : "";
+      return `<li data-name="${esc(f.name)}" class="${f.done ? "done" : ""}">${date}<span class="name" title="${esc(f.name)}">${f.done ? "✔ " : ""}${esc(f.name)}${sub}</span>
+        <button class="btnSec mini" data-act="edit" type="button" title="名前を変更">✏</button></li>`;
+    }).join("");
+    if(editing) setupEditor();
+  }
+
+  $("files").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-act]"); if(!b) return;
+    const name = b.closest("li").dataset.name;
+    if(b.dataset.act === "edit"){ editing = name; render(); }
+    else if(b.dataset.act === "cancel"){ editing = null; render(); }
+    else if(b.dataset.act === "ok"){ commit(name); }
+  });
+
+  // ---------- 編集欄(タイトル候補つき) ----------
+  function setupEditor(){
+    const li = $("files").querySelector(`li[data-name="${CSS.escape(editing)}"]`);
+    const input = li.querySelector(".titleIn"), box = li.querySelector(".suggest"), head = li.querySelector(".sgHead"), list = li.querySelector(".sgList"), pv = li.querySelector(".preview");
+    const f = files.find((x) => x.name === editing);
+    let items = [], active = -1;
+
+    const context = () => {
+      const v = input.value.slice(0, input.selectionStart ?? input.value.length);
+      const parts = v.split("_"); const idx = Math.min(parts.length - 1, 2);
+      return { idx, prefix: parts.slice(0, idx).map((s) => s.toLowerCase()), typed: idx === 2 ? parts.slice(2).join("_") : parts[idx] };
+    };
+    const preview = () => {
+      const nn = buildName(f.datePart, input.value.replace(/_+$/, ""));
+      const clash = nn !== f.name && files.some((x) => x.name === nn);
+      pv.className = "preview" + (clash ? " warn" : "");
+      pv.textContent = `新しいファイル名: ${nn}` + (clash ? "(同名のファイルがあります。変更時に上書き確認)" : "");
+    };
+    const draw = () => {
+      preview();
+      const { idx, prefix, typed } = context(); const q = typed.toLowerCase();
+      const map = new Map();
+      files.filter((x) => x !== f).forEach((x) => {
+        const segs = x.title.split("_"); if(segs.length <= idx) return;
+        for(let i = 0; i < idx; i++){ if((segs[i] || "").toLowerCase() !== prefix[i]) return; }
+        const val = idx === 2 ? segs.slice(2).join("_") : segs[idx];
+        if(!val || (q && !val.toLowerCase().includes(q))) return;
+        const d = map.get(val); if(!d || x.datePart > d) map.set(val, x.datePart);
+      });
+      items = Array.from(map.entries()).sort((a, b) => b[1].localeCompare(a[1])).map(([v]) => v);
+      if(input.value === "" || document.activeElement !== input){ box.hidden = true; return; }
+      head.textContent = `${SEG_NAMES[idx]}の候補` + (idx > 0 ? `(「${input.value.split("_").slice(0, idx).join("_")}_」の既存タイトルから)` : "");
+      list.innerHTML = items.length ? items.map((v, i) => {
+        let label = esc(v);
+        if(q){ const k = v.toLowerCase().indexOf(q); label = esc(v.slice(0, k)) + "<mark>" + esc(v.slice(k, k + q.length)) + "</mark>" + esc(v.slice(k + q.length)); }
+        return `<li data-i="${i}" class="${i === active ? "active" : ""}">${label}</li>`;
+      }).join("") : '<div class="sgEmpty">候補がありません</div>';
+      box.hidden = false;
+    };
+    const choose = (i) => {
+      const { idx } = context(); const head2 = input.value.split("_").slice(0, idx); head2.push(items[i]);
+      input.value = head2.join("_") + (idx < 2 ? "_" : ""); input.setSelectionRange(input.value.length, input.value.length);
+      active = -1; draw(); if(idx === 2) box.hidden = true;
+    };
+    input.addEventListener("input", () => { active = -1; draw(); });
+    input.addEventListener("click", draw);
+    input.addEventListener("blur", () => setTimeout(() => { box.hidden = true; }, 150));
+    input.addEventListener("keydown", (e) => {
+      const open = !box.hidden && items.length > 0;
+      if(open && (e.key === "ArrowDown" || e.key === "ArrowUp")){
+        e.preventDefault(); active = (active + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length; draw();
+        const el = list.querySelector("li.active"); if(el) el.scrollIntoView({ block: "nearest" });
+      }else if(open && (e.key === "Enter" || e.key === "Tab") && active >= 0){ e.preventDefault(); choose(active); }
+      else if(open && e.key === "Tab" && !e.shiftKey){ e.preventDefault(); choose(0); }
+      else if(e.key === "Escape"){ if(!box.hidden){ box.hidden = true; } else { editing = null; render(); } }
+      else if(e.key === "Enter"){ e.preventDefault(); commit(f.name); }
+    });
+    list.addEventListener("mousedown", (e) => { const l = e.target.closest("li[data-i]"); if(!l) return; e.preventDefault(); choose(Number(l.dataset.i)); input.focus(); });
+    input.focus(); input.setSelectionRange(input.value.length, input.value.length); preview();
+  }
+
+  // ---------- リネーム本体 ----------
+  // ファイル内のタイトル(<title>・見出し・META)を書き換えて新しい名前で保存し、元のファイルを削除する
+  function rewriteTitle(text, oldTitle, newTitle){
+    const o = esc(oldTitle), n = esc(newTitle);
+    text = text.split(`<title>${o}</title>`).join(`<title>${n}</title>`);
+    text = text.split(`<h1>${o}</h1>`).join(`<h1>${n}</h1>`);
+    text = text.split(`<h1 id="docTitle">${o}`).join(`<h1 id="docTitle">${n}`);
+    text = text.replace(/var META = (\{.*?\});/, (all, json) => {
+      try{ const meta = JSON.parse(json); meta.title = newTitle; return "var META = " + JSON.stringify(meta).replace(/<\/script/gi, "<\\/script") + ";"; }
+      catch(e){ return all; }
+    });
+    return text;
+  }
+
+  async function exists(name){ try{ await dir.getFileHandle(name); return true; }catch(e){ return false; } }
+
+  async function commit(oldName){
+    const f = files.find((x) => x.name === oldName);
+    const li = $("files").querySelector(`li[data-name="${CSS.escape(oldName)}"]`);
+    const newTitle = li.querySelector(".titleIn").value.replace(/_+$/, "").trim();
+    if(!newTitle || !safeName(newTitle)){ alert("タイトルを入力してください"); return; }
+    const newName = buildName(f.datePart, newTitle);
+    if(newTitle === f.title && newName === oldName){ editing = null; render(); return; }
+    if(newName !== oldName && await exists(newName) && !confirm(`「${newName}」は既に存在します。上書きしますか？`)) return;
+    try{
+      const text = await (await (await dir.getFileHandle(oldName)).getFile()).text();
+      const w = await (await dir.getFileHandle(newName, { create: true })).createWritable();
+      await w.write(new Blob([rewriteTitle(text, f.title, newTitle)], { type: "text/html" })); await w.close();
+      if(newName !== oldName) await dir.removeEntry(oldName);
+      await updateHistoryJson(oldName, newName, newTitle);
+      log(`変更: ${oldName} → ${newName}`);
+      files = files.filter((x) => x.name !== newName || x === f);
+      Object.assign(f, { name: newName, title: newTitle, done: true });
+    }catch(err){
+      console.error(err); alert("変更に失敗しました: " + err.message); return;
+    }
+    editing = null; render();
+  }
+
+  // 保存先フォルダの履歴JSON(本体の履歴タブ用)があれば、ファイル名・タイトルを合わせて更新
+  async function updateHistoryJson(oldName, newName, newTitle){
+    let h; try{ h = await dir.getFileHandle(HISTORY_SYNC_FILE); }catch(e){ return; }
+    try{
+      const arr = JSON.parse(await (await h.getFile()).text()); if(!Array.isArray(arr)) return;
+      let n = 0; arr.forEach((e) => { if(e.fileName === oldName){ e.fileName = newName; e.title = newTitle; n++; } });
+      if(!n) return;
+      const w = await h.createWritable(); await w.write(JSON.stringify(arr)); await w.close();
+      log(`履歴JSONの ${n} 件を更新しました`);
+    }catch(e){ console.error(e); }
+  }
+
+  // ---------- テーマ ----------
+  const sysTheme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const themeLabel = () => { const t = document.documentElement.dataset.theme || sysTheme(); $("btnTheme").textContent = t === "dark" ? "☀ ライト" : "🌙 ダーク"; };
+  $("btnTheme").addEventListener("click", () => { const t = document.documentElement.dataset.theme || sysTheme(); document.documentElement.dataset.theme = t === "dark" ? "light" : "dark"; themeLabel(); });
+  themeLabel();
+})();
+</script>
+</body>
+</html>
