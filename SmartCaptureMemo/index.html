@@ -579,6 +579,59 @@
   }
   #exportHistoryList .hist-del:hover{background:var(--danger); color:#fff;}
   #exportHistoryEmpty{color:var(--sub); font-size:12px; padding:4px 0;}
+  #exportHistoryList .hist-warn{flex-shrink:0; color:#d97706; cursor:help; font-size:12px;}
+  #exportHistoryList li.hist-editing{flex-wrap:wrap;}
+  #exportHistoryList .hist-rename-in{
+    flex:1; min-width:140px; height:32px; background:var(--surface2); color:var(--text); border:1px solid var(--accent);
+    border-radius:6px; padding:0 8px; font-size:13px; font-family:inherit;
+  }
+  #exportHistoryList .hist-rename-pv{flex-basis:100%; font-size:11px; color:var(--sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  #exportHistoryList .hist-rename-pv.warn{color:#d97706;}
+
+  /* 資料タイトルの入力候補(記録タブの資料タイトル欄・履歴のリネーム欄で共用) */
+  #tsBox{
+    position:fixed; z-index:1000; background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 12px 30px rgba(0,0,0,.25); overflow:hidden; min-width:220px;
+  }
+  #tsBox[hidden]{display:none;}
+  #tsBox .tsHead{font-size:11px; color:var(--sub); padding:6px 10px; border-bottom:1px solid var(--border); background:var(--surface2);}
+  #tsBox .tsList{list-style:none; margin:0; padding:2px 0; max-height:calc(34px * 4 + 4px); overflow-y:auto;}
+  #tsBox li{height:34px; display:flex; align-items:center; gap:6px; padding:0 10px; cursor:pointer; font-size:13px; color:var(--text);}
+  #tsBox li:hover{background:var(--surface2);}
+  #tsBox li.active{background:var(--surface2); box-shadow:inset 3px 0 0 var(--accent);}
+  #tsBox .tsStar{color:#d97706; width:1em; text-align:center; flex:none;}
+  #tsBox mark{background:color-mix(in srgb, #f5c542 55%, transparent); color:inherit; border-radius:2px; padding:0 1px;}
+
+  /* 履歴タブ: 定番タイトル・タイトル整理(カラムビュー) */
+  #titleOrg{margin-top:10px;}
+  #titleOrg[hidden]{display:none;}
+  #titleOrgToggle{
+    width:100%; display:flex; justify-content:space-between; align-items:center; height:36px;
+    background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:0 12px; font-size:12px;
+  }
+  #titleOrgToggle.open{border-radius:8px 8px 0 0;}
+  #titleOrgArrow{color:var(--sub);}
+  #titleOrgBody{border:1px solid var(--border); border-top:none; border-radius:0 0 8px 8px; background:var(--panel); padding:8px;}
+  #titleOrgBody[hidden]{display:none;}
+  #titleOrgBody .hint{margin-top:6px;}
+  .tcCols{display:grid; grid-template-columns:repeat(3, minmax(140px, 1fr)); border:1px solid var(--border); border-radius:8px; overflow-x:auto;}
+  .tcCol{border-right:1px solid var(--border); min-width:140px;}
+  .tcCol:last-child{border-right:none;}
+  .tcHead{font-size:11px; color:var(--sub); padding:5px 10px; background:var(--surface2); border-bottom:1px solid var(--border);}
+  .tcList{list-style:none; margin:0; padding:2px 0; max-height:calc(32px * 6 + 4px); overflow-y:auto;}
+  .tcList li{height:32px; display:flex; align-items:center; gap:4px; padding:0 8px 0 2px; cursor:pointer; font-size:13px; color:var(--text);}
+  .tcList li:hover{background:var(--surface2);}
+  .tcList li.sel{background:color-mix(in srgb, var(--accent) 16%, transparent); box-shadow:inset 3px 0 0 var(--accent);}
+  .tcList li.tcEmpty{color:var(--sub); font-size:12px; cursor:default; padding:0 10px;}
+  .tcList li.tcEmpty:hover{background:none;}
+  .tcName{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .tcMore{color:var(--sub); font-size:12px;}
+  button.tcStar{background:none; border:none; height:26px; width:26px; min-width:26px; padding:0; font-size:15px; color:var(--sub); cursor:pointer; flex:none;}
+  button.tcStar.on{color:#d97706;}
+  #titleOrgFilter{margin-top:8px; font-size:12px; color:var(--accent); display:flex; align-items:center; gap:8px;}
+  #titleOrgFilter[hidden]{display:none;}
+  #titleOrgFilter button{height:24px; font-size:11px; padding:0 8px;}
+  .setCheck{display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;}
 
   #exportStatusMsg{
     font-size:12px; color:var(--sub); opacity:0; transition:opacity .2s;
@@ -681,6 +734,11 @@
           <input type="text" id="saveDirPathInput" placeholder="例: C:\Users\name\OneDrive\会議メモ">
         </div>
         <div class="hint">ブラウザからはフォルダの場所を取得できないため、エクスプローラーのアドレス欄からコピーして貼り付けてください。入力すると履歴タブに「📋 パスをコピー」ボタンが表示されます(この端末にのみ保存)</div>
+      </section>
+      <section class="setSec">
+        <h3>資料タイトル</h3>
+        <label class="setCheck"><input type="checkbox" id="titleAssistToggle"> 入力補助(履歴・定番タイトルからの候補)</label>
+        <div class="hint">「_」で区切ると(例: 大項目_中項目_小項目)、区切りごとに候補を切り替えます。定番タイトルの登録・整理は履歴タブの「★ 定番タイトル・タイトル整理」から行えます。OFFにすると候補と整理パネルを表示しません</div>
       </section>
       <section class="setSec">
         <h3>表示</h3>
@@ -811,9 +869,21 @@
         <input type="search" id="historySearch" placeholder="ファイル名で検索">
         <button class="secondary" id="btnExportHistorySync" type="button" title="保存先フォルダと同期(他端末分の履歴・ファイル消失状況を反映)">🔄</button>
         <button class="secondary iconable" id="btnCopyDirPath" type="button" title="保存先フォルダのパスをコピー(エクスプローラーのアドレス欄に貼り付けて開けます)" hidden>📋 <span class="btnLabel">パスをコピー</span></button>
-        <button class="secondary iconable" id="btnHistoryScan" type="button" title="保存先フォルダ内のHTMLのうち、履歴に無いものを追加(日時はファイルの保存日時)">📂 <span class="btnLabel">フォルダから追加</span></button>
+        <button class="secondary iconable" id="btnHistoryScan" type="button" title="保存先フォルダ内のHTMLのうち、履歴に無いものを追加(日付はファイル内の日付→ファイル名→ファイルの保存日時の順で判定)">📂 <span class="btnLabel">フォルダから追加</span></button>
       </div>
       <div class="hint" id="historyFolderNote"></div>
+    </div>
+    <div id="titleOrg">
+      <button type="button" id="titleOrgToggle"><span>★ 定番タイトル・タイトル整理</span><span id="titleOrgArrow">▸ 開く</span></button>
+      <div id="titleOrgBody" hidden>
+        <div class="tcCols">
+          <div class="tcCol"><div class="tcHead">大項目</div><ul class="tcList" id="tcList0"></ul></div>
+          <div class="tcCol"><div class="tcHead">中項目</div><ul class="tcList" id="tcList1"></ul></div>
+          <div class="tcCol"><div class="tcHead">小項目</div><ul class="tcList" id="tcList2"></ul></div>
+        </div>
+        <div class="hint">項目を選ぶと下の履歴を絞り込みます(もう一度押すと解除)。☆で定番に登録すると、資料タイトルの入力候補の上位に出ます。名前の変更は各行の✏から</div>
+      </div>
+      <div id="titleOrgFilter" hidden></div>
     </div>
     <ul id="exportHistoryList"></ul>
   </section>
@@ -3430,6 +3500,12 @@
         const { id, ...rest } = e; // 他端末のローカルidを持ち込まない(自端末でautoIncrement採番させる)
         await historyAdd(rest);
         byUid.set(e.uid, rest);
+      }else if(e && e.uid && (e.updatedAt || 0) > (byUid.get(e.uid).updatedAt || 0)){
+        // 他端末でリネームされたエントリは、ファイル名・タイトル・旧名を取り込む
+        const cur = byUid.get(e.uid);
+        const next = { ...cur, fileName: e.fileName, title: e.title, date: e.date || cur.date, oldNames: e.oldNames || cur.oldNames, updatedAt: e.updatedAt };
+        await historyPut(next);
+        byUid.set(e.uid, next);
       }
     }
     return Array.from(byUid.values());
@@ -4246,7 +4322,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v03_2026-11-19.14"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v03_2026-11-19.15"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4275,7 +4351,8 @@
     ["v03_2026-11-19.11","「前回と同じ画面」の判定を細かくし、マウスカーソルの移動など小さな違いも別の画面として扱うように"],
     ["v03_2026-11-19.12","⋯メニューの項目を左寄せに"],
     ["v03_2026-11-19.13","「前回と同じ画面」の知らせを短くし、📸ボタンの下に重ねて表示(ボタン等の位置がずれないように)"],
-    ["v03_2026-11-19.14","メモの装飾ツールバーに「🧹 クリア」(書式をまとめて外す)を追加"]
+    ["v03_2026-11-19.14","メモの装飾ツールバーに「🧹 クリア」(書式をまとめて外す)を追加"],
+    ["v03_2026-11-19.15",["資料タイトルの入力候補(「_」区切りごとに大項目→中項目→小項目、履歴と定番タイトルから)","履歴タブに「★ 定番タイトル・タイトル整理」(カラムビューで絞り込み・定番登録)","履歴の✏で名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更、旧名を記録)","履歴の日付を資料の日付に変更(並び順・期間フィルタも)。ファイル名とファイル内の情報がずれている行に⚠","⚙設定に資料タイトルの入力補助のON/OFF"]]
   ];
 
   const verLabel = $("verLabel");
@@ -4384,14 +4461,31 @@
   syncHistoryFilterButtons();
 
   function historyRowHtml(h, { isPrimary, expandBtn, canUseFile }){
+    if(isPrimary && h.fileName === renamingFile){
+      return `
+      <li class="hist-row hist-editing" data-id="${h.id}">
+        <span class="hist-time">${histDate(h).replace(/-/g, "/")}</span>
+        <input type="text" class="hist-rename-in" value="${escapeHtml(histTitle(h))}" data-file="${escapeHtml(h.fileName)}" aria-label="新しいタイトル">
+        <button class="hist-act hist-rename-ok" type="button" title="名前を変更(Enter)">変更</button>
+        <button class="hist-act hist-rename-cancel" type="button" title="取消(Esc)">取消</button>
+        <span class="hist-rename-pv"></span>
+      </li>`;
+    }
     const fileBtns = canUseFile && !h.missing
-      ? `<button class="hist-act hist-open" type="button" data-file="${escapeHtml(h.fileName)}" title="このファイルを新しいタブで開く">📄</button>` +
+      ? (isPrimary ? `<button class="hist-act hist-rename" type="button" data-file="${escapeHtml(h.fileName)}" title="名前を変更(ファイル名とファイル内の資料タイトルをまとめて変更)">✏</button>` : "") +
+        `<button class="hist-act hist-open" type="button" data-file="${escapeHtml(h.fileName)}" title="このファイルを新しいタブで開く">📄</button>` +
         `<button class="hist-act hist-import" type="button" data-file="${escapeHtml(h.fileName)}" title="このファイルを記録一覧に読み込む(続きから編集)">📥</button>`
       : "";
+    const olds = Array.isArray(h.oldNames) && h.oldNames.length ? `\n旧名: ${h.oldNames.map((o) => o.name).join(" → ")}` : "";
+    const warns = isPrimary ? histMismatch(h) : [];
+    const timeHtml = isPrimary
+      ? `<span class="hist-time" title="書き出し: ${fmtTime(h.timestamp)}">${histDate(h).replace(/-/g, "/")}</span>`
+      : `<span class="hist-time">書き出し ${fmtTime(h.timestamp).slice(5, 16)}</span>`;
     return `
       <li class="hist-row${isPrimary ? "" : " hist-child"}" data-id="${h.id}" ${isPrimary ? "" : "hidden"}>
-        <span class="hist-time">${fmtTime(h.timestamp)}</span>
-        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${escapeHtml(h.fileName)}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}">${escapeHtml(h.fileName)}(${h.count}件)</span>
+        ${timeHtml}
+        <span class="hist-detail${h.missing ? " hist-missing" : ""}" title="${escapeHtml(h.fileName)}${h.missing ? "(保存先フォルダに見つかりません。移動・削除された可能性があります)" : ""}${escapeHtml(olds)}">${escapeHtml(h.fileName)}(${h.count}件)</span>
+        ${warns.length ? `<span class="hist-warn" title="ファイル名とファイル内の情報が違います\n${escapeHtml(warns.join("\n"))}\n(✏で名前を変更すると揃います)">⚠</span>` : ""}
         ${expandBtn || ""}
         ${fileBtns}
         <button class="hist-del" data-id="${h.id}" title="この履歴を削除">🗑</button>
@@ -4404,8 +4498,13 @@
     const canUseFile = fsAccessSupported && !!(await kvGet("saveDirHandle"));
     const [from, to] = historyRangeBounds(historyRange);
     const q = historySearch.value.trim().toLowerCase();
-    const items = all.filter((h) => h.timestamp >= from && h.timestamp < to && (!q || (h.fileName || "").toLowerCase().includes(q)));
-    items.sort((a, b) => b.timestamp - a.timestamp); // 新しい書き出しを上に
+    renderTitleOrg(all);
+    const items = all.filter((h) => {
+      const t = histDateMs(h);
+      return t >= from && t < to && (!q || (h.fileName || "").toLowerCase().includes(q)) && matchesTitleColSel(h);
+    });
+    // 資料の日付(新しい順)→同じ日付なら書き出し日時(新しい順)
+    items.sort((a, b) => histDate(b).localeCompare(histDate(a)) || b.timestamp - a.timestamp);
     if(items.length === 0){
       exportHistoryList.innerHTML = `<div id="exportHistoryEmpty">${all.length ? "条件に合う履歴がありません" : "まだ書き出し履歴がありません"}</div>`;
       return;
@@ -4417,7 +4516,7 @@
       if(!byName.has(h.fileName)) byName.set(h.fileName, []);
       byName.get(h.fileName).push(h); // itemsは既にtimestamp降順なので、各グループも自然に新しい順になる
     });
-    const groups = Array.from(byName.values()).sort((a, b) => b[0].timestamp - a[0].timestamp);
+    const groups = Array.from(byName.values()); // itemsの並び(資料日付→書き出し日時)の順にグループができる
 
     exportHistoryList.innerHTML = groups.map((group, gi) => {
       const latest = group[0];
@@ -4466,6 +4565,10 @@
     exportHistoryList.querySelectorAll(".hist-import").forEach((btn) => {
       btn.addEventListener("click", () => importHistoryFile(btn.dataset.file));
     });
+    exportHistoryList.querySelectorAll(".hist-rename").forEach((btn) => {
+      btn.addEventListener("click", () => { renamingFile = btn.dataset.file; renderExportHistoryList(); });
+    });
+    setupRenameRow();
   }
 
   // 保存先フォルダから履歴のファイルを読み出す。見つからなければ履歴に消失フラグを立てて知らせる
@@ -4609,6 +4712,337 @@
       btnHistoryScan.innerHTML = label;
     }
   });
+
+  // ---------- 資料タイトル: 入力候補・定番タイトル・タイトル整理・リネーム ----------
+  const TITLE_FAV_KEY = "smart-capture-memo-title-favorites"; // 定番タイトル(この端末に保存)
+  const TITLE_ASSIST_KEY = "smart-capture-memo-title-assist"; // 入力補助のON/OFF("0"でOFF)
+  let titleFavorites = [];
+  try{ const v = JSON.parse(localStorage.getItem(TITLE_FAV_KEY) || "[]"); if(Array.isArray(v)) titleFavorites = v.filter((x) => typeof x === "string"); }catch(e){}
+  function saveTitleFavorites(){ try{ localStorage.setItem(TITLE_FAV_KEY, JSON.stringify(titleFavorites)); }catch(e){} }
+  let titleAssistOn = true;
+  try{ titleAssistOn = localStorage.getItem(TITLE_ASSIST_KEY) !== "0"; }catch(e){}
+
+  // 「大項目_中項目_小項目」に分ける(4つ目以降の「_」は小項目に含める)
+  function titleSegs(t){ const p = String(t || "").split("_"); return p.length > 3 ? [p[0], p[1], p.slice(2).join("_")] : p; }
+  // 書き出しファイル名「YYYY-MMDD_タイトル.html」を日付部分とタイトル部分に分ける
+  function fileNameParts(name){
+    const m = /^(\d{4}-\d{4})_(.*)\.html?$/i.exec(name || "");
+    return m ? { prefix: m[1], base: m[2] } : { prefix: "", base: String(name || "").replace(/\.html?$/i, "") };
+  }
+  const safeFileTitle = (t) => String(t).replace(/[\\/:*?"<>|]/g, "").trim(); // 書き出し時と同じ規則
+  function histTitle(h){ return h.title || fileNameParts(h.fileName).base; }
+  // 履歴の日付 = 資料の日付。ファイル内の日付 → ファイル名の日付 → 書き出し(保存)日時 の順で決める
+  function histDate(h){
+    if(/^\d{4}-\d{2}-\d{2}$/.test(h.date || "")) return h.date;
+    const pre = fileNameParts(h.fileName).prefix;
+    if(pre) return `${pre.slice(0, 4)}-${pre.slice(5, 7)}-${pre.slice(7, 9)}`;
+    const d = new Date(h.timestamp), p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  function histDateMs(h){ const [y, m, d] = histDate(h).split("-").map(Number); return new Date(y, m - 1, d).getTime(); }
+  // ファイル名とファイル内の情報(タイトル・日付)のずれ。違う項目だけを返す
+  function histMismatch(h){
+    const out = [];
+    const { prefix, base } = fileNameParts(h.fileName);
+    if(h.title && safeFileTitle(h.title) !== base) out.push(`中のタイトル: ${h.title}`);
+    if(prefix && /^\d{4}-\d{2}-\d{2}$/.test(h.date || "") && `${h.date.slice(0, 4)}-${h.date.slice(5, 7)}${h.date.slice(8, 10)}` !== prefix) out.push(`中の日付: ${h.date}`);
+    return out;
+  }
+
+  // ----- 入力候補(記録タブの資料タイトル欄・リネーム欄で共用する1つのドロップダウン) -----
+  const SEG_LABELS = ["大項目", "中項目", "小項目"];
+  let titleSourceCache = []; // 書き出し履歴のタイトル { title, at }
+  async function refreshTitleSources(){
+    try{ titleSourceCache = (await historyGetAll()).map((h) => ({ title: histTitle(h), at: h.timestamp || 0 })); }catch(e){}
+  }
+  const tsBox = document.createElement("div");
+  tsBox.id = "tsBox"; tsBox.hidden = true;
+  tsBox.innerHTML = '<div class="tsHead"></div><ul class="tsList"></ul>';
+  document.body.appendChild(tsBox);
+  const tsHead = tsBox.querySelector(".tsHead"), tsList = tsBox.querySelector(".tsList");
+  let tsInput = null, tsItems = [], tsActive = -1;
+
+  function tsContext(input){
+    const v = input.value.slice(0, input.selectionStart ?? input.value.length);
+    const parts = v.split("_");
+    const idx = Math.min(parts.length - 1, 2);
+    return { idx, prefix: parts.slice(0, idx).map((x) => x.toLowerCase()), typed: idx === 2 ? parts.slice(2).join("_") : parts[idx], head: parts.slice(0, idx).join("_") };
+  }
+  // 前の項目が一致するタイトル(定番・履歴)から、今の位置の項目を集める。並びは 定番 → 最近使った順
+  function tsCandidates(input){
+    const { idx, prefix, typed, head } = tsContext(input);
+    const q = typed.toLowerCase();
+    const map = new Map();
+    const add = (title, at, fav) => {
+      const segs = titleSegs(title);
+      if(segs.length <= idx) return;
+      for(let i = 0; i < idx; i++){ if((segs[i] || "").toLowerCase() !== prefix[i]) return; }
+      const value = segs[idx];
+      if(!value || (q && !value.toLowerCase().includes(q))) return;
+      const cur = map.get(value) || { value, fav: false, at: 0 };
+      cur.fav = cur.fav || fav; cur.at = Math.max(cur.at, at);
+      map.set(value, cur);
+    };
+    titleFavorites.forEach((t) => add(t, 0, true));
+    titleSourceCache.forEach((x) => add(x.title, x.at, false));
+    return { idx, typed, head, list: Array.from(map.values()).sort((a, b) => (b.fav - a.fav) || (b.at - a.at)) };
+  }
+  function tsHide(){ tsBox.hidden = true; tsActive = -1; }
+  function tsPosition(){
+    if(!tsInput) return;
+    const r = tsInput.getBoundingClientRect();
+    const w = Math.max(r.width, 240);
+    tsBox.style.width = w + "px";
+    tsBox.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px";
+    tsBox.style.top = (r.bottom + 4) + "px";
+  }
+  function tsRender(){
+    const input = tsInput;
+    if(!input || !titleAssistOn || document.activeElement !== input || input.value === ""){ tsHide(); return; } // 1文字入力してから表示
+    const { idx, typed, head, list } = tsCandidates(input);
+    tsItems = list;
+    if(list.length === 0){ tsHide(); return; }
+    tsHead.textContent = `${SEG_LABELS[idx]}の候補` + (idx > 0 ? `(「${head}_」の履歴から)` : "");
+    const q = typed.toLowerCase();
+    tsList.innerHTML = list.map((c, i) => {
+      let label = escapeHtml(c.value);
+      if(q){ const k = c.value.toLowerCase().indexOf(q); label = escapeHtml(c.value.slice(0, k)) + "<mark>" + escapeHtml(c.value.slice(k, k + q.length)) + "</mark>" + escapeHtml(c.value.slice(k + q.length)); }
+      return `<li data-i="${i}" class="${i === tsActive ? "active" : ""}"><span class="tsStar">${c.fav ? "★" : ""}</span><span>${label}</span></li>`;
+    }).join("");
+    tsBox.hidden = false;
+    tsPosition();
+  }
+  // 候補を確定: 今の項目を置き換え、大・中項目なら「_」を付けて次の項目の候補へ
+  function tsChoose(i){
+    const c = tsItems[i]; if(!c || !tsInput) return;
+    const input = tsInput;
+    const { idx } = tsContext(input);
+    const head = input.value.split("_").slice(0, idx);
+    head.push(c.value);
+    input.value = head.join("_") + (idx < 2 ? "_" : "");
+    input.setSelectionRange(input.value.length, input.value.length);
+    tsActive = -1;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    if(idx === 2) tsHide();
+  }
+  function bindTitleSuggest(input, opts = {}){
+    input.setAttribute("autocomplete", "off");
+    input.addEventListener("focus", async () => {
+      tsInput = input; tsActive = -1;
+      await refreshTitleSources();
+      if(document.activeElement === input) tsRender();
+    });
+    input.addEventListener("input", () => { tsInput = input; tsActive = -1; tsRender(); if(opts.onInput) opts.onInput(); });
+    input.addEventListener("click", () => { tsInput = input; tsRender(); });
+    input.addEventListener("blur", () => setTimeout(() => { if(tsInput === input && document.activeElement !== input) tsHide(); }, 150));
+    input.addEventListener("keydown", (e) => {
+      if(e.isComposing || e.keyCode === 229) return; // 日本語変換中のEnter等は触らない
+      const open = !tsBox.hidden && tsItems.length > 0 && tsInput === input;
+      const stop = () => { e.preventDefault(); e.stopPropagation(); };
+      if(open && (e.key === "ArrowDown" || e.key === "ArrowUp")){
+        stop();
+        tsActive = (tsActive + (e.key === "ArrowDown" ? 1 : -1) + tsItems.length) % tsItems.length;
+        tsRender();
+        const el = tsList.querySelector("li.active"); if(el) el.scrollIntoView({ block: "nearest" });
+      }else if(open && (e.key === "Enter" || e.key === "Tab") && tsActive >= 0){ stop(); tsChoose(tsActive); }
+      else if(open && e.key === "Tab" && !e.shiftKey){ stop(); tsChoose(0); } // Tabは選択が無くても先頭の候補で確定
+      else if(open && e.key === "Escape"){ stop(); tsHide(); }
+      else if(e.key === "Enter" && opts.onEnter){ stop(); opts.onEnter(); }
+      else if(e.key === "Escape" && opts.onEscape){ stop(); opts.onEscape(); }
+    });
+  }
+  tsBox.addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li[data-i]"); if(!li) return;
+    e.preventDefault(); // 入力欄のフォーカスを外さない
+    tsChoose(Number(li.dataset.i));
+  });
+  window.addEventListener("resize", () => { if(!tsBox.hidden) tsPosition(); });
+  window.addEventListener("scroll", () => { if(!tsBox.hidden) tsPosition(); }, true);
+  bindTitleSuggest(exportTitleInput);
+
+  // ----- 定番タイトル・タイトル整理(履歴タブのカラムビュー) -----
+  const titleOrg = $("titleOrg"), titleOrgToggle = $("titleOrgToggle"), titleOrgBody = $("titleOrgBody"), titleOrgArrow = $("titleOrgArrow"), titleOrgFilter = $("titleOrgFilter");
+  let titleColSel = []; // 選択中の項目(例: ["DD","週次"])
+  function matchesTitleColSel(h){
+    if(!titleAssistOn || !titleColSel.length) return true;
+    const segs = titleSegs(histTitle(h));
+    return titleColSel.every((v, i) => segs[i] === v);
+  }
+  function titleColItems(level, titles){
+    const prefix = titleColSel.slice(0, level);
+    const map = new Map(); // 値 → 下の階層があるか
+    const add = (t) => {
+      const s = titleSegs(t);
+      if(s.length <= level || !s[level]) return;
+      for(let i = 0; i < level; i++){ if(s[i] !== prefix[i]) return; }
+      map.set(s[level], (map.get(s[level]) || false) || s.length > level + 1);
+    };
+    titles.forEach(add);
+    titleFavorites.forEach(add); // 定番だけにある項目も表示
+    return Array.from(map.entries()).map(([v, hasChild]) => ({ v, hasChild, fav: titleFavorites.includes([...prefix, v].join("_")) }))
+      .sort((a, b) => (b.fav - a.fav) || a.v.localeCompare(b.v, "ja"));
+  }
+  let titleOrgTitles = [];
+  function renderTitleOrg(all){
+    titleOrg.hidden = !titleAssistOn;
+    if(all) titleOrgTitles = all.map(histTitle);
+    // 選んでいた項目が無くなったら(リネーム等)、1つ上の階層へ戻す
+    while(titleColSel.length && !titleOrgTitles.some((t) => titleColSel.every((v, i) => titleSegs(t)[i] === v)) && !titleFavorites.includes(titleColSel.join("_"))) titleColSel.pop();
+    titleOrgFilter.hidden = !titleAssistOn || !titleColSel.length;
+    titleOrgFilter.innerHTML = titleColSel.length ? `<span>「${escapeHtml(titleColSel.join("_"))}」で絞り込み中</span><button type="button" class="secondary" id="titleOrgClear">解除</button>` : "";
+    if(!titleAssistOn || titleOrgBody.hidden) return;
+    [0, 1, 2].forEach((level) => {
+      const ul = $("tcList" + level);
+      if(level > titleColSel.length){ ul.innerHTML = ""; return; }
+      const items = titleColItems(level, titleOrgTitles);
+      ul.innerHTML = items.length ? items.map((it) => `
+        <li data-level="${level}" data-v="${escapeHtml(it.v)}" class="${titleColSel[level] === it.v ? "sel" : ""}">
+          <button class="tcStar${it.fav ? " on" : ""}" data-star type="button" title="${it.fav ? "定番から外す" : "定番に登録"}">${it.fav ? "★" : "☆"}</button>
+          <span class="tcName">${escapeHtml(it.v)}</span>${it.hasChild ? '<span class="tcMore">›</span>' : ""}
+        </li>`).join("") : `<li class="tcEmpty">${level === 0 ? "履歴がありません" : "(この下の項目なし)"}</li>`;
+    });
+  }
+  titleOrgToggle.addEventListener("click", () => {
+    const open = titleOrgBody.hidden;
+    titleOrgBody.hidden = !open;
+    titleOrgToggle.classList.toggle("open", open);
+    titleOrgArrow.textContent = open ? "▾ 閉じる" : "▸ 開く";
+    renderExportHistoryList();
+  });
+  titleOrgBody.addEventListener("click", (e) => {
+    const li = e.target.closest("li[data-level]"); if(!li) return;
+    const level = Number(li.dataset.level), v = li.dataset.v;
+    if(e.target.closest("[data-star]")){
+      const path = [...titleColSel.slice(0, level), v].join("_");
+      titleFavorites = titleFavorites.includes(path) ? titleFavorites.filter((x) => x !== path) : [...titleFavorites, path];
+      saveTitleFavorites();
+      renderTitleOrg();
+      return;
+    }
+    // 同じ項目をもう一度押すと選択解除
+    titleColSel = (titleColSel[level] === v && titleColSel.length === level + 1) ? titleColSel.slice(0, level) : [...titleColSel.slice(0, level), v];
+    renderExportHistoryList();
+  });
+  titleOrgFilter.addEventListener("click", (e) => {
+    if(e.target.id === "titleOrgClear"){ titleColSel = []; renderExportHistoryList(); }
+  });
+
+  // ----- ⚙設定: 入力補助のON/OFF -----
+  const titleAssistToggle = $("titleAssistToggle");
+  titleAssistToggle.checked = titleAssistOn;
+  titleAssistToggle.addEventListener("change", () => {
+    titleAssistOn = titleAssistToggle.checked;
+    try{ localStorage.setItem(TITLE_ASSIST_KEY, titleAssistOn ? "1" : "0"); }catch(e){}
+    if(!titleAssistOn){ tsHide(); titleColSel = []; }
+    renderExportHistoryList();
+  });
+
+  // ----- リネーム(履歴の✏) -----
+  let renamingFile = null; // 名前を変更中のファイル名
+  function setupRenameRow(){
+    const input = exportHistoryList.querySelector(".hist-rename-in");
+    if(!input) return;
+    const li = input.closest("li");
+    const pv = li.querySelector(".hist-rename-pv");
+    const oldName = input.dataset.file;
+    const { prefix } = fileNameParts(oldName);
+    const cancel = () => { renamingFile = null; tsHide(); renderExportHistoryList(); };
+    const commit = async () => {
+      tsHide();
+      const ok = await renameHistoryFile(oldName, input.value);
+      if(ok){ renamingFile = null; await renderExportHistoryList(); }
+      else if(document.body.contains(input)) input.focus();
+    };
+    const preview = () => {
+      const t = safeFileTitle(input.value.replace(/_+$/, ""));
+      const nn = t ? (prefix ? `${prefix}_` : "") + t + ".html" : "";
+      pv.classList.remove("warn");
+      pv.textContent = nn ? `新しいファイル名: ${nn}` : "タイトルを入力してください";
+      if(nn && nn !== oldName) historyGetAll().then((all) => {
+        if(all.some((h) => h.fileName === nn)){ pv.classList.add("warn"); pv.textContent += "(同名のファイルがあります。変更時に上書きを確認します)"; }
+      });
+    };
+    bindTitleSuggest(input, { onEnter: commit, onEscape: cancel, onInput: preview });
+    li.querySelector(".hist-rename-ok").addEventListener("click", commit);
+    li.querySelector(".hist-rename-cancel").addEventListener("click", cancel);
+    preview();
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+
+  // 書き出したHTMLの中の資料タイトル(タブ名・見出し・📥読み込み時のタイトル)を書き換える
+  function rewriteExportTitle(text, oldTitle, newTitle){
+    const o = escapeHtml(oldTitle), n = escapeHtml(newTitle);
+    text = text.split(`<title>${o}</title>`).join(`<title>${n}</title>`);
+    text = text.split(`<h1>${o}</h1>`).join(`<h1>${n}</h1>`);
+    text = text.split(`<h1 id="docTitle">${o}`).join(`<h1 id="docTitle">${n}`);
+    const metaText = extractBalanced(text, "var META = ", "{", "}");
+    if(metaText){
+      try{
+        const meta = JSON.parse(metaText);
+        meta.title = newTitle;
+        text = text.replace("var META = " + metaText, () => "var META = " + JSON.stringify(meta).replace(/<\/script/gi, "<\\/script"));
+      }catch(e){ console.error(e); }
+    }
+    return text;
+  }
+
+  // 名前の変更: まず名前変更(move)を試し、使えない環境(スマホ等)では新しい名前で保存→元のファイルを削除する。
+  // あわせてファイル内の資料タイトルも書き換え、同じファイル名の履歴(折りたたみ分も)と保存先フォルダの履歴JSONを更新する
+  async function renameHistoryFile(oldName, rawTitle){
+    const newTitle = String(rawTitle).replace(/_+$/, "").trim();
+    const safe = safeFileTitle(newTitle);
+    if(!safe){ await alertAsync("タイトルを入力してください。"); return false; }
+    const { prefix } = fileNameParts(oldName);
+    const newName = (prefix ? `${prefix}_` : "") + safe + ".html";
+    const dir = await getSaveDirWithPermission("readwrite");
+    if(dir === null){ await alertAsync("保存先フォルダが登録されていません。⚙設定で登録してください。"); return false; }
+    if(!dir) return false;
+    try{
+      await syncHistoryWithDir(dir);
+      const oldHandle = await dir.getFileHandle(oldName, { create: false });
+      const text = await (await oldHandle.getFile()).text();
+      let fileTitle = "";
+      const metaText = extractBalanced(text, "var META = ", "{", "}");
+      if(metaText){ try{ fileTitle = JSON.parse(metaText).title || ""; }catch(e){} }
+      if(!fileTitle){ const m = /<title>([^<]*)<\/title>/.exec(text); if(m) fileTitle = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"); }
+      if(newName === oldName && newTitle === fileTitle){ return true; } // 変更なし
+      const clash = newName !== oldName && await fileExistsInDir(dir, newName);
+      if(clash && !(await confirmAsync(`「${newName}」は既に存在します。上書きしますか？`))) return false;
+      const newText = fileTitle ? rewriteExportTitle(text, fileTitle, newTitle) : text;
+      let moved = false;
+      if(newName !== oldName && !clash && typeof oldHandle.move === "function"){
+        try{ await oldHandle.move(newName); moved = true; }
+        catch(err){ console.warn("名前変更(move)が使えないため、新しい名前で保存して元のファイルを削除します", err); }
+      }
+      if(newName === oldName || moved){
+        if(newText !== text) await writeFileToDir(dir, newName, new Blob([newText], { type: "text/html" }));
+      }else{
+        await writeFileToDir(dir, newName, new Blob([newText], { type: "text/html" }));
+        await dir.removeEntry(oldName);
+      }
+      const now = Date.now();
+      for(const h of await historyGetAll()){
+        if(h.fileName !== oldName) continue;
+        const oldNames = Array.isArray(h.oldNames) ? h.oldNames.slice() : [];
+        if(newName !== oldName) oldNames.push({ name: oldName, at: now });
+        await historyPut({ ...h, fileName: newName, title: newTitle, oldNames, updatedAt: now, missing: false });
+      }
+      if(expandedHistoryGroups.delete(oldName)) expandedHistoryGroups.add(newName);
+      try{ await writeHistoryJson(dir); }catch(e){ console.error("履歴JSONの更新に失敗しました(名前の変更は完了しています)", e); }
+      return true;
+    }catch(err){
+      console.error(err);
+      if(err && err.name === "NotFoundError"){
+        await refreshMissingFlags(dir);
+        await alertAsync(`「${oldName}」が保存先フォルダに見つかりません。移動・削除された可能性があります。`);
+        renamingFile = null; await renderExportHistoryList();
+      }else{
+        await alertAsync("名前の変更に失敗しました。");
+      }
+      return false;
+    }
+  }
 
   btnExportHistorySync.addEventListener("click", async () => {
     btnExportHistorySync.disabled = true;
