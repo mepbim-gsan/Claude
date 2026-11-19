@@ -73,6 +73,11 @@
         <select id="sort"><option value="date">日付(新しい順)</option><option value="title">タイトル順(ばらつき確認用)</option></select>
       </label>
     </div>
+    <div class="row sub" style="margin-top:8px; gap:14px;">
+      <label><input type="checkbox" id="optMove" checked> 名前変更(move)を使う</label>
+      <label><input type="checkbox" id="optRewrite" checked> ファイル内のタイトルも書き換える</label>
+      <span>move対応: <b id="moveSupport">—</b></span>
+    </div>
     <p class="sub" style="margin:8px 0 0;">✏ でタイトルを変更 → <b>ファイル名</b>と<b>ファイル内の資料タイトル</b>(タブ名・見出し・📥読み込み時のタイトル)をまとめて変更します。日付部分(2026-1016_ など)はそのまま残ります。入力中はフォルダ内の既存タイトルから候補が出ます。</p>
   </section>
   <section class="card">
@@ -105,6 +110,7 @@
     if(!window.showDirectoryPicker){ alert("このブラウザはフォルダ操作に対応していません(Edge / Chrome で開いてください)"); return; }
     try{ dir = await window.showDirectoryPicker({ mode: "readwrite" }); }catch(e){ return; }
     $("folderName").textContent = dir.name;
+    $("moveSupport").textContent = (window.FileSystemFileHandle && typeof FileSystemFileHandle.prototype.move === "function") ? "あり(実際に使えるかは変更時のログで確認)" : "なし";
     await loadFiles();
   });
 
@@ -246,16 +252,39 @@
   async function commit(oldName){
     const f = files.find((x) => x.name === oldName);
     const li = $("files").querySelector(`li[data-name="${CSS.escape(oldName)}"]`);
-    const newTitle = li.querySelector(".titleIn").value.replace(/_+$/, "").trim();
+    let newTitle = li.querySelector(".titleIn").value.replace(/_+$/, "").trim();
     if(!newTitle || !safeName(newTitle)){ alert("タイトルを入力してください"); return; }
     const newName = buildName(f.datePart, newTitle);
     if(newTitle === f.title && newName === oldName){ editing = null; render(); return; }
     if(newName !== oldName && await exists(newName) && !confirm(`「${newName}」は既に存在します。上書きしますか？`)) return;
     try{
-      const text = await (await (await dir.getFileHandle(oldName)).getFile()).text();
-      const w = await (await dir.getFileHandle(newName, { create: true })).createWritable();
-      await w.write(new Blob([rewriteTitle(text, f.title, newTitle)], { type: "text/html" })); await w.close();
-      if(newName !== oldName) await dir.removeEntry(oldName);
+      const handle = await dir.getFileHandle(oldName);
+      const before = (await handle.getFile()).lastModified;
+      const rewrite = $("optRewrite").checked && newTitle !== f.title;
+      let method = "";
+      const clash = newName !== oldName && await exists(newName);
+      if(newName !== oldName && $("optMove").checked && typeof handle.move === "function" && !clash){
+        try{
+          await handle.move(newName); // 同じフォルダ内での名前変更
+          method = "名前変更(move)";
+        }catch(err){ method = `作成→削除(moveが失敗: ${err.name} ${err.message})`; }
+      }else if(newName !== oldName){
+        method = !$("optMove").checked ? "作成→削除(moveを使わない設定)" : clash ? "作成→削除(同名ファイルへの上書きのため)" : "作成→削除(このブラウザはmove非対応)";
+      }else{
+        method = "名前は同じ(中身のみ書き換え)";
+      }
+      const text = await (await (method.startsWith("名前変更") ? await dir.getFileHandle(newName) : handle).getFile()).text();
+      if(!method.startsWith("名前変更") && newName !== oldName){
+        const w = await (await dir.getFileHandle(newName, { create: true })).createWritable();
+        await w.write(new Blob([rewrite ? rewriteTitle(text, f.title, newTitle) : text], { type: "text/html" })); await w.close();
+        await dir.removeEntry(oldName);
+      }else if(rewrite){
+        const w = await (await dir.getFileHandle(newName)).createWritable();
+        await w.write(new Blob([rewriteTitle(text, f.title, newTitle)], { type: "text/html" })); await w.close();
+      }
+      const after = (await (await dir.getFileHandle(newName)).getFile()).lastModified;
+      log(`方式: ${method} / 中のタイトル: ${rewrite ? "書き換え" : "そのまま"} / 更新日時: ${new Date(before).toLocaleString()} → ${new Date(after).toLocaleString()}${before === after ? "(変化なし)" : ""}`);
+      if(!rewrite) newTitle = f.title;
       await updateHistoryJson(oldName, newName, newTitle);
       log(`変更: ${oldName} → ${newName}`);
       files = files.filter((x) => x.name !== newName || x === f);
