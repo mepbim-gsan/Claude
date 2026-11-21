@@ -232,6 +232,9 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 #toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:13px;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;}
 #toast.show{opacity:1;}
 .muted{color:var(--text2);font-size:12px;}
+.rel-note{font-size:12px;color:var(--text2);background:var(--bg3);border-radius:8px;padding:8px 10px;margin-bottom:8px;}
+.rel-mark{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);margin:10px 0;white-space:nowrap;}
+.rel-mark::before,.rel-mark::after{content:'';flex:1;border-top:1px dashed var(--text3);}
 .car-ico{display:inline-block;vertical-align:-4px;flex-shrink:0;}
 .swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;}
 .swatch{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text2);background:var(--bg3);border:2px solid transparent;border-radius:10px;padding:6px 0 4px;cursor:pointer;min-width:0;white-space:nowrap;letter-spacing:-.02em;}
@@ -306,7 +309,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="chart-wrap" id="fuel-chart"></div>
       <div class="chart-tip" id="fuel-chart-tip"></div>
     </div>
-    <div class="list" id="fuel-list"></div>
+    <div class="rel-note" data-rel-note></div><div class="list" id="fuel-list"></div>
   </div>
 
   <!-- ODO -->
@@ -336,7 +339,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       </div>
       <div class="chart-tip" id="odo-cum-tip"></div>
     </div>
-    <div class="chips" id="odo-filter"></div>
+    <div class="rel-note" data-rel-note></div><div class="chips" id="odo-filter"></div>
     <div class="list" id="odo-list"></div>
   </div>
 
@@ -350,7 +353,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="kpi-grid" id="maint-kpi"></div>
     </div>
     <div class="chips" id="maint-filter"></div>
-    <div class="list" id="maint-list"></div>
+    <div class="rel-note" data-rel-note></div><div class="list" id="maint-list"></div>
   </div>
 
   <!-- 費用 -->
@@ -363,7 +366,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="kpi-grid" id="cost-kpi"></div>
     </div>
     <div class="chips" id="cost-filter"></div>
-    <div class="list" id="cost-list"></div>
+    <div class="rel-note" data-rel-note></div><div class="list" id="cost-list"></div>
   </div>
 
   <!-- 設定 -->
@@ -443,7 +446,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v08_2026-11-21';
+const APP_VERSION = 'v08_2026-11-21.2';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -960,18 +963,29 @@ function renderCum(pts){
 }
 
 /* ---------- 共通：リスト描画 ---------- */
-function groupedList(items, rowFn, sumFn){
+function groupedList(items, rowFn, sumFn, noMark){
   if(!items.length) return '<div class="empty">記録がありません<br>右下の ＋ から追加できます</div>';
   let html='', cur='';
   const groups = {};
   items.forEach(it=>{ (groups[ymOf(it.date)] ||= []).push(it); });
+  // 手放した車: 手放した日の位置に区切りを入れる（これより上は手放した後の記録）
+  const r = noMark ? null : rel();
+  let marked = !r;
+  const mark = () => { marked = true; return `<div class="rel-mark">${relText(r)}</div>`; };
   Object.keys(groups).sort().reverse().forEach(ym=>{
     const [y,m] = ym.split('-');
+    if(!marked && r.date.slice(0,7) > ym) html += mark();
     html += `<div class="list-month"><span>${y}年${+m}月</span><span>${sumFn?sumFn(groups[ym]):''}</span></div>`;
-    groups[ym].forEach(it=>{ html += rowFn(it); });
+    groups[ym].forEach(it=>{ if(!marked && it.date <= r.date) html += mark(); html += rowFn(it); });
   });
+  if(!marked) html += mark();
   return html;
 }
+// 手放した車の表記: 「2026/10/31 下取り」など
+const relShort = r => `${r.date.slice(0,7).replace('-','/')} ${r.how && r.how!=='その他' ? r.how : '手放し'}`;
+// 「下取りで手放し」「廃車」「手放し」（その他・未指定）
+const relHow = r => r.how==='廃車' ? '廃車' : (r.how && r.how!=='その他') ? `${r.how}で手放し` : '手放し';
+const relText = r => `${r.date.replace(/-/g,'/')} ${relHow(r)} ── ここまでが保有期間`;
 function dateCell(s){ const [y,m,d]=s.split('-'); const w='日月火水木金土'[new Date(+y,+m-1,+d).getDay()]; return `<div class="r-date"><b>${+d}</b>${w}</div>`; }
 function kpi(label, val, unit, sub){ return `<div class="kpi"><div class="k-label">${label}</div><div class="k-val">${val}<span class="k-unit">${unit||''}</span></div><div class="k-sub">${sub||''}</div></div>`; }   // 補足が無くても行を確保してカードの高さをそろえる
 function chipsHtml(cats, cur, key){
@@ -1257,7 +1271,7 @@ function renderOdo(){
     return `<div class="row" onclick="${click}">${dateCell(p.date)}
       <div class="r-main"><div class="r-title"><span class="badge ${cls}">${srcName[p.src]}</span>${fmt(p.odo)} km</div><div class="r-sub">${esc(p.memo||'')}</div></div>
       <div class="r-right"><div class="r-amt" style="font-size:13px">${p.delta!=null?(p.delta>=0?'+':'')+fmt(p.delta)+' km':''}</div><div class="r-amt2">${p.days?p.days+'日':''}</div></div></div>`;
-  }, g=>{ const s=g.reduce((a,p)=>a+(p.delta||0),0); return s?`+${fmt(s)} km`:''; });
+  }, g=>{ const s=g.reduce((a,p)=>a+(p.delta||0),0); return s?`+${fmt(s)} km`:''; }, rel() && num(rel().odo)!=null);
 }
 
 function openOdoSheet(id){
@@ -1499,7 +1513,7 @@ function vehicleListHtml(onclick){
   // 並び: 使用中 → 手放した車 → サンプル車（それぞれ登録順）
   const ord = v => v.sample ? 2 : rel(v) ? 1 : 0;
   return [...D.vehicles].sort((a,b)=>ord(a)-ord(b)).map(v=>`<div class="set-row" style="cursor:pointer" onclick="${onclick}('${v.id}')">
-    <div><span style="color:var(--accent);display:inline-block;width:18px;">${v.id===D.curId?'●':''}</span>${carIco(rel(v)?'#9ca3af':v.info.color)} ${esc(v.info.name||'（名称未設定）')}${v.sample?' <span class="badge warn">サンプル</span>':''}${rel(v)?' <span class="badge">手放し済み</span>':''}<div class="muted" style="margin-left:18px;">${esc([v.info.model, v.info.year?v.info.year+'年式':''].filter(Boolean).join(' / '))}</div></div>
+    <div><span style="color:var(--accent);display:inline-block;width:18px;">${v.id===D.curId?'●':''}</span>${carIco(rel(v)?'#9ca3af':v.info.color)} ${esc(v.info.name||'（名称未設定）')}${v.sample?' <span class="badge warn">サンプル</span>':''}<div class="muted" style="margin-left:18px;">${esc([v.info.model, v.info.year?v.info.year+'年式':''].filter(Boolean).join(' / '))}</div>${rel(v)?`<div class="muted" style="margin-left:18px;">${esc(`${v.info.purchaseDate ? v.info.purchaseDate.slice(0,7).replace('-','/') : ''}〜${relShort(rel(v))}`)}</div>`:''}</div>
     <div class="muted" style="white-space:nowrap;font-size:11px;">給油${v.fuel.length} / メンテ${v.maint.length}</div></div>`).join('');
 }
 function switchVehicle(id){
@@ -1771,8 +1785,10 @@ function showPage(p){
 function render(){
   const v = V.info;
   const sub = [v.name, v.model].filter(Boolean).join(' ');
-  $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${carIco(rel()?'#9ca3af':v.color,16)} ${esc(sub||'（名称未設定）')}${rel()?'（手放し済み）':''} ▾</span>`;
+  $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${carIco(rel()?'#9ca3af':v.color,16)} ${esc(sub||'（名称未設定）')}${rel()?`（${esc(relShort(rel()))}）`:''} ▾</span>`;
   updateAppIcons();
+  // 手放した車は各タブの一覧の上に一行表示
+  document.querySelectorAll('[data-rel-note]').forEach(el=>{ const r=rel(); el.style.display = r ? '' : 'none'; el.textContent = r ? `${r.date.replace(/-/g,'/')} に${r.how==='廃車'?'廃車にしました':relHow(r)+'ました'}。記録はこの日まで（追加・編集はできます）` : ''; });
   renderYearSelects();
   ({home:renderHome, fuel:renderFuel, odo:renderOdo, maint:renderMaint, cost:renderCost, settings:renderSettings})[state.page]();
 }
