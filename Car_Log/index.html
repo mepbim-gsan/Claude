@@ -462,7 +462,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21';
+const APP_VERSION = 'v09_2026-11-21.2';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -569,7 +569,7 @@ function migrate(raw){
     if(!d.maintCats.includes('洗車')) d.maintCats.unshift('洗車');
     d.catsVer = 3;
   }
-  // 自賠責・重量税は車検の内訳（法定費用）で記録するため費用区分の一覧から外す（既存の記録はそのまま）
+  // 自賠責・重量税は車検の内訳（税・保険料）で記録するため費用区分の一覧から外す（既存の記録はそのまま）
   if(d.catsVer < 4){ d.costCats = d.costCats.filter(c=>c!=='自賠責保険' && c!=='自動車重量税'); d.catsVer = 4; }
   if(!d.vehicles.length) d.vehicles.push(newVehicle({name:'マイカー'}));
   if(!d.vehicles.some(v=>v.id===d.curId)) d.curId = d.vehicles[0].id;
@@ -1108,7 +1108,7 @@ function renderReminders(){
   }
   // 費用の期限（区分ごとに最新の期限のみ）
   const suffix = c => /保険/.test(c) ? '満期' : /会員|ロードサービス|駐車/.test(c) ? '更新' : '期限';
-  // 費用の期限と、車検等の内訳（法定費用）の満期を区分ごとにまとめ、最新の期限のみ
+  // 費用の期限と、車検等の内訳（税・保険料）の満期を区分ごとにまとめ、最新の期限のみ
   const byCat = {};
   const addDl = (cat, date, open, note) => { if(!byCat[cat] || byCat[cat].date < date) byCat[cat] = {open, name:`${cat} ${suffix(cat)}`, note, date}; };
   V.costs.forEach(c=>{ if(c.until) addDl(c.category, c.until, `openCostSheet('${c.id}')`, c.title||''); });
@@ -1351,8 +1351,8 @@ function renderMaint(){
   $('maint-filter').innerHTML = chipsHtml(cats, state.maintFilter, 'maintFilter');
   $('maint-list').innerHTML = groupedList(hist, m=>{
     const sub = [m.virtual?`${m.memo}（内訳）`:'', num(m.odo)!=null?`ODO ${fmt(num(m.odo))}`:'', m.shop, m.nextDate||num(m.nextOdo)!=null?'次回予定あり':''].filter(Boolean).join(' · ');
-    // 「すべて」で内訳がある記録は、法定費用・整備作業の合計と区分名を要約表示
-    const bd = isAll && (m.items||[]).length ? `<div class="bd-list">${[['legal','法定費用'],['work','整備・作業']].map(([g,n])=>{
+    // 「すべて」で内訳がある記録は、税・保険料・整備作業の合計と区分名を要約表示
+    const bd = isAll && (m.items||[]).length ? `<div class="bd-list">${[['legal','税・保険料'],['work','整備・作業']].map(([g,n])=>{
         const its = m.items.filter(i=>i.group===g); if(!its.length) return '';
         return `<div class="h"><span>${n}</span><span>${yen(its.reduce((s,i)=>s+(num(i.amount)||0),0))}</span></div><div class="bd-names">${esc([...new Set(its.map(i=>i.category))].join('・'))}</div>`;
       }).join('')}</div>` : '';
@@ -1393,9 +1393,9 @@ function openMaintSheet(id){
     </div>
     <div class="fld"><label>店舗・場所</label><input type="text" id="m-shop" value="${esc(v.shop)}" placeholder="例：ディーラー、自宅" list="m-shop-list">${suggestHtml('m-shop', topValues(V.maint, 'shop', 10))}</div>
     <div class="fld"><label>内訳（任意）</label>
-      <div class="bd-sec" id="m-legal-h"><span>法定費用</span><span id="m-legal-sum"></span></div><div id="m-legal"></div>
+      <div class="bd-sec" id="m-legal-h"><span>税・保険料</span><span id="m-legal-sum"></span></div><div id="m-legal"></div>
       <div class="bd-sec" id="m-work-h"><span>整備・作業</span><span id="m-work-sum"></span></div><div id="m-work"></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;"><button type="button" class="btn sm" onclick="addItemRow('legal')">＋ 法定費用</button><button type="button" class="btn sm" onclick="addItemRow('work')">＋ 整備・作業</button></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;"><button type="button" class="btn sm" onclick="addItemRow('legal')">＋ 税・保険料</button><button type="button" class="btn sm" onclick="addItemRow('work')">＋ 整備・作業</button></div>
       <div class="bd-total" id="m-items-total"></div>
       <div class="hint">内訳を入れると費用は内訳の合計になります。整備・作業の区分ごとに前回・間隔を記録します</div></div>
     <div class="fld"><label>メモ</label><textarea id="m-memo">${esc(v.memo)}</textarea></div>
@@ -1423,20 +1423,32 @@ function openMaintSheet(id){
     // 車検の次回予定日（＝車検証の新しい満了日）で車両情報の車検満了日を更新
     if(rec.category==='車検' && rec.nextDate && rec.nextDate > (V.info.inspDue||'')) V.info.inspDue = rec.nextDate;
   }, m ? () => remove(V.maint, m.id) : null);
-  // 内訳の行を表示。新規で区分が車検なら法定費用3行と「車検」の整備行を用意
+  // 内訳の行を表示。新規で区分が車検なら税・保険料3行と「車検」の整備行を用意
   (v.items||[]).forEach(it=>addItemRow(it.group, it));
-  const prefill = () => { if(!m && $('m-cat').value==='車検' && !document.querySelector('#sheet .bd-row')){ ['自動車重量税','自賠責保険','印紙代'].forEach(c=>addItemRow('legal',{category:c})); addItemRow('work',{category:'車検'}); } };
+  const prefill = () => {
+    if(m) return;
+    if($('m-cat').value==='車検'){
+      if(!document.querySelector('#sheet .bd-item')){ ['自動車重量税','自賠責保険','印紙代'].forEach(c=>addItemRow('legal',{category:c},true)); addItemRow('work',{category:'車検'},true); }
+    }else{
+      // 車検用に自動で用意した行は、何も入力していなければ取り除く
+      document.querySelectorAll('#sheet .bd-item[data-auto]').forEach(r=>{
+        if(!r.querySelector('.bd-title').value.trim() && !r.querySelector('.bd-amt').value.trim() && !r.querySelector('.bd-until-in').value) r.remove();
+      });
+      calcItems();
+    }
+  };
   $('m-cat').addEventListener('change', prefill); prefill();
   calcItems();
 }
 // ---------- 内訳 ----------
-const LEGAL_CATS = ['自動車重量税','自賠責保険','印紙代','その他法定費用'];
-function addItemRow(group, it={}){
+const LEGAL_CATS = ['自動車重量税','自賠責保険','印紙代','その他（税・手数料）'];
+function addItemRow(group, it={}, auto){
   const cats = group==='legal' ? LEGAL_CATS : D.maintCats;
   const cat = it.category || (group==='legal' ? LEGAL_CATS[0] : ($('m-cat')?.value || D.maintCats[0]));
   const opts = (cats.includes(cat) ? cats : [cat, ...cats]).map(c=>`<option ${c===cat?'selected':''}>${esc(c)}</option>`).join('');
   const row = document.createElement('div');
   row.className = 'bd-item'; row.dataset.group = group; row.dataset.id = it.id || uid();
+  if(auto) row.dataset.auto = '1';
   row.innerHTML = `<div class="bd-row"><select class="bd-cat">${opts}</select><input class="bd-title" placeholder="内容" value="${esc(it.title||'')}"><input class="bd-amt" inputmode="numeric" placeholder="金額" value="${esc(it.amount||'')}"><span class="bd-x" title="削除">×</span></div>
     <div class="bd-until hint">満期 <input type="date" class="bd-until-in" value="${esc(it.until||'')}"> → ホームの「期限」に表示</div>`;
   $(group==='legal'?'m-legal':'m-work').appendChild(row);
@@ -1793,7 +1805,7 @@ function buildSample(){
   M.filter(m=>m[0]<=today).forEach(([ds,cat,title,cost,shop,nd,nk,memo])=>{
     const o = odoOn(ds);
     d.maint.push({id:uid(), date:ds, odo:o, category:cat, title, cost, shop, memo, nextDate:nd, nextOdo:nk?String(+o+nk):''});
-  // 車検は内訳付き（法定費用＋整備・作業）
+  // 車検は内訳付き（税・保険料＋整備・作業）
   d.maint.filter(m=>m.category==='車検').forEach(m=>{
     const yy = +m.date.slice(0,4), o = +m.odo;
     m.items = [
@@ -1806,7 +1818,7 @@ function buildSample(){
     m.cost = String(m.items.reduce((s,i)=>s+ +i.amount,0));
   });
   });
-  // 費用（保険・税金・車検時の法定費用・ロードサービス・高速）
+  // 費用（保険・税金・車検時の税・保険料・ロードサービス・高速）
   const C = [];
   for(let yy=Y0; yy<=y; yy++){
     C.push([at(yy,4,10),'任意保険','年間保険料', 68000-(yy-Y0)*5000, at(yy+1,4,9)]);
