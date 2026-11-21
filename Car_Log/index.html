@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.13';
+const APP_VERSION = 'v09_2026-11-21.14';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1281,6 +1281,38 @@ function monthMaxMin(pts){
   // 1行に収まる幅なら1行、狭い画面では最大・最小の間で折り返す
   return `<span style="white-space:nowrap">最大${fmt(mx.km)}<small>(${lab(mx)})</small></span> <span style="white-space:nowrap">最小${fmt(mn.km)}<small>(${lab(mn)})</small></span>`;
 }
+// 年を選んでいるとき: 前年同期比（今年は1/1〜今日と前年の同じ期間、過去の年は1年分どうし）
+// 全期間: 年平均（最初〜最後の記録の期間で割る）と、丸ごと記録のある年の最多・最少
+function yearCompareKpi(pts){
+  if(pts.length<2) return kpi(state.year==='all'?'年平均':'前年比', '—', '');
+  const DAY = 86400000, first = dateMs(pts[0].date), last = dateMs(pts[pts.length-1].date);
+  if(state.year==='all'){
+    const yrs = (last-first)/DAY/365.25;
+    const full = [];
+    for(let y=new Date(first).getFullYear(); y<=new Date(last).getFullYear(); y++){
+      const a = new Date(y,0,1).getTime(), b = new Date(y+1,0,1).getTime();
+      if(a>=first && b<=last) full.push({y, km:distBetween(pts,a,b)});
+    }
+    let sub = '';
+    if(full.length>=2){
+      const mx = full.reduce((a,b)=>b.km>a.km?b:a), mn = full.reduce((a,b)=>b.km<a.km?b:a);
+      sub = `<span style="white-space:nowrap">最多${fmt(mx.km)}<small>(${String(mx.y).slice(2)}年)</small></span> <span style="white-space:nowrap">最少${fmt(mn.km)}<small>(${String(mn.y).slice(2)}年)</small></span>`;
+    }
+    return kpi('年平均', yrs>=0.5 ? fmt((pts[pts.length-1].odo-pts[0].odo)/yrs) : '—', 'km/年', sub);
+  }
+  const y = +state.year, r = rel();
+  const yEnd = new Date(y+1,0,1).getTime();
+  const end = Math.min(yEnd, dateMs(todayStr())+DAY, r ? dateMs(r.date)+DAY : Infinity);
+  const isPartial = end < yEnd;
+  const t0 = new Date(y,0,1).getTime();
+  const p0 = new Date(y-1,0,1).getTime();
+  const p1 = isPartial ? (()=>{ const d=new Date(end); d.setFullYear(y-1); return d.getTime(); })() : t0;
+  if(p0 < first) return kpi('前年比', '—', '', '前年の記録が1年分ありません');
+  const cur = distBetween(pts, t0, end), prev = distBetween(pts, p0, p1);
+  if(!prev) return kpi('前年比', '—', '', '');
+  const pct = (cur/prev - 1)*100;
+  return kpi('前年比', `${pct>=0?'+':''}${fmt(pct,0)}`, '%', `${isPartial?'昨年同時期':'前年'} ${fmt(prev)} km`);
+}
 function renderOdo(){
   const pts = odoPoints(), cur = currentOdo();
   $('odo-current').innerHTML = cur ? `${fmt(cur.odo)}<small>km</small>` : '—';
@@ -1293,12 +1325,11 @@ function renderOdo(){
     const t0 = Math.max(first, rng.t0), t1 = Math.min(last, rng.t1);
     months = Math.max(0,(t1-t0)/86400000/30.44);
   }
-  const totalDist = pts.length>=2 ? pts[pts.length-1].odo - pts[0].odo : 0;
   $('odo-kpi').innerHTML =
     kpi(state.year==='all'?'期間走行':'年間走行', fmt(dist), 'km') +
     kpi('月平均', months>=0.5 ? fmt(dist/months) : '—', 'km/月', monthMaxMin(pts)) +
     insKpi(pts) +
-    kpi('累計走行', fmt(totalDist), 'km', V.info.initialOdo ? `納車時 ${fmt(num(V.info.initialOdo))} km` : '');
+    yearCompareKpi(pts);
 
   let labels, ranges;
   if(state.year==='all'){
