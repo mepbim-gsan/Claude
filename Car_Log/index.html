@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.10';
+const APP_VERSION = 'v09_2026-11-21.11';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1278,7 +1278,8 @@ function monthMaxMin(pts){
   if(!ms.length) return '';
   const lab = x => state.year==='all' ? `${String(x.d.getFullYear()).slice(2)}/${x.d.getMonth()+1}` : `${x.d.getMonth()+1}月`;
   const mx = ms.reduce((a,b)=>b.km>a.km?b:a), mn = ms.reduce((a,b)=>b.km<a.km?b:a);
-  return `<span style="white-space:nowrap" title="月ごとの最大／最小">↑${fmt(mx.km)}<small>(${lab(mx)})</small>　↓${fmt(mn.km)}<small>(${lab(mn)})</small></span>`;
+  // 1行に収まる幅なら1行、狭い画面では最大・最小の間で折り返す
+  return `<span style="white-space:nowrap">最大${fmt(mx.km)}<small>(${lab(mx)})</small></span> <span style="white-space:nowrap">最小${fmt(mn.km)}<small>(${lab(mn)})</small></span>`;
 }
 function renderOdo(){
   const pts = odoPoints(), cur = currentOdo();
