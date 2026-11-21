@@ -290,9 +290,9 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="kpi-grid" id="home-release"></div>
     </div>
     <div class="card">
-      <div class="card-title" style="margin-bottom:2px;">概要</div>
-      <div class="muted" id="home-kpi-total" style="margin-bottom:10px;"></div>
+      <div class="card-title">概要</div>
       <div class="kpi-grid" id="home-kpi"></div>
+      <div class="muted" id="home-kpi-total" style="margin-top:10px;text-align:right;"></div>
     </div>
     <div class="card" id="home-remind-card">
       <div class="card-title">次回予定・期限</div>
@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.3';
+const APP_VERSION = 'v09_2026-11-21.4';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1037,9 +1037,9 @@ function renderHome(){
   $('home-kpi-total').innerHTML = running ? `合計 ${yen(running)}（月 ${yen(running/months)}）${total!==running ? `<br class="sp-br"><span class="pc-only">・</span>初期費用 ${yen(total-running)} は別` : ''}` : '';
   $('home-kpi').innerHTML =
     card(kpi('走行距離', fmt(dist), 'km', dist ? `月平均 ${fmt(dist/months)} km` : ''), '', 'odo') +
-    card(kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L', cur ? `ODO ${fmt(cur.odo)}・${md}` : ''), '', 'fuel') +
-    card(kpi('燃料費', yen(fuel), '', fuel ? [dist ? `${fmt(fuel/dist,1)}円/km` : '', `月 ${yen(fuel/months)}`].filter(Boolean).join('・') : ''), 'k-fuel', 'fuel') +
-    card(kpi('維持費', yen(upkeep), '', upkeep ? `月 ${yen(upkeep/months)}<br>メンテ ${yen(sum('maint'))}<br>費用 ${yen(sum('cost'))}` : ''), 'k-upkeep', 'maint');
+    card(kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L', cur ? `ODO ${fmt(cur.odo)}（${md}）` : ''), '', 'fuel') +
+    card(kpi('燃料費', yen(fuel), '', fuel && dist ? `${fmt(fuel/dist,1)}円/km` : ''), 'k-fuel', 'fuel') +
+    card(kpi('維持費', yen(upkeep), '', upkeep ? `メンテ／費用<br>${yen(sum('maint'))}／${yen(sum('cost'))}` : ''), 'k-upkeep', 'maint');
 
   // 手放した車: 次回予定・期限は出さず、保有期間のまとめを表示
   const r = rel();
