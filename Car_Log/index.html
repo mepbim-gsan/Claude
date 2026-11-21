@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.11';
+const APP_VERSION = 'v09_2026-11-21.12';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -646,7 +646,7 @@ function renderCloud(){
     <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn sm primary" onclick="saveFirebaseConfig()">保存して再読み込み</button>${C.configured?'<button class="btn sm danger" onclick="clearFirebaseConfig()">削除</button>':''}</div>
     <div class="muted" style="margin-top:6px;">同じサイトの他のツール（タイムカード等）と共通の設定です</div></details>`;
   if(!C.configured){
-    el.innerHTML = `<div class="muted">Firebase の設定をすると、Googleログインでスマホ・PC間の同期ができます（未設定でも端末内に保存して使えます）</div>` + cfgArea.replace('<details ','<details open ');
+    el.innerHTML = `<div class="muted">Firebase の設定をすると、Googleログインでスマホ・PC間の同期ができます。未設定でも端末内に保存して使えます</div>` + cfgArea.replace('<details ','<details open ');
     return;
   }
   const st = C.status ? `<div class="muted" style="margin-top:4px;color:${/エラー/.test(C.status)?'var(--danger)':'var(--text2)'}">${esc(C.status)}</div>` : '';
@@ -1886,10 +1886,27 @@ document.addEventListener('focusin', e=>{
   el.select();   // 区切りを外した後は全選択（そのまま上書き入力できる）
 });
 document.addEventListener('focusout', e=>{ if(e.target.matches && e.target.matches('#sh-body input[inputmode]')) setTimeout(()=>fmtNumInput(e.target), 0); });
+// スマホ幅では補足文を文の区切り（。）で改行する: .hint / .muted 内の「。」の後に <br class="sp-br"> を入れる
+function addSpBreaks(root){
+  if(!root) return;
+  root.querySelectorAll('.hint, .muted').forEach(el=>{
+    if(el.dataset.spbr) return; el.dataset.spbr = '1';
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const nodes = []; while(w.nextNode()) nodes.push(w.currentNode);
+    nodes.forEach(n=>{
+      const parts = n.nodeValue.split(/(?<=。)(?=\S)/);
+      if(parts.length<2) return;
+      const frag = document.createDocumentFragment();
+      parts.forEach((t,i)=>{ if(i){ const br=document.createElement('br'); br.className='sp-br'; frag.appendChild(br); } frag.appendChild(document.createTextNode(t)); });
+      n.parentNode.replaceChild(frag, n);
+    });
+  });
+}
 function openSheet(title, body, onSave, onDelete){
   $('sh-title').textContent = title;
   $('sh-body').innerHTML = body;
   numInputs().forEach(fmtNumInput);
+  setTimeout(()=>addSpBreaks($('sh-body')), 0);   // シート内で後から追加される要素も含めて改行位置を付与
   if(!onSave){
     $('sh-foot').innerHTML = '<button class="btn" onclick="closeSheet()">閉じる</button>';
     $('sheet').classList.add('show'); $('sheet-bg').classList.add('show'); $('sh-body').scrollTop = 0;
@@ -1927,6 +1944,7 @@ function render(){
   const sub = [v.name, v.model].filter(Boolean).join(' ');
   $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${carIco(rel()?'#9ca3af':v.color,16)} ${esc(sub||'（名称未設定）')}${rel()?`（${esc(relShort(rel()))}）`:''} ▾</span>`;
   updateAppIcons();
+  addSpBreaks(document.querySelector('.page.active'));
   // 手放した車は各タブの一覧の上に一行表示
   document.querySelectorAll('[data-rel-note]').forEach(el=>{ const r=rel(); el.style.display = r ? '' : 'none'; el.innerHTML = r ? `${r.date.replace(/-/g,'/')} に${r.how==='廃車'?'廃車にしました':relHow(r)+'ました'}。<br class="sp-br">記録はこの日まで（追加・編集はできます）` : ''; });
   renderYearSelects();
