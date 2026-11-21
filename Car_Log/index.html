@@ -140,15 +140,18 @@ button{font-family:inherit;}
 .yn-btn:disabled{opacity:.35;cursor:default;}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
 .card-title{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.08em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
-.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
-@media(min-width:560px){.kpi-grid{grid-template-columns:repeat(4,1fr);}}
+.kpi-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+@media(min-width:560px){.kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
 .kpi{background:var(--bg3);border-radius:10px;padding:10px;}
 .kpi .k-label{font-size:11px;color:var(--text2);}
 .kpi .k-val{font-size:20px;font-weight:700;margin-top:2px;white-space:nowrap;}
 .kpi .k-unit{font-size:11px;color:var(--text2);font-weight:400;margin-left:2px;}
-.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;min-height:1.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;min-height:1.3em;}   /* 折り返し可（同じ行のカードは高さがそろう） */
 .kpi .k-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .kpi .k-val,.kpi .k-sub{text-align:right;}
+.kpi-link{cursor:pointer;}
+.kpi.k-fuel{box-shadow:inset 3px 0 0 var(--c-fuel);}
+.kpi.k-upkeep{box-shadow:inset 3px 0 0 var(--c-maint);}
 input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;font-family:inherit;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 input[inputmode=numeric],input[inputmode=decimal]{text-align:right;}
@@ -287,7 +290,8 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="kpi-grid" id="home-release"></div>
     </div>
     <div class="card">
-      <div class="card-title">概要</div>
+      <div class="card-title" style="margin-bottom:2px;">概要</div>
+      <div class="muted" id="home-kpi-total" style="margin-bottom:10px;"></div>
       <div class="kpi-grid" id="home-kpi"></div>
     </div>
     <div class="card" id="home-remind-card">
@@ -462,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.2';
+const APP_VERSION = 'v09_2026-11-21.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1025,11 +1029,17 @@ function renderHome(){
   let km=0, l=0;
   V.fuel.filter(f=>inYear(f.date)).forEach(f=>{ const r=fs[f.id]; if(r&&r.eco){ km+=r.segKm; l+=r.segL; } });
   const cur = currentOdo();
+  // 概要: 走行距離・平均燃費・燃料費（走った分）・維持費（持つ分＝メンテ＋その他費用）。月あたりは期間内の経過月数で割る
+  const months = periodMonths(entries);
+  const fuel = sum('fuel'), upkeep = sum('maint') + sum('cost');
+  const md = cur ? cur.date.slice(5).replace('-','/') : '';
+  const card = (html, cls, page) => html.replace('<div class="kpi">', `<div class="kpi kpi-link ${cls}" onclick="showPage('${page}')">`);
+  $('home-kpi-total').innerHTML = running ? `合計 ${yen(running)}（月 ${yen(running/months)}）${total!==running ? `<br class="sp-br"><span class="pc-only">・</span>初期費用 ${yen(total-running)} は別` : ''}` : '';
   $('home-kpi').innerHTML =
-    kpi('費用合計', yen(total), '', running!==total ? `維持費 ${yen(running)}` : '') +
-    kpi('走行距離', fmt(dist), 'km', cur ? `ODO ${fmt(cur.odo)} km` : '') +
-    kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L') +
-    kpi('維持費/km', dist ? fmt(running/dist,1) : '—', '円', dist ? `燃料費/km ${fmt(sum('fuel')/dist,1)}円` : '');
+    card(kpi('走行距離', fmt(dist), 'km', dist ? `月平均 ${fmt(dist/months)} km` : ''), '', 'odo') +
+    card(kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L', cur ? `ODO ${fmt(cur.odo)}・${md}` : ''), '', 'fuel') +
+    card(kpi('燃料費', yen(fuel), '', fuel ? [dist ? `${fmt(fuel/dist,1)}円/km` : '', `月 ${yen(fuel/months)}`].filter(Boolean).join('・') : ''), 'k-fuel', 'fuel') +
+    card(kpi('維持費', yen(upkeep), '', upkeep ? `月 ${yen(upkeep/months)}<br>メンテ ${yen(sum('maint'))}<br>費用 ${yen(sum('cost'))}` : ''), 'k-upkeep', 'maint');
 
   // 手放した車: 次回予定・期限は出さず、保有期間のまとめを表示
   const r = rel();
