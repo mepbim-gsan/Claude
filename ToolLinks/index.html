@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tool Links</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+<style>
+:root{
+  --bg:#f5f6f8;--card:#fff;--text:#1f2328;--sub:#656d76;--line:#d8dee4;--accent:#2f6fde;--accent-bg:#e8f0fe;--new:#1a7f37;--hover:#f0f3f6;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#0f1115;--card:#181b21;--text:#e6e8eb;--sub:#9aa3ad;--line:#2c313a;--accent:#6ea2ff;--accent-bg:#1d2a44;--new:#3fb950;--hover:#20242c;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;font-size:14px}
+header{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px}
+.bar{max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+h1{font-size:18px;margin:0 8px 0 0;white-space:nowrap}
+.ver{font-size:11px;color:var(--sub);font-weight:normal;margin-left:4px}
+input[type=search]{flex:1 1 160px;min-width:0;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:14px}
+select,button{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+button:hover{background:var(--hover)}
+button.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.seg{display:inline-flex}
+.seg button{border-radius:0}
+.seg button:first-child{border-radius:8px 0 0 8px}
+.seg button:last-child{border-radius:0 8px 8px 0;margin-left:-1px}
+main{max-width:1100px;margin:0 auto;padding:12px 16px 40px}
+.status{font-size:12px;color:var(--sub);margin:0 0 8px}
+section{margin-bottom:18px}
+.sec-head{display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.sec-head h2{font-size:15px;margin:0;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+.sec-head .cnt{font-size:12px;color:var(--sub);font-weight:normal}
+.sec-head .tw{display:inline-block;transition:transform .15s;font-size:11px;color:var(--sub)}
+section.closed .tw{transform:rotate(-90deg)}
+section.closed .items{display:none}
+.sec-head .sp{flex:1}
+.sec-head a{font-size:12px;color:var(--sub);text-decoration:none}
+.sec-head a:hover{color:var(--accent)}
+.mini{padding:2px 7px;font-size:12px;border-radius:6px}
+/* grid */
+.items.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px}
+.grid .item{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:12px 6px 10px;background:var(--card);border:1px solid var(--line);border-radius:12px;text-decoration:none;color:inherit}
+.grid .item:hover{border-color:var(--accent)}
+.grid .ic{width:52px;height:52px;font-size:30px}
+.grid .name{font-size:12.5px;line-height:1.3;word-break:break-word}
+.grid .desc,.grid .links{display:none}
+.grid .date{font-size:11px;color:var(--sub)}
+/* list */
+.items.list{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.list .item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-top:1px solid var(--line);text-decoration:none;color:inherit}
+.list .item:first-child{border-top:none}
+.list .item:hover{background:var(--hover)}
+.list .ic{width:34px;height:34px;font-size:20px;flex:none}
+.list .body{flex:1;min-width:0}
+.list .name{font-weight:600}
+.list .desc{font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list .date{font-size:12px;color:var(--sub);white-space:nowrap;text-align:right;min-width:84px}
+.list .gh{font-size:12px;color:var(--sub);padding:2px 4px;cursor:pointer}
+.list .gh:hover{color:var(--accent);text-decoration:underline}
+.ic{display:flex;align-items:center;justify-content:center;border-radius:22%;background:var(--accent-bg);overflow:hidden;line-height:1}
+.ic img{width:100%;height:100%;object-fit:cover}
+.item .date.new{color:var(--new);font-weight:600}
+.item.hidden{opacity:.4}
+.edit-ctl{display:none;gap:4px}
+body.editing .edit-ctl{display:flex}
+.grid .edit-ctl{position:absolute;top:4px;left:4px;right:4px;justify-content:space-between}
+.grid .edit-ctl .mini{padding:1px 5px;font-size:11px}
+body.editing .grid .item{padding-top:26px}
+body.editing .item{cursor:default}
+.empty{color:var(--sub);padding:20px;text-align:center}
+@media (max-width:560px){
+  h1{font-size:16px}
+  .list .desc{display:none}
+  .list .links{display:none}
+  .list .date{min-width:0}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>🔗 Tool Links<span class="ver app-ver"></span></h1>
+    <input type="search" id="q" placeholder="検索">
+    <div class="seg">
+      <button id="vGrid" title="アイコン表示">▦</button>
+      <button id="vList" title="リスト表示">☰</button>
+    </div>
+    <select id="sort" title="並び順">
+      <option value="custom">並び: カスタム</option>
+      <option value="updated">並び: 更新日（新しい順）</option>
+      <option value="name">並び: 名前</option>
+    </select>
+    <button id="edit" title="並び替え・表示/非表示の編集">✏️ 編集</button>
+    <button id="reload" title="更新日を GitHub から再取得">⟳</button>
+  </div>
+</header>
+<main>
+  <p class="status" id="status"></p>
+  <div id="root"></div>
+</main>
+<script>
+const APP_VERSION = 'v2026-11-21';
+const OWNER = 'mepbim-gsan';
+const PAGES = `https://${OWNER}.github.io/`;
+const REPOS = [
+  { id: 'Claude', label: 'Claude（生活・個人ツール）' },
+  { id: 'Claude_MEP-Tools', label: 'Claude_MEP-Tools（設備設計ツール）' },
+];
+// icon: フォルダからの相対パス（PNG/SVG）。無い場合は emoji
+const TOOLS = [
+  { repo: 'Claude', folder: 'SmartCaptureMemo', file: '', name: 'SmartCaptureMemo', emoji: '📸', desc: '議題ごとに画面キャプチャ+メモを記録し HTML 書き出し' },
+  { repo: 'Claude', folder: 'Screen_Capture_Memo', file: 'screen-capture-memo.html', name: 'Screen Capture Memo（旧版）', emoji: '🖼️', desc: 'SmartCaptureMemo の前身（凍結）' },
+  { repo: 'Claude', folder: 'Timecard', file: 'index.html', name: 'タイムカード', icon: 'icons/icon-192.png', emoji: '⏱️', desc: '勤怠打刻・労働時間集計・テレワーク記録' },
+  { repo: 'Claude', folder: 'Couple_Task', file: 'index.html', name: 'ふたりのタスク', icon: 'icons/icon-192.png', emoji: '✅', desc: 'カップル・家族向け共有タスク管理' },
+  { repo: 'Claude', folder: 'When_Did', file: 'index.html', name: 'いつやった？', icon: 'icons/icon-192.png', emoji: '📅', desc: '家の定期メンテの最終実施日記録' },
+  { repo: 'Claude', folder: 'Car_Log', file: 'index.html', name: 'CarLog', icon: 'icons/icon-192.png', emoji: '🚗', desc: '給油・ODO・メンテ・保険等の費用記録' },
+  { repo: 'Claude', folder: 'Solar', file: 'index.html', name: 'Solar Log', icon: 'icons/icon-192.png', emoji: '☀️', desc: '太陽光発電の発電量・売電・買電の記録と可視化' },
+  { repo: 'Claude', folder: 'Utilities', file: 'utilities-dashboard.html', name: 'Utility Log', icon: 'icons/icon-192.png', emoji: '💡', desc: '電気・ガス・水道の使用量と費用の可視化' },
+  { repo: 'Claude', folder: 'Stock_memo', file: 'stock-memo.html', name: 'ストック管理', icon: 'icon.svg', emoji: '📦', desc: '家庭用消耗品の在庫・予備品管理' },
+  { repo: 'Claude', folder: 'Price-memo', file: 'index.html', name: '値段メモ帳', icon: 'icons/icon-192.png', emoji: '🏷️', desc: '商品の価格・購入メモ' },
+  { repo: 'Claude', folder: 'MF_Classify', file: 'index.html', name: 'MF 分類アシスタント', emoji: '🧾', desc: 'マネーフォワードの取引分類サポート' },
+  { repo: 'Claude', folder: 'QR_Converter', file: 'index.html', name: 'QR⇄テキスト変換', emoji: '🔳', desc: 'QR コード生成・読み取りの相互変換' },
+  { repo: 'Claude', folder: 'barcode', file: 'barcode-scanner.html', name: 'バーコードスキャナー', emoji: '📷', desc: 'カメラでバーコード読み取り（JAN/QR等）' },
+  { repo: 'Claude', folder: 'camera-capture', file: 'index.html', name: 'カメラキャプチャ', icon: 'icons/icon-192.png', emoji: '🎥', desc: 'カメラ撮影ツール' },
+  { repo: 'Claude_MEP-Tools', folder: 'IfcViewer', file: 'index.html', name: 'IFC Viewer', emoji: '🏗️', desc: '複数 IFC の 3D・2D 表示、系統色分け、プロパティ集計・差分' },
+  { repo: 'Claude_MEP-Tools', folder: 'DuctSize', file: 'index.html', name: 'ダクトサイズ選定', emoji: '🌀', desc: '風量からダクト・吹出口サイズを選定' },
+  { repo: 'Claude_MEP-Tools', folder: 'AirCalc', file: 'index.html', name: '湿り空気計算ツール', icon: 'icons/icon-192.png', emoji: '🌡️', desc: '空調設計用の湿り空気線図計算' },
+  { repo: 'Claude_MEP-Tools', folder: 'Ceiling_Clearance', file: 'ceiling-clearance.html', name: '天井懐・有効高さ計算', emoji: '📏', desc: '天井内有効高さ計算' },
+  { repo: 'Claude_MEP-Tools', folder: 'Wall_Condensation_Check_Tool', file: 'condensation-calculator.html', name: '壁の結露計算ツール', emoji: '💧', desc: '外壁の結露リスク判定計算' },
+  { repo: 'Claude_MEP-Tools', folder: 'Water-calc', file: 'water-calc.html', name: '瞬時最大給水流量計算', emoji: '🚰', desc: '給水設備設計用の流量計算' },
+  { repo: 'Claude_MEP-Tools', folder: 'TaskDashboard', file: 'task-dashboard.html', name: 'DD-MEP タスク管理', emoji: '📋', desc: 'SharePoint リスト JSON を読み込むタスク管理ダッシュボード' },
+];
+TOOLS.forEach(t => { t.id = t.repo + '/' + t.folder; });
+
+const SET_KEY = 'toollinks-settings-v1';
+const DATE_KEY = 'toollinks-dates-v1';
+const DATE_TTL = 3 * 60 * 60 * 1000;
+const NEW_DAYS = 7;
+
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+const S = Object.assign({ view: 'grid', sort: 'custom', order: [], repoOrder: [], hidden: [], closed: [] }, load(SET_KEY, {}));
+let dates = load(DATE_KEY, { ts: 0, data: {} });
+let editing = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const persist = () => save(SET_KEY, S);
+
+function orderedRepos() {
+  const ids = REPOS.map(r => r.id);
+  const o = S.repoOrder.filter(id => ids.includes(id));
+  ids.forEach(id => { if (!o.includes(id)) o.push(id); });
+  return o.map(id => REPOS.find(r => r.id === id));
+}
+function customOrder(repo) {
+  const ids = TOOLS.filter(t => t.repo === repo).map(t => t.id);
+  const o = S.order.filter(id => ids.includes(id));
+  ids.forEach(id => { if (!o.includes(id)) o.push(id); });
+  return o;
+}
+function sortedTools(repo) {
+  const list = customOrder(repo).map(id => TOOLS.find(t => t.id === id));
+  if (S.sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  if (S.sort === 'updated') list.sort((a, b) => (dates.data[b.id] || '').localeCompare(dates.data[a.id] || ''));
+  return list;
+}
+
+function fmtDate(iso) {
+  if (!iso) return { text: '—', title: '', isNew: false };
+  const d = new Date(iso);
+  const jst = new Date(d.getTime() + 9 * 3600e3);
+  const ymd = jst.toISOString().slice(0, 10);
+  const days = Math.floor((Date.now() - d.getTime()) / 86400e3);
+  const rel = days <= 0 ? '今日' : days === 1 ? '昨日' : days < 30 ? `${days}日前` : ymd;
+  return { text: rel, title: '最終更新 ' + jst.toISOString().slice(0, 16).replace('T', ' ') + ' (JST)', isNew: days < NEW_DAYS };
+}
+const toolUrl = t => `${PAGES}${t.repo}/${t.folder}/${t.file}`;
+const ghUrl = t => `https://github.com/${OWNER}/${t.repo}/tree/main/${t.folder}`;
+
+function render() {
+  document.body.classList.toggle('editing', editing);
+  $('vGrid').classList.toggle('on', S.view === 'grid');
+  $('vList').classList.toggle('on', S.view === 'list');
+  $('edit').classList.toggle('on', editing);
+  $('edit').textContent = editing ? '✔ 完了' : '✏️ 編集';
+  $('sort').value = S.sort;
+  const q = $('q').value.trim().toLowerCase();
+  const repos = orderedRepos();
+  let html = '';
+  repos.forEach((r, ri) => {
+    const tools = sortedTools(r.id).filter(t => {
+      if (!editing && S.hidden.includes(t.id)) return false;
+      return !q || (t.name + ' ' + t.desc + ' ' + t.folder).toLowerCase().includes(q);
+    });
+    if (!tools.length && !editing) return;
+    const closed = S.closed.includes(r.id) && !q;
+    html += `<section class="${closed ? 'closed' : ''}"><div class="sec-head">
+      <h2 data-toggle="${esc(r.id)}"><span class="tw">▼</span>${esc(r.label)} <span class="cnt">${tools.length}</span></h2>
+      <span class="sp"></span>
+      <span class="edit-ctl"><button class="mini" data-rmove="${ri},-1" ${ri === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-rmove="${ri},1" ${ri === repos.length - 1 ? 'disabled' : ''}>↓</button></span>
+      <a href="https://github.com/${OWNER}/${esc(r.id)}" target="_blank" rel="noopener">GitHub ↗</a>
+    </div><div class="items ${S.view}">`;
+    tools.forEach(t => {
+      const d = fmtDate(dates.data[t.id]);
+      const hid = S.hidden.includes(t.id);
+      const ic = t.icon
+        ? `<img src="${esc(PAGES + t.repo + '/' + t.folder + '/' + t.icon)}" alt="" loading="lazy" onerror="this.replaceWith(document.createTextNode('${t.emoji}'))">`
+        : t.emoji;
+      const canMove = S.sort === 'custom';
+      html += `<a class="item${hid ? ' hidden' : ''}" href="${esc(toolUrl(t))}" target="_blank" rel="noopener" data-id="${esc(t.id)}" title="${esc(t.desc)}">
+        <span class="edit-ctl">
+          <span><button class="mini" data-move="${esc(t.id)},-1" ${canMove ? '' : 'disabled'} title="前へ">${S.view === 'grid' ? '←' : '↑'}</button><button class="mini" data-move="${esc(t.id)},1" ${canMove ? '' : 'disabled'} title="後へ">${S.view === 'grid' ? '→' : '↓'}</button></span>
+          <button class="mini" data-hide="${esc(t.id)}" title="表示/非表示">${hid ? '🚫' : '👁'}</button>
+        </span>
+        <span class="ic">${ic}</span>
+        <span class="body"><div class="name">${esc(t.name)}</div><div class="desc">${esc(t.desc)}</div></span>
+        <span class="date ${d.isNew ? 'new' : ''}" title="${esc(d.title)}">${d.isNew ? '● ' : ''}${esc(d.text)}</span>
+        <span class="links"><span class="gh" data-gh="${esc(ghUrl(t))}" title="GitHub フォルダ">GitHub</span></span>
+      </a>`;
+    });
+    html += `</div></section>`;
+  });
+  $('root').innerHTML = html || '<div class="empty">該当するツールがありません</div>';
+  const hidN = S.hidden.length;
+  $('status').innerHTML = editing
+    ? `編集中: ${S.sort === 'custom' ? '矢印で並び替え、' : '（並び替えは「並び: カスタム」のとき有効）'}👁 で表示/非表示を切替 <button class="mini" id="reset">設定をリセット</button>`
+    : `${hidN ? `非表示 ${hidN} 件 · ` : ''}${dates.ts ? '更新日取得 ' + new Date(dates.ts).toLocaleString('ja-JP') : ''}${dates.err ? ' · ' + esc(dates.err) : ''}`;
+}
+
+$('root').addEventListener('click', e => {
+  const gh = e.target.closest('[data-gh]');
+  if (gh) { e.preventDefault(); window.open(gh.dataset.gh, '_blank', 'noopener'); return; }
+  const b = e.target.closest('button,[data-toggle]');
+  if (!b) return;
+  if (b.dataset.toggle) {
+    const id = b.dataset.toggle;
+    S.closed = S.closed.includes(id) ? S.closed.filter(x => x !== id) : [...S.closed, id];
+    persist(); render(); return;
+  }
+  e.preventDefault(); e.stopPropagation();
+  if (b.dataset.hide) {
+    const id = b.dataset.hide;
+    S.hidden = S.hidden.includes(id) ? S.hidden.filter(x => x !== id) : [...S.hidden, id];
+  } else if (b.dataset.move) {
+    const [id, dir] = b.dataset.move.split(',');
+    const repo = TOOLS.find(t => t.id === id).repo;
+    const o = customOrder(repo);
+    const i = o.indexOf(id), j = i + Number(dir);
+    if (j < 0 || j >= o.length) return;
+    [o[i], o[j]] = [o[j], o[i]];
+    S.order = [...S.order.filter(x => !o.includes(x)), ...o];
+  } else if (b.dataset.rmove) {
+    const [i, dir] = b.dataset.rmove.split(',').map(Number);
+    const o = orderedRepos().map(r => r.id);
+    [o[i], o[i + dir]] = [o[i + dir], o[i]];
+    S.repoOrder = o;
+  }
+  persist(); render();
+});
+$('root').addEventListener('click', e => { if (editing && e.target.closest('a.item')) e.preventDefault(); }, true);
+$('status').addEventListener('click', e => {
+  if (e.target.id === 'reset' && confirm('並び順・非表示・折りたたみの設定をリセットしますか？')) {
+    Object.assign(S, { order: [], repoOrder: [], hidden: [], closed: [] }); persist(); render();
+  }
+});
+$('vGrid').onclick = () => { S.view = 'grid'; persist(); render(); };
+$('vList').onclick = () => { S.view = 'list'; persist(); render(); };
+$('sort').onchange = e => { S.sort = e.target.value; persist(); render(); };
+$('edit').onclick = () => { editing = !editing; render(); };
+$('q').oninput = render;
+$('reload').onclick = () => fetchDates(true);
+
+async function fetchDates(force) {
+  if (!force && Date.now() - dates.ts < DATE_TTL) return;
+  $('status').textContent = '更新日を取得中…';
+  const data = Object.assign({}, dates.data);
+  let err = '';
+  const queue = [...TOOLS];
+  const worker = async () => {
+    while (queue.length) {
+      const t = queue.shift();
+      try {
+        const res = await fetch(`https://api.github.com/repos/${OWNER}/${t.repo}/commits?path=${encodeURIComponent(t.folder)}&per_page=1`);
+        if (!res.ok) { err = res.status === 403 || res.status === 429 ? 'GitHub API の回数制限中（しばらく後に再取得）' : `取得失敗 (${res.status})`; continue; }
+        const j = await res.json();
+        if (j[0]) data[t.id] = j[0].commit.committer.date;
+      } catch { err = '取得失敗（オフライン?）'; }
+    }
+  };
+  await Promise.all([1, 2, 3, 4].map(worker));
+  dates = { ts: err && !Object.keys(data).length ? 0 : Date.now(), data, err };
+  save(DATE_KEY, dates);
+  render();
+}
+
+document.querySelectorAll('.app-ver').forEach(el => el.textContent = APP_VERSION);
+render();
+fetchDates(false);
+</script>
+</body>
+</html>
