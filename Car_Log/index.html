@@ -451,7 +451,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v08_2026-11-21.3';
+const APP_VERSION = 'v08_2026-11-21.4';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1470,7 +1470,7 @@ function openCostSheet(id){
       <div class="fld"><label>区分</label><select id="c-cat">${cats.map(x=>`<option ${x===v.category?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
     </div>
     <div class="fld"><label>内容</label><input type="text" id="c-title" value="${esc(v.title)}" placeholder="例：車両本体、オプション、年間保険料"></div>
-    <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="c-amount" value="${esc(v.amount)}"></div>
+    <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="c-amount" value="${esc(v.amount)}"><div class="hint" id="c-loan-note" style="display:none">車両代を購入時の費用に入れている場合、返済額を入れると二重計上になります。金利・手数料のみ記録してください</div></div>
     <div class="fld"><label>期限・満了日（任意）</label><input type="date" id="c-until" value="${esc(v.until)}"><div class="hint">保険の満期・車検期限など。ホームに残り日数を表示</div></div>
     <div class="fld"><label>メモ</label><textarea id="c-memo">${esc(v.memo)}</textarea></div>
   `, () => {
@@ -1480,6 +1480,8 @@ function openCostSheet(id){
     if(!okAfterRelease(rec.date)) return '保存をやめました';
     upsert(V.costs, rec);
   }, c ? () => remove(V.costs, c.id) : null);
+  const loanNote = () => { $('c-loan-note').style.display = /ローン/.test($('c-cat').value) ? '' : 'none'; };
+  $('c-cat').addEventListener('change', loanNote); loanNote();
 }
 
 /* ---------- 設定 ---------- */
