@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.12';
+const APP_VERSION = 'v09_2026-11-21.13';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1173,9 +1173,9 @@ function renderFuel(){
   const avgPrice = priced.length ? priced.reduce((s,f)=>s+num(f.total),0)/priced.reduce((s,f)=>s+num(f.liters),0) : null;
   $('fuel-kpi').innerHTML =
     kpi('平均燃費', l?fmt(km/l,2):'—', 'km/L', ecos.length?`最高 ${fmt(Math.max(...ecos),1)} / 最低 ${fmt(Math.min(...ecos),1)}`:'') +
-    kpi('給油回数', list.length, '回', `${fmt(liters,1)} L`) +
+    kpi('平均単価', avgPrice?fmt(avgPrice,1):'—', '円/L', prices.length ? `最高 ${fmt(Math.max(...prices),1)} / 最低 ${fmt(Math.min(...prices),1)}` : '') +
     kpi('燃料費', yen(cost), '', km ? `${fmt(cost/km,1)} 円/km` : '') +
-    kpi('平均単価', avgPrice?fmt(avgPrice,1):'—', '円/L', prices.length ? `最高 ${fmt(Math.max(...prices),1)} / 最低 ${fmt(Math.min(...prices),1)}` : '');
+    kpi('給油回数', list.length, '回', `${fmt(liters,1)} L`);
 
   const chartPts = list.slice().reverse().filter(f=>fs[f.id]?.eco).map(f=>{ const r=fs[f.id]; return {v:r.eco, km:r.segKm, l:r.segL, date:f.date, label:f.date.slice(5).replace('-','/')}; });
   lineChart($('fuel-chart'), $('fuel-chart-tip'), chartPts);
