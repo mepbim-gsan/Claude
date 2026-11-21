@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.15';
+const APP_VERSION = 'v09_2026-11-21.16';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1390,14 +1390,15 @@ function renderMaint(){
   const total = list.reduce((s,m)=>s+costOf(m),0);
   const wash = ents.filter(m=>inYear(m.date) && /洗車/.test(m.category||'')).length;
   const lastOil = ents.filter(m=>m.category==='オイル交換').sort(byDateDesc)[0];
+  const lastWash = ents.filter(m=>/洗車/.test(m.category||'')).sort(byDateDesc)[0];
   const cur = currentOdo();
   const sinceKm = m => m && num(m.odo)!=null && cur ? `以降 ${fmt(cur.odo-num(m.odo))} km` : '';
   const shortDate = m => m ? m.date.slice(2).replace(/-/g,'/') : '—';
   if(state.maintFilter==='all'){
     $('maint-kpi').innerHTML =
+      kpi('合計', yen(total)) +
       kpi('件数', list.length, '件') +
-      kpi('費用', yen(total)) +
-      kpi('洗車回数', wash, '回') +
+      kpi('洗車回数', wash, '回', lastWash ? `前回 ${shortDate(lastWash)}` : '') +
       kpi('前回オイル交換', shortDate(lastOil), '', sinceKm(lastOil));
   }else{
     // 区分で絞り込み中: その区分の合計・件数・1件平均・前回
