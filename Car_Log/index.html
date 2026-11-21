@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.6';
+const APP_VERSION = 'v09_2026-11-21.7';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1032,12 +1032,15 @@ function renderHome(){
   // 概要: 走行距離・平均燃費・燃料費（走った分）・維持費（持つ分＝メンテ＋その他費用）。月あたりは期間内の経過月数で割る
   const months = periodMonths(entries);
   const fuel = sum('fuel'), upkeep = sum('maint') + sum('cost');
-  const md = cur ? cur.date.slice(5).replace('-','/') : '';
+  // 平均燃費の補足のODO: 選んだ期間の最後の記録（全期間なら最新の記録）
+  const yrPts = pts.filter(p=>inYear(p.date));
+  const lastPt = yrPts.length ? yrPts[yrPts.length-1] : null;
+  const md = lastPt ? lastPt.date.slice(5).replace('-','/') : '';
   const card = (html, cls, page) => html.replace('<div class="kpi">', `<div class="kpi kpi-link ${cls}" onclick="showPage('${page}')">`);
   $('home-kpi-total').innerHTML = running ? `合計 ${yen(running)}${total!==running ? `<br class="sp-br"><span class="pc-only">・</span>別途初期費用 ${yen(total-running)}` : ''}` : '';
   $('home-kpi').innerHTML =
     card(kpi('走行距離', fmt(dist), 'km', dist ? `${fmt(dist/months)} km/月` : ''), '', 'odo') +
-    card(kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L', cur ? `ODO ${fmt(cur.odo)} km｜${md}` : ''), '', 'fuel') +
+    card(kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L', lastPt ? `ODO ${fmt(lastPt.odo)} km｜${md}` : ''), '', 'fuel') +
     card(kpi('燃料費', yen(fuel), '', fuel && dist ? `${fmt(fuel/dist,1)}円/km` : ''), 'k-fuel', 'fuel') +
     card(kpi('維持費（メンテ／費用）', yen(upkeep), '', upkeep ? `${yen(sum('maint'))}／${yen(sum('cost'))}` : ''), 'k-upkeep', 'maint');
 
