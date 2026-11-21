@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.5';
+const APP_VERSION = 'v09_2026-11-21.6';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1034,7 +1034,7 @@ function renderHome(){
   const fuel = sum('fuel'), upkeep = sum('maint') + sum('cost');
   const md = cur ? cur.date.slice(5).replace('-','/') : '';
   const card = (html, cls, page) => html.replace('<div class="kpi">', `<div class="kpi kpi-link ${cls}" onclick="showPage('${page}')">`);
-  $('home-kpi-total').innerHTML = running ? `合計 ${yen(running)}（月 ${yen(running/months)}）${total!==running ? `<br class="sp-br"><span class="pc-only">・</span>初期費用 ${yen(total-running)} は別` : ''}` : '';
+  $('home-kpi-total').innerHTML = running ? `合計 ${yen(running)}${total!==running ? `<br class="sp-br"><span class="pc-only">・</span>別途初期費用 ${yen(total-running)}` : ''}` : '';
   $('home-kpi').innerHTML =
     card(kpi('走行距離', fmt(dist), 'km', dist ? `${fmt(dist/months)} km/月` : ''), '', 'odo') +
     card(kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L', cur ? `ODO ${fmt(cur.odo)} km｜${md}` : ''), '', 'fuel') +
