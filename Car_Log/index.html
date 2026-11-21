@@ -466,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.8';
+const APP_VERSION = 'v09_2026-11-21.9';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1264,6 +1264,22 @@ function fuelPreview(f){
 }
 
 /* ---------- ODO ---------- */
+// 月ごとの走行距離（日付で按分）の最大・最小。最初の記録〜最後の記録の範囲に丸ごと入る月だけを対象（途中の月は除外）
+function monthMaxMin(pts){
+  const rng = periodRange();
+  if(!rng || pts.length<2) return '';
+  const first = dateMs(pts[0].date), last = dateMs(pts[pts.length-1].date);
+  const ms = [];
+  for(let d=new Date(rng.t0); d.getTime()<rng.t1; d=new Date(d.getFullYear(), d.getMonth()+1, 1)){
+    const s0 = new Date(d.getFullYear(), d.getMonth(), 1).getTime(), s1 = new Date(d.getFullYear(), d.getMonth()+1, 1).getTime();
+    if(s0 < first || s1 > last) continue;
+    ms.push({d, km:distBetween(pts, s0, s1)});
+  }
+  if(!ms.length) return '';
+  const lab = x => state.year==='all' ? `${String(x.d.getFullYear()).slice(2)}/${x.d.getMonth()+1}` : `${x.d.getMonth()+1}月`;
+  const mx = ms.reduce((a,b)=>b.km>a.km?b:a), mn = ms.reduce((a,b)=>b.km<a.km?b:a);
+  return `最大 ${fmt(mx.km)} km（${lab(mx)}）<br>最小 ${fmt(mn.km)} km（${lab(mn)}）`;
+}
 function renderOdo(){
   const pts = odoPoints(), cur = currentOdo();
   $('odo-current').innerHTML = cur ? `${fmt(cur.odo)}<small>km</small>` : '—';
@@ -1279,7 +1295,7 @@ function renderOdo(){
   const totalDist = pts.length>=2 ? pts[pts.length-1].odo - pts[0].odo : 0;
   $('odo-kpi').innerHTML =
     kpi(state.year==='all'?'期間走行':'年間走行', fmt(dist), 'km') +
-    kpi('月平均', months>=0.5 ? fmt(dist/months) : '—', 'km/月') +
+    kpi('月平均', months>=0.5 ? fmt(dist/months) : '—', 'km/月', monthMaxMin(pts)) +
     insKpi(pts) +
     kpi('累計走行', fmt(totalDist), 'km', V.info.initialOdo ? `納車時 ${fmt(num(V.info.initialOdo))} km` : '');
 
