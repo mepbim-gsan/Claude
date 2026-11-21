@@ -140,15 +140,18 @@ button{font-family:inherit;}
 .yn-btn:disabled{opacity:.35;cursor:default;}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
 .card-title{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.08em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
-.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
-@media(min-width:560px){.kpi-grid{grid-template-columns:repeat(4,1fr);}}
+.kpi-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+@media(min-width:560px){.kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
 .kpi{background:var(--bg3);border-radius:10px;padding:10px;}
 .kpi .k-label{font-size:11px;color:var(--text2);}
 .kpi .k-val{font-size:20px;font-weight:700;margin-top:2px;white-space:nowrap;}
 .kpi .k-unit{font-size:11px;color:var(--text2);font-weight:400;margin-left:2px;}
-.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;min-height:1.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kpi .k-sub{font-size:10px;color:var(--text3);margin-top:2px;min-height:1.3em;}   /* 折り返し可（同じ行のカードは高さがそろう） */
 .kpi .k-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .kpi .k-val,.kpi .k-sub{text-align:right;}
+.kpi-link{cursor:pointer;}
+.kpi.k-fuel{box-shadow:inset 3px 0 0 var(--c-fuel);}
+.kpi.k-upkeep{box-shadow:inset 3px 0 0 var(--c-maint);}
 input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:9px 12px;width:100%;outline:none;font-family:inherit;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 input[inputmode=numeric],input[inputmode=decimal]{text-align:right;}
@@ -289,6 +292,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
     <div class="card">
       <div class="card-title">概要</div>
       <div class="kpi-grid" id="home-kpi"></div>
+      <div class="muted" id="home-kpi-total" style="margin-top:10px;text-align:right;"></div>
     </div>
     <div class="card" id="home-remind-card">
       <div class="card-title">次回予定・期限</div>
@@ -462,7 +466,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-21.2';
+const APP_VERSION = 'v09_2026-11-21.18';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -642,7 +646,7 @@ function renderCloud(){
     <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn sm primary" onclick="saveFirebaseConfig()">保存して再読み込み</button>${C.configured?'<button class="btn sm danger" onclick="clearFirebaseConfig()">削除</button>':''}</div>
     <div class="muted" style="margin-top:6px;">同じサイトの他のツール（タイムカード等）と共通の設定です</div></details>`;
   if(!C.configured){
-    el.innerHTML = `<div class="muted">Firebase の設定をすると、Googleログインでスマホ・PC間の同期ができます（未設定でも端末内に保存して使えます）</div>` + cfgArea.replace('<details ','<details open ');
+    el.innerHTML = `<div class="muted">Firebase の設定をすると、Googleログインでスマホ・PC間の同期ができます。未設定でも端末内に保存して使えます</div>` + cfgArea.replace('<details ','<details open ');
     return;
   }
   const st = C.status ? `<div class="muted" style="margin-top:4px;color:${/エラー/.test(C.status)?'var(--danger)':'var(--text2)'}">${esc(C.status)}</div>` : '';
@@ -930,7 +934,7 @@ function insKpi(pts){
   if(now>=ins.t1) sub = `${f(ins.t0)}〜${f(ins.t1)}（満了）`;
   else{
     const el = Math.max(1, (now-ins.t0)/DAY_MS), tot = (ins.t1-ins.t0)/DAY_MS + 1;
-    sub = `満期${f(ins.t1)}予測 ${fmt(done/el*tot)} km`;
+    sub = `予測 ${fmt(done/el*tot)} km｜${f(ins.t1)}`;   // 「ODO ○ km｜日付」と同じく、その日時点の値
   }
   return kpi('保険年度走行', fmt(done), 'km', sub);
 }
@@ -1025,11 +1029,20 @@ function renderHome(){
   let km=0, l=0;
   V.fuel.filter(f=>inYear(f.date)).forEach(f=>{ const r=fs[f.id]; if(r&&r.eco){ km+=r.segKm; l+=r.segL; } });
   const cur = currentOdo();
+  // 概要: 走行距離・平均燃費・燃料費（走った分）・維持費（持つ分＝メンテ＋その他費用）。月あたりは期間内の経過月数で割る
+  const months = periodMonths(entries);
+  const fuel = sum('fuel'), upkeep = sum('maint') + sum('cost');
+  // 平均燃費の補足のODO: 選んだ期間の最後の記録（全期間なら最新の記録）
+  const yrPts = pts.filter(p=>inYear(p.date));
+  const lastPt = yrPts.length ? yrPts[yrPts.length-1] : null;
+  const md = lastPt ? lastPt.date.slice(5).replace('-','/') : '';
+  const card = (html, cls, page) => html.replace('<div class="kpi">', `<div class="kpi kpi-link ${cls}" onclick="showPage('${page}')">`);
+  $('home-kpi-total').innerHTML = running ? `合計 ${yen(running)}${total!==running ? `<br class="sp-br"><span class="pc-only">・</span>別途初期費用 ${yen(total-running)}` : ''}` : '';
   $('home-kpi').innerHTML =
-    kpi('費用合計', yen(total), '', running!==total ? `維持費 ${yen(running)}` : '') +
-    kpi('走行距離', fmt(dist), 'km', cur ? `ODO ${fmt(cur.odo)} km` : '') +
-    kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L') +
-    kpi('維持費/km', dist ? fmt(running/dist,1) : '—', '円', dist ? `燃料費/km ${fmt(sum('fuel')/dist,1)}円` : '');
+    card(kpi('走行距離', fmt(dist), 'km', dist ? `${fmt(dist/months)} km/月` : ''), '', 'odo') +
+    card(kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L', lastPt ? `ODO ${fmt(lastPt.odo)} km｜${md}` : ''), '', 'fuel') +
+    card(kpi('燃料費', yen(fuel), '', fuel && dist ? `${fmt(fuel/dist,1)}円/km` : ''), 'k-fuel', 'fuel') +
+    card(kpi('維持費（メンテ／費用）', yen(upkeep), '', upkeep ? `${yen(sum('maint'))}／${yen(sum('cost'))}` : ''), 'k-upkeep', 'maint');
 
   // 手放した車: 次回予定・期限は出さず、保有期間のまとめを表示
   const r = rel();
@@ -1156,12 +1169,14 @@ function renderFuel(){
   list.forEach(f=>{ const r=fs[f.id]; if(r&&r.eco){km+=r.segKm;l+=r.segL;} cost+=num(f.total)||0; liters+=num(f.liters)||0; });
   const ecos = list.map(f=>fs[f.id]?.eco).filter(Boolean);
   const priced = list.filter(f=>num(f.liters) && num(f.total));
+  const prices = list.map(f=>num(f.unitPrice)).filter(v=>v);   // 単価の最高・最低（期間内）
   const avgPrice = priced.length ? priced.reduce((s,f)=>s+num(f.total),0)/priced.reduce((s,f)=>s+num(f.liters),0) : null;
   $('fuel-kpi').innerHTML =
+    // 左の列＝合計・量、右の列＝平均・率
+    kpi('燃料費', yen(cost), '', km ? `${fmt(cost/km,1)} 円/km` : '') +
     kpi('平均燃費', l?fmt(km/l,2):'—', 'km/L', ecos.length?`最高 ${fmt(Math.max(...ecos),1)} / 最低 ${fmt(Math.min(...ecos),1)}`:'') +
     kpi('給油回数', list.length, '回', `${fmt(liters,1)} L`) +
-    kpi('燃料費', yen(cost), '', km ? `${fmt(cost/km,1)} 円/km` : '') +
-    kpi('平均単価', avgPrice?fmt(avgPrice,1):'—', '円/L');
+    kpi('平均単価', avgPrice?fmt(avgPrice,1):'—', '円/L', prices.length ? `最高 ${fmt(Math.max(...prices),1)} / 最低 ${fmt(Math.min(...prices),1)}` : '');
 
   const chartPts = list.slice().reverse().filter(f=>fs[f.id]?.eco).map(f=>{ const r=fs[f.id]; return {v:r.eco, km:r.segKm, l:r.segL, date:f.date, label:f.date.slice(5).replace('-','/')}; });
   lineChart($('fuel-chart'), $('fuel-chart-tip'), chartPts);
@@ -1250,6 +1265,55 @@ function fuelPreview(f){
 }
 
 /* ---------- ODO ---------- */
+// 月ごとの走行距離（日付で按分）の最大・最小。最初の記録〜最後の記録の範囲に丸ごと入る月だけを対象（途中の月は除外）
+function monthMaxMin(pts){
+  const rng = periodRange();
+  if(!rng || pts.length<2) return '';
+  const first = dateMs(pts[0].date), last = dateMs(pts[pts.length-1].date);
+  const ms = [];
+  for(let d=new Date(rng.t0); d.getTime()<rng.t1; d=new Date(d.getFullYear(), d.getMonth()+1, 1)){
+    const s0 = new Date(d.getFullYear(), d.getMonth(), 1).getTime(), s1 = new Date(d.getFullYear(), d.getMonth()+1, 1).getTime();
+    if(s0 < first || s1 > last) continue;
+    ms.push({d, km:distBetween(pts, s0, s1)});
+  }
+  if(!ms.length) return '';
+  const lab = x => state.year==='all' ? `${String(x.d.getFullYear()).slice(2)}/${x.d.getMonth()+1}` : `${x.d.getMonth()+1}月`;
+  const mx = ms.reduce((a,b)=>b.km>a.km?b:a), mn = ms.reduce((a,b)=>b.km<a.km?b:a);
+  // 1行に収まる幅なら1行、狭い画面では最大・最小の間で折り返す
+  return `<span style="white-space:nowrap">最大${fmt(mx.km)}<small>(${lab(mx)})</small></span> <span style="white-space:nowrap">最小${fmt(mn.km)}<small>(${lab(mn)})</small></span>`;
+}
+// 年を選んでいるとき: 前年同期比（今年は1/1〜今日と前年の同じ期間、過去の年は1年分どうし）
+// 全期間: 年平均（最初〜最後の記録の期間で割る）と、丸ごと記録のある年の最多・最少
+function yearCompareKpi(pts){
+  if(pts.length<2) return kpi(state.year==='all'?'年平均':'前年比', '—', '');
+  const DAY = 86400000, first = dateMs(pts[0].date), last = dateMs(pts[pts.length-1].date);
+  if(state.year==='all'){
+    const yrs = (last-first)/DAY/365.25;
+    const full = [];
+    for(let y=new Date(first).getFullYear(); y<=new Date(last).getFullYear(); y++){
+      const a = new Date(y,0,1).getTime(), b = new Date(y+1,0,1).getTime();
+      if(a>=first && b<=last) full.push({y, km:distBetween(pts,a,b)});
+    }
+    let sub = '';
+    if(full.length>=2){
+      const mx = full.reduce((a,b)=>b.km>a.km?b:a), mn = full.reduce((a,b)=>b.km<a.km?b:a);
+      sub = `<span style="white-space:nowrap">最多${fmt(mx.km)}<small>(${String(mx.y).slice(2)})</small></span> <span style="white-space:nowrap">最少${fmt(mn.km)}<small>(${String(mn.y).slice(2)})</small></span>`;   // 1行に収めるため年は2桁のみ
+    }
+    return kpi('年平均', yrs>=0.5 ? fmt((pts[pts.length-1].odo-pts[0].odo)/yrs) : '—', 'km/年', sub);
+  }
+  const y = +state.year, r = rel();
+  const yEnd = new Date(y+1,0,1).getTime();
+  const end = Math.min(yEnd, dateMs(todayStr())+DAY, r ? dateMs(r.date)+DAY : Infinity);
+  const isPartial = end < yEnd;
+  const t0 = new Date(y,0,1).getTime();
+  const p0 = new Date(y-1,0,1).getTime();
+  const p1 = isPartial ? (()=>{ const d=new Date(end); d.setFullYear(y-1); return d.getTime(); })() : t0;
+  if(p0 < first) return kpi('前年比', '—', '', '前年の記録が1年分ありません');
+  const cur = distBetween(pts, t0, end), prev = distBetween(pts, p0, p1);
+  if(!prev) return kpi('前年比', '—', '', '');
+  const pct = (cur/prev - 1)*100;
+  return kpi('前年比', `${pct>=0?'+':''}${fmt(pct,0)}`, '%', `${isPartial?'昨年同時期':'前年'} ${fmt(prev)} km`);
+}
 function renderOdo(){
   const pts = odoPoints(), cur = currentOdo();
   $('odo-current').innerHTML = cur ? `${fmt(cur.odo)}<small>km</small>` : '—';
@@ -1262,12 +1326,11 @@ function renderOdo(){
     const t0 = Math.max(first, rng.t0), t1 = Math.min(last, rng.t1);
     months = Math.max(0,(t1-t0)/86400000/30.44);
   }
-  const totalDist = pts.length>=2 ? pts[pts.length-1].odo - pts[0].odo : 0;
   $('odo-kpi').innerHTML =
     kpi(state.year==='all'?'期間走行':'年間走行', fmt(dist), 'km') +
-    kpi('月平均', months>=0.5 ? fmt(dist/months) : '—', 'km/月') +
+    kpi('月平均', months>=0.5 ? fmt(dist/months) : '—', 'km/月', monthMaxMin(pts)) +
     insKpi(pts) +
-    kpi('累計走行', fmt(totalDist), 'km', V.info.initialOdo ? `納車時 ${fmt(num(V.info.initialOdo))} km` : '');
+    yearCompareKpi(pts);
 
   let labels, ranges;
   if(state.year==='all'){
@@ -1328,22 +1391,23 @@ function renderMaint(){
   const total = list.reduce((s,m)=>s+costOf(m),0);
   const wash = ents.filter(m=>inYear(m.date) && /洗車/.test(m.category||'')).length;
   const lastOil = ents.filter(m=>m.category==='オイル交換').sort(byDateDesc)[0];
+  const lastWash = ents.filter(m=>/洗車/.test(m.category||'')).sort(byDateDesc)[0];
   const cur = currentOdo();
   const sinceKm = m => m && num(m.odo)!=null && cur ? `以降 ${fmt(cur.odo-num(m.odo))} km` : '';
   const shortDate = m => m ? m.date.slice(2).replace(/-/g,'/') : '—';
   if(state.maintFilter==='all'){
     $('maint-kpi').innerHTML =
+      kpi('合計', yen(total)) +
       kpi('件数', list.length, '件') +
-      kpi('費用', yen(total)) +
-      kpi('洗車回数', wash, '回') +
+      kpi('洗車回数', wash, '回', lastWash ? `前回 ${shortDate(lastWash)}` : '') +
       kpi('前回オイル交換', shortDate(lastOil), '', sinceKm(lastOil));
   }else{
     // 区分で絞り込み中: その区分の合計・件数・1件平均・前回
     const paid = list.filter(m=>costOf(m));
     $('maint-kpi').innerHTML =
       kpi('合計', yen(total)) +
-      kpi('件数', list.length, '件') +
       kpi('1件平均', paid.length ? yen(total/paid.length) : '—', '', paid.length!==list.length ? `費用あり ${paid.length}件` : '') +
+      kpi('件数', list.length, '件') +
       kpi('前回', shortDate(hist[0]), '', sinceKm(hist[0]));
   }
   const used = [...new Set(ents.map(m=>m.category))];
@@ -1537,8 +1601,8 @@ function renderCost(){
     const avg = months>=12 && state.year==='all' ? ['年平均', total/(months/12)] : ['月平均', total/Math.max(1,months)];
     $('cost-kpi').innerHTML =
       kpi('合計', yen(total)) +
-      kpi('件数', list.length, '件') +
       kpi('1件平均', list.length ? yen(total/list.length) : '—') +
+      kpi('件数', list.length, '件') +
       kpi(avg[0], list.length ? yen(avg[1]) : '—');
   }
   const used = [...new Set(V.costs.map(c=>c.category))];
@@ -1855,10 +1919,27 @@ document.addEventListener('focusin', e=>{
   el.select();   // 区切りを外した後は全選択（そのまま上書き入力できる）
 });
 document.addEventListener('focusout', e=>{ if(e.target.matches && e.target.matches('#sh-body input[inputmode]')) setTimeout(()=>fmtNumInput(e.target), 0); });
+// スマホ幅では補足文を文の区切り（。）で改行する: .hint / .muted 内の「。」の後に <br class="sp-br"> を入れる
+function addSpBreaks(root){
+  if(!root) return;
+  root.querySelectorAll('.hint, .muted').forEach(el=>{
+    if(el.dataset.spbr) return; el.dataset.spbr = '1';
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const nodes = []; while(w.nextNode()) nodes.push(w.currentNode);
+    nodes.forEach(n=>{
+      const parts = n.nodeValue.split(/(?<=。)(?=\S)/);
+      if(parts.length<2) return;
+      const frag = document.createDocumentFragment();
+      parts.forEach((t,i)=>{ if(i){ const br=document.createElement('br'); br.className='sp-br'; frag.appendChild(br); } frag.appendChild(document.createTextNode(t)); });
+      n.parentNode.replaceChild(frag, n);
+    });
+  });
+}
 function openSheet(title, body, onSave, onDelete){
   $('sh-title').textContent = title;
   $('sh-body').innerHTML = body;
   numInputs().forEach(fmtNumInput);
+  setTimeout(()=>addSpBreaks($('sh-body')), 0);   // シート内で後から追加される要素も含めて改行位置を付与
   if(!onSave){
     $('sh-foot').innerHTML = '<button class="btn" onclick="closeSheet()">閉じる</button>';
     $('sheet').classList.add('show'); $('sheet-bg').classList.add('show'); $('sh-body').scrollTop = 0;
@@ -1896,6 +1977,7 @@ function render(){
   const sub = [v.name, v.model].filter(Boolean).join(' ');
   $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${carIco(rel()?'#9ca3af':v.color,16)} ${esc(sub||'（名称未設定）')}${rel()?`（${esc(relShort(rel()))}）`:''} ▾</span>`;
   updateAppIcons();
+  addSpBreaks(document.querySelector('.page.active'));
   // 手放した車は各タブの一覧の上に一行表示
   document.querySelectorAll('[data-rel-note]').forEach(el=>{ const r=rel(); el.style.display = r ? '' : 'none'; el.innerHTML = r ? `${r.date.replace(/-/g,'/')} に${r.how==='廃車'?'廃車にしました':relHow(r)+'ました'}。<br class="sp-br">記録はこの日まで（追加・編集はできます）` : ''; });
   renderYearSelects();
