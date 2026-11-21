@@ -233,7 +233,11 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 #toast.show{opacity:1;}
 .muted{color:var(--text2);font-size:12px;}
 .rel-note{font-size:12px;color:var(--text2);background:var(--bg3);border-radius:8px;padding:8px 10px;margin-bottom:8px;}
-.rel-mark{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);margin:10px 0;white-space:nowrap;}
+.rel-mark{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);margin:10px 0;text-align:center;line-height:1.5;}
+.rel-mark span{flex:0 1 auto;}
+/* スマホ幅だけ改行する位置 */
+.sp-br{display:none;}
+@media(max-width:560px){ .sp-br{display:inline;} .pc-only{display:none;} }
 .rel-mark::before,.rel-mark::after{content:'';flex:1;border-top:1px dashed var(--text3);}
 .car-ico{display:inline-block;vertical-align:-4px;flex-shrink:0;}
 .swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;}
@@ -267,7 +271,8 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="year-nav"><button class="yn-btn" data-year-step="-1" aria-label="前の年">‹</button><select class="year-sel" data-year-sel></select><button class="yn-btn" data-year-step="1" aria-label="次の年">›</button></div>
     </div>
     <div class="card" id="home-release-card" style="display:none">
-      <div class="card-title">保有期間のまとめ <span class="muted" id="home-release-sub"></span></div>
+      <div class="card-title" style="margin-bottom:2px;">保有期間のまとめ</div>
+      <div class="muted" id="home-release-sub" style="margin-bottom:10px;"></div>
       <div class="kpi-grid" id="home-release"></div>
     </div>
     <div class="card">
@@ -446,7 +451,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v08_2026-11-21.2';
+const APP_VERSION = 'v08_2026-11-21.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -985,7 +990,7 @@ function groupedList(items, rowFn, sumFn, noMark){
 const relShort = r => `${r.date.slice(0,7).replace('-','/')} ${r.how && r.how!=='その他' ? r.how : '手放し'}`;
 // 「下取りで手放し」「廃車」「手放し」（その他・未指定）
 const relHow = r => r.how==='廃車' ? '廃車' : (r.how && r.how!=='その他') ? `${r.how}で手放し` : '手放し';
-const relText = r => `${r.date.replace(/-/g,'/')} ${relHow(r)} ── ここまでが保有期間`;
+const relText = r => `<span>${r.date.replace(/-/g,'/')} ${relHow(r)}<br class="sp-br"><span class="pc-only"> ── </span>ここまでが保有期間</span>`;
 function dateCell(s){ const [y,m,d]=s.split('-'); const w='日月火水木金土'[new Date(+y,+m-1,+d).getDay()]; return `<div class="r-date"><b>${+d}</b>${w}</div>`; }
 function kpi(label, val, unit, sub){ return `<div class="kpi"><div class="k-label">${label}</div><div class="k-val">${val}<span class="k-unit">${unit||''}</span></div><div class="k-sub">${sub||''}</div></div>`; }   // 補足が無くても行を確保してカードの高さをそろえる
 function chipsHtml(cats, cur, key){
@@ -1018,7 +1023,7 @@ function renderHome(){
     const start = V.info.purchaseDate || [...all.map(e=>e.date)].filter(Boolean).sort()[0] || r.date;
     const months = Math.max(1, Math.round((dateMs(r.date)-dateMs(start))/86400000/30.44));
     const totalKm = pts.length>=2 ? pts[pts.length-1].odo - pts[0].odo : 0;
-    $('home-release-sub').textContent = `${start.replace(/-/g,'/')}〜${r.date.replace(/-/g,'/')}・${r.how||'手放し'}`;
+    $('home-release-sub').innerHTML = `${start.replace(/-/g,'/')}〜${r.date.replace(/-/g,'/')}・${esc(r.how||'手放し')}`;
     $('home-release').innerHTML =
       kpi('保有期間', months>=12 ? `${Math.floor(months/12)}年${months%12?months%12+'カ月':''}` : `${months}カ月`, '', totalKm ? `走行 ${fmt(totalKm)} km` : '') +
       kpi('実質負担', yen(net), '', sale ? `総額 ${yen(gross)} − 売却 ${yen(sale)}` : `総額 ${yen(gross)}`) +
@@ -1788,7 +1793,7 @@ function render(){
   $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${carIco(rel()?'#9ca3af':v.color,16)} ${esc(sub||'（名称未設定）')}${rel()?`（${esc(relShort(rel()))}）`:''} ▾</span>`;
   updateAppIcons();
   // 手放した車は各タブの一覧の上に一行表示
-  document.querySelectorAll('[data-rel-note]').forEach(el=>{ const r=rel(); el.style.display = r ? '' : 'none'; el.textContent = r ? `${r.date.replace(/-/g,'/')} に${r.how==='廃車'?'廃車にしました':relHow(r)+'ました'}。記録はこの日まで（追加・編集はできます）` : ''; });
+  document.querySelectorAll('[data-rel-note]').forEach(el=>{ const r=rel(); el.style.display = r ? '' : 'none'; el.innerHTML = r ? `${r.date.replace(/-/g,'/')} に${r.how==='廃車'?'廃車にしました':relHow(r)+'ました'}。<br class="sp-br">記録はこの日まで（追加・編集はできます）` : ''; });
   renderYearSelects();
   ({home:renderHome, fuel:renderFuel, odo:renderOdo, maint:renderMaint, cost:renderCost, settings:renderSettings})[state.page]();
 }
