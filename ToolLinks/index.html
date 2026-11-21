@@ -10,8 +10,10 @@
   --bg:#f5f6f8;--card:#fff;--text:#1f2328;--sub:#656d76;--line:#d8dee4;--accent:#2f6fde;--accent-bg:#e8f0fe;--new:#1a7f37;--hover:#f0f3f6;
 }
 @media (prefers-color-scheme: dark){
-  :root{--bg:#0f1115;--card:#181b21;--text:#e6e8eb;--sub:#9aa3ad;--line:#2c313a;--accent:#6ea2ff;--accent-bg:#1d2a44;--new:#3fb950;--hover:#20242c;}
+  :root:not([data-theme="light"]){--bg:#0f1115;--card:#181b21;--text:#e6e8eb;--sub:#9aa3ad;--line:#2c313a;--accent:#6ea2ff;--accent-bg:#1d2a44;--new:#3fb950;--hover:#20242c;color-scheme:dark}
 }
+:root[data-theme="dark"]{--bg:#0f1115;--card:#181b21;--text:#e6e8eb;--sub:#9aa3ad;--line:#2c313a;--accent:#6ea2ff;--accent-bg:#1d2a44;--new:#3fb950;--hover:#20242c;color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;font-size:14px}
 header{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px}
@@ -105,6 +107,7 @@ body.editing .item{cursor:default}
       <option value="name">並び: 名前</option>
     </select>
     <button id="edit" title="並び替え・表示/非表示の編集">✏️ 編集</button>
+    <button id="theme" title="テーマ切替（自動→ライト→ダーク）"></button>
     <button id="reload" title="更新日を GitHub から再取得">⟳</button>
   </div>
 </header>
@@ -113,7 +116,7 @@ body.editing .item{cursor:default}
   <div id="root"></div>
 </main>
 <script>
-const APP_VERSION = 'v2026-11-21.2';
+const APP_VERSION = 'v2026-11-21.3';
 const OWNER = 'mepbim-gsan';
 const PAGES = `https://${OWNER}.github.io/`;
 const REPOS = [
@@ -172,7 +175,7 @@ function defaultGroupSettings() {
   }));
   return { groups: DEFAULT_GROUPS.map(g => ({ id: g.id, name: g.name })), assign };
 }
-const S = Object.assign({ view: 'grid', sort: 'custom', mode: 'repo', order: {}, secOrder: {}, hidden: [], closed: [] }, defaultGroupSettings(), load(SET_KEY, {}));
+const S = Object.assign({ theme: 'auto', view: 'grid', sort: 'custom', mode: 'repo', order: {}, secOrder: {}, hidden: [], closed: [] }, defaultGroupSettings(), load(SET_KEY, {}));
 if (Array.isArray(S.order)) S.order = {};
 if (Array.isArray(S.repoOrder)) { S.secOrder = { repo: S.repoOrder }; delete S.repoOrder; }
 let dates = load(DATE_KEY, { ts: 0, data: {} });
@@ -233,6 +236,15 @@ function iconHtml(t) {
   if (t.emoji) return `<span class="ic">${t.emoji}</span>`;
   return txtIcon(t);
 }
+
+const THEMES = { auto: ['🌓', '自動（OSに合わせる）'], light: ['☀️', 'ライト'], dark: ['🌙', 'ダーク'] };
+function applyTheme() {
+  if (S.theme === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', S.theme);
+  $('theme').textContent = THEMES[S.theme][0];
+  $('theme').title = 'テーマ: ' + THEMES[S.theme][1] + '（クリックで切替）';
+}
+$('theme').onclick = () => { const k = Object.keys(THEMES); S.theme = k[(k.indexOf(S.theme) + 1) % k.length]; persist(); applyTheme(); };
 
 function render() {
   document.body.classList.toggle('editing', editing);
@@ -378,6 +390,7 @@ async function fetchDates(force) {
 }
 
 document.querySelectorAll('.app-ver').forEach(el => el.textContent = APP_VERSION);
+applyTheme();
 render();
 fetchDates(false);
 </script>
