@@ -263,6 +263,10 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
       <div class="page-title">サマリー</div>
       <div class="year-nav"><button class="yn-btn" data-year-step="-1" aria-label="前の年">‹</button><select class="year-sel" data-year-sel></select><button class="yn-btn" data-year-step="1" aria-label="次の年">›</button></div>
     </div>
+    <div class="card" id="home-release-card" style="display:none">
+      <div class="card-title">保有期間のまとめ <span class="muted" id="home-release-sub"></span></div>
+      <div class="kpi-grid" id="home-release"></div>
+    </div>
     <div class="card">
       <div class="card-title">概要</div>
       <div class="kpi-grid" id="home-kpi"></div>
@@ -439,7 +443,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v07_2026-11-14.5';
+const APP_VERSION = 'v08_2026-11-21';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -665,6 +669,14 @@ function calcFuelStats(){
   return res;
 }
 
+// 手放した車: info.release = {date, how, amount, odo}（未設定は null）
+const RELEASE_HOWS = ['売却','下取り','廃車','譲渡','その他'];
+const rel = (v=V) => v.info.release && v.info.release.date ? v.info.release : null;
+// 手放した日より後の日付の記録は確認してから保存（ロックはしない）
+function okAfterRelease(date){
+  const r = rel();
+  return !r || date <= r.date || confirm(`手放した日（${r.date.replace(/-/g,'/')}）より後の日付です。保存しますか？`);
+}
 function odoPoints(){
   const pts = [];
   const v = V.info;
@@ -672,6 +684,7 @@ function odoPoints(){
   V.odo.forEach(o=>{ if(num(o.odo)!=null) pts.push({date:o.date, odo:num(o.odo), src:'odo', id:o.id, memo:o.memo}); });
   V.fuel.forEach(f=>{ if(num(f.odo)!=null) pts.push({date:f.date, odo:num(f.odo), src:'fuel', id:f.id}); });
   V.maint.forEach(m=>{ if(num(m.odo)!=null) pts.push({date:m.date, odo:num(m.odo), src:'maint', id:m.id, memo:m.title}); });
+  const r = rel(); if(r && num(r.odo)!=null) pts.push({date:r.date, odo:num(r.odo), src:'release', id:'release', memo:r.how||''});
   pts.sort((a,b)=>a.date.localeCompare(b.date) || a.odo-b.odo);
   return pts;
 }
@@ -715,7 +728,8 @@ function periodRange(){
     if(V.info.purchaseDate) all.push(V.info.purchaseDate);
     if(!all.length) return null;
     all.sort();
-    return {t0:dateMs(all[0]), t1:Math.max(dateMs(all[all.length-1]), dateMs(todayStr()))};
+    const r = rel();
+    return {t0:dateMs(all[0]), t1: r ? dateMs(r.date) : Math.max(dateMs(all[all.length-1]), dateMs(todayStr()))};
   }
   const y = +state.year;
   return {t0:new Date(y,0,1).getTime(), t1:new Date(y+1,0,1).getTime()};
@@ -723,7 +737,8 @@ function periodRange(){
 
 /* ---------- 年セレクト ---------- */
 function yearsInData(){
-  const s = new Set([String(new Date().getFullYear())]);
+  const r = rel();
+  const s = new Set([r ? r.date.slice(0,4) : String(new Date().getFullYear())]);   // 手放した車は今年を追加しない
   [...V.fuel,...V.odo,...V.maint,...V.costs].forEach(x=>{ if(x.date) s.add(x.date.slice(0,4)); });
   return [...s].sort().reverse();
 }
@@ -903,7 +918,7 @@ function renderCum(pts){
     $('cum-slider').style.display='none'; return;
   }
   $('cum-slider').style.display='';
-  const minT = dateMs(pts[0].date), maxT = Math.max(dateMs(todayStr()), dateMs(pts[pts.length-1].date));
+  const minT = dateMs(pts[0].date), maxT = rel() ? Math.max(dateMs(rel().date), dateMs(pts[pts.length-1].date)) : Math.max(dateMs(todayStr()), dateMs(pts[pts.length-1].date));
   const maxD = Math.round((maxT-minT)/DAY_MS);
   let t0, t1;
   if(state.odoRange==='custom' && state.cumRange){
@@ -980,7 +995,22 @@ function renderHome(){
     kpi('平均燃費', l ? fmt(km/l,2) : '—', 'km/L') +
     kpi('維持費/km', dist ? fmt(running/dist,1) : '—', '円', dist ? `燃料費/km ${fmt(sum('fuel')/dist,1)}円` : '');
 
-  renderReminders();
+  // 手放した車: 次回予定・期限は出さず、保有期間のまとめを表示
+  const r = rel();
+  $('home-remind-card').style.display = r ? 'none' : '';
+  $('home-release-card').style.display = r ? '' : 'none';
+  if(r){
+    const all = costEntries(), gross = all.reduce((s,e)=>s+e.amount,0), sale = num(r.amount)||0, net = gross - sale;
+    const start = V.info.purchaseDate || [...all.map(e=>e.date)].filter(Boolean).sort()[0] || r.date;
+    const months = Math.max(1, Math.round((dateMs(r.date)-dateMs(start))/86400000/30.44));
+    const totalKm = pts.length>=2 ? pts[pts.length-1].odo - pts[0].odo : 0;
+    $('home-release-sub').textContent = `${start.replace(/-/g,'/')}〜${r.date.replace(/-/g,'/')}・${r.how||'手放し'}`;
+    $('home-release').innerHTML =
+      kpi('保有期間', months>=12 ? `${Math.floor(months/12)}年${months%12?months%12+'カ月':''}` : `${months}カ月`, '', totalKm ? `走行 ${fmt(totalKm)} km` : '') +
+      kpi('実質負担', yen(net), '', sale ? `総額 ${yen(gross)} − 売却 ${yen(sale)}` : `総額 ${yen(gross)}`) +
+      kpi('1カ月あたり', yen(net/months)) +
+      kpi('1kmあたり', totalKm ? fmt(net/totalKm,1) : '—', totalKm ? '円' : '');
+  }else renderReminders();
 
   // 月別費用
   let labels=[], keys=[];
@@ -1135,6 +1165,7 @@ function openFuelSheet(id){
       station:$('f-station').value.trim(), memo:$('f-memo').value.trim() };
     if(!rec.date) return '日付を入力してください';
     if(!num(rec.liters)) return '給油量を入力してください';
+    if(!okAfterRelease(rec.date)) return '保存をやめました';
     if(!num(rec.total) && num(rec.unitPrice)) rec.total = String(Math.round(num(rec.liters)*num(rec.unitPrice)));
     upsert(V.fuel, rec);
   }, f ? () => remove(V.fuel, f.id) : null);
@@ -1216,12 +1247,12 @@ function renderOdo(){
 
   renderCum(pts);
 
-  const srcName = {odo:'手入力', fuel:'給油', maint:'メンテ', init:'納車時'};
+  const srcName = {odo:'手入力', fuel:'給油', maint:'メンテ', init:'納車時', release:'手放し'};
   $('odo-filter').innerHTML = [['all','すべて'],['odo','手入力'],['fuel','給油'],['maint','メンテ']].map(([k,n])=>`<button class="chip ${state.odoFilter===k?'active':''}" onclick="state.odoFilter='${k}';render()">${n}</button>`).join('');
   const withDelta = pts.map((p,i)=>({...p, delta: i ? p.odo-pts[i-1].odo : null, days: i ? daysBetween(pts[i-1].date,p.date) : null}));
   const list = withDelta.filter(p=>inYear(p.date) && (state.odoFilter==='all' || p.src===state.odoFilter || p.src==='init' && state.odoFilter==='all')).reverse();
   $('odo-list').innerHTML = groupedList(list, p=>{
-    const cls = {odo:'',fuel:'fuel',maint:'maint',init:'cost'}[p.src];
+    const cls = {odo:'',fuel:'fuel',maint:'maint',init:'cost',release:'cost'}[p.src];
     const click = p.src==='odo' ? `openOdoSheet('${p.id}')` : p.src==='fuel' ? `openFuelSheet('${p.id}')` : p.src==='maint' ? `openMaintSheet('${p.id}')` : 'openVehicleSheet()';
     return `<div class="row" onclick="${click}">${dateCell(p.date)}
       <div class="r-main"><div class="r-title"><span class="badge ${cls}">${srcName[p.src]}</span>${fmt(p.odo)} km</div><div class="r-sub">${esc(p.memo||'')}</div></div>
@@ -1243,6 +1274,7 @@ function openOdoSheet(id){
     const rec = {id:o?.id||uid(), date:$('o-date').value, odo:$('o-odo').value.trim(), memo:$('o-memo').value.trim()};
     if(!rec.date) return '日付を入力してください';
     if(num(rec.odo)==null) return 'ODOを入力してください';
+    if(!okAfterRelease(rec.date)) return '保存をやめました';
     upsert(V.odo, rec);
   }, o ? () => remove(V.odo, o.id) : null);
 }
@@ -1329,6 +1361,7 @@ function openMaintSheet(id){
     const rec = {id:m?.id||uid(), date:$('m-date').value, category:$('m-cat').value, title:$('m-title').value.trim(), cost:$('m-cost').value.trim(),
       odo:$('m-odo').value.trim(), shop:$('m-shop').value.trim(), memo:$('m-memo').value.trim(), nextDate:$('m-ndate').value, nextOdo:$('m-nodo').value.trim()};
     if(!rec.date) return '日付を入力してください';
+    if(!okAfterRelease(rec.date)) return '保存をやめました';
     upsert(V.maint, rec);
     // 車検の次回予定日（＝車検証の新しい満了日）で車両情報の車検満了日を更新
     if(rec.category==='車検' && rec.nextDate && rec.nextDate > (V.info.inspDue||'')) V.info.inspDue = rec.nextDate;
@@ -1425,6 +1458,7 @@ function openCostSheet(id){
     const rec = {id:c?.id||uid(), date:$('c-date').value, category:$('c-cat').value, title:$('c-title').value.trim(), amount:$('c-amount').value.trim(), until:$('c-until').value, memo:$('c-memo').value.trim()};
     if(!rec.date) return '日付を入力してください';
     if(!num(rec.amount)) return '金額を入力してください';
+    if(!okAfterRelease(rec.date)) return '保存をやめました';
     upsert(V.costs, rec);
   }, c ? () => remove(V.costs, c.id) : null);
 }
@@ -1462,9 +1496,10 @@ function openInitList(){
      <div class="muted" style="margin-top:8px;">納車日（${esc(V.info.purchaseDate)||'未設定'}）の費用として集計し、維持費/kmからは除外します</div>`);
 }
 function vehicleListHtml(onclick){
-  // サンプル車は常に一番下（それ以外は登録順）
-  return [...D.vehicles].sort((a,b)=>(a.sample?1:0)-(b.sample?1:0)).map(v=>`<div class="set-row" style="cursor:pointer" onclick="${onclick}('${v.id}')">
-    <div><span style="color:var(--accent);display:inline-block;width:18px;">${v.id===D.curId?'●':''}</span>${carIco(v.info.color)} ${esc(v.info.name||'（名称未設定）')}${v.sample?' <span class="badge warn">サンプル</span>':''}<div class="muted" style="margin-left:18px;">${esc([v.info.model, v.info.year?v.info.year+'年式':''].filter(Boolean).join(' / '))}</div></div>
+  // 並び: 使用中 → 手放した車 → サンプル車（それぞれ登録順）
+  const ord = v => v.sample ? 2 : rel(v) ? 1 : 0;
+  return [...D.vehicles].sort((a,b)=>ord(a)-ord(b)).map(v=>`<div class="set-row" style="cursor:pointer" onclick="${onclick}('${v.id}')">
+    <div><span style="color:var(--accent);display:inline-block;width:18px;">${v.id===D.curId?'●':''}</span>${carIco(rel(v)?'#9ca3af':v.info.color)} ${esc(v.info.name||'（名称未設定）')}${v.sample?' <span class="badge warn">サンプル</span>':''}${rel(v)?' <span class="badge">手放し済み</span>':''}<div class="muted" style="margin-left:18px;">${esc([v.info.model, v.info.year?v.info.year+'年式':''].filter(Boolean).join(' / '))}</div></div>
     <div class="muted" style="white-space:nowrap;font-size:11px;">給油${v.fuel.length} / メンテ${v.maint.length}</div></div>`).join('');
 }
 function switchVehicle(id){
@@ -1505,11 +1540,31 @@ function openVehicleSheet(isNew){
     <div class="fld"><label>車の色（アイコン）</label><div class="swatches" id="v-colors">${CAR_COLORS.map(([n,c])=>`<div class="swatch ${c===(v.color||CAR_COLORS[0][1])?'active':''}" data-color="${c}" onclick="document.querySelectorAll('#v-colors .swatch').forEach(e=>e.classList.toggle('active', e===this))">${carIco(c,18)}${n}</div>`).join('')}</div>
       <div class="hint">iPhone のホーム画面アイコンは、追加した時点の色になります（変更後は追加し直し）。Android のホーム画面アイコンは変わりません</div></div>
     <div class="muted">納車日・納車時ODOはODOログの起点、納車日は購入時の費用の集計日として使用します</div>
+    ${isNew ? '' : `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
+      <button type="button" class="btn" id="v-rel-open" style="width:100%;${v.release&&v.release.date?'display:none':''}" onclick="$('v-rel').style.display='';this.style.display='none'">この車を手放した</button>
+      <div id="v-rel" style="${v.release&&v.release.date?'':'display:none'}">
+        <div class="card-title" style="margin-bottom:6px;">手放した情報</div>
+        <div class="fld-row">
+          <div class="fld"><label>手放した日</label><input type="date" id="v-rel-date" value="${esc(v.release?.date||'')}"></div>
+          <div class="fld"><label>手放し方</label><select id="v-rel-how">${RELEASE_HOWS.map(h=>`<option ${h===(v.release?.how||'売却')?'selected':''}>${h}</option>`).join('')}</select></div>
+        </div>
+        <div class="fld-row">
+          <div class="fld"><label>売却額・下取り額（円）</label><input type="text" inputmode="numeric" id="v-rel-amount" value="${esc(v.release?.amount||'')}"></div>
+          <div class="fld"><label>そのときのODO（km）</label><input type="text" inputmode="decimal" id="v-rel-odo" value="${esc(v.release?.odo||'')}"></div>
+        </div>
+        <div class="hint">手放した後は次回予定・期限を表示せず、ホームに保有期間のまとめを表示します。記録の追加・編集は引き続きできます</div>
+        <button type="button" class="btn sm" style="margin-top:8px;" onclick="$('v-rel').style.display='none';$('v-rel-open').style.display='';$('v-rel-date').value=''">手放しを取り消す</button>
+      </div></div>`}
   `, () => {
     const info = {name:$('v-name').value.trim(), model:$('v-model').value.trim(), year:$('v-year').value.trim(), purchaseDate:$('v-pdate').value,
       initialOdo:$('v-iodo').value.trim(), fuelType:$('v-fuel').value, tankCapacity:$('v-tank').value.trim(), inspDue:$('v-insp').value,
       color:(document.querySelector('#v-colors .swatch.active')||{}).dataset?.color || CAR_COLORS[0][1]};
     if(!info.name) return '車両名を入力してください';
+    if(!isNew){
+      const rd = $('v-rel').style.display!=='none' ? $('v-rel-date').value : '';
+      if($('v-rel').style.display!=='none' && !rd) return '手放した日を入力してください';
+      info.release = rd ? {date:rd, how:$('v-rel-how').value, amount:$('v-rel-amount').value.trim(), odo:$('v-rel-odo').value.trim()} : null;
+    }
     if(isNew){ const nv = newVehicle(info); const si = D.vehicles.findIndex(x=>x.sample); if(si>=0) D.vehicles.splice(si,0,nv); else D.vehicles.push(nv); D.curId = nv.id; syncV(); Object.assign(state, {year:String(new Date().getFullYear()), odoRange:'year'}); }
     else V.info = info;
   }, canDel ? deleteVehicle : null);
@@ -1716,7 +1771,7 @@ function showPage(p){
 function render(){
   const v = V.info;
   const sub = [v.name, v.model].filter(Boolean).join(' ');
-  $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${carIco(v.color,16)} ${esc(sub||'（名称未設定）')} ▾</span>`;
+  $('h-title').innerHTML = 'CarLog' + `<span class="h-sub">${carIco(rel()?'#9ca3af':v.color,16)} ${esc(sub||'（名称未設定）')}${rel()?'（手放し済み）':''} ▾</span>`;
   updateAppIcons();
   renderYearSelects();
   ({home:renderHome, fuel:renderFuel, odo:renderOdo, maint:renderMaint, cost:renderCost, settings:renderSettings})[state.page]();
