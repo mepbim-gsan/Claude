@@ -1,18 +1,3 @@
-<!--
-  @tool      カメラキャプチャ（台形補正）
-  @version   v08_2026-08-05
-  @changelog
-    v01_2026-08-05 - 初版：カメラ経由でスクリーン矩形を半自動検出→タップ確定→台形補正→IndexedDB保存・一覧管理
-    v02_2026-08-05 - PWA化（manifest.json, sw.js, アイコン追加）、index.htmlへリネーム
-    v03_2026-08-05 - 矩形の手動ドラッグ調整UIを追加、保存時に縦長へ自動回転＋手動回転ボタン
-    v04_2026-08-05 - sw.jsのキャッシュ判定バグ修正（ディレクトリURLアクセス時にHTMLがキャッシュ固定される問題）、CACHE_NAMEをv2に
-    v05_2026-08-05 - 台形補正をOpenCV.js非依存の純粋JS実装（三角形分割アフィン変換）に置き換え。CDN読込失敗時も常に補正が効くように。CACHE_NAMEをv3に
-    v06_2026-08-05 - 三角形分割アフィン近似（歪みが残る）から、4隅対応の真の射影変換（ホモグラフィ）＋バイリニア補間へ変更。CACHE_NAMEをv4に
-    v07_2026-08-05 - OpenCV.jsをCDNからリポジトリ同梱（lib/opencv.js）に変更しCDN依存を解消。
-      自動矩形検出をequalizeHist+Otsu適応閾値+最小外接回転矩形フォールバックで強化。CACHE_NAMEをv5に
-    v08_2026-08-05 - PR#30マージ時に取り込まれていなかった同梱化コミットを復元。
-      検出失敗時の例外を可視化するトースト・console.errorを追加、Otsu閾値異常時のフォールバックを追加。CACHE_NAMEをv6に
--->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -199,6 +184,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 <script src="./lib/opencv.js" onerror="window._cvScriptLoadFailed=true"></script>
 <script>
 'use strict';
+const APP_VERSION = 'v08_2026-11-23';
 
 /* ===================== IndexedDB ===================== */
 const DB_NAME = 'camera-capture-db';
@@ -271,8 +257,11 @@ let cvReady = false;
 let stream = null;
 let detectTimer = null;
 let lastQuad = null;          // 直近検出した4点（video座標系）
+let lastQuadAt = 0;
 const DETECT_INTERVAL_MS = 700; // 一定間隔のみ再検出（軽量優先）
-const DETECT_SCALE_W = 320;     // 検出は縮小フレームで実施
+const DETECT_SCALE_W = 320;     // ライブ検出は縮小フレームで実施
+const SHUTTER_DETECT_W = 480;   // シャッター時は撮影フレームを少し高解像度で再検出
+const QUAD_HOLD_MS = 1500;      // 手ブレ等で一瞬検出が外れても直前の枠を保持する時間
 
 function cvOnRuntimeInitialized(){ cvReady = true; }
 if (window.cv) {
@@ -317,127 +306,304 @@ function startDetectLoop(){
 }
 
 function orderPoints(pts){
-  // pts: [{x,y}x4] -> [tl, tr, br, bl]
-  const sum = pts.map(p=>p.x+p.y);
-  const diff = pts.map(p=>p.x-p.y);
-  const tl = pts[sum.indexOf(Math.min(...sum))];
-  const br = pts[sum.indexOf(Math.max(...sum))];
-  const tr = pts[diff.indexOf(Math.max(...diff))];
-  const bl = pts[diff.indexOf(Math.min(...diff))];
-  return [tl,tr,br,bl];
+  // pts: [{x,y}x4] -> [tl, tr, br, bl]（重心まわりの角度順。45度傾いていても重複しない）
+  const cx = pts.reduce((s,p)=>s+p.x,0)/4, cy = pts.reduce((s,p)=>s+p.y,0)/4;
+  const sorted = pts.slice().sort((a,b)=>Math.atan2(a.y-cy,a.x-cx) - Math.atan2(b.y-cy,b.x-cx));
+  let start = 0;
+  sorted.forEach((p,i)=>{ if(p.x+p.y < sorted[start].x+sorted[start].y) start = i; });
+  return [0,1,2,3].map(i=>sorted[(start+i)%4]);
 }
 
-// 回転矩形(center,size,angle)の4隅座標を計算
-function rotatedRectPoints(center, size, angleDeg){
-  const angle = angleDeg * Math.PI/180;
-  const cos = Math.cos(angle), sin = Math.sin(angle);
-  const w2 = size.width/2, h2 = size.height/2;
-  const local = [{x:-w2,y:-h2},{x:w2,y:-h2},{x:w2,y:h2},{x:-w2,y:h2}];
-  return local.map(p => ({
-    x: center.x + p.x*cos - p.y*sin,
-    y: center.y + p.x*sin + p.y*cos,
-  }));
+function matToPts(m){
+  const pts = [];
+  for(let j=0;j<m.rows;j++) pts.push({ x: m.data32S[j*2], y: m.data32S[j*2+1] });
+  return pts;
+}
+function polyArea(pts){
+  let a = 0;
+  for(let i=0;i<pts.length;i++){ const p=pts[i], q=pts[(i+1)%pts.length]; a += p.x*q.y - q.x*p.y; }
+  return Math.abs(a)/2;
 }
 
-function findQuadOnMat(mat){
-  // mat: RGBA cv.Mat -> 戻り値: [{x,y}x4] または null（mat座標系）
-  let gray = new cv.Mat();
-  cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
-  cv.equalizeHist(gray, gray); // コントラストを正規化し、スライド画面など低コントラストな輪郭も拾いやすくする
-
-  // Otsuの二値化で得た閾値からCannyの閾値を自動決定（照明条件への適応）
-  // 想定外の戻り値だった場合に備え、固定閾値へフォールバックする
-  let lowT = 50, highT = 150;
-  let otsuBin = new cv.Mat();
-  const otsuThresh = cv.threshold(gray, otsuBin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-  otsuBin.delete();
-  if(typeof otsuThresh === 'number' && isFinite(otsuThresh) && otsuThresh > 0){
-    lowT = otsuThresh * 0.5;
-    highT = otsuThresh;
+// 輪郭の凸包を段階的に粗く近似し、4頂点になったものを返す
+function quadFromContour(cnt){
+  const hull = new cv.Mat();
+  cv.convexHull(cnt, hull, false, true);
+  const peri = cv.arcLength(cnt, true);
+  let quad = null;
+  for(const eps of [0.02, 0.03, 0.04, 0.05, 0.06, 0.08]){
+    const ap = new cv.Mat();
+    cv.approxPolyDP(hull, ap, eps*peri, true);
+    if(ap.rows === 4){ quad = matToPts(ap); ap.delete(); break; }
+    ap.delete();
   }
+  const hullArea = Math.abs(cv.contourArea(hull));
+  hull.delete();
+  return quad ? { quad, hullArea } : null;
+}
 
-  cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
-  let edges = new cv.Mat();
-  cv.Canny(gray, edges, lowT, highT);
-  let kernel = cv.Mat.ones(3,3, cv.CV_8U);
-  cv.dilate(edges, edges, kernel);
-  let contours = new cv.MatVector();
-  let hierarchy = new cv.Mat();
-  cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+// 用紙・画面らしさを採点（0以下は不採用）
+function scoreQuad(quad, cntArea, hullArea, W, H){
+  const qa = polyArea(quad);
+  if(qa < W*H*0.02 || qa > W*H*0.95) return -1;
+  const fill = Math.min(cntArea/qa, qa/cntArea);       // 輪郭と四角形の面積の一致度
+  if(fill < 0.85) return -1;
+  const solidity = hullArea > 0 ? cntArea/hullArea : 0; // 背景への漏れ（くぼみ）が少ないほど1に近い
+  if(solidity < 0.9) return -1;
+  const m = 2; // 画面端に接する候補は背景か、対象がはみ出している
+  if(quad.some(p=> p.x<m || p.y<m || p.x>W-1-m || p.y>H-1-m)) return -1;
+  for(let i=0;i<4;i++){ // 角度が直角から極端に外れたものは除外
+    const a=quad[(i+3)%4], b=quad[i], c=quad[(i+1)%4];
+    const v1x=a.x-b.x, v1y=a.y-b.y, v2x=c.x-b.x, v2y=c.y-b.y;
+    const cos=(v1x*v2x+v1y*v2y)/(Math.hypot(v1x,v1y)*Math.hypot(v2x,v2y)+1e-9);
+    const deg=Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI;
+    if(deg<45 || deg>135) return -1;
+  }
+  return (qa/(W*H)) * fill * solidity;
+}
 
-  const minArea = mat.rows * mat.cols * 0.08;
-  let bestQuadPts = null, bestQuadArea = 0;      // 綺麗な凸四角形として近似できた候補（優先）
-  let bestFallbackIdx = -1, bestFallbackArea = 0; // 4点に近似できない場合の最大輪郭（フォールバック用）
+// mat: RGBA cv.Mat -> 戻り値: [{x,y}x4] または null（mat座標系）
+function findQuadByRegion(mat){
+  // 彩度・明るさ・グレーの各チャンネルを二値化した領域と、エッジで囲まれた領域を候補にし、
+  // 「四角形らしさ×大きさ」で最良のものを選ぶ（木目・床の継ぎ目・白飛びなどの誤検出に強い）
+  const W = mat.cols, H = mat.rows;
+  const mats = [];
+  const keep = m => (mats.push(m), m);
+  try{
+    const rgb = keep(new cv.Mat()); cv.cvtColor(mat, rgb, cv.COLOR_RGBA2RGB);
+    cv.GaussianBlur(rgb, rgb, new cv.Size(5,5), 0);
+    const hsv = keep(new cv.Mat()); cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
+    const lab = keep(new cv.Mat()); cv.cvtColor(rgb, lab, cv.COLOR_RGB2Lab);
+    const gray = keep(new cv.Mat()); cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY);
+    const hsvCh = keep(new cv.MatVector()); cv.split(hsv, hsvCh);
+    const labCh = keep(new cv.MatVector()); cv.split(lab, labCh);
+    const sat = keep(hsvCh.get(1));
+    const light = keep(labCh.get(0));
+    const channels = [sat, light, gray]; // 紙は彩度が低く明るいことが多いが、背景次第で逆もあるので両極性を試す
 
-  for(let i=0;i<contours.size();i++){
-    const cnt = contours.get(i);
-    const area = Math.abs(cv.contourArea(cnt));
-    if(area > minArea){
-      if(area > bestFallbackArea){ bestFallbackArea = area; bestFallbackIdx = i; }
-
-      const peri = cv.arcLength(cnt, true);
-      const approx = new cv.Mat();
-      cv.approxPolyDP(cnt, approx, 0.02*peri, true);
-      if(approx.rows === 4 && cv.isContourConvex(approx) && area > bestQuadArea){
-        bestQuadArea = area;
-        const pts = [];
-        for(let j=0;j<4;j++) pts.push({ x: approx.data32S[j*2], y: approx.data32S[j*2+1] });
-        bestQuadPts = pts;
+    const kernel = keep(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(7,7)));
+    const masks = [];
+    for(const ch of channels){
+      const bin = keep(new cv.Mat());
+      cv.threshold(ch, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+      const inv = keep(new cv.Mat()); cv.bitwise_not(bin, inv);
+      for(const m of [bin, inv]){
+        cv.morphologyEx(m, m, cv.MORPH_OPEN, kernel);
+        cv.morphologyEx(m, m, cv.MORPH_CLOSE, kernel, new cv.Point(-1,-1), 2);
+        masks.push(m);
       }
-      approx.delete();
     }
-    cnt.delete();
-  }
+    const edges = keep(new cv.Mat());
+    cv.Canny(gray, edges, 30, 90);
+    const k3 = keep(cv.Mat.ones(3,3, cv.CV_8U));
+    cv.dilate(edges, edges, k3);
+    masks.push(edges);
 
-  let result = null;
-  if(bestQuadPts){
-    // 輪郭がそのまま綺麗な四角形に近似できた場合はそれを採用（最も正確）
-    result = orderPoints(bestQuadPts);
-  } else if(bestFallbackIdx >= 0){
-    // 4点近似できなくても、十分大きい輪郭があれば最小外接回転矩形で代用
-    // （スライド画面の反射・ノイズ等でエッジが完全な四角形にならないケースの救済）
-    const cnt = contours.get(bestFallbackIdx);
-    const rect = cv.minAreaRect(cnt);
-    result = orderPoints(rotatedRectPoints(rect.center, rect.size, rect.angle));
-    cnt.delete();
+    let best = null, bestScore = 0;
+    for(const m of masks){
+      const contours = keep(new cv.MatVector());
+      const hier = keep(new cv.Mat());
+      cv.findContours(m, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      for(let i=0;i<contours.size();i++){
+        const cnt = contours.get(i);
+        const cntArea = Math.abs(cv.contourArea(cnt));
+        if(cntArea >= W*H*0.02){
+          const r = quadFromContour(cnt);
+          if(r){
+            const sc = scoreQuad(r.quad, cntArea, r.hullArea, W, H);
+            if(sc > bestScore){ bestScore = sc; best = r.quad; }
+          }
+        }
+        cnt.delete();
+      }
+    }
+    return best ? orderPoints(best) : null;
+  } finally {
+    mats.forEach(m=>m.delete());
   }
+}
 
-  gray.delete(); edges.delete(); kernel.delete(); contours.delete(); hierarchy.delete();
-  return result;
+// ── 直線による予備検出（テレビ・モニターなど、画面の中身がばらばらで領域として切り出せないもの向け）──
+const LINE_DETECT_W = 320;        // 解像度を上げると周囲の家具の縁を拾いやすくなるため固定
+const LINE_STRONG_GRAD = 200;     // 辺に沿った明暗差（Sobel勾配）がこれ以上ならくっきりした境界とみなす
+
+function intersectLines(l1, l2){
+  const [x1,y1,x2,y2] = l1, [x3,y3,x4,y4] = l2;
+  const d = (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4);
+  if(Math.abs(d) < 1e-9) return null;
+  const a = x1*y2 - y1*x2, b = x3*y4 - y3*x4;
+  return { x: (a*(x3-x4) - (x1-x2)*b)/d, y: (a*(y3-y4) - (y1-y2)*b)/d };
+}
+function isConvexQuad(q){
+  let sign = 0;
+  for(let i=0;i<4;i++){
+    const a=q[i], b=q[(i+1)%4], c=q[(i+2)%4];
+    const z = (b.x-a.x)*(c.y-b.y) - (b.y-a.y)*(c.x-b.x);
+    if(Math.abs(z) < 1e-9) return false;
+    if(sign === 0) sign = Math.sign(z); else if(Math.sign(z) !== sign) return false;
+  }
+  return true;
+}
+function quadAnglesOk(q){
+  for(let i=0;i<4;i++){
+    const a=q[(i+3)%4], b=q[i], c=q[(i+1)%4];
+    const v1x=a.x-b.x, v1y=a.y-b.y, v2x=c.x-b.x, v2y=c.y-b.y;
+    const cos=(v1x*v2x+v1y*v2y)/(Math.hypot(v1x,v1y)*Math.hypot(v2x,v2y)+1e-9);
+    const deg=Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI;
+    if(deg<45 || deg>135) return false;
+  }
+  return true;
+}
+
+function findQuadByLines(mat){
+  const scale = Math.min(1, LINE_DETECT_W / mat.cols);
+  const mats = [];
+  const keep = m => (mats.push(m), m);
+  try{
+    const small = keep(new cv.Mat());
+    cv.resize(mat, small, new cv.Size(Math.round(mat.cols*scale), Math.round(mat.rows*scale)), 0, 0, cv.INTER_AREA);
+    const W = small.cols, H = small.rows;
+    const gray = keep(new cv.Mat()); cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
+    const edges = keep(new cv.Mat()); cv.Canny(gray, edges, 30, 90);
+    const edgeD = keep(new cv.Mat()); cv.dilate(edges, edgeD, keep(cv.Mat.ones(3,3, cv.CV_8U)));
+    const gx = keep(new cv.Mat()), gy = keep(new cv.Mat());
+    cv.Sobel(gray, gx, cv.CV_32F, 1, 0, 3); cv.Sobel(gray, gy, cv.CV_32F, 0, 1, 3);
+    const gxd = gx.data32F, gyd = gy.data32F, gd = new Float32Array(W*H);
+    for(let i=0;i<gd.length;i++) gd[i] = Math.hypot(gxd[i], gyd[i]);
+    const ed = edgeD.data;
+
+    // エッジを勾配の向きで「水平に近い線」「垂直に近い線」に分けてから直線を探す
+    // （画面の中身の斜めの線に投票を取られ、枠の線が検出されないのを防ぐ）
+    const eH = keep(new cv.Mat(H, W, cv.CV_8UC1, new cv.Scalar(0)));
+    const eV = keep(new cv.Mat(H, W, cv.CV_8UC1, new cv.Scalar(0)));
+    { const src = edges.data, h = eH.data, v = eV.data;
+      for(let i=0;i<src.length;i++){
+        if(!src[i]) continue;
+        const ax = Math.abs(gxd[i]), ay = Math.abs(gyd[i]);
+        if(ay > 1.7*ax) h[i] = 255; else if(ax > 1.7*ay) v[i] = 255;
+      } }
+    const houghLines = m => {
+      const lm = keep(new cv.Mat());
+      cv.HoughLinesP(m, lm, 1, Math.PI/180, 30, Math.round(Math.min(W,H)*0.15), 8);
+      // ほぼ同じ直線上の線分をまとめ、長い順に残す
+      const raw = [];
+      for(let i=0;i<lm.rows;i++) raw.push(Array.from(lm.data32S.slice(i*4, i*4+4)));
+      raw.sort((a,b)=>Math.hypot(b[2]-b[0],b[3]-b[1]) - Math.hypot(a[2]-a[0],a[3]-a[1]));
+      const lines = [];
+      for(const l of raw){
+        const th = ((Math.atan2(l[3]-l[1], l[2]-l[0])*180/Math.PI) + 180) % 180;
+        const nx = -Math.sin(th*Math.PI/180), ny = Math.cos(th*Math.PI/180);
+        const dup = lines.some(o=>{
+          let dth = Math.abs(o.th-th); dth = Math.min(dth, 180-dth);
+          return dth < 4 && Math.abs(o.rho - (l[0]*o.nx + l[1]*o.ny)) < 6;
+        });
+        if(!dup) lines.push({ l, th, nx, ny, rho: l[0]*nx + l[1]*ny });
+      }
+      return lines;
+    };
+    const hor = houghLines(eH).filter(o=>o.th < 30 || o.th > 150).slice(0, 15);
+    const ver = houghLines(eV).filter(o=>o.th >= 60 && o.th <= 120).slice(0, 15);
+    const angDiff = (a,b)=>{ const d = Math.abs(a.th-b.th); return Math.min(d, 180-d); };
+
+    const px = (x,y)=>Math.round(Math.max(0,Math.min(W-1,x))) + Math.round(Math.max(0,Math.min(H-1,y)))*W;
+    const support = q => { // 各辺のうちエッジ上にある割合
+      let min = 1, sum = 0;
+      for(let i=0;i<4;i++){
+        const p=q[i], r=q[(i+1)%4];
+        const n = Math.max(8, Math.round(Math.hypot(r.x-p.x, r.y-p.y)/2));
+        let hit = 0;
+        for(let k=0;k<n;k++){ const t = 0.05 + 0.9*k/(n-1); if(ed[px(p.x+(r.x-p.x)*t, p.y+(r.y-p.y)*t)]) hit++; }
+        min = Math.min(min, hit/n); sum += hit/n;
+      }
+      return { min, mean: sum/4 };
+    };
+    const strength = q => { // 各辺に沿った明暗差（勾配の中央値）の最小値
+      let min = Infinity;
+      for(let i=0;i<4;i++){
+        const p=q[i], r=q[(i+1)%4], vals=[];
+        for(let k=0;k<24;k++){
+          const t = 0.1 + 0.8*k/23, x = p.x+(r.x-p.x)*t, y = p.y+(r.y-p.y)*t;
+          let g = 0;
+          for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) g = Math.max(g, gd[px(x+dx, y+dy)]);
+          vals.push(g);
+        }
+        vals.sort((a,b)=>a-b);
+        min = Math.min(min, (vals[11]+vals[12])/2);
+      }
+      return min;
+    };
+
+    let best = null, bestScore = 0;
+    for(let a=0;a<hor.length;a++) for(let b=a+1;b<hor.length;b++){
+    if(angDiff(hor[a], hor[b]) > 12) continue; // 向かい合う辺はほぼ平行（画面はほぼ正面から撮る前提）
+    for(let c=0;c<ver.length;c++) for(let d=c+1;d<ver.length;d++){
+      if(angDiff(ver[c], ver[d]) > 12) continue;
+      const pts = [intersectLines(hor[a].l, ver[c].l), intersectLines(hor[a].l, ver[d].l),
+                   intersectLines(hor[b].l, ver[d].l), intersectLines(hor[b].l, ver[c].l)];
+      if(pts.some(p=>!p)) continue;
+      const q = orderPoints(pts);
+      const qa = polyArea(q);
+      if(qa < W*H*0.02 || qa > W*H*0.95) continue;
+      if(q.some(p=> p.x<2 || p.y<2 || p.x>W-3 || p.y>H-3)) continue;
+      if(!isConvexQuad(q) || !quadAnglesOk(q)) continue;
+      const s = support(q);
+      if(s.min < 0.6) continue;
+      // 一番弱い辺のくっきり度を2乗で効かせる（カーテンの折り目・家具の縁などとの組み合わせを避ける）
+      const sc = (qa/(W*H)) * s.mean * Math.min(1.5, strength(q)/LINE_STRONG_GRAD)**2;
+      if(sc > bestScore){ bestScore = sc; best = q; }
+    }}
+    return best ? best.map(p=>({ x: p.x/scale, y: p.y/scale })) : null;
+  } finally {
+    mats.forEach(m=>m.delete());
+  }
+}
+
+// video または canvas を幅targetWに縮小して fn で検出し、元解像度の座標で返す
+function detectAt(src, srcW, srcH, targetW, fn){
+  const scale = Math.min(1, targetW / srcW);
+  const dw = Math.round(srcW*scale), dh = Math.round(srcH*scale);
+  const tmp = document.createElement('canvas');
+  tmp.width = dw; tmp.height = dh;
+  tmp.getContext('2d').drawImage(src, 0, 0, dw, dh);
+  const mat = cv.imread(tmp);
+  try{
+    const quad = fn(mat);
+    return quad ? quad.map(p=>({ x:p.x/scale, y:p.y/scale })) : null;
+  } finally {
+    mat.delete();
+  }
+}
+// 領域ベースを優先し、見つからなければ直線ベース。直線ベースは結果が解像度に敏感なため、
+// 元画像から直接 LINE_DETECT_W に縮小して行う（ライブ検出とシャッター時で同じ条件にする）
+function detectQuad(src, srcW, srcH, targetW){
+  return detectAt(src, srcW, srcH, targetW, findQuadByRegion)
+      || detectAt(src, srcW, srcH, LINE_DETECT_W, findQuadByLines);
+}
+
+function reportDetectError(e){
+  console.error('自動検出失敗:', e);
+  if(!reportDetectError._warned){
+    reportDetectError._warned = true;
+    toast('自動検出処理でエラーが発生しました: ' + (e && e.message ? e.message : e));
+  }
 }
 
 function runDetect(){
   if(!cvReady || video.readyState < 2) return;
   const vw = video.videoWidth, vh = video.videoHeight;
   if(!vw || !vh) return;
-
-  const scale = DETECT_SCALE_W / vw;
-  const dw = DETECT_SCALE_W, dh = Math.round(vh*scale);
-
-  const tmp = document.createElement('canvas');
-  tmp.width = dw; tmp.height = dh;
-  tmp.getContext('2d').drawImage(video, 0, 0, dw, dh);
-
-  let mat;
   try{
-    mat = cv.imread(tmp);
-    const quad = findQuadOnMat(mat);
-    mat.delete();
+    const quad = detectQuad(video, vw, vh, DETECT_SCALE_W);
     if(quad){
-      // 検出座標(縮小)→動画本来解像度に戻す
-      lastQuad = quad.map(p=>({ x:p.x/scale, y:p.y/scale }));
+      lastQuad = quad; lastQuadAt = performance.now();
       drawOverlayQuad(lastQuad, vw, vh, true);
-    } else {
+    } else if(!lastQuad || performance.now() - lastQuadAt > QUAD_HOLD_MS){
       lastQuad = null;
       drawOverlayQuad(null, vw, vh, false);
     }
   }catch(e){
-    if(mat) mat.delete();
-    console.error('runDetect失敗:', e);
-    if(!runDetect._warned){
-      runDetect._warned = true;
-      toast('自動検出処理でエラーが発生しました: ' + (e && e.message ? e.message : e));
-    }
+    reportDetectError(e);
   }
 }
 
@@ -498,20 +664,49 @@ function solvePerspective(fromPts, toPts){
   return solveLinear8(A,B);
 }
 
+// スマホカメラの焦点距離（画像の長辺に対する比）。主カメラの画角はおおむね65〜80°
+const ASSUMED_FOCAL_RATIO = 0.75;
+
+// 斜めから写した長方形の4隅から、元の長方形の縦横比（幅/高さ）を推定する（Zhang & He 2004）
+// 焦点距離も4隅から推定できるが、正面に近いと数px の検出誤差で大きく振れる（縦横比が最大50%以上ずれた）ため、
+// 主点=画像中心・焦点距離=長辺×ASSUMED_FOCAL_RATIO と仮定して計算する
+function estimateRectAspect(tl, tr, br, bl, u0, v0, f){
+  const cross = (p,q)=>[p[1]*q[2]-p[2]*q[1], p[2]*q[0]-p[0]*q[2], p[0]*q[1]-p[1]*q[0]];
+  const dot = (p,q)=>p[0]*q[0]+p[1]*q[1]+p[2]*q[2];
+  const m1=[tl.x,tl.y,1], m2=[tr.x,tr.y,1], m3=[bl.x,bl.y,1], m4=[br.x,br.y,1];
+  const c14 = cross(m1,m4);
+  const k2 = dot(c14,m3) / dot(cross(m2,m4),m3);
+  const k3 = dot(c14,m2) / dot(cross(m3,m4),m2);
+  const n2 = m2.map((v,i)=>k2*v - m1[i]);
+  const n3 = m3.map((v,i)=>k3*v - m1[i]);
+  // n^T (K^-T K^-1) n （K=[[f,0,u0],[0,f,v0],[0,0,1]]）
+  const q = n => { const x=(n[0]-u0*n[2]), y=(n[1]-v0*n[2]); return (x*x + y*y)/(f*f) + n[2]*n[2]; };
+  const r = Math.sqrt(q(n2)/q(n3));
+  return isFinite(r) && r > 0 ? r : null;
+}
+
 function warpFullFrame(quad, sourceCanvas){
   // OpenCV.js不要：4隅から射影変換(ホモグラフィ)を解き、出力側の各ピクセルごとに
   // 逆写像で元画像をバイリニア補間サンプリングする（真の台形補正）
   const [tl,tr,br,bl] = quad;
-  const widthA = dist(br,bl), widthB = dist(tr,tl);
-  const maxW = Math.max(1, Math.round(Math.max(widthA, widthB)));
-  const heightA = dist(tr,br), heightB = dist(tl,bl);
-  const maxH = Math.max(1, Math.round(Math.max(heightA, heightB)));
+  const sw = sourceCanvas.width, sh = sourceCanvas.height;
+  const measuredW = Math.max(dist(tr,tl), dist(br,bl));
+  const measuredH = Math.max(dist(bl,tl), dist(br,tr));
+  // 出力サイズは写った辺の長さではなく、推定した元の縦横比で決める
+  // （斜めから撮ると奥行き方向の辺が短く写り、縦長の用紙が正方形・横長に潰れるため）
+  let aspect = estimateRectAspect(tl, tr, br, bl, sw/2, sh/2, Math.max(sw, sh)*ASSUMED_FOCAL_RATIO);
+  if(!aspect || aspect < 0.1 || aspect > 10) aspect = measuredW / measuredH;
+  let outW = Math.max(measuredW, measuredH*aspect);
+  let outH = outW / aspect;
+  const limit = Math.max(sw, sh) / Math.max(outW, outH);
+  if(limit < 1){ outW *= limit; outH *= limit; }
+  const maxW = Math.max(1, Math.round(outW));
+  const maxH = Math.max(1, Math.round(outH));
 
   const dstCorners = [{x:0,y:0},{x:maxW,y:0},{x:maxW,y:maxH},{x:0,y:maxH}];
   const srcCorners = [tl,tr,br,bl];
   const [a,b,c,d,e,f,g,h] = solvePerspective(dstCorners, srcCorners); // 出力->入力
 
-  const sw = sourceCanvas.width, sh = sourceCanvas.height;
   const srcData = sourceCanvas.getContext('2d').getImageData(0,0,sw,sh).data;
 
   const outCanvas = document.createElement('canvas');
@@ -680,7 +875,15 @@ window._adjustConfirm = function(){
 
 window._onShutter = function(){
   if(!video.videoWidth) return;
-  openAdjust(captureFullFrameOnly(), lastQuad);
+  const full = captureFullFrameOnly();
+  // 撮影したフレーム自体で再検出（ライブ検出のタイミングずれ・ちらつきに左右されない）
+  let quad = null;
+  if(cvReady){
+    try{ quad = detectQuad(full, full.width, full.height, SHUTTER_DETECT_W); }
+    catch(e){ reportDetectError(e); }
+  }
+  if(!quad && lastQuad && performance.now() - lastQuadAt <= QUAD_HOLD_MS) quad = lastQuad;
+  openAdjust(full, quad);
 };
 
 function openReview(canvas){
