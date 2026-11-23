@@ -362,8 +362,8 @@ function scoreQuad(quad, cntArea, hullArea, W, H){
   return (qa/(W*H)) * fill * solidity;
 }
 
-function findQuadOnMat(mat){
-  // mat: RGBA cv.Mat -> 戻り値: [{x,y}x4] または null（mat座標系）
+// mat: RGBA cv.Mat -> 戻り値: [{x,y}x4] または null（mat座標系）
+function findQuadByRegion(mat){
   // 彩度・明るさ・グレーの各チャンネルを二値化した領域と、エッジで囲まれた領域を候補にし、
   // 「四角形らしさ×大きさ」で最良のものを選ぶ（木目・床の継ぎ目・白飛びなどの誤検出に強い）
   const W = mat.cols, H = mat.rows;
@@ -423,8 +423,144 @@ function findQuadOnMat(mat){
   }
 }
 
-// video または canvas を幅targetWに縮小して検出し、元解像度の座標で返す
-function detectQuad(src, srcW, srcH, targetW){
+// ── 直線による予備検出（テレビ・モニターなど、画面の中身がばらばらで領域として切り出せないもの向け）──
+const LINE_DETECT_W = 320;        // 解像度を上げると周囲の家具の縁を拾いやすくなるため固定
+const LINE_STRONG_GRAD = 200;     // 辺に沿った明暗差（Sobel勾配）がこれ以上ならくっきりした境界とみなす
+
+function intersectLines(l1, l2){
+  const [x1,y1,x2,y2] = l1, [x3,y3,x4,y4] = l2;
+  const d = (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4);
+  if(Math.abs(d) < 1e-9) return null;
+  const a = x1*y2 - y1*x2, b = x3*y4 - y3*x4;
+  return { x: (a*(x3-x4) - (x1-x2)*b)/d, y: (a*(y3-y4) - (y1-y2)*b)/d };
+}
+function isConvexQuad(q){
+  let sign = 0;
+  for(let i=0;i<4;i++){
+    const a=q[i], b=q[(i+1)%4], c=q[(i+2)%4];
+    const z = (b.x-a.x)*(c.y-b.y) - (b.y-a.y)*(c.x-b.x);
+    if(Math.abs(z) < 1e-9) return false;
+    if(sign === 0) sign = Math.sign(z); else if(Math.sign(z) !== sign) return false;
+  }
+  return true;
+}
+function quadAnglesOk(q){
+  for(let i=0;i<4;i++){
+    const a=q[(i+3)%4], b=q[i], c=q[(i+1)%4];
+    const v1x=a.x-b.x, v1y=a.y-b.y, v2x=c.x-b.x, v2y=c.y-b.y;
+    const cos=(v1x*v2x+v1y*v2y)/(Math.hypot(v1x,v1y)*Math.hypot(v2x,v2y)+1e-9);
+    const deg=Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI;
+    if(deg<45 || deg>135) return false;
+  }
+  return true;
+}
+
+function findQuadByLines(mat){
+  const scale = Math.min(1, LINE_DETECT_W / mat.cols);
+  const mats = [];
+  const keep = m => (mats.push(m), m);
+  try{
+    const small = keep(new cv.Mat());
+    cv.resize(mat, small, new cv.Size(Math.round(mat.cols*scale), Math.round(mat.rows*scale)), 0, 0, cv.INTER_AREA);
+    const W = small.cols, H = small.rows;
+    const gray = keep(new cv.Mat()); cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
+    const edges = keep(new cv.Mat()); cv.Canny(gray, edges, 30, 90);
+    const edgeD = keep(new cv.Mat()); cv.dilate(edges, edgeD, keep(cv.Mat.ones(3,3, cv.CV_8U)));
+    const gx = keep(new cv.Mat()), gy = keep(new cv.Mat());
+    cv.Sobel(gray, gx, cv.CV_32F, 1, 0, 3); cv.Sobel(gray, gy, cv.CV_32F, 0, 1, 3);
+    const gxd = gx.data32F, gyd = gy.data32F, gd = new Float32Array(W*H);
+    for(let i=0;i<gd.length;i++) gd[i] = Math.hypot(gxd[i], gyd[i]);
+    const ed = edgeD.data;
+
+    // エッジを勾配の向きで「水平に近い線」「垂直に近い線」に分けてから直線を探す
+    // （画面の中身の斜めの線に投票を取られ、枠の線が検出されないのを防ぐ）
+    const eH = keep(new cv.Mat(H, W, cv.CV_8UC1, new cv.Scalar(0)));
+    const eV = keep(new cv.Mat(H, W, cv.CV_8UC1, new cv.Scalar(0)));
+    { const src = edges.data, h = eH.data, v = eV.data;
+      for(let i=0;i<src.length;i++){
+        if(!src[i]) continue;
+        const ax = Math.abs(gxd[i]), ay = Math.abs(gyd[i]);
+        if(ay > 1.7*ax) h[i] = 255; else if(ax > 1.7*ay) v[i] = 255;
+      } }
+    const houghLines = m => {
+      const lm = keep(new cv.Mat());
+      cv.HoughLinesP(m, lm, 1, Math.PI/180, 30, Math.round(Math.min(W,H)*0.15), 8);
+      // ほぼ同じ直線上の線分をまとめ、長い順に残す
+      const raw = [];
+      for(let i=0;i<lm.rows;i++) raw.push(Array.from(lm.data32S.slice(i*4, i*4+4)));
+      raw.sort((a,b)=>Math.hypot(b[2]-b[0],b[3]-b[1]) - Math.hypot(a[2]-a[0],a[3]-a[1]));
+      const lines = [];
+      for(const l of raw){
+        const th = ((Math.atan2(l[3]-l[1], l[2]-l[0])*180/Math.PI) + 180) % 180;
+        const nx = -Math.sin(th*Math.PI/180), ny = Math.cos(th*Math.PI/180);
+        const dup = lines.some(o=>{
+          let dth = Math.abs(o.th-th); dth = Math.min(dth, 180-dth);
+          return dth < 4 && Math.abs(o.rho - (l[0]*o.nx + l[1]*o.ny)) < 6;
+        });
+        if(!dup) lines.push({ l, th, nx, ny, rho: l[0]*nx + l[1]*ny });
+      }
+      return lines;
+    };
+    const hor = houghLines(eH).filter(o=>o.th < 30 || o.th > 150).slice(0, 15);
+    const ver = houghLines(eV).filter(o=>o.th >= 60 && o.th <= 120).slice(0, 15);
+    const angDiff = (a,b)=>{ const d = Math.abs(a.th-b.th); return Math.min(d, 180-d); };
+
+    const px = (x,y)=>Math.round(Math.max(0,Math.min(W-1,x))) + Math.round(Math.max(0,Math.min(H-1,y)))*W;
+    const support = q => { // 各辺のうちエッジ上にある割合
+      let min = 1, sum = 0;
+      for(let i=0;i<4;i++){
+        const p=q[i], r=q[(i+1)%4];
+        const n = Math.max(8, Math.round(Math.hypot(r.x-p.x, r.y-p.y)/2));
+        let hit = 0;
+        for(let k=0;k<n;k++){ const t = 0.05 + 0.9*k/(n-1); if(ed[px(p.x+(r.x-p.x)*t, p.y+(r.y-p.y)*t)]) hit++; }
+        min = Math.min(min, hit/n); sum += hit/n;
+      }
+      return { min, mean: sum/4 };
+    };
+    const strength = q => { // 各辺に沿った明暗差（勾配の中央値）の最小値
+      let min = Infinity;
+      for(let i=0;i<4;i++){
+        const p=q[i], r=q[(i+1)%4], vals=[];
+        for(let k=0;k<24;k++){
+          const t = 0.1 + 0.8*k/23, x = p.x+(r.x-p.x)*t, y = p.y+(r.y-p.y)*t;
+          let g = 0;
+          for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) g = Math.max(g, gd[px(x+dx, y+dy)]);
+          vals.push(g);
+        }
+        vals.sort((a,b)=>a-b);
+        min = Math.min(min, (vals[11]+vals[12])/2);
+      }
+      return min;
+    };
+
+    let best = null, bestScore = 0;
+    for(let a=0;a<hor.length;a++) for(let b=a+1;b<hor.length;b++){
+    if(angDiff(hor[a], hor[b]) > 12) continue; // 向かい合う辺はほぼ平行（画面はほぼ正面から撮る前提）
+    for(let c=0;c<ver.length;c++) for(let d=c+1;d<ver.length;d++){
+      if(angDiff(ver[c], ver[d]) > 12) continue;
+      const pts = [intersectLines(hor[a].l, ver[c].l), intersectLines(hor[a].l, ver[d].l),
+                   intersectLines(hor[b].l, ver[d].l), intersectLines(hor[b].l, ver[c].l)];
+      if(pts.some(p=>!p)) continue;
+      const q = orderPoints(pts);
+      const qa = polyArea(q);
+      if(qa < W*H*0.02 || qa > W*H*0.95) continue;
+      if(q.some(p=> p.x<2 || p.y<2 || p.x>W-3 || p.y>H-3)) continue;
+      if(!isConvexQuad(q) || !quadAnglesOk(q)) continue;
+      const s = support(q);
+      if(s.min < 0.6) continue;
+      // 一番弱い辺のくっきり度を2乗で効かせる（カーテンの折り目・家具の縁などとの組み合わせを避ける）
+      const sc = (qa/(W*H)) * s.mean * Math.min(1.5, strength(q)/LINE_STRONG_GRAD)**2;
+      if(sc > bestScore){ bestScore = sc; best = q; }
+    }}
+    return best ? best.map(p=>({ x: p.x/scale, y: p.y/scale })) : null;
+  } finally {
+    mats.forEach(m=>m.delete());
+  }
+}
+
+// video または canvas を幅targetWに縮小して fn で検出し、元解像度の座標で返す
+function detectAt(src, srcW, srcH, targetW, fn){
   const scale = Math.min(1, targetW / srcW);
   const dw = Math.round(srcW*scale), dh = Math.round(srcH*scale);
   const tmp = document.createElement('canvas');
@@ -432,11 +568,17 @@ function detectQuad(src, srcW, srcH, targetW){
   tmp.getContext('2d').drawImage(src, 0, 0, dw, dh);
   const mat = cv.imread(tmp);
   try{
-    const quad = findQuadOnMat(mat);
+    const quad = fn(mat);
     return quad ? quad.map(p=>({ x:p.x/scale, y:p.y/scale })) : null;
   } finally {
     mat.delete();
   }
+}
+// 領域ベースを優先し、見つからなければ直線ベース。直線ベースは結果が解像度に敏感なため、
+// 元画像から直接 LINE_DETECT_W に縮小して行う（ライブ検出とシャッター時で同じ条件にする）
+function detectQuad(src, srcW, srcH, targetW){
+  return detectAt(src, srcW, srcH, targetW, findQuadByRegion)
+      || detectAt(src, srcW, srcH, LINE_DETECT_W, findQuadByLines);
 }
 
 function reportDetectError(e){
