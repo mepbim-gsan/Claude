@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>カメラキャプチャ</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#1c2029">
@@ -25,8 +25,11 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 
 /* ── 撮影ページ ── */
 #page-cam{background:#000;}
-.cam-stage{flex:1;position:relative;overflow:hidden;background:#000;}
-#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+.cam-stage{flex:1;position:relative;overflow:hidden;background:#000;touch-action:none;}
+.zoom-label{position:absolute;bottom:14px;left:0;right:0;margin:0 auto;width:fit-content;padding:6px 14px;border-radius:99px;
+  background:rgba(0,0,0,.55);color:#fff;font-size:15px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;}
+.zoom-label.show{opacity:1;}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center center;}
 #overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
 .cam-hint{position:absolute;top:14px;left:0;right:0;text-align:center;
   font-size:13px;color:#fff;background:rgba(0,0,0,.45);padding:8px 12px;
@@ -79,7 +82,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 .grid{flex:1;overflow-y:auto;padding:8px 12px calc(80px + env(safe-area-inset-bottom));
   display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
 .grid-item{position:relative;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:var(--sf);border:1px solid var(--border);}
-.grid-item img{width:100%;height:100%;object-fit:cover;display:block;}
+.grid-item{background:#000;}
+.grid-item img{width:100%;height:100%;object-fit:contain;display:block;}
 .grid-empty{padding:60px 20px;text-align:center;color:var(--text3);font-size:14px;}
 
 /* ── 詳細モーダル ── */
@@ -117,6 +121,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
       <video id="video" playsinline autoplay muted></video>
       <canvas id="overlay"></canvas>
       <div id="camHint" class="cam-hint">画面全体をフレーム内に収めてください</div>
+      <div id="zoomLabel" class="zoom-label">1.0x</div>
     </div>
     <div class="cam-bar">
       <button class="cam-side-btn" onclick="window._toggleTorch && window._toggleTorch()">💡</button>
@@ -184,7 +189,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 <script src="./lib/opencv.js" onerror="window._cvScriptLoadFailed=true"></script>
 <script>
 'use strict';
-const APP_VERSION = 'v08_2026-11-23';
+const APP_VERSION = 'v08_2026-11-23.2';
 
 /* ===================== IndexedDB ===================== */
 const DB_NAME = 'camera-capture-db';
@@ -263,6 +268,94 @@ const DETECT_SCALE_W = 320;     // ライブ検出は縮小フレームで実施
 const SHUTTER_DETECT_W = 480;   // シャッター時は撮影フレームを少し高解像度で再検出
 const QUAD_HOLD_MS = 1500;      // 手ブレ等で一瞬検出が外れても直前の枠を保持する時間
 
+/* ── ズーム（カメラ側のズームに対応していればそれを、無ければ映像中央の切り出し） ── */
+const DIGITAL_ZOOM_MAX = 4;
+let digitalZoom = 1;
+const zoom = { track: null, min: 1, max: 1, value: 1, pending: null };
+
+function frameRect(){
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const sw = vw/digitalZoom, sh = vh/digitalZoom;
+  return { sx: (vw-sw)/2, sy: (vh-sh)/2, sw, sh };
+}
+function setupZoom(){
+  const t = stream && stream.getVideoTracks()[0];
+  const caps = t && t.getCapabilities ? t.getCapabilities() : {};
+  if(caps.zoom && caps.zoom.max > caps.zoom.min){
+    zoom.track = t; zoom.min = caps.zoom.min; zoom.max = caps.zoom.max;
+    zoom.value = (t.getSettings && t.getSettings().zoom) || caps.zoom.min;
+  } else {
+    zoom.track = null; zoom.min = 1; zoom.max = DIGITAL_ZOOM_MAX; zoom.value = 1;
+  }
+}
+function setZoom(z){
+  z = Math.min(zoom.max, Math.max(zoom.min, z));
+  zoom.value = z;
+  if(zoom.track){
+    // applyConstraintsは連続で呼ぶと詰まるため、次の描画タイミングでまとめて反映
+    if(!zoom.pending) zoom.pending = requestAnimationFrame(()=>{
+      zoom.pending = null;
+      zoom.track.applyConstraints({ advanced: [{ zoom: zoom.value }] }).catch(()=>{});
+    });
+  } else {
+    digitalZoom = z;
+    video.style.transform = z > 1 ? `scale(${z})` : '';
+  }
+  lastQuad = null; drawOverlayQuad(null, false);
+  const lbl = document.getElementById('zoomLabel');
+  lbl.textContent = (zoom.track ? z/zoom.min : z).toFixed(1) + 'x';
+  lbl.classList.add('show');
+  clearTimeout(setZoom._tm);
+  setZoom._tm = setTimeout(()=> lbl.classList.remove('show'), 1200);
+}
+(function setupPinch(){
+  const stage = document.querySelector('.cam-stage');
+  const pts = new Map();
+  let startDist = 0, startZoom = 1;
+  const dist = () => { const [a,b] = [...pts.values()]; return Math.hypot(a.x-b.x, a.y-b.y); };
+  stage.addEventListener('pointerdown', e=>{
+    pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if(pts.size === 2){ startDist = dist(); startZoom = zoom.value; }
+  });
+  stage.addEventListener('pointermove', e=>{
+    if(!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if(pts.size === 2 && startDist > 0) setZoom(startZoom * dist()/startDist);
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=> stage.addEventListener(ev, e=>{
+    pts.delete(e.pointerId);
+    if(pts.size < 2) startDist = 0;
+  }));
+})();
+
+/* ── スマホの持ち方（傾きセンサー）から、写った物を正しい向きにする回転量を決める ── */
+let holdAngle = null;   // 本体の自然な向き（縦持ち）からの回転: 0=縦 90=左に倒した横 180=逆さ 270=右に倒した横
+let shotRotation = 0;   // シャッター時に決めた、出力を時計回りに回す角度
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+window.addEventListener('devicemotion', e=>{
+  const g = e.accelerationIncludingGravity;
+  if(!g || g.x == null || g.y == null) return;
+  const s = IS_IOS ? -1 : 1; // iOSは重力の符号が逆
+  const x = g.x*s, y = g.y*s;
+  // 机の上の書類を真上から撮る時など、ほぼ水平だと判定できないので直前の向きを使う
+  if(Math.max(Math.abs(x), Math.abs(y)) < 3) return;
+  holdAngle = Math.abs(x) > Math.abs(y) ? (x > 0 ? 90 : 270) : (y > 0 ? 0 : 180);
+});
+// iOSは傾きセンサーの利用に許可が必要（ユーザー操作の中で一度だけ求める）
+document.addEventListener('pointerdown', function askMotion(){
+  document.removeEventListener('pointerdown', askMotion);
+  if(window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function'){
+    DeviceMotionEvent.requestPermission().catch(()=>{});
+  }
+});
+function contentRotation(){
+  if(holdAngle == null) return 0; // センサーが無ければ回さない（確認画面の↻で直す）
+  const screenAngle = (screen.orientation && screen.orientation.angle) || 0;
+  const rel = ((holdAngle - screenAngle) % 360 + 360) % 360; // 画面の回転で打ち消されない分
+  // 左に倒すと（rel=90）物の上が映像の右を向くので、反時計回り（=時計回り270°）に戻す
+  return (360 - rel) % 360;
+}
+
 function cvOnRuntimeInitialized(){ cvReady = true; }
 if (window.cv) {
   if (cv.getBuildInformation) cvReady = true;
@@ -281,6 +374,7 @@ async function startCamera(){
     });
     video.srcObject = stream;
     await video.play();
+    setupZoom();
     resizeOverlay();
     startDetectLoop();
     setTimeout(()=>{
@@ -295,7 +389,7 @@ async function startCamera(){
   }
 }
 function resizeOverlay(){
-  const r = video.getBoundingClientRect();
+  const r = overlay.getBoundingClientRect(); // videoはデジタルズームでCSS拡大されるためoverlay側で測る
   overlay.width = r.width; overlay.height = r.height;
 }
 window.addEventListener('resize', resizeOverlay);
@@ -559,13 +653,13 @@ function findQuadByLines(mat){
   }
 }
 
-// video または canvas を幅targetWに縮小して fn で検出し、元解像度の座標で返す
-function detectAt(src, srcW, srcH, targetW, fn){
-  const scale = Math.min(1, targetW / srcW);
-  const dw = Math.round(srcW*scale), dh = Math.round(srcH*scale);
+// video または canvas の範囲 r={sx,sy,sw,sh} を幅targetWに縮小して fn で検出し、範囲内の座標で返す
+function detectAt(src, r, targetW, fn){
+  const scale = Math.min(1, targetW / r.sw);
+  const dw = Math.round(r.sw*scale), dh = Math.round(r.sh*scale);
   const tmp = document.createElement('canvas');
   tmp.width = dw; tmp.height = dh;
-  tmp.getContext('2d').drawImage(src, 0, 0, dw, dh);
+  tmp.getContext('2d').drawImage(src, r.sx, r.sy, r.sw, r.sh, 0, 0, dw, dh);
   const mat = cv.imread(tmp);
   try{
     const quad = fn(mat);
@@ -576,9 +670,9 @@ function detectAt(src, srcW, srcH, targetW, fn){
 }
 // 領域ベースを優先し、見つからなければ直線ベース。直線ベースは結果が解像度に敏感なため、
 // 元画像から直接 LINE_DETECT_W に縮小して行う（ライブ検出とシャッター時で同じ条件にする）
-function detectQuad(src, srcW, srcH, targetW){
-  return detectAt(src, srcW, srcH, targetW, findQuadByRegion)
-      || detectAt(src, srcW, srcH, LINE_DETECT_W, findQuadByLines);
+function detectQuad(src, r, targetW){
+  return detectAt(src, r, targetW, findQuadByRegion)
+      || detectAt(src, r, LINE_DETECT_W, findQuadByLines);
 }
 
 function reportDetectError(e){
@@ -591,35 +685,39 @@ function reportDetectError(e){
 
 function runDetect(){
   if(!cvReady || video.readyState < 2) return;
-  const vw = video.videoWidth, vh = video.videoHeight;
-  if(!vw || !vh) return;
+  if(!video.videoWidth || !video.videoHeight) return;
   try{
-    const quad = detectQuad(video, vw, vh, DETECT_SCALE_W);
+    const quad = detectQuad(video, frameRect(), DETECT_SCALE_W);
     if(quad){
       lastQuad = quad; lastQuadAt = performance.now();
-      drawOverlayQuad(lastQuad, vw, vh, true);
+      drawOverlayQuad(lastQuad, true);
     } else if(!lastQuad || performance.now() - lastQuadAt > QUAD_HOLD_MS){
       lastQuad = null;
-      drawOverlayQuad(null, vw, vh, false);
+      drawOverlayQuad(null, false);
     }
   }catch(e){
     reportDetectError(e);
   }
 }
 
-function drawOverlayQuad(quadVideoCoords, vw, vh, detected){
+// quad: 撮影範囲（frameRect）内の座標
+function drawOverlayQuad(quad, detected){
   octx.clearRect(0,0,overlay.width, overlay.height);
   camHint.textContent = detected ? 'この枠でタップして撮影' : '画面全体をフレーム内に収めてください';
   camHint.classList.toggle('detected', detected);
-  if(!quadVideoCoords) return;
+  if(!quad) return;
 
-  // object-fit:cover 前提でvideo座標→表示座標に変換
-  const rect = video.getBoundingClientRect();
-  const scaleCover = Math.max(rect.width/vw, rect.height/vh);
-  const offX = (rect.width - vw*scaleCover)/2;
-  const offY = (rect.height - vh*scaleCover)/2;
-  const toDisp = p => ({ x: p.x*scaleCover + offX, y: p.y*scaleCover + offY });
-  const pts = quadVideoCoords.map(toDisp);
+  // 撮影範囲の座標→video座標→表示座標（object-fit:cover、デジタルズーム時は中央基準でCSS拡大）
+  const vw = video.videoWidth, vh = video.videoHeight, r = frameRect();
+  const rect = video.getBoundingClientRect(); // transform後の矩形なので、拡大前の大きさに戻して使う
+  const bw = rect.width/digitalZoom, bh = rect.height/digitalZoom;
+  const scaleCover = Math.max(bw/vw, bh/vh);
+  const offX = (bw - vw*scaleCover)/2, offY = (bh - vh*scaleCover)/2;
+  const toDisp = p => {
+    const x = (p.x + r.sx)*scaleCover + offX, y = (p.y + r.sy)*scaleCover + offY;
+    return { x: bw/2 + (x - bw/2)*digitalZoom, y: bh/2 + (y - bh/2)*digitalZoom };
+  };
+  const pts = quad.map(toDisp);
 
   octx.strokeStyle = '#3ecf8e';
   octx.lineWidth = 3;
@@ -739,11 +837,12 @@ function warpFullFrame(quad, sourceCanvas){
   return outCanvas;
 }
 
+// 撮影範囲（デジタルズーム中は映像の中央部分）を切り出す
 function captureFullFrameOnly(){
-  const vw = video.videoWidth, vh = video.videoHeight;
+  const r = frameRect();
   const c = document.createElement('canvas');
-  c.width = vw; c.height = vh;
-  c.getContext('2d').drawImage(video, 0, 0, vw, vh);
+  c.width = Math.round(r.sw); c.height = Math.round(r.sh);
+  c.getContext('2d').drawImage(video, r.sx, r.sy, r.sw, r.sh, 0, 0, c.width, c.height);
   return c;
 }
 
@@ -756,10 +855,10 @@ function rotate90CW(canvas){
   ctx.drawImage(canvas, -canvas.width/2, -canvas.height/2);
   return rc;
 }
-function rotateToPortrait(canvas){
-  // 横長で仕上がった場合は常に縦長へ自動回転（向きが逆なら確認画面の↻で補正）
-  if(canvas.width <= canvas.height) return canvas;
-  return rotate90CW(canvas);
+// 時計回りに deg 度（0/90/180/270）回転
+function rotateCW(canvas, deg){
+  for(let i=0; i<((deg/90)%4+4)%4; i++) canvas = rotate90CW(canvas);
+  return canvas;
 }
 function cropBoundingBox(sourceCanvas, quad){
   // OpenCV未読込時のフォールバック：台形補正せず選択範囲の外接矩形で切り抜く
@@ -867,7 +966,7 @@ window._adjustConfirm = function(){
     }catch(e){
       outCanvas = cropBoundingBox(capturedFullCanvas, adjustQuad);
     }
-    outCanvas = rotateToPortrait(outCanvas);
+    outCanvas = rotateCW(outCanvas, shotRotation);
     pendingCanvas = outCanvas;
     openReview(outCanvas);
   }, 30);
@@ -879,10 +978,11 @@ window._onShutter = function(){
   // 撮影したフレーム自体で再検出（ライブ検出のタイミングずれ・ちらつきに左右されない）
   let quad = null;
   if(cvReady){
-    try{ quad = detectQuad(full, full.width, full.height, SHUTTER_DETECT_W); }
+    try{ quad = detectQuad(full, { sx:0, sy:0, sw:full.width, sh:full.height }, SHUTTER_DETECT_W); }
     catch(e){ reportDetectError(e); }
   }
   if(!quad && lastQuad && performance.now() - lastQuadAt <= QUAD_HOLD_MS) quad = lastQuad;
+  shotRotation = contentRotation(); // 確定前にスマホの向きが変わっても、撮った瞬間の持ち方で回す
   openAdjust(full, quad);
 };
 
