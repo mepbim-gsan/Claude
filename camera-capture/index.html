@@ -67,6 +67,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
   box-shadow:0 4px 16px rgba(0,0,0,.6);pointer-events:none;display:none;z-index:2;}
 #loupe.show{display:block;}
 .adjust-stage svg{width:100%;height:100%;touch-action:none;}
+/* 長押しで「新しいタブで開く」等のメニューや文字選択が出ないように */
+#adjustModal,#reviewModal,#detailModal,.cam-stage{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+#adjustImageEl{pointer-events:none;}
 .adjust-quad{fill:rgba(62,207,142,.18);stroke:#3ecf8e;stroke-width:3;}
 .adjust-handle{fill:#3ecf8e;stroke:#06251a;stroke-width:3;cursor:grab;}
 .adjust-hint{position:absolute;top:14px;left:0;right:0;text-align:center;
@@ -201,7 +204,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 <script src="./lib/opencv.js" onerror="window._cvScriptLoadFailed=true"></script>
 <script>
 'use strict';
-const APP_VERSION = 'v08_2026-11-23.6';
+const APP_VERSION = 'v08_2026-11-23.7';
 document.querySelectorAll('.app-ver').forEach(el=>el.textContent=APP_VERSION);
 
 /* ===================== IndexedDB ===================== */
@@ -1294,6 +1297,11 @@ function openDetail(rec){
   btn.disabled = !rec.src;
   btn.title = rec.src ? '' : 'この画像は元の撮影画像を保存していないため、範囲を修正できません';
   document.getElementById('detailModal').classList.add('open');
+}
+// 撮影・調整・確認・詳細画面では長押しメニュー（新しいタブで開く・画像を保存 等）を出さない
+for(const sel of ['#adjustModal', '#reviewModal', '#detailModal', '.cam-stage']){
+  const el = document.querySelector(sel);
+  if(el) el.addEventListener('contextmenu', e=>e.preventDefault());
 }
 // 詳細画面の拡大（ピンチ・ダブルタップ・ドラッグ・ホイール）
 const detailZoom = (()=>{
