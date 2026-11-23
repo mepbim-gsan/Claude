@@ -60,7 +60,12 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 /* ── 矩形調整モーダル ── */
 #adjustModal{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;}
 #adjustModal.open{display:flex;}
-.adjust-stage{flex:1;display:flex;padding:16px;overflow:hidden;}
+.adjust-stage{flex:1;display:flex;padding:16px;overflow:hidden;position:relative;}
+.adjust-edge{stroke:#3ecf8e;stroke-linecap:round;cursor:grab;}
+.adjust-edge-hit{stroke:transparent;stroke-linecap:round;cursor:grab;}
+#loupe{position:absolute;width:120px;height:120px;border-radius:50%;border:3px solid #3ecf8e;
+  box-shadow:0 4px 16px rgba(0,0,0,.6);pointer-events:none;display:none;z-index:2;}
+#loupe.show{display:block;}
 .adjust-stage svg{width:100%;height:100%;touch-action:none;}
 .adjust-quad{fill:rgba(62,207,142,.18);stroke:#3ecf8e;stroke-width:3;}
 .adjust-handle{fill:#3ecf8e;stroke:#06251a;stroke-width:3;cursor:grab;}
@@ -156,6 +161,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 <div id="adjustModal">
   <div class="adjust-stage">
     <svg id="adjustSvg" preserveAspectRatio="xMidYMid meet"></svg>
+    <canvas id="loupe"></canvas>
   </div>
   <div class="adjust-bar">
     <button class="adjust-btn retake" onclick="window._adjustRetake()">撮り直す</button>
@@ -876,21 +882,28 @@ let pendingCanvas = null;
 
 /* ── 矩形調整（手動ドラッグ） ── */
 const adjustSvg = document.getElementById('adjustSvg');
+// 描画順: 画像 → 枠 → 辺のつかみ線（透明・太い） → 辺の中央のつまみ → 角のつまみ（角を最優先でつかめるよう最前面）
 adjustSvg.innerHTML =
   '<image id="adjustImageEl" x="0" y="0" preserveAspectRatio="none"></image>' +
   '<polygon id="adjustPolygonEl" class="adjust-quad"></polygon>' +
-  '<circle class="adjust-handle" data-i="0" r="0"></circle>' +
-  '<circle class="adjust-handle" data-i="1" r="0"></circle>' +
-  '<circle class="adjust-handle" data-i="2" r="0"></circle>' +
-  '<circle class="adjust-handle" data-i="3" r="0"></circle>';
+  [0,1,2,3].map(i=>`<line class="adjust-edge-hit" data-e="${i}"></line>`).join('') +
+  [0,1,2,3].map(i=>`<line class="adjust-edge" data-e="${i}"></line>`).join('') +
+  [0,1,2,3].map(i=>`<circle class="adjust-handle" data-i="${i}" r="0"></circle>`).join('');
 const adjustImageEl = document.getElementById('adjustImageEl');
 const adjustPolygonEl = document.getElementById('adjustPolygonEl');
 const adjustHandleEls = Array.from(adjustSvg.querySelectorAll('.adjust-handle'));
+const adjustEdgeEls = Array.from(adjustSvg.querySelectorAll('.adjust-edge'));
+const adjustEdgeHitEls = Array.from(adjustSvg.querySelectorAll('.adjust-edge-hit'));
+const loupe = document.getElementById('loupe');
+const LOUPE_SIZE = 120;   // 表示サイズ(CSS px)
+const LOUPE_ZOOM = 2.5;   // 画面表示に対する倍率
+const LOUPE_OFFSET = 110; // 指に隠れないよう、つかんだ点からずらす距離(CSS px)
 
 let capturedFullCanvas = null;
 let adjustQuad = null;
 let adjustAutoQuad = null;
-let dragIndex = -1;
+let drag = null; // { type:'corner', i } または { type:'edge', e, start:{x,y}, quad:[...] }
+let handleR = 10;
 
 function defaultQuad(w,h){
   const mx = w*0.08, my = h*0.08;
@@ -902,6 +915,17 @@ function updateAdjustOverlay(){
     el.setAttribute('cx', adjustQuad[i].x);
     el.setAttribute('cy', adjustQuad[i].y);
   });
+  for(let i=0;i<4;i++){
+    const a = adjustQuad[i], b = adjustQuad[(i+1)%4];
+    const hit = adjustEdgeHitEls[i];
+    hit.setAttribute('x1', a.x); hit.setAttribute('y1', a.y); hit.setAttribute('x2', b.x); hit.setAttribute('y2', b.y);
+    // 中央のつまみは辺の向きに沿った短い太線
+    const len = Math.hypot(b.x-a.x, b.y-a.y) || 1, ux = (b.x-a.x)/len, uy = (b.y-a.y)/len;
+    const mx = (a.x+b.x)/2, my = (a.y+b.y)/2, half = Math.min(handleR*1.6, len*0.25);
+    const el = adjustEdgeEls[i];
+    el.setAttribute('x1', mx - ux*half); el.setAttribute('y1', my - uy*half);
+    el.setAttribute('x2', mx + ux*half); el.setAttribute('y2', my + uy*half);
+  }
 }
 function svgPointFromEvent(evt){
   const pt = adjustSvg.createSVGPoint();
@@ -911,23 +935,82 @@ function svgPointFromEvent(evt){
   const p = pt.matrixTransform(ctm.inverse());
   return {x:p.x, y:p.y};
 }
+const clampToImage = p => ({
+  x: Math.min(Math.max(p.x,0), capturedFullCanvas.width),
+  y: Math.min(Math.max(p.y,0), capturedFullCanvas.height),
+});
+
+// 拡大鏡: 画像上の点 focus の周りを拡大し、指に隠れない位置（基本は上、上端付近では下）に出す
+function showLoupe(focus){
+  const ctm = adjustSvg.getScreenCTM();
+  if(!ctm) return;
+  const stage = loupe.parentElement.getBoundingClientRect();
+  const fx = ctm.a*focus.x + ctm.e, fy = ctm.d*focus.y + ctm.f; // 画像座標→画面座標
+  let top = fy - LOUPE_OFFSET - LOUPE_SIZE/2;
+  if(top < stage.top + 4) top = fy + LOUPE_OFFSET - LOUPE_SIZE/2;
+  const left = Math.min(Math.max(fx - LOUPE_SIZE/2, stage.left + 4), stage.right - LOUPE_SIZE - 4);
+  loupe.style.left = (left - stage.left) + 'px';
+  loupe.style.top = (top - stage.top) + 'px';
+
+  const dpr = window.devicePixelRatio || 1;
+  const px = Math.round(LOUPE_SIZE*dpr);
+  if(loupe.width !== px){ loupe.width = px; loupe.height = px; }
+  const ctx = loupe.getContext('2d');
+  const k = ctm.a*LOUPE_ZOOM*dpr; // 画像1pxあたりの拡大鏡上のピクセル数
+  const toL = p => ({ x: px/2 + (p.x - focus.x)*k, y: px/2 + (p.y - focus.y)*k });
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, px, px);
+  ctx.imageSmoothingEnabled = true;
+  const half = px/2/k;
+  ctx.drawImage(capturedFullCanvas, focus.x - half, focus.y - half, half*2, half*2, 0, 0, px, px);
+  // 枠線と十字線
+  ctx.strokeStyle = '#3ecf8e'; ctx.lineWidth = 2*dpr;
+  ctx.beginPath();
+  adjustQuad.forEach((p,i)=>{ const q = toL(p); i ? ctx.lineTo(q.x,q.y) : ctx.moveTo(q.x,q.y); });
+  ctx.closePath(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1*dpr;
+  ctx.beginPath();
+  ctx.moveTo(px/2 - 10*dpr, px/2); ctx.lineTo(px/2 + 10*dpr, px/2);
+  ctx.moveTo(px/2, px/2 - 10*dpr); ctx.lineTo(px/2, px/2 + 10*dpr);
+  ctx.stroke();
+  loupe.classList.add('show');
+}
+function hideLoupe(){ loupe.classList.remove('show'); }
+function dragFocus(){
+  if(!drag) return null;
+  if(drag.type === 'corner') return adjustQuad[drag.i];
+  const a = adjustQuad[drag.e], b = adjustQuad[(drag.e+1)%4];
+  return { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+}
+
 adjustSvg.addEventListener('pointerdown', e=>{
-  const idx = +e.target.dataset.i;
-  if(Number.isNaN(idx)) return;
-  dragIndex = idx;
+  if(!capturedFullCanvas) return;
+  const ds = e.target.dataset;
+  if(ds.i !== undefined){
+    drag = { type:'corner', i: +ds.i };
+  } else if(ds.e !== undefined){
+    drag = { type:'edge', e: +ds.e, start: svgPointFromEvent(e), quad: adjustQuad.map(p=>({...p})) };
+  } else return;
   e.target.setPointerCapture(e.pointerId);
+  showLoupe(dragFocus());
 });
 adjustSvg.addEventListener('pointermove', e=>{
-  if(dragIndex < 0 || !capturedFullCanvas) return;
+  if(!drag || !capturedFullCanvas) return;
   const p = svgPointFromEvent(e);
-  const w = capturedFullCanvas.width, h = capturedFullCanvas.height;
-  adjustQuad[dragIndex] = {
-    x: Math.min(Math.max(p.x,0), w),
-    y: Math.min(Math.max(p.y,0), h)
-  };
+  if(drag.type === 'corner'){
+    adjustQuad[drag.i] = clampToImage(p);
+  } else {
+    // 辺はその辺に垂直な方向へ平行移動（両端の角が一緒に動く）
+    const i = drag.e, j = (i+1)%4, a = drag.quad[i], b = drag.quad[j];
+    const len = Math.hypot(b.x-a.x, b.y-a.y) || 1;
+    const nx = -(b.y-a.y)/len, ny = (b.x-a.x)/len;
+    const d = (p.x-drag.start.x)*nx + (p.y-drag.start.y)*ny;
+    adjustQuad[i] = clampToImage({ x: a.x + nx*d, y: a.y + ny*d });
+    adjustQuad[j] = clampToImage({ x: b.x + nx*d, y: b.y + ny*d });
+  }
   updateAdjustOverlay();
+  showLoupe(dragFocus());
 });
-['pointerup','pointercancel'].forEach(ev=> adjustSvg.addEventListener(ev, ()=> dragIndex = -1));
+['pointerup','pointercancel'].forEach(ev=> adjustSvg.addEventListener(ev, ()=>{ drag = null; hideLoupe(); }));
 
 function openAdjust(canvas, quadVideoCoords){
   capturedFullCanvas = canvas;
@@ -938,8 +1021,10 @@ function openAdjust(canvas, quadVideoCoords){
   adjustImageEl.setAttribute('width', w);
   adjustImageEl.setAttribute('height', h);
   adjustImageEl.setAttribute('href', canvas.toDataURL('image/jpeg', 0.9));
-  const r = Math.max(w,h) * 0.025;
-  adjustHandleEls.forEach(el => el.setAttribute('r', r));
+  handleR = Math.max(w,h) * 0.025;
+  adjustHandleEls.forEach(el => el.setAttribute('r', handleR));
+  adjustEdgeEls.forEach(el => el.style.strokeWidth = handleR*0.9);
+  adjustEdgeHitEls.forEach(el => el.style.strokeWidth = handleR*2.4);
   updateAdjustOverlay();
   document.getElementById('adjustModal').classList.add('open');
   if(!adjustAutoQuad) toast('自動検出なし。角をドラッグして範囲を調整してください');
