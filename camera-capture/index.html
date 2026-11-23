@@ -141,6 +141,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
       <div>
         <div class="list-title">キャプチャ一覧</div>
         <div class="list-sub" id="listCount">0件</div>
+        <div class="list-sub app-ver"></div>
       </div>
     </div>
     <div class="grid" id="grid"></div>
@@ -195,7 +196,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 <script src="./lib/opencv.js" onerror="window._cvScriptLoadFailed=true"></script>
 <script>
 'use strict';
-const APP_VERSION = 'v08_2026-11-23.2';
+const APP_VERSION = 'v08_2026-11-23.3';
+document.querySelectorAll('.app-ver').forEach(el=>el.textContent=APP_VERSION);
 
 /* ===================== IndexedDB ===================== */
 const DB_NAME = 'camera-capture-db';
