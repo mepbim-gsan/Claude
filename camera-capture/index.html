@@ -345,7 +345,7 @@ function quadFromContour(cnt){
 // 用紙・画面らしさを採点（0以下は不採用）
 function scoreQuad(quad, cntArea, hullArea, W, H){
   const qa = polyArea(quad);
-  if(qa < W*H*0.05 || qa > W*H*0.95) return -1;
+  if(qa < W*H*0.02 || qa > W*H*0.95) return -1;
   const fill = Math.min(cntArea/qa, qa/cntArea);       // 輪郭と四角形の面積の一致度
   if(fill < 0.85) return -1;
   const solidity = hullArea > 0 ? cntArea/hullArea : 0; // 背景への漏れ（くぼみ）が少ないほど1に近い
@@ -407,7 +407,7 @@ function findQuadOnMat(mat){
       for(let i=0;i<contours.size();i++){
         const cnt = contours.get(i);
         const cntArea = Math.abs(cv.contourArea(cnt));
-        if(cntArea >= W*H*0.05){
+        if(cntArea >= W*H*0.02){
           const r = quadFromContour(cnt);
           if(r){
             const sc = scoreQuad(r.quad, cntArea, r.hullArea, W, H);
@@ -522,20 +522,54 @@ function solvePerspective(fromPts, toPts){
   return solveLinear8(A,B);
 }
 
+// 斜めから写した長方形の4隅から、元の長方形の縦横比（幅/高さ）を推定する
+// （Zhang & He 2004。主点=画像中心・焦点距離は4隅から推定。正面に近く推定できない時は辺の比）
+function estimateRectAspect(tl, tr, br, bl, u0, v0){
+  const cross = (p,q)=>[p[1]*q[2]-p[2]*q[1], p[2]*q[0]-p[0]*q[2], p[0]*q[1]-p[1]*q[0]];
+  const dot = (p,q)=>p[0]*q[0]+p[1]*q[1]+p[2]*q[2];
+  const m1=[tl.x,tl.y,1], m2=[tr.x,tr.y,1], m3=[bl.x,bl.y,1], m4=[br.x,br.y,1];
+  const c14 = cross(m1,m4);
+  const k2 = dot(c14,m3) / dot(cross(m2,m4),m3);
+  const k3 = dot(c14,m2) / dot(cross(m3,m4),m2);
+  const n2 = m2.map((v,i)=>k2*v - m1[i]);
+  const n3 = m3.map((v,i)=>k3*v - m1[i]);
+  const zz = n2[2]*n3[2];
+  if(Math.abs(zz) > 1e-9){
+    const f2 = -((n2[0]*n3[0] - (n2[0]*n3[2] + n2[2]*n3[0])*u0 + zz*u0*u0) +
+                 (n2[1]*n3[1] - (n2[1]*n3[2] + n2[2]*n3[1])*v0 + zz*v0*v0)) / zz;
+    if(f2 > 0){
+      // n^T (K^-T K^-1) n （K=[[f,0,u0],[0,f,v0],[0,0,1]]）
+      const q = n => { const x=(n[0]-u0*n[2]), y=(n[1]-v0*n[2]); return (x*x + y*y)/f2 + n[2]*n[2]; };
+      const r = Math.sqrt(q(n2)/q(n3));
+      if(isFinite(r) && r > 0) return r;
+    }
+  }
+  const r = Math.hypot(n2[0],n2[1]) / Math.hypot(n3[0],n3[1]);
+  return isFinite(r) && r > 0 ? r : null;
+}
+
 function warpFullFrame(quad, sourceCanvas){
   // OpenCV.js不要：4隅から射影変換(ホモグラフィ)を解き、出力側の各ピクセルごとに
   // 逆写像で元画像をバイリニア補間サンプリングする（真の台形補正）
   const [tl,tr,br,bl] = quad;
-  const widthA = dist(br,bl), widthB = dist(tr,tl);
-  const maxW = Math.max(1, Math.round(Math.max(widthA, widthB)));
-  const heightA = dist(tr,br), heightB = dist(tl,bl);
-  const maxH = Math.max(1, Math.round(Math.max(heightA, heightB)));
+  const sw = sourceCanvas.width, sh = sourceCanvas.height;
+  const measuredW = Math.max(dist(tr,tl), dist(br,bl));
+  const measuredH = Math.max(dist(bl,tl), dist(br,tr));
+  // 出力サイズは写った辺の長さではなく、推定した元の縦横比で決める
+  // （斜めから撮ると奥行き方向の辺が短く写り、縦長の用紙が正方形・横長に潰れるため）
+  let aspect = estimateRectAspect(tl, tr, br, bl, sw/2, sh/2);
+  if(!aspect || aspect < 0.1 || aspect > 10) aspect = measuredW / measuredH;
+  let outW = Math.max(measuredW, measuredH*aspect);
+  let outH = outW / aspect;
+  const limit = Math.max(sw, sh) / Math.max(outW, outH);
+  if(limit < 1){ outW *= limit; outH *= limit; }
+  const maxW = Math.max(1, Math.round(outW));
+  const maxH = Math.max(1, Math.round(outH));
 
   const dstCorners = [{x:0,y:0},{x:maxW,y:0},{x:maxW,y:maxH},{x:0,y:maxH}];
   const srcCorners = [tl,tr,br,bl];
   const [a,b,c,d,e,f,g,h] = solvePerspective(dstCorners, srcCorners); // 出力->入力
 
-  const sw = sourceCanvas.width, sh = sourceCanvas.height;
   const srcData = sourceCanvas.getContext('2d').getImageData(0,0,sw,sh).data;
 
   const outCanvas = document.createElement('canvas');
