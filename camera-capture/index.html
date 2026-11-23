@@ -96,9 +96,11 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 #detailModal.open{display:flex;}
 .detail-img-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;}
 .detail-img-wrap img{max-width:100%;max-height:100%;border-radius:8px;}
-.detail-bar{padding:14px 20px calc(14px + env(safe-area-inset-bottom));
-  display:flex;gap:12px;background:#0a0a0a;}
-.detail-btn{flex:1;padding:13px;border-radius:12px;border:none;font-size:14px;font-weight:600;}
+.detail-bar{padding:14px 12px calc(14px + env(safe-area-inset-bottom));
+  display:flex;gap:8px;background:#0a0a0a;}
+.detail-btn{flex:1;padding:12px 4px;border-radius:12px;border:none;font-size:13px;font-weight:600;white-space:nowrap;}
+.detail-btn.edit{background:var(--sf);color:var(--text);}
+.detail-btn:disabled{opacity:.35;}
 .detail-btn.close{background:var(--sf);color:var(--text);}
 .detail-btn.download{background:var(--accent);color:#fff;}
 .detail-btn.delete{background:transparent;color:var(--danger);border:1px solid var(--danger);}
@@ -165,7 +167,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
     <canvas id="loupe"></canvas>
   </div>
   <div class="adjust-bar">
-    <button class="adjust-btn retake" onclick="window._adjustRetake()">撮り直す</button>
+    <button class="adjust-btn retake" id="btnAdjustRetake" onclick="window._adjustRetake()">撮り直す</button>
     <button class="adjust-btn reset" onclick="window._adjustReset()">リセット</button>
     <button class="adjust-btn next" onclick="window._adjustConfirm()">この範囲で確定</button>
   </div>
@@ -175,7 +177,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 <div id="reviewModal">
   <div class="review-img-wrap"><canvas id="reviewCanvas"></canvas></div>
   <div class="review-bar">
-    <button class="review-btn retake" onclick="window._retake()">撮り直す</button>
+    <button class="review-btn retake" id="btnReviewRetake" onclick="window._retake()">撮り直す</button>
     <button class="review-btn rotate" onclick="window._rotateReview()">↻</button>
     <button class="review-btn save" onclick="window._saveCapture()">保存</button>
   </div>
@@ -186,6 +188,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
   <div class="detail-img-wrap"><img id="detailImg" src=""></div>
   <div class="detail-bar">
     <button class="detail-btn close" onclick="window._closeDetail()">閉じる</button>
+    <button class="detail-btn edit" onclick="window._rotateDetail()">↻ 回転</button>
+    <button class="detail-btn edit" id="btnRecrop" onclick="window._recropDetail()">✂ 範囲</button>
     <button class="detail-btn download" onclick="window._downloadDetail()">保存</button>
     <button class="detail-btn delete" onclick="window._deleteDetail()">削除</button>
   </div>
@@ -196,7 +200,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 <script src="./lib/opencv.js" onerror="window._cvScriptLoadFailed=true"></script>
 <script>
 'use strict';
-const APP_VERSION = 'v08_2026-11-23.3';
+const APP_VERSION = 'v08_2026-11-23.4';
 document.querySelectorAll('.app-ver').forEach(el=>el.textContent=APP_VERSION);
 
 /* ===================== IndexedDB ===================== */
@@ -222,6 +226,14 @@ function dbAdd(record){
   return new Promise((resolve, reject)=>{
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).add(record);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+function dbPut(record){
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(record);
     tx.oncomplete = ()=> resolve();
     tx.onerror = ()=> reject(tx.error);
   });
@@ -1028,6 +1040,7 @@ function openAdjust(canvas, quadVideoCoords){
   adjustEdgeEls.forEach(el => el.style.strokeWidth = handleR*0.9);
   adjustEdgeHitEls.forEach(el => el.style.strokeWidth = handleR*2.4);
   updateAdjustOverlay();
+  document.getElementById('btnAdjustRetake').textContent = editingRec ? 'キャンセル' : '撮り直す';
   document.getElementById('adjustModal').classList.add('open');
   if(!adjustAutoQuad) toast('自動検出なし。角をドラッグして範囲を調整してください');
 }
@@ -1035,6 +1048,7 @@ window._adjustRetake = function(){
   document.getElementById('adjustModal').classList.remove('open');
   capturedFullCanvas = null;
   adjustQuad = null;
+  cancelEditing();
 };
 window._adjustReset = function(){
   if(!capturedFullCanvas) return;
@@ -1054,6 +1068,7 @@ window._adjustConfirm = function(){
       outCanvas = cropBoundingBox(capturedFullCanvas, adjustQuad);
     }
     outCanvas = rotateCW(outCanvas, shotRotation);
+    reviewRotation = shotRotation;
     pendingCanvas = outCanvas;
     openReview(outCanvas);
   }, 30);
@@ -1074,6 +1089,7 @@ window._onShutter = function(){
 };
 
 function openReview(canvas){
+  document.getElementById('btnReviewRetake').textContent = editingRec ? 'キャンセル' : '撮り直す';
   const rc = document.getElementById('reviewCanvas');
   rc.width = canvas.width; rc.height = canvas.height;
   rc.getContext('2d').drawImage(canvas, 0, 0);
@@ -1082,27 +1098,46 @@ function openReview(canvas){
 window._retake = function(){
   document.getElementById('reviewModal').classList.remove('open');
   pendingCanvas = null;
+  cancelEditing();
 };
 window._rotateReview = function(){
   if(!pendingCanvas) return;
   pendingCanvas = rotate90CW(pendingCanvas);
+  reviewRotation = (reviewRotation + 90) % 360;
   const rc = document.getElementById('reviewCanvas');
   rc.width = pendingCanvas.width; rc.height = pendingCanvas.height;
   rc.getContext('2d').drawImage(pendingCanvas, 0, 0);
 };
 window._saveCapture = async function(){
   if(!pendingCanvas) return;
-  const dataURL = pendingCanvas.toDataURL('image/jpeg', 0.9);
-  const record = { id:'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), dataURL, createdAt: Date.now() };
-  await dbAdd(record);
+  // 補正後の画像に加え、あとで範囲を直せるよう元の撮影画像・四隅・回転も残す
+  const fields = {
+    dataURL: pendingCanvas.toDataURL('image/jpeg', 0.9),
+    src: capturedFullCanvas ? capturedFullCanvas.toDataURL('image/jpeg', 0.85) : null,
+    quad: adjustQuad ? adjustQuad.map(p=>({ x:p.x, y:p.y })) : null,
+    rotation: reviewRotation,
+  };
   document.getElementById('reviewModal').classList.remove('open');
   pendingCanvas = null;
-  toast('保存しました');
-  updateCamCount();
+  if(editingRec){
+    const rec = { ...editingRec, ...fields };
+    editingRec = null;
+    await dbPut(rec);
+    toast('修正しました');
+    renderGrid();
+    openDetail(rec);
+  } else {
+    await dbAdd({ id:'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), createdAt: Date.now(), ...fields });
+    toast('保存しました');
+    updateCamCount();
+  }
 };
 
 /* ===================== 一覧 / 詳細 ===================== */
 let curDetailId = null;
+let curDetailRec = null;
+let editingRec = null;     // 保存済みの記録を修正中ならその記録
+let reviewRotation = 0;    // 確認画面の画像に掛かっている回転（撮影時の向き補正＋↻の分）
 
 async function updateCamCount(){
   const all = await dbAll();
@@ -1129,12 +1164,50 @@ async function renderGrid(){
 
 function openDetail(rec){
   curDetailId = rec.id;
+  curDetailRec = rec;
   document.getElementById('detailImg').src = rec.dataURL;
+  const btn = document.getElementById('btnRecrop');
+  btn.disabled = !rec.src;
+  btn.title = rec.src ? '' : 'この画像は元の撮影画像を保存していないため、範囲を修正できません';
   document.getElementById('detailModal').classList.add('open');
+}
+function loadCanvas(dataURL){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=>{ const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0); resolve(c); };
+    img.onerror = reject;
+    img.src = dataURL;
+  });
+}
+// 保存済みの画像を90°回転して上書き
+window._rotateDetail = async function(){
+  if(!curDetailRec) return;
+  const rotated = rotate90CW(await loadCanvas(curDetailRec.dataURL));
+  const rec = { ...curDetailRec, dataURL: rotated.toDataURL('image/jpeg', 0.9), rotation: ((curDetailRec.rotation||0) + 90) % 360 };
+  await dbPut(rec);
+  curDetailRec = rec;
+  document.getElementById('detailImg').src = rec.dataURL;
+  renderGrid();
+};
+// 元の撮影画像と前回の四隅で調整画面を開き直す（確定すると同じ記録を上書き）
+window._recropDetail = async function(){
+  if(!curDetailRec || !curDetailRec.src) return;
+  editingRec = curDetailRec;
+  const canvas = await loadCanvas(editingRec.src);
+  shotRotation = editingRec.rotation || 0;
+  document.getElementById('detailModal').classList.remove('open');
+  openAdjust(canvas, editingRec.quad);
+};
+function cancelEditing(){
+  if(!editingRec) return;
+  const rec = editingRec;
+  editingRec = null;
+  openDetail(rec);
 }
 window._closeDetail = function(){
   document.getElementById('detailModal').classList.remove('open');
   curDetailId = null;
+  curDetailRec = null;
 };
 window._downloadDetail = function(){
   if(!curDetailId) return;
