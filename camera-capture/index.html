@@ -67,6 +67,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
   box-shadow:0 4px 16px rgba(0,0,0,.6);pointer-events:none;display:none;z-index:2;}
 #loupe.show{display:block;}
 .adjust-stage svg{width:100%;height:100%;touch-action:none;}
+/* 長押しで「新しいタブで開く」等のメニューや文字選択が出ないように */
+#adjustModal,#reviewModal,#detailModal,.cam-stage{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+#adjustImageEl{pointer-events:none;}
 .adjust-quad{fill:rgba(62,207,142,.18);stroke:#3ecf8e;stroke-width:3;}
 .adjust-handle{fill:#3ecf8e;stroke:#06251a;stroke-width:3;cursor:grab;}
 .adjust-hint{position:absolute;top:14px;left:0;right:0;text-align:center;
@@ -94,8 +97,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 /* ── 詳細モーダル ── */
 #detailModal{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;}
 #detailModal.open{display:flex;}
-.detail-img-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;}
-.detail-img-wrap img{max-width:100%;max-height:100%;border-radius:8px;}
+.detail-img-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;touch-action:none;position:relative;}
+.detail-img-wrap img{max-width:100%;max-height:100%;border-radius:8px;transform-origin:50% 50%;will-change:transform;user-select:none;-webkit-user-drag:none;}
+.detail-zoom{position:absolute;top:calc(10px + env(safe-area-inset-top));right:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:4px 8px;border-radius:10px;pointer-events:none;display:none;}
 .detail-bar{padding:14px 12px calc(14px + env(safe-area-inset-bottom));
   display:flex;gap:8px;background:#0a0a0a;}
 .detail-btn{flex:1;padding:12px 4px;border-radius:12px;border:none;font-size:13px;font-weight:600;white-space:nowrap;}
@@ -185,7 +189,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 
 <!-- 詳細モーダル -->
 <div id="detailModal">
-  <div class="detail-img-wrap"><img id="detailImg" src=""></div>
+  <div class="detail-img-wrap" id="detailWrap"><img id="detailImg" src="" draggable="false"><div class="detail-zoom" id="detailZoom"></div></div>
   <div class="detail-bar">
     <button class="detail-btn close" onclick="window._closeDetail()">閉じる</button>
     <button class="detail-btn edit" onclick="window._rotateDetail()">↻ 回転</button>
@@ -200,7 +204,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 <script src="./lib/opencv.js" onerror="window._cvScriptLoadFailed=true"></script>
 <script>
 'use strict';
-const APP_VERSION = 'v08_2026-11-23.4';
+const APP_VERSION = 'v08_2026-11-23.7';
 document.querySelectorAll('.app-ver').forEach(el=>el.textContent=APP_VERSION);
 
 /* ===================== IndexedDB ===================== */
@@ -395,6 +399,7 @@ async function startCamera(){
     video.srcObject = stream;
     await video.play();
     setupZoom();
+    setupPhoto();
     resizeOverlay();
     startDetectLoop();
     setTimeout(()=>{
@@ -1074,18 +1079,139 @@ window._adjustConfirm = function(){
   }, 30);
 };
 
-window._onShutter = function(){
-  if(!video.videoWidth) return;
-  const full = captureFullFrameOnly();
-  // 撮影したフレーム自体で再検出（ライブ検出のタイミングずれ・ちらつきに左右されない）
-  let quad = null;
-  if(cvReady){
-    try{ quad = detectQuad(full, { sx:0, sy:0, sw:full.width, sh:full.height }, SHUTTER_DETECT_W); }
-    catch(e){ reportDetectError(e); }
+/* ── 写真撮影API（ImageCapture.takePhoto）で高解像度の静止画を撮る ──
+   動画フレームより高解像度で写真用の画像処理もかかる。機種により写真の向き・画角がプレビューと違うため、
+   同じ瞬間のプレビューと見比べて向きを合わせ、プレビューで見えていた範囲に切りそろえる。
+   非対応・失敗・時間切れ・見比べて一致しない場合は null（呼び出し側で動画フレームを使う） */
+const MAX_CAPTURE_LONG = 3000;   // 取り込む画像の長辺の上限（保存容量と補正処理時間を抑える）
+const PHOTO_TIMEOUT_MS = 5000;
+const PHOTO_MATCH_MIN = 0.5;     // プレビューとの一致度（正規化相互相関）がこれ未満なら写真を使わない
+let imageCapture = null, photoCaps = null;
+
+async function setupPhoto(){
+  imageCapture = null; photoCaps = null;
+  if(!('ImageCapture' in window)) return;
+  try{
+    imageCapture = new ImageCapture(stream.getVideoTracks()[0]);
+    photoCaps = await imageCapture.getPhotoCapabilities().catch(()=>null);
+  }catch(e){ imageCapture = null; }
+}
+// src の範囲(sx,sy,sw,sh)を幅Wのグレー画像にする
+function grayThumb(src, sx, sy, sw, sh, W){
+  const H = Math.max(1, Math.round(W*sh/sw));
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, W, H);
+  const d = ctx.getImageData(0, 0, W, H).data, g = new Float32Array(W*H);
+  for(let i=0;i<g.length;i++) g[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
+  return g;
+}
+// 正規化相互相関（明るさ・コントラストの違いに左右されない一致度、-1〜1）
+function ncc(a, b){
+  const n = Math.min(a.length, b.length);
+  let ma = 0, mb = 0;
+  for(let i=0;i<n;i++){ ma += a[i]; mb += b[i]; }
+  ma /= n; mb /= n;
+  let s = 0, sa = 0, sb = 0;
+  for(let i=0;i<n;i++){ const x = a[i]-ma, y = b[i]-mb; s += x*y; sa += x*x; sb += y*y; }
+  return sa && sb ? s/Math.sqrt(sa*sb) : 0;
+}
+// 時計回りに deg 度回転した新しいcanvas
+function rotateBy(src, deg){
+  const w = src.width, h = src.height, swap = deg % 180 !== 0;
+  const c = document.createElement('canvas');
+  c.width = swap ? h : w; c.height = swap ? w : h;
+  const ctx = c.getContext('2d');
+  ctx.translate(c.width/2, c.height/2);
+  ctx.rotate(deg*Math.PI/180);
+  ctx.drawImage(src, -w/2, -h/2);
+  return c;
+}
+// 縦横比 aspect(幅/高さ) で最大に取れる中央の範囲を、さらに 1/z に縮めた範囲
+function centerCrop(w, h, aspect, z){
+  let cw = w, ch = w/aspect;
+  if(ch > h){ ch = h; cw = h*aspect; }
+  cw /= z; ch /= z;
+  return { sx: (w-cw)/2, sy: (h-ch)/2, sw: cw, sh: ch };
+}
+function withTimeout(promise, ms){
+  return Promise.race([promise, new Promise((_, rej)=> setTimeout(()=> rej(new Error('timeout')), ms))]);
+}
+
+async function capturePhotoFrame(){
+  if(!imageCapture) return null;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const REF_W = 64;
+  const ref = grayThumb(video, 0, 0, vw, vh, REF_W); // 撮影直前のプレビュー（ズーム切り出し前の全体）
+  const opts = {};
+  if(photoCaps && photoCaps.imageWidth && photoCaps.imageWidth.max) opts.imageWidth = photoCaps.imageWidth.max;
+  const blob = await withTimeout(imageCapture.takePhoto(opts), PHOTO_TIMEOUT_MS);
+  const bmp = await createImageBitmap(blob);
+  try{
+    // 見比べは縮小した写真で行う
+    const k = 320 / Math.max(bmp.width, bmp.height);
+    const small = document.createElement('canvas');
+    small.width = Math.max(1, Math.round(bmp.width*k)); small.height = Math.max(1, Math.round(bmp.height*k));
+    small.getContext('2d').drawImage(bmp, 0, 0, small.width, small.height);
+    // カメラ側ズーム中に写真へズームが反映されない機種に備え、ズーム分の切り出しも候補にする
+    const zs = [1];
+    if(zoom.track && zoom.value > zoom.min*1.05) zs.push(zoom.value/zoom.min);
+    let best = null;
+    for(const rot of [0, 90, 180, 270]){
+      const rs = rotateBy(small, rot);
+      for(const z of zs){
+        const r = centerCrop(rs.width, rs.height, vw/vh, z);
+        const score = ncc(ref, grayThumb(rs, r.sx, r.sy, r.sw, r.sh, REF_W));
+        if(!best || score > best.score) best = { rot, z, score };
+      }
+    }
+    if(best.score < PHOTO_MATCH_MIN) return null;
+
+    // 決まった向き・範囲を元の解像度で適用し、さらにデジタルズーム分を中央から切り出す
+    const full = document.createElement('canvas'); full.width = bmp.width; full.height = bmp.height;
+    full.getContext('2d').drawImage(bmp, 0, 0);
+    const rotated = rotateBy(full, best.rot);
+    const r = centerCrop(rotated.width, rotated.height, vw/vh, best.z * digitalZoom);
+    const s = Math.min(1, MAX_CAPTURE_LONG / Math.max(r.sw, r.sh));
+    const out = document.createElement('canvas');
+    out.width = Math.round(r.sw*s); out.height = Math.round(r.sh*s);
+    out.getContext('2d').drawImage(rotated, r.sx, r.sy, r.sw, r.sh, 0, 0, out.width, out.height);
+    return out;
+  } finally {
+    bmp.close && bmp.close();
   }
-  if(!quad && lastQuad && performance.now() - lastQuadAt <= QUAD_HOLD_MS) quad = lastQuad;
-  shotRotation = contentRotation(); // 確定前にスマホの向きが変わっても、撮った瞬間の持ち方で回す
-  openAdjust(full, quad);
+}
+
+let shooting = false;
+window._onShutter = async function(){
+  if(!video.videoWidth || shooting) return;
+  shooting = true;
+  const btn = document.getElementById('shutterBtn');
+  btn.disabled = true;
+  try{
+    shotRotation = contentRotation(); // 確定前にスマホの向きが変わっても、押した瞬間の持ち方で回す
+    const r = frameRect();
+    const liveQuad = lastQuad && performance.now() - lastQuadAt <= QUAD_HOLD_MS ? lastQuad : null;
+    let full = null;
+    if(imageCapture){
+      toast('撮影中…');
+      try{ full = await capturePhotoFrame(); }
+      catch(e){ console.warn('takePhoto失敗、動画フレームで撮影:', e); }
+    }
+    if(!full) full = captureFullFrameOnly();
+    // 撮影した画像自体で再検出（ライブ検出のタイミングずれ・ちらつきに左右されない）
+    let quad = null;
+    if(cvReady){
+      try{ quad = detectQuad(full, { sx:0, sy:0, sw:full.width, sh:full.height }, SHUTTER_DETECT_W); }
+      catch(e){ reportDetectError(e); }
+    }
+    // 見つからなければ直前のライブ検出の枠を、撮影画像の大きさに合わせて使う
+    if(!quad && liveQuad){ const k = full.width / r.sw; quad = liveQuad.map(p=>({ x:p.x*k, y:p.y*k })); }
+    openAdjust(full, quad);
+  } finally {
+    shooting = false;
+    btn.disabled = false;
+  }
 };
 
 function openReview(canvas){
@@ -1166,11 +1292,99 @@ function openDetail(rec){
   curDetailId = rec.id;
   curDetailRec = rec;
   document.getElementById('detailImg').src = rec.dataURL;
+  detailZoom.reset();
   const btn = document.getElementById('btnRecrop');
   btn.disabled = !rec.src;
   btn.title = rec.src ? '' : 'この画像は元の撮影画像を保存していないため、範囲を修正できません';
   document.getElementById('detailModal').classList.add('open');
 }
+// 撮影・調整・確認・詳細画面では長押しメニュー（新しいタブで開く・画像を保存 等）を出さない
+for(const sel of ['#adjustModal', '#reviewModal', '#detailModal', '.cam-stage']){
+  const el = document.querySelector(sel);
+  if(el) el.addEventListener('contextmenu', e=>e.preventDefault());
+}
+// 詳細画面の拡大（ピンチ・ダブルタップ・ドラッグ・ホイール）
+const detailZoom = (()=>{
+  const wrap = document.getElementById('detailWrap'), img = document.getElementById('detailImg'), label = document.getElementById('detailZoom');
+  const MAX = 8;
+  let s = 1, tx = 0, ty = 0, labelTimer = null;
+  const pts = new Map();
+  let gesture = null, lastTap = 0, lastTapPos = null, moved = false;
+  function center(){ const r = wrap.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, w: r.width, h: r.height }; }
+  function clamp(){
+    const c = center();
+    const mx = Math.max(0, (img.offsetWidth*s - c.w)/2), my = Math.max(0, (img.offsetHeight*s - c.h)/2);
+    tx = Math.min(mx, Math.max(-mx, tx)); ty = Math.min(my, Math.max(-my, ty));
+  }
+  function apply(showLabel){
+    if(s <= 1.001){ s = 1; tx = 0; ty = 0; }
+    clamp();
+    img.style.transform = s === 1 ? '' : `translate(${tx}px,${ty}px) scale(${s})`;
+    if(showLabel){
+      label.textContent = Math.round(s*100) + '%';
+      label.style.display = s === 1 ? 'none' : 'block';
+      clearTimeout(labelTimer); labelTimer = setTimeout(()=>{ label.style.display = 'none'; }, 1200);
+    }
+  }
+  // 画面上の点 (px,py) を固定したまま倍率を ns に変える
+  function zoomAt(ns, px, py){
+    ns = Math.min(MAX, Math.max(1, ns));
+    const c = center();
+    const dx = (px - c.x - tx)/s, dy = (py - c.y - ty)/s;
+    s = ns; tx = px - c.x - s*dx; ty = py - c.y - s*dy;
+  }
+  function mid(){ const a = [...pts.values()]; return { x: (a[0].x + a[1].x)/2, y: (a[0].y + a[1].y)/2, d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) }; }
+  function startGesture(){
+    if(pts.size >= 2){ const m = mid(); gesture = { type: 'pinch', s0: s, d0: Math.max(1, m.d), m0: m, tx0: tx, ty0: ty }; }
+    else if(pts.size === 1){ const p = [...pts.values()][0]; gesture = { type: 'pan', p0: p, tx0: tx, ty0: ty }; }
+    else gesture = null;
+  }
+  wrap.addEventListener('pointerdown', e=>{
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    wrap.setPointerCapture(e.pointerId);
+    if(pts.size === 1) moved = false;
+    startGesture();
+  });
+  wrap.addEventListener('pointermove', e=>{
+    if(!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if(!gesture) return;
+    if(gesture.type === 'pinch' && pts.size >= 2){
+      const m = mid();
+      // 開始時の状態から、指の間隔で倍率・中点の移動で位置を決める
+      s = gesture.s0; tx = gesture.tx0; ty = gesture.ty0;
+      zoomAt(gesture.s0 * m.d / gesture.d0, gesture.m0.x, gesture.m0.y);
+      tx += m.x - gesture.m0.x; ty += m.y - gesture.m0.y;
+      moved = true; apply(true);
+    } else if(gesture.type === 'pan'){
+      const p = pts.get(e.pointerId), ddx = p.x - gesture.p0.x, ddy = p.y - gesture.p0.y;
+      if(Math.hypot(ddx, ddy) > 8) moved = true;
+      if(s > 1){ tx = gesture.tx0 + ddx; ty = gesture.ty0 + ddy; apply(false); }
+    }
+  });
+  function up(e){
+    if(!pts.has(e.pointerId)) return;
+    const p = pts.get(e.pointerId);
+    pts.delete(e.pointerId);
+    if(pts.size === 0 && !moved && gesture && gesture.type === 'pan'){
+      // ダブルタップ: 等倍 ⇔ 2.5倍（タップした場所を中心に）
+      const now = Date.now();
+      if(now - lastTap < 320 && lastTapPos && Math.hypot(p.x - lastTapPos.x, p.y - lastTapPos.y) < 40){
+        if(s > 1.01){ s = 1; } else zoomAt(2.5, p.x, p.y);
+        apply(true); lastTap = 0;
+      } else { lastTap = now; lastTapPos = p; }
+    }
+    startGesture();
+  }
+  wrap.addEventListener('pointerup', up);
+  wrap.addEventListener('pointercancel', up);
+  wrap.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(s * Math.exp(-e.deltaY*0.0015), e.clientX, e.clientY); apply(true); }, { passive: false });
+  window.addEventListener('resize', ()=>apply(false));
+  return {
+    reset(){ s = 1; tx = 0; ty = 0; pts.clear(); gesture = null; apply(false); label.style.display = 'none'; },
+    get scale(){ return s; },
+  };
+})();
 function loadCanvas(dataURL){
   return new Promise((resolve, reject)=>{
     const img = new Image();
@@ -1187,6 +1401,7 @@ window._rotateDetail = async function(){
   await dbPut(rec);
   curDetailRec = rec;
   document.getElementById('detailImg').src = rec.dataURL;
+  detailZoom.reset();
   renderGrid();
 };
 // 元の撮影画像と前回の四隅で調整画面を開き直す（確定すると同じ記録を上書き）
