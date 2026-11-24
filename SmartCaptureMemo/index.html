@@ -4441,7 +4441,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-25"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-25.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4480,7 +4480,8 @@
     ["v04_2026-11-20.4","タイトル整理: 下の階層の★だけで残っている「履歴なし」の項目も★で表示し、外すとまとめて外れて消えるように(項目を開いて下の★を外すことも可)"],
     ["v04_2026-11-24","常時表示を開いていなくても最新の画面を撮影できるように(記録タブ表示中も映像を流し続ける。ページが隠れているときは映像から直接取得)"],
     ["v04_2026-11-24.2","⋯メニューに「🖼 画像をZIPで保存」(キャプチャ画像を 番号_見出し名.jpg でまとめて1つのZIPに。保存場所はその都度選択)"],
-    ["v04_2026-11-25","スライドの自動検出: 範囲タブ・トリミングでスライドの中をダブルクリック(範囲タブは「🔍 スライド検出」も)すると、スライドの枠を探して範囲に入れる"]
+    ["v04_2026-11-25","スライドの自動検出: 範囲タブ・トリミングでスライドの中をダブルクリック(範囲タブは「🔍 スライド検出」も)すると、スライドの枠を探して範囲に入れる"],
+    ["v04_2026-11-25.2","スライドの自動検出: スライドが映像の端に接している場合(Web会議でスライドが左端いっぱいに表示されている等)も検出できるように"]
   ];
 
   const verLabel = $("verLabel");
@@ -5402,6 +5403,8 @@
     }
     const tops = rows(sy - 1, 0, -1), bottoms = rows(sy + 1, H - 1, 1);
     const lefts = cols(sx - 1, 0, -1), rights = cols(sx + 1, W - 1, 1);
+    // スライドが映像の端まで来ている(端に接している)場合に備え、映像の四辺も辺の候補にする(境目は「ある」とみなす)
+    tops.push({ y: 0, edge: true }); bottoms.push({ y: H, edge: true }); lefts.push({ x: 0, edge: true }); rights.push({ x: W, edge: true });
     const STD = [16 / 9, 4 / 3, 16 / 10, 3 / 2];
     let best = null;
     for(const t of tops) for(const b of bottoms){
@@ -5410,7 +5413,8 @@
         const w = r.x - l.x; if(w < W * 0.15) continue;
         const area = (w * h) / (W * H);
         if(area > 0.92) continue; // 画面全体の外枠は対象外
-        const c1 = slideHCov(A, t.y, l.x, r.x), c2 = slideHCov(A, b.y, l.x, r.x), c3 = slideVCov(A, l.x, t.y, b.y), c4 = slideVCov(A, r.x, t.y, b.y);
+        const c1 = t.edge ? 1 : slideHCov(A, t.y, l.x, r.x), c2 = b.edge ? 1 : slideHCov(A, b.y, l.x, r.x), c3 = l.edge ? 1 : slideVCov(A, l.x, t.y, b.y), c4 = r.edge ? 1 : slideVCov(A, r.x, t.y, b.y);
+        if(t.edge + b.edge + l.edge + r.edge > 2) continue; // 3辺以上が映像の端=ほぼ画面全体なので対象外
         const minCov = Math.min(c1, c2, c3, c4);
         if(minCov < 0.7) continue;
         const asp = w / h;
@@ -5441,10 +5445,11 @@
     };
     const x1 = r.x, x2 = r.x + r.w, y1 = r.y, y2 = r.y + r.h;
     const ix1 = x1 + rad, ix2 = x2 - rad, iy1 = y1 + rad, iy2 = y2 - rad; // 角の付近は避けて辺の中ほどで測る
-    const top = pick(y1, (y) => rowScore(y, ix1, ix2), true);
-    const bottom = pick(y2, (y) => rowScore(y, ix1, ix2), false);
-    const left = pick(x1, (x) => colScore(x, iy1, iy2), true);
-    const right = pick(x2, (x) => colScore(x, iy1, iy2), false);
+    // 映像の端に接している辺は端のまま(合わせ直さない)
+    const top = y1 <= rad ? 0 : pick(y1, (y) => rowScore(y, ix1, ix2), true);
+    const bottom = y2 >= H - rad ? H : pick(y2, (y) => rowScore(y, ix1, ix2), false);
+    const left = x1 <= rad ? 0 : pick(x1, (x) => colScore(x, iy1, iy2), true);
+    const right = x2 >= W - rad ? W : pick(x2, (x) => colScore(x, iy1, iy2), false);
     return { x: left, y: top, w: right - left, h: bottom - top };
   }
 
