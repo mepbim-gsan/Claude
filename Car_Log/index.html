@@ -475,7 +475,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-25.2';
+const APP_VERSION = 'v09_2026-11-25.3';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1470,6 +1470,7 @@ function openMaintSheet(id){
       <div class="fld"><label>区分</label><select id="m-cat">${cats.map(c=>`<option ${c===v.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
       <div class="fld"><label>日付</label><input type="date" id="m-date" value="${esc(v.date)}"></div>
     </div>
+    ${m ? '' : '<div id="m-copy"></div>'}
     <div class="fld-row" style="align-items:flex-end;">
       <div class="fld"><label class="check" style="min-height:40px;margin:0;"><input type="checkbox" id="m-planned" ${v.planned?'checked':''} onchange="$('m-time-wrap').style.visibility=this.checked?'':'hidden'">予定（未実施）</label></div>
       <div class="fld" id="m-time-wrap" style="${v.planned?'':'visibility:hidden'}"><label>時刻（任意）</label><input type="time" id="m-time" data-opt value="${esc(v.time||'')}"></div>
@@ -1528,6 +1529,25 @@ function openMaintSheet(id){
   };
   $('m-cat').addEventListener('change', prefill); prefill();
   calcItems();
+  // 新規: 同じ区分の前回の記録があれば「前回と同じ」を1つだけ表示（内容・費用・店舗・メモ・内訳を写し、次回予定は前回と同じ間隔）
+  if(!m){
+    const copy = () => {
+      const p = V.maint.filter(x=>!x.planned && x.category===$('m-cat').value).sort(byDateDesc)[0];
+      $('m-copy').innerHTML = p ? `<button type="button" class="chip" style="margin:-4px 0 10px" id="m-copy-btn">前回と同じ（${p.date.replace(/-/g,'/')}${num(p.cost)?' '+yen(num(p.cost)):''}）</button>` : '';
+      if(p) $('m-copy-btn').onclick = () => {
+        $('m-title').value = p.title||''; $('m-shop').value = p.shop||''; $('m-memo').value = p.memo||'';
+        document.querySelectorAll('#sheet .bd-item').forEach(r=>r.remove());
+        (p.items||[]).forEach(it=>addItemRow(it.group, {category:it.category, title:it.title, amount:it.amount}));
+        if(!(p.items||[]).length){ $('m-cost').value = p.cost||''; fmtNumInput($('m-cost')); }
+        calcItems();
+        const n = nextLikePrev({category:$('m-cat').value, date:$('m-date').value, odo:$('m-odo').value.replace(/,/g,'')});
+        $('m-ndate').value = n.nextDate; $('m-nodo').value = n.nextOdo; $('m-ndate').dispatchEvent(new Event('change'));
+        if($('m-nodo').value) fmtNumInput($('m-nodo'));
+        toast('前回の内容を写しました');
+      };
+    };
+    $('m-cat').addEventListener('change', copy); copy();
+  }
 }
 // ---------- 内訳 ----------
 const LEGAL_CATS = ['自動車重量税','自賠責保険','印紙代','その他（税・手数料）'];
