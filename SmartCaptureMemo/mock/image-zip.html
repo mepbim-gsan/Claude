@@ -72,7 +72,8 @@
   </div>
   <div class="note">
     <b>仕様(案)</b><br>
-    ・⋯ →「🖼 画像をZIPで保存」で、記録一覧のキャプチャ画像をまとめて1つのZIPでダウンロード(メモ・見出しは含めない)<br>
+    ・⋯ →「🖼 画像をZIPで保存」で、記録一覧のキャプチャ画像をまとめて1つのZIPに保存(メモ・見出しは含めない)<br>
+    ・保存場所は毎回たずねる(⚙設定の保存先フォルダは使わない。保存ダイアログに対応していないブラウザは通常のダウンロード)<br>
     ・ZIPの名前: HTML保存と同じ名前 + 「_画像」(例: <code>2026-1124_定例_週次_設計_画像.zip</code>)<br>
     ・画像の名前: <code>番号_見出し名.jpg</code>(番号は一覧の並び順の2桁連番。見出しより前の画像は <code>番号.jpg</code>)<br>
     ・画像は記録時のまま(JPEG・トリミング後の状態)
@@ -147,7 +148,7 @@
   const safe = (t) => String(t).replace(/[\\/:*?"<>|\r\n]/g, "").trim().slice(0, 40);
 
   // ---------- 画像をZIPで保存 ----------
-  $("btnZip").addEventListener("click", () => {
+  $("btnZip").addEventListener("click", async () => {
     $("moreMenu").hidden = true;
     let heading = "", n = 0;
     const files = [];
@@ -160,13 +161,32 @@
     const [y, m, d] = ($("date").value || "").split("-");
     const base = safe($("title").value) || "SmartCaptureMemo";
     const zipName = (y ? `${y}-${m}${d}_` : "") + base + "_画像.zip";
-    const url = URL.createObjectURL(makeZip(files));
+    const blob = makeZip(files);
+    // 保存場所を毎回たずねる(登録した保存先フォルダは使わない)。非対応のブラウザは通常のダウンロード
+    if(window.showSaveFilePicker){
+      let handle;
+      try{
+        handle = await window.showSaveFilePicker({ suggestedName: zipName, types: [{ description: "ZIPファイル", accept: { "application/zip": [".zip"] } }] });
+      }catch(err){
+        if(err && err.name === "AbortError"){ toast("保存を中止しました"); return; }
+        handle = null;
+      }
+      if(handle){
+        const w = await handle.createWritable(); await w.write(blob); await w.close();
+        toast(`🖼 ${files.length}枚の画像をZIPで保存しました: ${handle.name}`);
+        showResult(handle.name, files); return;
+      }
+    }
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = zipName; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     toast(`🖼 ${files.length}枚の画像をZIPで保存しました: ${zipName}`);
+    showResult(zipName, files);
+  });
+  function showResult(zipName, files){
     $("result").hidden = false;
     $("result").textContent = `${zipName}\n` + files.map((f) => `  └ ${f.name}`).join("\n");
-  });
+  }
 
   let toastTimer = null;
   function toast(t){ $("toast").textContent = t; $("toast").hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $("toast").hidden = true; }, 3000); }
