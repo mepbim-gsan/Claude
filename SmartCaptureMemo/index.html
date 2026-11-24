@@ -813,6 +813,7 @@
         </select>
         <button id="btnFixRect" disabled>範囲固定</button>
         <button class="secondary" id="btnFixFull" disabled>🖥 全画面</button>
+        <button class="secondary" id="btnDetectSlide" disabled title="画面の中央を起点にスライドの枠を探して範囲に入れます(映像の上でスライドの中をダブルクリックしても同じ)">🔍 スライド検出</button>
         <span class="status" id="shareStatus">未接続</span>
       </div>
       <div id="shareSurfaceNotice"></div>
@@ -832,6 +833,7 @@
         </div>
       </div>
       <div class="hint idleHint">「画面共有を開始」で撮影したい画面を選び、キャプチャする範囲を決めます。範囲を決めると自動で「記録」タブへ移ります</div>
+      <div class="hint">スライドの中をダブルクリック(または「🔍 スライド検出」)すると、スライドの枠を自動で探して範囲に入れます。うまく合わないときはドラッグで調整してください</div>
       <div class="hint">映像をドラッグして範囲指定 → 「範囲固定」で以降は連写できます／範囲内をドラッグすると位置だけ移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます(比率指定時は辺ドラッグでも比率を保持)、矢印キーでも位置を微調整できます／範囲を選ばず全画面をそのまま使いたい場合は「🖥 全画面」</div>
       <div class="hint" id="pipHint">範囲固定と同時に対応ブラウザでは自動的に「常時表示ウィンドウ」が開き、他のアプリを操作中でも最前面の小窓からワンクリックで撮影できます</div>
     </div>
@@ -950,7 +952,7 @@
         </div>
       </div>
     </div>
-    <div class="hint">ドラッグで範囲を選択/移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます</div>
+    <div class="hint">ドラッグで範囲を選択/移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます。スライドの中をダブルクリックすると、スライドの枠を自動で探して範囲に入れます <span id="cropDetectMsg"></span></div>
     <div class="row" style="margin-top:10px;">
       <button class="danger" id="btnCropRevert" style="display:none;">元に戻す(トリミング前の画像)</button>
       <button class="secondary" id="btnCropUseLast" style="display:none;" title="直前にトリミングした範囲(相対位置)をこの画像にも適用します">前回の範囲</button>
@@ -1256,7 +1258,7 @@
     shareStatus.textContent = "共有終了";
     shareStatus.classList.remove("live");
     btnFixRect.disabled = true;
-    btnFixFull.disabled = true;
+    btnFixFull.disabled = true; btnDetectSlide.disabled = true;
     btnCapture.disabled = true;
     btnPip.disabled = true;
     setShareUiConnected(false);
@@ -1301,7 +1303,7 @@
       shareStatus.textContent = "共有中";
       shareStatus.classList.add("live");
       btnFixRect.disabled = false;
-      btnFixFull.disabled = false;
+      btnFixFull.disabled = false; btnDetectSlide.disabled = false;
       setShareUiConnected(true);
       // 以前の「共有が切れました」表示が残らないよう、共有開始のたびにステータス表示をクリアする
       captureStatus.textContent = "";
@@ -1601,6 +1603,7 @@
     // 実際に画面に見えている青枠(selRectの実測位置)から選択範囲を読み直してから
     // 固定する。これにより、見た目の枠と固定されるキャプチャ範囲が常に一致する
     syncSelectionFromDisplay();
+    if(detectedStageRect && sameSel(selection, detectedStageRect.sel)){ applyFixedRect({ ...detectedStageRect.video }); return; }
     const r = selectStage.getBoundingClientRect();
     const scaleX = video.videoWidth / r.width;
     const scaleY = video.videoHeight / r.height;
@@ -1610,6 +1613,36 @@
       w: Math.round(selection.w * scaleX),
       h: Math.round(selection.h * scaleY)
     });
+  });
+
+  // スライドの自動検出(範囲タブ): 映像の今のコマで探し、見つかった枠を範囲選択に入れる(固定は「範囲固定」で)
+  const btnDetectSlide = $("btnDetectSlide");
+  let detectedStageRect = null;
+  const sameSel = (a, b) => a && b && Math.abs(a.x - b.x) < 1.5 && Math.abs(a.y - b.y) < 1.5 && Math.abs(a.w - b.w) < 1.5 && Math.abs(a.h - b.h) < 1.5;
+  function detectSlideInStage(dispX, dispY){
+    if(!video.videoWidth || !video.videoHeight) return;
+    const r = selectStage.getBoundingClientRect();
+    const kx = video.videoWidth / r.width, ky = video.videoHeight / r.height;
+    const found = detectSlideRect(frameToCanvas(video, video.videoWidth, video.videoHeight), dispX * kx, dispY * ky);
+    if(!found){
+      shareStatus.textContent = "スライドの枠を見つけられませんでした。ドラッグで範囲を指定してください";
+      setTimeout(() => { if(stream) shareStatus.textContent = "共有中"; }, 4000);
+      return;
+    }
+    setSelection({ x: found.x / kx, y: found.y / ky, w: found.w / kx, h: found.h / ky });
+    syncSelectionFromDisplay(); // 比較は「範囲固定」時と同じく、表示されている枠の実測値で行う
+    detectedStageRect = { sel: { ...selection }, video: found }; // 枠を動かさずに固定したら、表示座標の丸めを通さず検出値をそのまま使う
+    shareStatus.textContent = `スライドを検出しました(${found.w}×${found.h})。よければ「範囲固定」`;
+    setTimeout(() => { if(stream) shareStatus.textContent = "共有中"; }, 4000);
+  }
+  selectStage.addEventListener("dblclick", (e) => {
+    const r = selectStage.getBoundingClientRect();
+    dragging = false; movingSelection = false;
+    detectSlideInStage(e.clientX - r.left, e.clientY - r.top);
+  });
+  btnDetectSlide.addEventListener("click", () => {
+    const r = selectStage.getBoundingClientRect();
+    detectSlideInStage(r.width / 2, r.height / 2);
   });
 
   btnFixFull.addEventListener("click", () => {
@@ -4130,6 +4163,8 @@
 
   function openCropModal(record, imgEl){
     cropRecord = record;
+    $("cropDetectMsg").textContent = "";
+    cropDetected = null;
     cropThumbImg = imgEl;
     cropSelection = null;
     cropSelRect.style.display = "none";
@@ -4167,6 +4202,22 @@
     cropSelection = null;
     unlockBodyScroll();
   }
+
+  // スライドの自動検出(トリミング): 元画像で探し、見つかった枠を選択範囲に入れる
+  let cropDetected = null;
+  cropStage.addEventListener("dblclick", (e) => {
+    if(!cropImage.naturalWidth) return;
+    const r = cropStage.getBoundingClientRect();
+    const kx = cropImage.naturalWidth / r.width, ky = cropImage.naturalHeight / r.height;
+    cropDragging = false; cropMoving = false;
+    const found = detectSlideRect(frameToCanvas(cropImage, cropImage.naturalWidth, cropImage.naturalHeight), (e.clientX - r.left) * kx, (e.clientY - r.top) * ky);
+    const msg = $("cropDetectMsg");
+    if(!found){ msg.textContent = "→ スライドの枠を見つけられませんでした"; return; }
+    setCropSelection({ x: found.x / kx, y: found.y / ky, w: found.w / kx, h: found.h / ky });
+    syncCropSelectionFromDisplay();
+    cropDetected = { sel: { ...cropSelection }, px: found };
+    msg.textContent = `→ 検出しました(${found.w}×${found.h})`;
+  });
 
   cropStage.addEventListener("pointerdown", (e) => {
     syncCropSelectionFromDisplay();
@@ -4285,10 +4336,12 @@
     const r = cropStage.getBoundingClientRect();
     const scaleX = cropImage.naturalWidth / r.width;
     const scaleY = cropImage.naturalHeight / r.height;
-    const sx = Math.round(cropSelection.x * scaleX);
-    const sy = Math.round(cropSelection.y * scaleY);
-    const sw = Math.round(cropSelection.w * scaleX);
-    const sh = Math.round(cropSelection.h * scaleY);
+    let sx = Math.round(cropSelection.x * scaleX);
+    let sy = Math.round(cropSelection.y * scaleY);
+    let sw = Math.round(cropSelection.w * scaleX);
+    let sh = Math.round(cropSelection.h * scaleY);
+    // 検出した枠を動かさずに適用したときは、表示座標の丸めを通さず検出値をそのまま使う
+    if(cropDetected && sameSel(cropSelection, cropDetected.sel)) ({ x: sx, y: sy, w: sw, h: sh } = cropDetected.px);
 
     workCanvas.width = sw;
     workCanvas.height = sh;
@@ -4388,7 +4441,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-24.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-25"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4426,7 +4479,8 @@
     ["v04_2026-11-20.3","タイトル整理・絞り込み・入力候補を、ファイル内のタイトルではなく一覧に見えているファイル名で判定(名前を変えたファイルが旧名の項目に出てしまう不具合を修正)"],
     ["v04_2026-11-20.4","タイトル整理: 下の階層の★だけで残っている「履歴なし」の項目も★で表示し、外すとまとめて外れて消えるように(項目を開いて下の★を外すことも可)"],
     ["v04_2026-11-24","常時表示を開いていなくても最新の画面を撮影できるように(記録タブ表示中も映像を流し続ける。ページが隠れているときは映像から直接取得)"],
-    ["v04_2026-11-24.2","⋯メニューに「🖼 画像をZIPで保存」(キャプチャ画像を 番号_見出し名.jpg でまとめて1つのZIPに。保存場所はその都度選択)"]
+    ["v04_2026-11-24.2","⋯メニューに「🖼 画像をZIPで保存」(キャプチャ画像を 番号_見出し名.jpg でまとめて1つのZIPに。保存場所はその都度選択)"],
+    ["v04_2026-11-25","スライドの自動検出: 範囲タブ・トリミングでスライドの中をダブルクリック(範囲タブは「🔍 スライド検出」も)すると、スライドの枠を探して範囲に入れる"]
   ];
 
   const verLabel = $("verLabel");
@@ -5254,6 +5308,158 @@
   shareChip.addEventListener("keydown", (e) => {
     if(e.key === "Enter" || e.key === " "){ e.preventDefault(); switchTab("range"); }
   });
+
+  // ---------- スライドの自動検出(範囲タブ・トリミングで共用) ----------
+  // 画面共有のスライドは傾かない長方形なので、縦・横にまっすぐ続く境目を探し、起点(ダブルクリックした点)を囲む
+  // 4本の組み合わせのうち、4辺とも境目がよく続き・16:9/4:3/16:10/3:2に近く・小さすぎないもののうち一番内側を選ぶ。
+  // 縮小画像で探してから、元の解像度で各辺を境目に合わせ直す。検出に失敗したら null
+  const SLIDE_DETECT_MAXW = 960;
+  function slideAnalyze(src){
+    const s = Math.min(1, SLIDE_DETECT_MAXW / src.width);
+    const W = Math.round(src.width * s), H = Math.round(src.height * s);
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(src, 0, 0, W, H);
+    const d = g.getImageData(0, 0, W, H).data;
+    const T = 8;
+    const hE = new Uint8Array(W * H), vE = new Uint8Array(W * H); // 横線(上下の差)・縦線(左右の差)
+    // 縮小でぼやけた細い線(1px の枠線など)も拾えるよう、2画素離れた画素どうしで差を見る
+    for(let y = 2; y < H; y++){
+      for(let x = 2; x < W; x++){
+        const i = (y * W + x) * 4, u = i - W * 8, l = i - 8;
+        const dy = Math.max(Math.abs(d[i] - d[u]), Math.abs(d[i + 1] - d[u + 1]), Math.abs(d[i + 2] - d[u + 2]));
+        const dx = Math.max(Math.abs(d[i] - d[l]), Math.abs(d[i + 1] - d[l + 1]), Math.abs(d[i + 2] - d[l + 2]));
+        if(dy >= T) hE[y * W + x] = 1;
+        if(dx >= T) vE[y * W + x] = 1;
+      }
+    }
+    // 1画素のずれを許すため、横線は縦に、縦線は横に1画素ふくらませる
+    const hD = new Uint8Array(W * H), vD = new Uint8Array(W * H);
+    for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){
+      const k = y * W + x;
+      hD[k] = hE[k] | (y > 0 ? hE[k - W] : 0) | (y < H - 1 ? hE[k + W] : 0);
+      vD[k] = vE[k] | (x > 0 ? vE[k - 1] : 0) | (x < W - 1 ? vE[k + 1] : 0);
+    }
+    // 行ごと・列ごとの累積和(区間の境目の割合をすぐ求めるため)
+    const rowCum = new Uint32Array((W + 1) * H), colCum = new Uint32Array((H + 1) * W);
+    for(let y = 0; y < H; y++){ let acc = 0; for(let x = 0; x < W; x++){ acc += hD[y * W + x]; rowCum[y * (W + 1) + x + 1] = acc; } }
+    for(let x = 0; x < W; x++){ let acc = 0; for(let y = 0; y < H; y++){ acc += vD[y * W + x]; colCum[x * (H + 1) + y + 1] = acc; } }
+    return { W, H, s, hD, vD, rowCum, colCum };
+  }
+  const slideHCov = (A, y, x1, x2) => (A.rowCum[y * (A.W + 1) + x2] - A.rowCum[y * (A.W + 1) + x1]) / Math.max(1, x2 - x1);
+  const slideVCov = (A, x, y1, y2) => (A.colCum[x * (A.H + 1) + y2] - A.colCum[x * (A.H + 1) + y1]) / Math.max(1, y2 - y1);
+
+  // 起点を通る行(列)で、起点を含む境目の連続区間の長さ(途中の小さな切れ目は許す)
+  function slideRunThrough(arr, W, y, x0, maxGap){
+    let a = x0, b = x0, gap = 0;
+    for(let x = x0; x >= 0; x--){ if(arr[y * W + x]) { a = x; gap = 0; } else if(++gap > maxGap) break; }
+    gap = 0;
+    for(let x = x0; x < W; x++){ if(arr[y * W + x]) { b = x; gap = 0; } else if(++gap > maxGap) break; }
+    return [a, b];
+  }
+
+  function slideDetectCore(A, sx, sy){
+    const { W, H } = A;
+    const minLenX = W * 0.12, minLenY = H * 0.12;
+    // 起点の上下にある横線の候補(起点の真上/真下を通り、十分長いもの)
+    const rows = (from, to, step) => {
+      const out = [];
+      for(let y = from; y !== to; y += step){
+        // 起点の列で横線が無くても、近くで繋がっていれば拾えるよう左右±W/40の範囲で探す
+        let best = null;
+        for(let dx = -Math.round(W / 40); dx <= Math.round(W / 40); dx += 3){
+          const x0 = Math.min(W - 1, Math.max(0, sx + dx));
+          if(!A.hD[y * W + x0]) continue;
+          const [a, b] = slideRunThrough(A.hD, W, y, x0, 3);
+          if(b - a >= minLenX && (!best || b - a > best.b - best.a)) best = { y, a, b };
+        }
+        if(best) out.push(best);
+      }
+      return dedupe(out, "y");
+    };
+    const cols = (from, to, step) => {
+      const out = [];
+      for(let x = from; x !== to; x += step){
+        let best = null;
+        for(let dy = -Math.round(H / 40); dy <= Math.round(H / 40); dy += 3){
+          const y0 = Math.min(H - 1, Math.max(0, sy + dy));
+          if(!A.vD[y0 * W + x]) continue;
+          // 縦方向の連続区間
+          let a = y0, b = y0, gap = 0;
+          for(let y = y0; y >= 0; y--){ if(A.vD[y * W + x]) { a = y; gap = 0; } else if(++gap > 3) break; }
+          gap = 0;
+          for(let y = y0; y < H; y++){ if(A.vD[y * W + x]) { b = y; gap = 0; } else if(++gap > 3) break; }
+          if(b - a >= minLenY && (!best || b - a > best.b - best.a)) best = { x, a, b };
+        }
+        if(best) out.push(best);
+      }
+      return dedupe(out, "x");
+    };
+    // 隣り合う行(列)は1本にまとめ、長い順に上位だけ残す
+    function dedupe(list, key){
+      const groups = [];
+      list.forEach((l) => { const gq = groups.find((gr) => Math.abs(gr[key] - l[key]) <= 2); if(!gq) groups.push(l); else if(l.b - l.a > gq.b - gq.a) Object.assign(gq, l); });
+      return groups.sort((p, q) => (q.b - q.a) - (p.b - p.a)).slice(0, 24);
+    }
+    const tops = rows(sy - 1, 0, -1), bottoms = rows(sy + 1, H - 1, 1);
+    const lefts = cols(sx - 1, 0, -1), rights = cols(sx + 1, W - 1, 1);
+    const STD = [16 / 9, 4 / 3, 16 / 10, 3 / 2];
+    let best = null;
+    for(const t of tops) for(const b of bottoms){
+      const h = b.y - t.y; if(h < H * 0.15) continue;
+      for(const l of lefts) for(const r of rights){
+        const w = r.x - l.x; if(w < W * 0.15) continue;
+        const area = (w * h) / (W * H);
+        if(area > 0.92) continue; // 画面全体の外枠は対象外
+        const c1 = slideHCov(A, t.y, l.x, r.x), c2 = slideHCov(A, b.y, l.x, r.x), c3 = slideVCov(A, l.x, t.y, b.y), c4 = slideVCov(A, r.x, t.y, b.y);
+        const minCov = Math.min(c1, c2, c3, c4);
+        if(minCov < 0.7) continue;
+        const asp = w / h;
+        const aspScore = Math.max(...STD.map((v) => Math.exp(-Math.abs(Math.log(asp / v)) * 10)));
+        // 4辺とも境目がしっかり続き、標準の縦横比に近いもののうち「いちばん内側(小さい)」を選ぶ。
+        // 外側にはスクロールバーや編集領域の枠など、スライドを囲む長方形がほかにもあるため
+        const good = minCov >= 0.85 && aspScore >= 0.5 && area >= 0.08;
+        const cand = { x: l.x, y: t.y, w, h, minCov, asp, aspScore, area, good };
+        if(!best || (good && !best.good) || (good === best.good && (good ? area < best.area : minCov * (0.25 + aspScore) > best.minCov * (0.25 + best.aspScore)))) best = cand;
+      }
+    }
+    return best ? { ...best, cand: tops.length * bottoms.length * lefts.length * rights.length } : null;
+  }
+
+  // 縮小画像で見つけた枠を、元の解像度で境目に合わせ直す(各辺を±rad px の範囲で、辺に沿った色の差が最大の位置へ)。
+  // 枠線が1pxの線のときは、上・左は線の外側、下・右も線の外側(線を含む)を選ぶ
+  function slideRefine(src, r, rad){
+    const W = src.width, H = src.height;
+    const d = src.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    const diff = (a, b) => Math.max(Math.abs(d[a] - d[b]), Math.abs(d[a + 1] - d[b + 1]), Math.abs(d[a + 2] - d[b + 2]));
+    const rowScore = (y, x1, x2) => { if(y < 1 || y >= H) return -1; let s = 0; for(let x = x1; x < x2; x += 2) s += diff((y * W + x) * 4, ((y - 1) * W + x) * 4); return s; };
+    const colScore = (x, y1, y2) => { if(x < 1 || x >= W) return -1; let s = 0; for(let y = y1; y < y2; y += 2) s += diff((y * W + x) * 4, (y * W + x - 1) * 4); return s; };
+    const pick = (center, scoreFn, preferLow) => {
+      const list = []; for(let v = center - rad; v <= center + rad; v++) list.push([v, scoreFn(v)]);
+      const max = Math.max(...list.map((p) => p[1])); if(max <= 0) return center;
+      const near = list.filter((p) => p[1] >= max * 0.85).map((p) => p[0]);
+      return preferLow ? Math.min(...near) : Math.max(...near);
+    };
+    const x1 = r.x, x2 = r.x + r.w, y1 = r.y, y2 = r.y + r.h;
+    const ix1 = x1 + rad, ix2 = x2 - rad, iy1 = y1 + rad, iy2 = y2 - rad; // 角の付近は避けて辺の中ほどで測る
+    const top = pick(y1, (y) => rowScore(y, ix1, ix2), true);
+    const bottom = pick(y2, (y) => rowScore(y, ix1, ix2), false);
+    const left = pick(x1, (x) => colScore(x, iy1, iy2), true);
+    const right = pick(x2, (x) => colScore(x, iy1, iy2), false);
+    return { x: left, y: top, w: right - left, h: bottom - top };
+  }
+
+  function detectSlideRect(src, sx, sy){
+    const A = slideAnalyze(src);
+    const res = slideDetectCore(A, Math.round(sx * A.s), Math.round(sy * A.s));
+    if(!res) return null;
+    return slideRefine(src, { x: Math.round(res.x / A.s), y: Math.round(res.y / A.s), w: Math.round(res.w / A.s), h: Math.round(res.h / A.s) }, Math.ceil(3 / A.s) + 2);
+  }
+  // video・img を検出用のcanvasに写す
+  function frameToCanvas(el, w, h){
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    c.getContext("2d").drawImage(el, 0, 0, w, h);
+    return c;
+  }
 
   // ---------- 画像をZIPで保存(⋯メニュー) ----------
   // 記録一覧のキャプチャ画像(記録時のJPEG・トリミング後)を、番号_見出し名.jpg として1つのZIPにまとめる。
