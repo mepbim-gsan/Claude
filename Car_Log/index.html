@@ -117,6 +117,8 @@ button{font-family:inherit;}
 .r-int{font-size:11px;color:var(--accent);margin-top:2px;}
 .row.sub-entry{border-left:3px solid var(--accent);}
 .row.planned{border-style:dashed;}
+.sub-line{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;cursor:pointer;}
+.sub-line .muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .badge.plan{color:var(--accent);border-color:var(--accent);}
 .bd-sec{font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px;display:flex;justify-content:space-between;}
 .bd-row{display:grid;grid-template-columns:1.15fr 1.25fr .9fr 22px;gap:6px;margin-bottom:6px;align-items:center;}
@@ -387,6 +389,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
     <div class="card">
       <div class="kpi-grid" id="cost-kpi"></div>
     </div>
+    <div class="sub-line" id="cost-subs" onclick="openSubList()"></div>
     <div class="chips" id="cost-filter"></div>
     <div class="rel-note" data-rel-note></div><div class="list" id="cost-list"></div>
   </div>
@@ -468,7 +471,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-23.2';
+const APP_VERSION = 'v09_2026-11-25';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -524,7 +527,7 @@ const FUEL_TYPES = ['レギュラー','ハイオク','軽油','電気','その�
 function newVehicle(info){
   return {id:uid(), sample:false,
     info:Object.assign({name:'',model:'',year:'',purchaseDate:'',initialOdo:'',fuelType:'レギュラー',tankCapacity:'',inspDue:'',color:CAR_COLORS[0][1]}, info||{}),
-    fuel:[], odo:[], maint:[], costs:[], initCosts:[]};
+    fuel:[], odo:[], maint:[], costs:[], initCosts:[], subs:[]};
 }
 function emptyData(){
   const car = newVehicle({name:'マイカー'});
@@ -601,7 +604,7 @@ function applyCloudJson(json){
   const d = migrate(JSON.parse(json));
   d.vehicles = d.vehicles.filter(v=>!v.sample).concat(samples.length ? samples : [buildSample()]);
   d.curId = d.vehicles.some(v=>v.id===cur) ? cur : d.vehicles[0].id;
-  D = d; syncV(); saveLocal(); render();
+  D = d; syncV(); genSubsAll(); saveLocal(); render();
 }
 function askSyncChoice(){
   return new Promise(resolve=>{
@@ -1627,14 +1630,90 @@ function renderCost(){
   const used = [...new Set(V.costs.map(c=>c.category))];
   const cats = D.costCats.filter(c=>used.includes(c)).concat(used.filter(c=>!D.costCats.includes(c)));
   $('cost-filter').innerHTML = chipsHtml(cats, state.costFilter, 'costFilter');
+  const act = (V.subs||[]).filter(subActive);
+  $('cost-subs').innerHTML = `<span>🔁 定期費用</span><span class="muted">${act.length ? `${act.length}件・${act.map(x=>`${yen(num(x.amount))}/${x.cycle==='y'?'年':'月'}`).join('、')}` : '自動で引き落とされる費用を登録'} ›</span>`;
   $('cost-list').innerHTML = groupedList(hist, c=>{
     const sub = [c.until?`期限 ${c.until}`:'', c.memo].filter(Boolean).join(' · ');
     return `<div class="row ${inYear(c.date)?'':'dim'}" onclick="openCostSheet('${c.id}')">${dateCell(c.date)}
-      <div class="r-main"><div class="r-title"><span class="badge cost">${esc(c.category)}</span>${esc(c.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
+      <div class="r-main"><div class="r-title"><span class="badge cost">${esc(c.category)}</span>${c.subId?'<span class="badge">定期</span>':''}${esc(c.title||'')}</div><div class="r-sub">${esc(sub)}</div></div>
       <div class="r-right"><div class="r-amt">${yen(num(c.amount))}</div></div></div>`;
   }, g=>yen(g.reduce((s,c)=>s+(num(c.amount)||0),0)));
 }
 
+// ---------- 定期費用（自動で引き落とされる月額・年額） ----------
+// subs:[{id, category, title, amount, cycle:'m'|'y', start(初回の引き落とし日), end(停止日・任意), skip:[削除した回のid]}]
+// 開いたとき、開始日〜今日（停止日・手放した日まで）の各回を費用の記録として追加。記録の id は「sub-定期費用id-年月」で固定（端末間で重複しない）
+const subActive = x => !x.end || x.end >= todayStr();
+function subDates(x, until){
+  const out = [], [y0,m0,d0] = x.start.split('-').map(Number);
+  for(let i=0; i<1200; i++){
+    const y = x.cycle==='y' ? y0+i : y0 + Math.floor((m0-1+i)/12);
+    const m = x.cycle==='y' ? m0 : (m0-1+i)%12+1;
+    const d = Math.min(d0, new Date(y, m, 0).getDate());   // 月末を超える日は月末に
+    const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(ds > until) break;
+    out.push({ds, key: x.cycle==='y' ? String(y) : `${y}${String(m).padStart(2,'0')}`});
+  }
+  return out;
+}
+function genSubs(v){
+  let added = 0;
+  (v.subs||[]).forEach(x=>{
+    if(!x.start || !num(x.amount)) return;
+    const r = rel(v);
+    const until = [todayStr(), x.end||'9999-12-31', r ? r.date : '9999-12-31'].sort()[0];
+    subDates(x, until).forEach(({ds,key})=>{
+      const id = `sub-${x.id}-${key}`;
+      if((x.skip||[]).includes(id) || v.costs.some(c=>c.id===id)) return;
+      v.costs.push({id, subId:x.id, date:ds, category:x.category, title:x.title||'', amount:String(x.amount), until:'', memo:''});
+      added++;
+    });
+  });
+  return added;
+}
+const genSubsAll = () => D.vehicles.reduce((n,v)=>n+genSubs(v), 0);
+// 自動記録した回を削除したときは、次に開いたときに作り直さない
+function skipSub(c){
+  if(!c.subId) return;
+  const x = (V.subs||[]).find(s=>s.id===c.subId); if(!x) return;
+  (x.skip ||= []).push(c.id);
+}
+function openSubList(){
+  const subs = V.subs||[];
+  const nextOf = x => { const ds = subDates(x, '9999-12-31').map(o=>o.ds).find(d=>d>todayStr()); return ds && (!x.end || ds<=x.end) ? ds : ''; };
+  openSheet('定期費用', (subs.length ? subs.map(x=>`<div class="set-row" style="cursor:pointer" onclick="openSubSheet('${x.id}')">
+      <div><span class="badge cost">${esc(x.category)}</span>${esc(x.title||'')}<div class="muted">${subActive(x) ? (nextOf(x) ? `次回 ${nextOf(x).replace(/-/g,'/')}` : '') : `停止（${x.end.replace(/-/g,'/')}）`}</div></div>
+      <div style="white-space:nowrap">${yen(num(x.amount))}<span class="muted">/${x.cycle==='y'?'年':'月'}</span></div></div>`).join('') : '<div class="muted">まだ登録がありません</div>') +
+    `<div style="margin-top:12px;"><button class="btn" style="width:100%" onclick="openSubSheet()">＋ 追加</button></div>
+     <div class="muted" style="margin-top:8px;">月額・年額で自動的に引き落とされる費用（メンテナンスパックの月額、JAF の年会費など）を登録すると、引き落とし日ごとに費用へ自動で記録します。自動車税のように毎回自分で払うものは、費用の記録で「前回と同じ」を使ってください</div>`);
+}
+function openSubSheet(id){
+  const x = id ? V.subs.find(s=>s.id===id) : null;
+  const v = x || {category:D.costCats[0], title:'', amount:'', cycle:'m', start:todayStr(), end:''};
+  const cats = D.costCats.includes(v.category) ? D.costCats : [v.category, ...D.costCats];
+  openSheet(x?'定期費用を編集':'定期費用を追加', `
+    <div class="fld-row">
+      <div class="fld"><label>区分</label><select id="s-cat">${cats.map(c=>`<option ${c===v.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+      <div class="fld"><label>周期</label><select id="s-cycle"><option value="m" ${v.cycle==='m'?'selected':''}>毎月</option><option value="y" ${v.cycle==='y'?'selected':''}>毎年</option></select></div>
+    </div>
+    <div class="fld"><label>内容</label><input type="text" id="s-title" value="${esc(v.title)}" placeholder="例：メンテナンスパック月額、JAF年会費"></div>
+    <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="s-amount" value="${esc(v.amount)}"></div>
+    <div class="fld-row">
+      <div class="fld"><label>初回の引き落とし日</label><input type="date" id="s-start" value="${esc(v.start)}"></div>
+      <div class="fld"><label>停止日（解約したら）</label><input type="date" id="s-end" value="${esc(v.end||'')}"></div>
+    </div>
+    <div class="hint">毎月（毎年）この日付で費用に記録します。金額を変えると次の回から反映（記録済みの分は変わりません）。停止日以降は記録しません</div>
+  `, () => {
+    const rec = Object.assign(x || {id:uid(), skip:[]}, {category:$('s-cat').value, cycle:$('s-cycle').value, title:$('s-title').value.trim(), amount:$('s-amount').value.trim(), start:$('s-start').value, end:$('s-end').value});
+    if(!rec.start) return '初回の引き落とし日を入力してください';
+    if(!num(rec.amount)) return '金額を入力してください';
+    if(!x) (V.subs ||= []).push(rec);
+    // 停止日より後に自動記録済みの回は取り除く（解約後に引き落とされていない分）
+    if(rec.end) V.costs = V.costs.filter(c=>!(c.subId===rec.id && c.date>rec.end));
+    genSubs(V);
+    setTimeout(openSubList, 0);
+  }, x ? () => { V.subs = V.subs.filter(s=>s!==x); setTimeout(openSubList, 0); } : null);
+}
 function openCostSheet(id){
   const c = id ? V.costs.find(x=>x.id===id) : null;
   const def = state.costFilter!=='all' ? state.costFilter : D.costCats[0];
@@ -1645,17 +1724,33 @@ function openCostSheet(id){
       <div class="fld"><label>日付</label><input type="date" id="c-date" value="${esc(v.date)}"></div>
       <div class="fld"><label>区分</label><select id="c-cat">${cats.map(x=>`<option ${x===v.category?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
     </div>
+    ${c ? '' : '<div id="c-copy"></div>'}
+    ${c && c.subId ? '<div class="hint" style="margin:-6px 0 10px">定期費用から自動で記録された費用です（この記録だけ直せます）</div>' : ''}
     <div class="fld"><label>内容</label><input type="text" id="c-title" value="${esc(v.title)}" placeholder="例：車両本体、オプション、年間保険料"></div>
     <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="c-amount" value="${esc(v.amount)}"><div class="hint" id="c-loan-note" style="display:none">車両代を購入時の費用に入れている場合、返済額を入れると二重計上になります。金利・手数料のみ記録してください</div></div>
     <div class="fld"><label>期限・満了日（任意）</label><input type="date" id="c-until" value="${esc(v.until)}"><div class="hint">保険の満期・車検期限など。ホームに残り日数を表示</div></div>
     <div class="fld"><label>メモ</label><textarea id="c-memo">${esc(v.memo)}</textarea></div>
   `, () => {
     const rec = {id:c?.id||uid(), date:$('c-date').value, category:$('c-cat').value, title:$('c-title').value.trim(), amount:$('c-amount').value.trim(), until:$('c-until').value, memo:$('c-memo').value.trim()};
+    if(c && c.subId) rec.subId = c.subId;
     if(!rec.date) return '日付を入力してください';
     if(!num(rec.amount)) return '金額を入力してください';
     if(!okAfterRelease(rec.date)) return '保存をやめました';
     upsert(V.costs, rec);
-  }, c ? () => remove(V.costs, c.id) : null);
+  }, c ? () => { remove(V.costs, c.id); skipSub(c); } : null);
+  // 新規: 同じ区分の前回の記録があれば「前回と同じ」を1つだけ表示（内容・金額・期限＋1年を写す）
+  if(!c){
+    const copy = () => {
+      const p = V.costs.filter(x=>x.category===$('c-cat').value).sort(byDateDesc)[0];
+      $('c-copy').innerHTML = p ? `<button type="button" class="chip" style="margin:-4px 0 10px" id="c-copy-btn">前回と同じ（${p.date.replace(/-/g,'/')} ${yen(num(p.amount))}）</button>` : '';
+      if(p) $('c-copy-btn').onclick = () => {
+        $('c-title').value = p.title||''; $('c-amount').value = p.amount||''; fmtNumInput($('c-amount')); $('c-memo').value = p.memo||'';
+        if(p.until){ const [y,m,d] = p.until.split('-'); $('c-until').value = `${+y+1}-${m}-${d}`; }
+        toast('前回の内容を写しました');
+      };
+    };
+    $('c-cat').addEventListener('change', copy); copy();
+  }
   const loanNote = () => { $('c-loan-note').style.display = /ローン/.test($('c-cat').value) ? '' : 'none'; };
   $('c-cat').addEventListener('change', loanNote); loanNote();
 }
@@ -1909,11 +2004,15 @@ function buildSample(){
   for(let yy=Y0; yy<=y; yy++){
     C.push([at(yy,4,10),'任意保険','年間保険料', 68000-(yy-Y0)*5000, at(yy+1,4,9)]);
     if(yy>Y0) C.push([at(yy,5,20),'自動車税（種別割）','',30500,'']);
-    C.push([at(yy,6,1),'ロードサービス・会員','年会費',4000, at(yy+1,5,31)]);
     C.push([at(yy,8,12),'高速・有料道路','帰省',8640,'']);
     C.push([at(yy,12,29),'高速・有料道路','年末帰省',9120,'']);
   }
   C.filter(c=>c[0]<=today).forEach(([ds,cat,title,amt,until])=>d.costs.push({id:uid(), date:ds, category:cat, title, amount:String(amt), until:until||'', memo:''}));
+  // 定期費用: ロードサービス年会費（毎年）とメンテナンスパック月額（毎月）
+  d.subs = [
+    {id:uid(), category:'ロードサービス・会員', title:'年会費', amount:'4000', cycle:'y', start:at(Y0,6,1), end:'', skip:[]},
+    {id:uid(), category:'その他', title:'メンテナンスパック月額', amount:'1650', cycle:'m', start:at(Y0+1,4,27), end:'', skip:[]}];
+  genSubs(d);
   return d;
 }
 function rebuildSample(){
@@ -2007,6 +2106,7 @@ function render(){
 }
 
 D = loadData(); syncV();
+if(genSubsAll()) saveLocal();
 document.querySelectorAll('.app-ver').forEach(el=>el.textContent=APP_VERSION);
 try{ const t = localStorage.getItem(THEME_KEY); if(t) document.documentElement.dataset.theme = t; }catch{}
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheet(); });
