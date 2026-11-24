@@ -250,6 +250,10 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 #toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:13px;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;}
 #toast.show{opacity:1;}
 .muted{color:var(--text2);font-size:12px;}
+.opt-wrap{position:relative;display:block;}
+.opt-wrap.inline{display:inline-block;}
+.opt-wrap input{padding-right:34px;}
+.opt-clr{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;border:none;background:var(--text3);color:var(--bg2);font-size:13px;line-height:20px;padding:0;cursor:pointer;}
 .rel-note{font-size:12px;color:var(--text2);background:var(--bg3);border-radius:8px;padding:8px 10px;margin-bottom:8px;}
 .rel-mark{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);margin:10px 0;text-align:center;line-height:1.5;}
 .rel-mark span{flex:0 1 auto;}
@@ -471,7 +475,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-25';
+const APP_VERSION = 'v09_2026-11-25.2';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1468,7 +1472,7 @@ function openMaintSheet(id){
     </div>
     <div class="fld-row" style="align-items:flex-end;">
       <div class="fld"><label class="check" style="min-height:40px;margin:0;"><input type="checkbox" id="m-planned" ${v.planned?'checked':''} onchange="$('m-time-wrap').style.visibility=this.checked?'':'hidden'">予定（未実施）</label></div>
-      <div class="fld" id="m-time-wrap" style="${v.planned?'':'visibility:hidden'}"><label>時刻（任意）</label><input type="time" id="m-time" value="${esc(v.time||'')}"></div>
+      <div class="fld" id="m-time-wrap" style="${v.planned?'':'visibility:hidden'}"><label>時刻（任意）</label><input type="time" id="m-time" data-opt value="${esc(v.time||'')}"></div>
     </div>
     <div class="fld"><label>内容</label><input type="text" id="m-title" value="${esc(v.title)}" placeholder="例：0W-20 4L、ガラスコーティング"></div>
     <div class="fld-row">
@@ -1485,7 +1489,7 @@ function openMaintSheet(id){
     <div class="fld"><label>メモ</label><textarea id="m-memo">${esc(v.memo)}</textarea></div>
     <div class="card-title" style="margin-top:4px;">次回予定（任意）</div>
     <div class="fld-row">
-      <div class="fld"><label>次回予定日</label><input type="date" id="m-ndate" value="${esc(v.nextDate)}"></div>
+      <div class="fld"><label>次回予定日</label><input type="date" id="m-ndate" data-opt value="${esc(v.nextDate)}"></div>
       <div class="fld"><label>次回ODO（km）</label><input type="text" inputmode="decimal" id="m-nodo" value="${esc(v.nextOdo)}"></div>
     </div>
     <div class="hint muted" style="margin-top:-6px;">同じ区分の最新記録の予定がホームに表示されます</div>
@@ -1535,10 +1539,11 @@ function addItemRow(group, it={}, auto){
   row.className = 'bd-item'; row.dataset.group = group; row.dataset.id = it.id || uid();
   if(auto) row.dataset.auto = '1';
   row.innerHTML = `<div class="bd-row"><select class="bd-cat">${opts}</select><input class="bd-title" placeholder="内容" value="${esc(it.title||'')}"><input class="bd-amt" inputmode="numeric" placeholder="金額" value="${esc(it.amount||'')}"><span class="bd-x" title="削除">×</span></div>
-    <div class="bd-until hint">満期 <input type="date" class="bd-until-in" value="${esc(it.until||'')}"> → ホームの「期限」に表示</div>`;
+    <div class="bd-until hint">満期 <input type="date" class="bd-until-in" data-opt value="${esc(it.until||'')}"> → ホームの「期限」に表示</div>`;
   $(group==='legal'?'m-legal':'m-work').appendChild(row);
   const syncUntil = () => { row.querySelector('.bd-until').style.display = row.querySelector('.bd-cat').value==='自賠責保険' ? '' : 'none'; };
   row.querySelector('.bd-cat').addEventListener('change', syncUntil); syncUntil();
+  addClearButtons(row);
   row.querySelector('.bd-amt').addEventListener('input', calcItems);
   row.querySelector('.bd-x').addEventListener('click', ()=>{ row.remove(); calcItems(); });
   if(typeof fmtNumInput==='function') fmtNumInput(row.querySelector('.bd-amt'));
@@ -1700,7 +1705,7 @@ function openSubSheet(id){
     <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="s-amount" value="${esc(v.amount)}"></div>
     <div class="fld-row">
       <div class="fld"><label>初回の引き落とし日</label><input type="date" id="s-start" value="${esc(v.start)}"></div>
-      <div class="fld"><label>停止日（解約したら）</label><input type="date" id="s-end" value="${esc(v.end||'')}"></div>
+      <div class="fld"><label>停止日（解約したら）</label><input type="date" id="s-end" data-opt value="${esc(v.end||'')}"></div>
     </div>
     <div class="hint">毎月（毎年）この日付で費用に記録します。金額を変えると次の回から反映（記録済みの分は変わりません）。停止日以降は記録しません</div>
   `, () => {
@@ -1728,7 +1733,7 @@ function openCostSheet(id){
     ${c && c.subId ? '<div class="hint" style="margin:-6px 0 10px">定期費用から自動で記録された費用です（この記録だけ直せます）</div>' : ''}
     <div class="fld"><label>内容</label><input type="text" id="c-title" value="${esc(v.title)}" placeholder="例：車両本体、オプション、年間保険料"></div>
     <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="c-amount" value="${esc(v.amount)}"><div class="hint" id="c-loan-note" style="display:none">車両代を購入時の費用に入れている場合、返済額を入れると二重計上になります。金利・手数料のみ記録してください</div></div>
-    <div class="fld"><label>期限・満了日（任意）</label><input type="date" id="c-until" value="${esc(v.until)}"><div class="hint">保険の満期・車検期限など。ホームに残り日数を表示</div></div>
+    <div class="fld"><label>期限・満了日（任意）</label><input type="date" id="c-until" data-opt value="${esc(v.until)}"><div class="hint">保険の満期・車検期限など。ホームに残り日数を表示</div></div>
     <div class="fld"><label>メモ</label><textarea id="c-memo">${esc(v.memo)}</textarea></div>
   `, () => {
     const rec = {id:c?.id||uid(), date:$('c-date').value, category:$('c-cat').value, title:$('c-title').value.trim(), amount:$('c-amount').value.trim(), until:$('c-until').value, memo:$('c-memo').value.trim()};
@@ -1821,14 +1826,14 @@ function openVehicleSheet(isNew){
       <div class="fld"><label>年式</label><input type="text" inputmode="numeric" data-nofmt="1" id="v-year" value="${esc(v.year)}" placeholder="2024"></div>
     </div>
     <div class="fld-row">
-      <div class="fld"><label>納車日</label><input type="date" id="v-pdate" value="${esc(v.purchaseDate)}"></div>
+      <div class="fld"><label>納車日</label><input type="date" id="v-pdate" data-opt value="${esc(v.purchaseDate)}"></div>
       <div class="fld"><label>納車時ODO（km）</label><input type="text" inputmode="decimal" id="v-iodo" value="${esc(v.initialOdo)}"></div>
     </div>
     <div class="fld-row">
       <div class="fld"><label>油種</label><select id="v-fuel">${FUEL_TYPES.map(t=>`<option ${t===v.fuelType?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="fld"><label>タンク容量（L）</label><input type="text" inputmode="decimal" id="v-tank" value="${esc(v.tankCapacity)}"></div>
     </div>
-    <div class="fld"><label>車検満了日</label><input type="date" id="v-insp" value="${esc(v.inspDue||'')}"><div class="hint">車検証の「有効期間の満了する日」。未入力の新車は納車日から推定してホームに表示します。車検を記録して次回予定日を入れると自動で更新されます</div></div>
+    <div class="fld"><label>車検満了日</label><input type="date" id="v-insp" data-opt value="${esc(v.inspDue||'')}"><div class="hint">車検証の「有効期間の満了する日」。未入力の新車は納車日から推定してホームに表示します。車検を記録して次回予定日を入れると自動で更新されます</div></div>
     <div class="fld"><label>車の色（アイコン）</label><div class="swatches" id="v-colors">${CAR_COLORS.map(([n,c])=>`<div class="swatch ${c===(v.color||CAR_COLORS[0][1])?'active':''}" data-color="${c}" onclick="document.querySelectorAll('#v-colors .swatch').forEach(e=>e.classList.toggle('active', e===this))">${carIco(c,18)}${n}</div>`).join('')}</div>
       <div class="hint">iPhone のホーム画面アイコンは、追加した時点の色になります（変更後は追加し直し）。Android のホーム画面アイコンは変わりません</div></div>
     <div class="muted">納車日・納車時ODOはODOログの起点、納車日は購入時の費用の集計日として使用します</div>
@@ -2056,11 +2061,24 @@ function addSpBreaks(root){
     });
   });
 }
+// 任意の日付・時刻欄（data-opt）に、値があるときだけ「×」（クリア）を表示
+function addClearButtons(root){
+  root.querySelectorAll('input[data-opt]').forEach(inp=>{
+    if(inp.dataset.clr) return; inp.dataset.clr = '1';
+    const wrap = document.createElement('span'); wrap.className = 'opt-wrap' + (inp.style.width==='auto' || inp.classList.contains('bd-until-in') ? ' inline' : '');
+    inp.parentNode.insertBefore(wrap, inp); wrap.appendChild(inp);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'opt-clr'; b.textContent = '×'; b.title = 'クリア';
+    wrap.appendChild(b);
+    const sync = () => { b.style.display = inp.value ? '' : 'none'; };
+    b.onclick = () => { inp.value = ''; inp.dispatchEvent(new Event('input',{bubbles:true})); inp.dispatchEvent(new Event('change',{bubbles:true})); sync(); };
+    inp.addEventListener('input', sync); inp.addEventListener('change', sync); sync();
+  });
+}
 function openSheet(title, body, onSave, onDelete){
   $('sh-title').textContent = title;
   $('sh-body').innerHTML = body;
   numInputs().forEach(fmtNumInput);
-  setTimeout(()=>addSpBreaks($('sh-body')), 0);   // シート内で後から追加される要素も含めて改行位置を付与
+  setTimeout(()=>{ addSpBreaks($('sh-body')); addClearButtons($('sh-body')); }, 0);   // シート内で後から追加される要素も含めて改行位置を付与
   if(!onSave){
     $('sh-foot').innerHTML = '<button class="btn" onclick="closeSheet()">閉じる</button>';
     $('sheet').classList.add('show'); $('sheet-bg').classList.add('show'); $('sh-body').scrollTop = 0;
