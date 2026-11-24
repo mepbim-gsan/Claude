@@ -1019,7 +1019,15 @@
   }
 
   const video = $("video");
-  let captureSourceEl = video; // 実際にキャプチャの描画元として使うvideo要素(PiP中はpipVideoElに切替)
+  // 記録タブ表示中は範囲タブ(とその中のvideo)が非表示になり、ブラウザが「見えていない音なし自動再生の動画」として
+  // 再生を止めてしまう(古いコマが撮れる)。常時表示ウィンドウと同じく、常に画面内にある1pxの見えないvideoを
+  // 別に置いて映像を流し続け、これを撮影元にする
+  const keepAliveVideo = document.createElement("video");
+  keepAliveVideo.autoplay = true; keepAliveVideo.muted = true; keepAliveVideo.playsInline = true;
+  Object.assign(keepAliveVideo.style, { position: "fixed", left: "0", bottom: "0", width: "1px", height: "1px", opacity: "0", pointerEvents: "none" });
+  keepAliveVideo.setAttribute("aria-hidden", "true");
+  document.body.appendChild(keepAliveVideo);
+  let captureSourceEl = keepAliveVideo; // 実際にキャプチャの描画元として使うvideo要素(PiP中はpipVideoElに切替)
   const selectStage = $("selectStage");
   const selRect = $("selRect");
   const workCanvas = $("workCanvas");
@@ -1206,6 +1214,7 @@
     // video要素がストリームを参照したままだとブラウザによっては
     // 共有中インジケーターが残ることがあるため、明示的に切り離す
     video.srcObject = null;
+    keepAliveVideo.srcObject = null;
     stream = null;
   }
 
@@ -1286,6 +1295,7 @@
         catch(e){ /* 画面全体の共有など、フォーカス指定の対象外の場合は何もしない */ }
       }
       video.srcObject = stream;
+      keepAliveVideo.srcObject = stream;
       selectStage.style.display = "block";
       shareStatus.textContent = "共有中";
       shareStatus.classList.add("live");
@@ -1703,6 +1713,23 @@
   }
 
   // ---------- キャプチャ ----------
+  // 映像トラックから直接最新のコマを取り出す(ImageCapture.grabFrame)。ページの表示に頼らないため、
+  // ページが隠れてvideoの再生が止まっていても撮れる。非対応・1秒以内にコマが来ない(画面に変化が無い等)場合は null
+  let imageCapture = null;
+  async function grabLatestFrame(){
+    const track = stream && stream.getVideoTracks()[0];
+    if(!track || track.readyState !== "live" || !("ImageCapture" in window)) return null;
+    try{
+      if(!imageCapture || imageCapture.track !== track) imageCapture = new ImageCapture(track);
+      return await Promise.race([
+        imageCapture.grabFrame(),
+        new Promise((resolve) => setTimeout(() => resolve(null), 1000))
+      ]);
+    }catch(err){
+      console.warn("映像トラックからのコマ取得に失敗、video要素から撮影します", err);
+      return null;
+    }
+  }
   async function captureNow(anchorItemOverride){
     if(!fixedRect) return false;
 
@@ -1713,7 +1740,13 @@
     if(!src || src.readyState < 2 || !src.videoWidth){
       src = video;
     }
-    if(!src || !src.videoWidth){
+    // このページ自体が他のウィンドウの裏などに隠れているとvideoの再生も止まるため、
+    // 常時表示ウィンドウが無いときは映像トラックから直接最新のコマを取り出す(取れなければvideoから)
+    let frame = null;
+    if(document.visibilityState === "hidden" && !pipVideoEl) frame = await grabLatestFrame();
+    if(frame) src = frame;
+    const srcW = frame ? frame.width : (src && src.videoWidth), srcH = frame ? frame.height : (src && src.videoHeight);
+    if(!src || !srcW){
       console.error("キャプチャ元の映像がまだ準備できていません");
       return false;
     }
@@ -1721,7 +1754,7 @@
     // 共有中のウィンドウのサイズが変わった場合の追従:
     // ・全画面固定なら、撮影時点の映像全体を使う
     // ・範囲固定なら、位置(左上基準)はそのままに、映像からはみ出す部分だけ切り詰める(黒い余白を出さない)
-    const vw = src.videoWidth, vh = src.videoHeight;
+    const vw = srcW, vh = srcH;
     let rect;
     if(fixedIsFull){
       rect = { x:0, y:0, w:vw, h:vh };
@@ -1739,8 +1772,10 @@
       );
     }catch(err){
       console.error("キャプチャの描画に失敗しました", err);
+      if(frame && frame.close) frame.close();
       return false;
     }
+    if(frame && frame.close) frame.close(); // grabFrameの画像は使い終わったら解放
     // 前回のキャプチャと同じ画面かを比べる(撮影時に1回だけ。常時の監視はしない)。
     // ウィンドウ共有では画面に変化が無いと映像が届かず、最小化中は古い画面のままになるため、
     // 同じ画面を撮ったときに「最小化していませんか?」と知らせる(撮影自体は行う)
@@ -3672,7 +3707,7 @@
   function restoreVideoFromPip(){
     // PiPを閉じたら、キャプチャ元を共有パネル側のvideoへ戻す(共有パネル側は
     // 最初から映像を表示し続けているので、動かす必要はない)
-    captureSourceEl = video;
+    captureSourceEl = keepAliveVideo;
     pipVideoEl = null;
   }
 
@@ -4352,7 +4387,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-20.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-24"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4388,7 +4423,8 @@
     ["v04_2026-11-20","定番タイトル(★)を保存先フォルダの同期ファイルでも共有(🔄同期で他の端末・ブラウザの★を取り込み、削除も反映)"],
     ["v04_2026-11-20.2","タイトル整理: 履歴にファイルが無く★だけで残っている項目に「履歴なし」の印(★を外すと消える)"],
     ["v04_2026-11-20.3","タイトル整理・絞り込み・入力候補を、ファイル内のタイトルではなく一覧に見えているファイル名で判定(名前を変えたファイルが旧名の項目に出てしまう不具合を修正)"],
-    ["v04_2026-11-20.4","タイトル整理: 下の階層の★だけで残っている「履歴なし」の項目も★で表示し、外すとまとめて外れて消えるように(項目を開いて下の★を外すことも可)"]
+    ["v04_2026-11-20.4","タイトル整理: 下の階層の★だけで残っている「履歴なし」の項目も★で表示し、外すとまとめて外れて消えるように(項目を開いて下の★を外すことも可)"],
+    ["v04_2026-11-24","常時表示を開いていなくても最新の画面を撮影できるように(記録タブ表示中も映像を流し続ける。ページが隠れているときは映像から直接取得)"]
   ];
 
   const verLabel = $("verLabel");
