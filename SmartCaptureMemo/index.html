@@ -864,6 +864,7 @@
               <button class="secondary iconBtn" id="btnMore" type="button" title="その他の操作" aria-haspopup="true">⋯</button>
               <div id="moreMenu" hidden>
                 <button type="button" id="btnImport" title="書き出したHTMLを読み込んで続きから編集">📥 HTMLを読み込む</button>
+                <button type="button" id="btnImageZip" title="記録一覧のキャプチャ画像をまとめて1つのZIPに保存(保存場所はその都度選択)">🖼 画像をZIPで保存</button>
                 <button type="button" id="btnRefreshList" title="一覧を更新(別のタブ/ウィンドウで追加されたキャプチャを反映。画面共有や範囲固定はそのまま維持)">🔄 一覧を更新</button>
                 <button type="button" class="dangerItem" id="btnClearAll">🗑 全削除</button>
               </div>
@@ -4387,7 +4388,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-24"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-24.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4424,7 +4425,8 @@
     ["v04_2026-11-20.2","タイトル整理: 履歴にファイルが無く★だけで残っている項目に「履歴なし」の印(★を外すと消える)"],
     ["v04_2026-11-20.3","タイトル整理・絞り込み・入力候補を、ファイル内のタイトルではなく一覧に見えているファイル名で判定(名前を変えたファイルが旧名の項目に出てしまう不具合を修正)"],
     ["v04_2026-11-20.4","タイトル整理: 下の階層の★だけで残っている「履歴なし」の項目も★で表示し、外すとまとめて外れて消えるように(項目を開いて下の★を外すことも可)"],
-    ["v04_2026-11-24","常時表示を開いていなくても最新の画面を撮影できるように(記録タブ表示中も映像を流し続ける。ページが隠れているときは映像から直接取得)"]
+    ["v04_2026-11-24","常時表示を開いていなくても最新の画面を撮影できるように(記録タブ表示中も映像を流し続ける。ページが隠れているときは映像から直接取得)"],
+    ["v04_2026-11-24.2","⋯メニューに「🖼 画像をZIPで保存」(キャプチャ画像を 番号_見出し名.jpg でまとめて1つのZIPに。保存場所はその都度選択)"]
   ];
 
   const verLabel = $("verLabel");
@@ -5251,6 +5253,81 @@
   shareChip.addEventListener("click", () => switchTab("range"));
   shareChip.addEventListener("keydown", (e) => {
     if(e.key === "Enter" || e.key === " "){ e.preventDefault(); switchTab("range"); }
+  });
+
+  // ---------- 画像をZIPで保存(⋯メニュー) ----------
+  // 記録一覧のキャプチャ画像(記録時のJPEG・トリミング後)を、番号_見出し名.jpg として1つのZIPにまとめる。
+  // 保存場所は毎回たずねる(⚙設定の保存先フォルダは使わない)。ZIPは外部ライブラリを使わず無圧縮で作り、
+  // ファイル名はUTF-8フラグ付きで記録する(Windowsのエクスプローラーで展開しても文字化けしない)
+  const ZIP_CRC_TABLE = (() => { const t = new Uint32Array(256); for(let n = 0; n < 256; n++){ let c = n; for(let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; } return t; })();
+  function zipCrc32(buf){ let c = 0xFFFFFFFF; for(let i = 0; i < buf.length; i++) c = ZIP_CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  function makeZip(files){ // files: [{ name, data: Uint8Array }]
+    const enc = new TextEncoder(), parts = [], central = [];
+    const d = new Date();
+    const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    let offset = 0;
+    files.forEach((f) => {
+      const name = enc.encode(f.name), crc = zipCrc32(f.data), size = f.data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true);
+      parts.push(new Uint8Array(lh.buffer), name, f.data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+      ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      offset += 30 + name.length + size;
+    });
+    const cdSize = central.reduce((a, b) => a + b.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+  }
+  function dataURLToBytes(url){ const bin = atob(url.split(",")[1]); const a = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
+  $("btnImageZip").addEventListener("click", async () => {
+    const records = await dbGetAll();
+    records.sort((a, b) => (a.order ?? a.id) - (b.order ?? b.id)); // 一覧と同じ並び
+    const safeName = (t) => String(t).replace(/[\\/:*?"<>|\r\n]/g, "").trim().slice(0, 40);
+    let heading = "", n = 0;
+    const files = [];
+    records.forEach((r) => {
+      if(!r.dataURL){ if(r.heading !== false) heading = safeName(r.memo || ""); return; } // 見出し(メモ行は対象外)
+      n++;
+      const ext = /^data:image\/png/.test(r.dataURL) ? "png" : "jpg";
+      files.push({ name: `${String(n).padStart(2, "0")}${heading ? "_" + heading : ""}.${ext}`, data: dataURLToBytes(r.dataURL) });
+    });
+    if(!files.length){ await alertAsync("保存できる画像がありません。"); return; }
+    const docTitle = safeName((exportTitleInput.value || "").trim()) || "SmartCaptureMemo";
+    const [dy, dm, dd] = (exportDateInput.value || "").split("-");
+    const zipName = (dy && dm && dd ? `${dy}-${dm}${dd}_` : "") + docTitle + "_画像.zip";
+    const blob = makeZip(files);
+    if(window.showSaveFilePicker){
+      let handle = null;
+      try{
+        handle = await window.showSaveFilePicker({ suggestedName: zipName, types: [{ description: "ZIPファイル", accept: { "application/zip": [".zip"] } }] });
+      }catch(err){
+        if(err && err.name === "AbortError"){ showToast("画像の保存を中止しました。"); return; }
+        console.error("保存ダイアログが使えないため、通常のダウンロードにします", err);
+      }
+      if(handle){
+        try{
+          const w = await handle.createWritable(); await w.write(blob); await w.close();
+          showToast(`🖼 ${files.length}枚の画像をZIPで保存しました: ${handle.name}`);
+        }catch(err){
+          console.error(err); await alertAsync("画像の保存に失敗しました。");
+        }
+        return;
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = zipName; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    showToast(`🖼 ${files.length}枚の画像をZIPでダウンロードしました: ${zipName}`);
   });
 
   // ---------- その他の操作メニュー(⋯) ----------
