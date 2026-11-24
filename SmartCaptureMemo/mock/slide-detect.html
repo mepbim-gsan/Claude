@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>スライド自動検出 モック</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280;
+    --accent:#3b6fe0; --ok:#1f9d5c; --secondary-bg:#e7e9ee; --warn:#d97706; color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac;
+      --accent:#4f8cff; --ok:#2fbf71; --secondary-bg:#262b38; --warn:#f0a03c; color-scheme:dark; }
+  }
+  html[data-theme="light"]{color-scheme:light; --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280; --accent:#3b6fe0; --ok:#1f9d5c; --secondary-bg:#e7e9ee; --warn:#d97706;}
+  html[data-theme="dark"]{color-scheme:dark; --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac; --accent:#4f8cff; --ok:#2fbf71; --secondary-bg:#262b38; --warn:#f0a03c;}
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text);}
+  header{padding:12px 120px 12px 16px; border-bottom:1px solid var(--border); position:relative;}
+  header h1{font-size:15px; margin:0;} header p{margin:4px 0 0; font-size:12px; color:var(--sub);}
+  .themeBtn{position:absolute; right:16px; top:12px; height:32px;}
+  main{max-width:1200px; margin:0 auto; padding:12px 16px;}
+  button, select{height:34px; border:none; border-radius:8px; padding:0 12px; font-size:13px; cursor:pointer; font-family:inherit; background:var(--secondary-bg); color:var(--text);}
+  button.primary{background:var(--accent); color:#fff;}
+  button.on{background:var(--accent); color:#fff;}
+  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .tabs{display:flex; gap:4px; margin:6px 0 10px;}
+  .tabs button{border-radius:8px 8px 0 0;}
+  .note{font-size:12px; color:var(--sub); line-height:1.7; margin:8px 0;}
+  .note b{color:var(--text);}
+  #stageWrap{position:relative; background:#000; border-radius:8px; overflow:hidden; user-select:none; margin-top:8px;}
+  #stage{display:block; width:100%; height:auto; cursor:crosshair;}
+  #rect{position:absolute; border:2px solid #22c55e; box-shadow:0 0 0 9999px rgba(0,0,0,.45); pointer-events:none;}
+  #rect[hidden]{display:none;}
+  #rect .lbl{position:absolute; left:-2px; top:-24px; background:#22c55e; color:#fff; font-size:11px; padding:2px 6px; border-radius:4px; white-space:nowrap;}
+  #seed{position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border:2px solid #fff; border-radius:50%; background:#ef4444; pointer-events:none;}
+  #seed[hidden]{display:none;}
+  #msg{font-size:13px; margin-top:8px; min-height:1.5em;}
+  #msg.fail{color:var(--warn);}
+  #drop{border:2px dashed var(--border); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--sub);}
+  #drop.over{border-color:var(--accent); color:var(--accent);}
+  label.chk{font-size:13px; display:flex; gap:6px; align-items:center;}
+</style>
+</head>
+<body>
+<header>
+  <button class="themeBtn" id="btnTheme" type="button"></button>
+  <h1>スライドの自動検出(モック)</h1>
+  <p>動作確認用のモックです。本体には未反映。画像はこのブラウザ内だけで処理し、どこにも送信しません。</p>
+</header>
+<main>
+  <div class="row">
+    <select id="sample">
+      <option value="ppt">サンプル1: PowerPoint 編集画面風</option>
+      <option value="meet">サンプル2: Web会議(ビデオタイル・チャットあり)風</option>
+      <option value="white">サンプル3: 白い画面に白いスライド(境目が弱い)</option>
+    </select>
+    <span id="drop">ここに画像をドラッグ&ドロップ / Ctrl+V で貼り付け / <label style="cursor:pointer;color:var(--accent)">ファイルを選ぶ<input type="file" id="file" accept="image/*" hidden></label></span>
+  </div>
+
+  <div class="tabs">
+    <button type="button" id="tabRange" class="on">範囲タブ(画面共有の範囲を決める)</button>
+    <button type="button" id="tabCrop">トリミング(撮影済みの画像)</button>
+  </div>
+  <div class="row">
+    <button type="button" class="primary" id="btnAuto">🔍 スライドを自動検出</button>
+    <button type="button" id="btnFull">全体に戻す</button>
+    <label class="chk"><input type="checkbox" id="chkEdges"> 検出に使った境目を表示</label>
+  </div>
+  <div class="note" id="tabNote"></div>
+
+  <div id="stageWrap">
+    <canvas id="stage"></canvas>
+    <div id="rect" hidden><span class="lbl"></span></div>
+    <div id="seed" hidden></div>
+  </div>
+  <div id="msg"></div>
+  <div class="note">
+    <b>試し方</b>: スライドの中をダブルクリック → その点を囲むスライドの枠を探して範囲にします。「🔍 スライドを自動検出」は画面の中央を起点に探します。<br>
+    <b>検出の考え方</b>: 画面共有のスライドは傾かない長方形なので、縦・横にまっすぐ続く境目(色や明るさが変わる線)を探し、ダブルクリックした点を囲む4本の組み合わせのうち、4辺とも境目がしっかり続いていて、16:9・4:3・16:10 に近い形のものを選びます(画面の大部分を占める外枠や、小さな画像・アイコンは除外)。
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const stage = $("stage"), sctx = stage.getContext("2d", { willReadFrequently: true });
+  let img = null; // 現在の画像(canvas)
+  let mode = "range";
+  let lastRect = null, lastSeed = null, lastEdges = null;
+
+  // ---------- サンプル画像(合成) ----------
+  function sample(kind){
+    const c = document.createElement("canvas"); c.width = 1440; c.height = 860; const g = c.getContext("2d");
+    const text = (t, x, y, size, col) => { g.fillStyle = col; g.font = `${size}px sans-serif`; g.fillText(t, x, y); };
+    if(kind === "ppt"){
+      g.fillStyle = "#b7472a"; g.fillRect(0, 0, 1440, 60);
+      g.fillStyle = "#f3f3f3"; g.fillRect(0, 60, 1440, 100);
+      for(let i = 0; i < 14; i++){ g.fillStyle = "#ccc"; g.fillRect(20 + i * 100, 80, 60, 50); }
+      g.fillStyle = "#e6e6e6"; g.fillRect(0, 160, 1440, 680);
+      for(let i = 0; i < 5; i++){ g.fillStyle = "#fff"; g.fillRect(36, 178 + i * 118, 172, 96); g.fillStyle = "#4fb3e0"; g.fillRect(150, 178 + i * 118, 58, 96); }
+      g.fillStyle = "#fff"; g.fillRect(270, 177, 1133, 638);
+      g.fillStyle = "#4fb3e0"; g.beginPath(); g.moveTo(1150, 177); g.lineTo(1403, 177); g.lineTo(1403, 815); g.lineTo(1300, 815); g.closePath(); g.fill();
+      text("サンプルのスライド", 340, 280, 46, "#4fb3e0");
+      ["・会議のスライドを想定した文章です", "・項目その2の説明が入ります", "・3つ目の項目", "　- 補足の行"].forEach((t, i) => text(t, 360, 400 + i * 60, 28, "#333"));
+      g.fillStyle = "#f3f3f3"; g.fillRect(0, 840, 1440, 20);
+    }else if(kind === "meet"){
+      g.fillStyle = "#1f1f1f"; g.fillRect(0, 0, 1440, 860);
+      g.fillStyle = "#2b2b2b"; g.fillRect(0, 0, 1440, 48); text("会議 — 画面共有中", 20, 32, 18, "#ddd");
+      // 共有スライド(16:9)
+      g.fillStyle = "#fafafa"; g.fillRect(40, 90, 1024, 576);
+      g.fillStyle = "#2d6cdf"; g.fillRect(40, 90, 1024, 90); text("第3四半期の進捗", 70, 150, 40, "#fff");
+      ["・設計: 80% 完了", "・実装: 45% 完了", "・テスト計画: 作成中"].forEach((t, i) => text(t, 90, 260 + i * 70, 32, "#222"));
+      g.fillStyle = "#d9e5fb"; g.fillRect(700, 240, 300, 200);
+      // ビデオタイル
+      for(let i = 0; i < 4; i++){ g.fillStyle = ["#3a4a5a", "#5a3a4a", "#3a5a4a", "#4a4a3a"][i]; g.fillRect(1100, 90 + i * 150, 300, 135); g.fillStyle = "#c9a27e"; g.beginPath(); g.arc(1250, 150 + i * 150, 35, 0, 7); g.fill(); }
+      // チャット
+      g.fillStyle = "#2b2b2b"; g.fillRect(40, 700, 1024, 130);
+      ["Aさん: 資料ありがとうございます", "Bさん: 次のページお願いします"].forEach((t, i) => text(t, 60, 740 + i * 36, 18, "#bbb"));
+    }else{
+      g.fillStyle = "#ffffff"; g.fillRect(0, 0, 1440, 860);
+      g.fillStyle = "#f7f7f7"; g.fillRect(0, 0, 1440, 56); text("ブラウザ(白いページ)", 20, 36, 18, "#555");
+      g.fillStyle = "#fdfdfd"; g.fillRect(200, 140, 1040, 585); // わずかに違う白
+      g.strokeStyle = "#e3e3e3"; g.lineWidth = 1; g.strokeRect(200.5, 140.5, 1040, 585);
+      text("白い背景のスライド", 260, 240, 44, "#333");
+      ["・境目が薄い線だけの場合", "・それでも見つけられるか"].forEach((t, i) => text(t, 280, 360 + i * 64, 30, "#444"));
+    }
+    return c;
+  }
+
+  // ---------- 検出 ----------
+  // 解析用に縮小し、縦横の境目(隣の画素との色の差が閾値以上)を求める
+  const MAXW = 960;
+  function analyze(src){
+    const s = Math.min(1, MAXW / src.width);
+    const W = Math.round(src.width * s), H = Math.round(src.height * s);
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(src, 0, 0, W, H);
+    const d = g.getImageData(0, 0, W, H).data;
+    const T = 8;
+    const hE = new Uint8Array(W * H), vE = new Uint8Array(W * H); // 横線(上下の差)・縦線(左右の差)
+    // 縮小でぼやけた細い線(1px の枠線など)も拾えるよう、2画素離れた画素どうしで差を見る
+    for(let y = 2; y < H; y++){
+      for(let x = 2; x < W; x++){
+        const i = (y * W + x) * 4, u = i - W * 8, l = i - 8;
+        const dy = Math.max(Math.abs(d[i] - d[u]), Math.abs(d[i + 1] - d[u + 1]), Math.abs(d[i + 2] - d[u + 2]));
+        const dx = Math.max(Math.abs(d[i] - d[l]), Math.abs(d[i + 1] - d[l + 1]), Math.abs(d[i + 2] - d[l + 2]));
+        if(dy >= T) hE[y * W + x] = 1;
+        if(dx >= T) vE[y * W + x] = 1;
+      }
+    }
+    // 1画素のずれを許すため、横線は縦に、縦線は横に1画素ふくらませる
+    const hD = new Uint8Array(W * H), vD = new Uint8Array(W * H);
+    for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){
+      const k = y * W + x;
+      hD[k] = hE[k] | (y > 0 ? hE[k - W] : 0) | (y < H - 1 ? hE[k + W] : 0);
+      vD[k] = vE[k] | (x > 0 ? vE[k - 1] : 0) | (x < W - 1 ? vE[k + 1] : 0);
+    }
+    // 行ごと・列ごとの累積和(区間の境目の割合をすぐ求めるため)
+    const rowCum = new Uint32Array((W + 1) * H), colCum = new Uint32Array((H + 1) * W);
+    for(let y = 0; y < H; y++){ let acc = 0; for(let x = 0; x < W; x++){ acc += hD[y * W + x]; rowCum[y * (W + 1) + x + 1] = acc; } }
+    for(let x = 0; x < W; x++){ let acc = 0; for(let y = 0; y < H; y++){ acc += vD[y * W + x]; colCum[x * (H + 1) + y + 1] = acc; } }
+    return { W, H, s, hD, vD, rowCum, colCum };
+  }
+  const hCov = (A, y, x1, x2) => (A.rowCum[y * (A.W + 1) + x2] - A.rowCum[y * (A.W + 1) + x1]) / Math.max(1, x2 - x1);
+  const vCov = (A, x, y1, y2) => (A.colCum[x * (A.H + 1) + y2] - A.colCum[x * (A.H + 1) + y1]) / Math.max(1, y2 - y1);
+
+  // 起点を通る行(列)で、起点を含む境目の連続区間の長さ(途中の小さな切れ目は許す)
+  function runThrough(arr, W, y, x0, maxGap){
+    let a = x0, b = x0, gap = 0;
+    for(let x = x0; x >= 0; x--){ if(arr[y * W + x]) { a = x; gap = 0; } else if(++gap > maxGap) break; }
+    gap = 0;
+    for(let x = x0; x < W; x++){ if(arr[y * W + x]) { b = x; gap = 0; } else if(++gap > maxGap) break; }
+    return [a, b];
+  }
+
+  function detect(A, sx, sy){
+    const { W, H } = A;
+    const minLenX = W * 0.12, minLenY = H * 0.12;
+    // 起点の上下にある横線の候補(起点の真上/真下を通り、十分長いもの)
+    const rows = (from, to, step) => {
+      const out = [];
+      for(let y = from; y !== to; y += step){
+        // 起点の列で横線が無くても、近くで繋がっていれば拾えるよう左右±W/40の範囲で探す
+        let best = null;
+        for(let dx = -Math.round(W / 40); dx <= Math.round(W / 40); dx += 3){
+          const x0 = Math.min(W - 1, Math.max(0, sx + dx));
+          if(!A.hD[y * W + x0]) continue;
+          const [a, b] = runThrough(A.hD, W, y, x0, 3);
+          if(b - a >= minLenX && (!best || b - a > best.b - best.a)) best = { y, a, b };
+        }
+        if(best) out.push(best);
+      }
+      return dedupe(out, "y");
+    };
+    const cols = (from, to, step) => {
+      const out = [];
+      for(let x = from; x !== to; x += step){
+        let best = null;
+        for(let dy = -Math.round(H / 40); dy <= Math.round(H / 40); dy += 3){
+          const y0 = Math.min(H - 1, Math.max(0, sy + dy));
+          if(!A.vD[y0 * W + x]) continue;
+          // 縦方向の連続区間
+          let a = y0, b = y0, gap = 0;
+          for(let y = y0; y >= 0; y--){ if(A.vD[y * W + x]) { a = y; gap = 0; } else if(++gap > 3) break; }
+          gap = 0;
+          for(let y = y0; y < H; y++){ if(A.vD[y * W + x]) { b = y; gap = 0; } else if(++gap > 3) break; }
+          if(b - a >= minLenY && (!best || b - a > best.b - best.a)) best = { x, a, b };
+        }
+        if(best) out.push(best);
+      }
+      return dedupe(out, "x");
+    };
+    // 隣り合う行(列)は1本にまとめ、長い順に上位だけ残す
+    function dedupe(list, key){
+      const groups = [];
+      list.forEach((l) => { const gq = groups.find((gr) => Math.abs(gr[key] - l[key]) <= 2); if(!gq) groups.push(l); else if(l.b - l.a > gq.b - gq.a) Object.assign(gq, l); });
+      return groups.sort((p, q) => (q.b - q.a) - (p.b - p.a)).slice(0, 24);
+    }
+    const tops = rows(sy - 1, 0, -1), bottoms = rows(sy + 1, H - 1, 1);
+    const lefts = cols(sx - 1, 0, -1), rights = cols(sx + 1, W - 1, 1);
+    const STD = [16 / 9, 4 / 3, 16 / 10, 3 / 2];
+    let best = null;
+    for(const t of tops) for(const b of bottoms){
+      const h = b.y - t.y; if(h < H * 0.15) continue;
+      for(const l of lefts) for(const r of rights){
+        const w = r.x - l.x; if(w < W * 0.15) continue;
+        const area = (w * h) / (W * H);
+        if(area > 0.92) continue; // 画面全体の外枠は対象外
+        const c1 = hCov(A, t.y, l.x, r.x), c2 = hCov(A, b.y, l.x, r.x), c3 = vCov(A, l.x, t.y, b.y), c4 = vCov(A, r.x, t.y, b.y);
+        const minCov = Math.min(c1, c2, c3, c4);
+        if(minCov < 0.7) continue;
+        const asp = w / h;
+        const aspScore = Math.max(...STD.map((v) => Math.exp(-Math.abs(Math.log(asp / v)) * 10)));
+        // 4辺とも境目がしっかり続き、標準の縦横比に近いもののうち「いちばん内側(小さい)」を選ぶ。
+        // 外側にはスクロールバーや編集領域の枠など、スライドを囲む長方形がほかにもあるため
+        const good = minCov >= 0.85 && aspScore >= 0.5 && area >= 0.08;
+        const cand = { x: l.x, y: t.y, w, h, minCov, asp, aspScore, area, good };
+        if(!best || (good && !best.good) || (good === best.good && (good ? area < best.area : minCov * (0.25 + aspScore) > best.minCov * (0.25 + best.aspScore)))) best = cand;
+      }
+    }
+    return best ? { ...best, cand: tops.length * bottoms.length * lefts.length * rights.length } : null;
+  }
+
+  // 縮小画像で見つけた枠を、元の解像度で境目に合わせ直す(各辺を±rad px の範囲で、辺に沿った色の差が最大の位置へ)。
+  // 枠線が1pxの線のときは、上・左は線の外側、下・右も線の外側(線を含む)を選ぶ
+  function refine(src, r, rad){
+    const W = src.width, H = src.height;
+    const d = src.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    const diff = (a, b) => Math.max(Math.abs(d[a] - d[b]), Math.abs(d[a + 1] - d[b + 1]), Math.abs(d[a + 2] - d[b + 2]));
+    const rowScore = (y, x1, x2) => { if(y < 1 || y >= H) return -1; let s = 0; for(let x = x1; x < x2; x += 2) s += diff((y * W + x) * 4, ((y - 1) * W + x) * 4); return s; };
+    const colScore = (x, y1, y2) => { if(x < 1 || x >= W) return -1; let s = 0; for(let y = y1; y < y2; y += 2) s += diff((y * W + x) * 4, (y * W + x - 1) * 4); return s; };
+    const pick = (center, scoreFn, preferLow) => {
+      const list = []; for(let v = center - rad; v <= center + rad; v++) list.push([v, scoreFn(v)]);
+      const max = Math.max(...list.map((p) => p[1])); if(max <= 0) return center;
+      const near = list.filter((p) => p[1] >= max * 0.85).map((p) => p[0]);
+      return preferLow ? Math.min(...near) : Math.max(...near);
+    };
+    const x1 = r.x, x2 = r.x + r.w, y1 = r.y, y2 = r.y + r.h;
+    const ix1 = x1 + rad, ix2 = x2 - rad, iy1 = y1 + rad, iy2 = y2 - rad; // 角の付近は避けて辺の中ほどで測る
+    const top = pick(y1, (y) => rowScore(y, ix1, ix2), true);
+    const bottom = pick(y2, (y) => rowScore(y, ix1, ix2), false);
+    const left = pick(x1, (x) => colScore(x, iy1, iy2), true);
+    const right = pick(x2, (x) => colScore(x, iy1, iy2), false);
+    return { x: left, y: top, w: right - left, h: bottom - top };
+  }
+
+  // ---------- 表示 ----------
+  function setImage(c){
+    img = c; stage.width = c.width; stage.height = c.height; draw(); setRect(null); $("seed").hidden = true; $("msg").textContent = "";
+    lastEdges = null;
+  }
+  function draw(){
+    sctx.drawImage(img, 0, 0);
+    if($("chkEdges").checked){
+      const A = lastEdges || (lastEdges = analyze(img));
+      const ov = sctx.getImageData(0, 0, stage.width, stage.height);
+      for(let y = 0; y < A.H; y++) for(let x = 0; x < A.W; x++){
+        const k = y * A.W + x; if(!A.hD[k] && !A.vD[k]) continue;
+        const X = Math.round(x / A.s), Y = Math.round(y / A.s), i = (Y * stage.width + X) * 4;
+        ov.data[i] = A.hD[k] ? 255 : 0; ov.data[i + 1] = A.vD[k] ? 200 : 0; ov.data[i + 2] = 255;
+      }
+      sctx.putImageData(ov, 0, 0);
+    }
+  }
+  function setRect(r, label){
+    const box = $("rect");
+    if(!r){ box.hidden = true; return; }
+    const k = stage.clientWidth / stage.width;
+    Object.assign(box.style, { left: r.x * k + "px", top: r.y * k + "px", width: r.w * k + "px", height: r.h * k + "px" });
+    box.querySelector(".lbl").textContent = label || "";
+    box.hidden = false;
+  }
+  function run(px, py){
+    const t0 = performance.now();
+    const A = lastEdges || (lastEdges = analyze(img));
+    const res = detect(A, Math.round(px * A.s), Math.round(py * A.s));
+    const ms = Math.round(performance.now() - t0);
+    lastSeed = { x: px, y: py };
+    const k = stage.clientWidth / stage.width;
+    Object.assign($("seed").style, { left: px * k + "px", top: py * k + "px" }); $("seed").hidden = false;
+    if(!res){
+      lastRect = null; setRect(null);
+      $("msg").className = "fail"; $("msg").textContent = `スライドの枠を見つけられませんでした(${ms}ms)。範囲は手でドラッグして指定します`;
+      return;
+    }
+    const r = refine(img, { x: Math.round(res.x / A.s), y: Math.round(res.y / A.s), w: Math.round(res.w / A.s), h: Math.round(res.h / A.s) }, Math.ceil(3 / A.s) + 2);
+    lastRect = r;
+    const ratio = res.asp > 1.7 ? "16:9" : res.asp > 1.55 ? "16:10" : res.asp > 1.4 ? "3:2" : res.asp > 1.25 ? "4:3" : res.asp.toFixed(2);
+    setRect(r, `${r.w}×${r.h}(${ratio}付近)`);
+    $("msg").className = ""; $("msg").textContent = `検出しました: x${r.x} y${r.y} ${r.w}×${r.h} / 4辺の境目の続き具合 最小${Math.round(res.minCov * 100)}% / ${ms}ms` + (mode === "range" ? "(本体では、この枠を範囲として「範囲固定」できます)" : "(本体では、この枠でトリミングを適用します)");
+  }
+
+  stage.addEventListener("dblclick", (e) => {
+    const r = stage.getBoundingClientRect(), k = stage.width / r.width;
+    run((e.clientX - r.left) * k, (e.clientY - r.top) * k);
+  });
+  $("btnAuto").addEventListener("click", () => run(stage.width / 2, stage.height / 2));
+  $("btnFull").addEventListener("click", () => { lastRect = null; setRect(null); $("seed").hidden = true; $("msg").textContent = ""; });
+  $("chkEdges").addEventListener("change", draw);
+  window.addEventListener("resize", () => { if(lastRect) setRect(lastRect, $("rect").querySelector(".lbl").textContent); if(lastSeed){ const k = stage.clientWidth / stage.width; Object.assign($("seed").style, { left: lastSeed.x * k + "px", top: lastSeed.y * k + "px" }); } });
+
+  function setMode(m){
+    mode = m;
+    $("tabRange").classList.toggle("on", m === "range"); $("tabCrop").classList.toggle("on", m === "crop");
+    $("tabNote").innerHTML = m === "range"
+      ? "<b>範囲タブ</b>: 画面共有の映像でスライドの中をダブルクリック → スライドの枠が範囲に入る → 確認して「範囲固定」。以降のキャプチャはすべてこの範囲になります。共有を始めたときに自動検出で候補の枠を出しておくこともできます"
+      : "<b>トリミング</b>: 撮影済みの画像を開き、スライドの中をダブルクリック → その枠でトリミング。範囲固定が外れて撮った画像を後から直すとき用。元の全体画像を持っているので、広げ直しも可能";
+  }
+  $("tabRange").addEventListener("click", () => setMode("range"));
+  $("tabCrop").addEventListener("click", () => setMode("crop"));
+
+  // ---------- 画像の読み込み(選択・ドラッグ&ドロップ・貼り付け) ----------
+  function loadBlob(blob){
+    const im = new Image();
+    im.onload = () => { const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext("2d").drawImage(im, 0, 0); setImage(c); URL.revokeObjectURL(im.src); };
+    im.src = URL.createObjectURL(blob);
+  }
+  $("file").addEventListener("change", (e) => { if(e.target.files[0]) loadBlob(e.target.files[0]); });
+  const drop = $("drop");
+  ["dragover", "dragenter"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => document.addEventListener(t, () => drop.classList.remove("over")));
+  document.addEventListener("drop", (e) => { e.preventDefault(); const f = [...e.dataTransfer.files].find((x) => x.type.startsWith("image/")); if(f) loadBlob(f); });
+  document.addEventListener("paste", (e) => { const it = [...e.clipboardData.items].find((x) => x.type.startsWith("image/")); if(it) loadBlob(it.getAsFile()); });
+  $("sample").addEventListener("change", () => setImage(sample($("sample").value)));
+
+  const sysTheme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const themeLabel = () => { const t = document.documentElement.dataset.theme || sysTheme(); $("btnTheme").textContent = t === "dark" ? "☀ ライト" : "🌙 ダーク"; };
+  $("btnTheme").addEventListener("click", () => { const t = document.documentElement.dataset.theme || sysTheme(); document.documentElement.dataset.theme = t === "dark" ? "light" : "dark"; themeLabel(); });
+  themeLabel();
+  setMode("range");
+  setImage(sample("ppt"));
+  window.__detectTest = (c, x, y) => { setImage(c); run(x, y); return lastRect; }; // テスト用
+  window.__dbg = { analyze, detect };
+})();
+</script>
+</body>
+</html>
