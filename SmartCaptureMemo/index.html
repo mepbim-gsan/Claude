@@ -4441,7 +4441,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v04_2026-11-25.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v04_2026-11-25.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4481,7 +4481,8 @@
     ["v04_2026-11-24","常時表示を開いていなくても最新の画面を撮影できるように(記録タブ表示中も映像を流し続ける。ページが隠れているときは映像から直接取得)"],
     ["v04_2026-11-24.2","⋯メニューに「🖼 画像をZIPで保存」(キャプチャ画像を 番号_見出し名.jpg でまとめて1つのZIPに。保存場所はその都度選択)"],
     ["v04_2026-11-25","スライドの自動検出: 範囲タブ・トリミングでスライドの中をダブルクリック(範囲タブは「🔍 スライド検出」も)すると、スライドの枠を探して範囲に入れる"],
-    ["v04_2026-11-25.2","スライドの自動検出: スライドが映像の端に接している場合(Web会議でスライドが左端いっぱいに表示されている等)も検出できるように"]
+    ["v04_2026-11-25.2","スライドの自動検出: スライドが映像の端に接している場合(Web会議でスライドが左端いっぱいに表示されている等)も検出できるように"],
+    ["v04_2026-11-25.3","スライドの自動検出: スライド内の区切り線(タイトル下の線など)をスライドの縁と誤認しないように(縁の内側と外側の色が違うものを優先)"]
   ];
 
   const verLabel = $("verLabel");
@@ -5344,7 +5345,7 @@
     const rowCum = new Uint32Array((W + 1) * H), colCum = new Uint32Array((H + 1) * W);
     for(let y = 0; y < H; y++){ let acc = 0; for(let x = 0; x < W; x++){ acc += hD[y * W + x]; rowCum[y * (W + 1) + x + 1] = acc; } }
     for(let x = 0; x < W; x++){ let acc = 0; for(let y = 0; y < H; y++){ acc += vD[y * W + x]; colCum[x * (H + 1) + y + 1] = acc; } }
-    return { W, H, s, hD, vD, rowCum, colCum };
+    return { W, H, s, d, hD, vD, rowCum, colCum };
   }
   const slideHCov = (A, y, x1, x2) => (A.rowCum[y * (A.W + 1) + x2] - A.rowCum[y * (A.W + 1) + x1]) / Math.max(1, x2 - x1);
   const slideVCov = (A, x, y1, y2) => (A.colCum[x * (A.H + 1) + y2] - A.colCum[x * (A.H + 1) + y1]) / Math.max(1, y2 - y1);
@@ -5358,6 +5359,24 @@
     return [a, b];
   }
 
+  // 各辺で「枠の内側と外側の色がはっきり違う」か。スライドの縁は内側(スライド)と外側(アプリの背景)で色が変わるが、
+  // スライド内の区切り線(タイトル下の線など)は線の両側が同じ白になる。辺に沿って調べ、色が違う地点が半分以上ある辺を縁とみなす
+  function edgesContrast(A, c){
+    const { W, H, d } = A;
+    const px = (x, y) => { x = Math.max(0, Math.min(W - 1, x)); y = Math.max(0, Math.min(H - 1, y)); const i = (y * W + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
+    const differ = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) > 12;
+    const side = (pts) => { let n = 0, k = 0; pts.forEach(([ix, iy, ox, oy]) => { n++; if(differ(px(ix, iy), px(ox, oy))) k++; }); return n ? k / n : 1; };
+    const off = 4, list = (len) => { const a = []; for(let t = 0.05; t <= 0.95; t += 0.03) a.push(Math.round(t * len)); return a; };
+    const [te, re, be, le] = c.edges;
+    const x2 = c.x + c.w, y2 = c.y + c.h;
+    const r = [
+      te ? 1 : side(list(c.w).map((t) => [c.x + t, c.y + off, c.x + t, c.y - off])),
+      re ? 1 : side(list(c.h).map((t) => [x2 - off, c.y + t, x2 + off, c.y + t])),
+      be ? 1 : side(list(c.w).map((t) => [c.x + t, y2 - off, c.x + t, y2 + off])),
+      le ? 1 : side(list(c.h).map((t) => [c.x + off, c.y + t, c.x - off, c.y + t]))
+    ];
+    return Math.min(...r) >= 0.5;
+  }
   function slideDetectCore(A, sx, sy){
     const { W, H } = A;
     const minLenX = W * 0.12, minLenY = H * 0.12;
@@ -5407,6 +5426,7 @@
     tops.push({ y: 0, edge: true }); bottoms.push({ y: H, edge: true }); lefts.push({ x: 0, edge: true }); rights.push({ x: W, edge: true });
     const STD = [16 / 9, 4 / 3, 16 / 10, 3 / 2];
     let best = null;
+    const goods = [];
     for(const t of tops) for(const b of bottoms){
       const h = b.y - t.y; if(h < H * 0.15) continue;
       for(const l of lefts) for(const r of rights){
@@ -5422,9 +5442,16 @@
         // 4辺とも境目がしっかり続き、標準の縦横比に近いもののうち「いちばん内側(小さい)」を選ぶ。
         // 外側にはスクロールバーや編集領域の枠など、スライドを囲む長方形がほかにもあるため
         const good = minCov >= 0.85 && aspScore >= 0.5 && area >= 0.08;
-        const cand = { x: l.x, y: t.y, w, h, minCov, asp, aspScore, area, good };
-        if(!best || (good && !best.good) || (good === best.good && (good ? area < best.area : minCov * (0.25 + aspScore) > best.minCov * (0.25 + best.aspScore)))) best = cand;
+        const cand = { x: l.x, y: t.y, w, h, minCov, asp, aspScore, area, good, edges: [t.edge, r.edge, b.edge, l.edge] };
+        if(good) goods.push(cand);
+        else if(!best || minCov * (0.25 + aspScore) > best.minCov * (0.25 + best.aspScore)) best = cand;
       }
+    }
+    // 条件を満たす候補は内側(小さい)から順に見て、4辺とも「内側と外側の色が違う」(=スライドの縁)ものを選ぶ。
+    // 該当が無ければ一番内側の候補を使う(白い画面に枠線だけのスライドなど)
+    if(goods.length){
+      goods.sort((p, q) => p.area - q.area);
+      best = goods.find((c) => edgesContrast(A, c)) || goods[0];
     }
     return best ? { ...best, cand: tops.length * bottoms.length * lefts.length * rights.length } : null;
   }
