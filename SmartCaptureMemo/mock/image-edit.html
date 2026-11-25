@@ -49,7 +49,9 @@
   #tools{display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; padding:8px 10px 12px; border-top:1px solid #2a2e3a;}
   #tools[hidden]{display:none;}
   #tools .sep{width:1px; height:26px; background:#3a3f4c; margin:0 4px;}
-  .colorBtn{width:26px; height:26px; min-width:26px; padding:0; border-radius:50%; border:2px solid #3a3f4c !important;}
+  #tools button, #tools select{padding:0 9px; font-size:12px; height:32px;}
+  #tools{gap:4px;}
+  .colorBtn{width:24px; height:24px !important; min-width:24px; padding:0 !important; border-radius:50%; border:2px solid #3a3f4c !important;}
   .colorBtn.on{outline:2px solid #fff; outline-offset:2px;}
   #tools .hint{color:#9aa0ac; font-size:12px; flex-basis:100%; text-align:center;}
   #textInput{position:absolute; z-index:60; background:rgba(255,255,255,.95); border:2px dashed #3b6fe0; padding:2px 4px; font-family:sans-serif; outline:none; min-width:80px;}
@@ -89,7 +91,8 @@
     <button type="button" data-tool="crop" title="トリミング(範囲を選ぶ。スライドの中をダブルクリックで自動検出)">✂ トリミング</button>
     <span class="sep"></span>
     <button type="button" data-tool="select" title="選んで移動・削除(Delete)、文字はダブルクリックで直す">👆 選択</button>
-    <button type="button" data-tool="arrow" title="ドラッグで矢印">➡ 矢印</button>
+    <button type="button" data-tool="line" title="ドラッグで直線(Shiftで水平・垂直・45°)">／ 線</button>
+    <button type="button" data-tool="arrow" title="ドラッグで矢印(Shiftで水平・垂直・45°)">➡ 矢印</button>
     <button type="button" data-tool="rect" title="ドラッグで枠">▭ 枠</button>
     <button type="button" data-tool="marker" title="なぞって蛍光マーカー(Shiftで水平・垂直)">🖍 マーカー</button>
     <button type="button" data-tool="text" title="クリックして文字を入力(Enterで確定)">T 文字</button>
@@ -331,6 +334,9 @@
       g.beginPath(); g.moveTo(a.x2, a.y2);
       g.lineTo(a.x2 - head * Math.cos(ang - 0.45), a.y2 - head * Math.sin(ang - 0.45));
       g.lineTo(a.x2 - head * Math.cos(ang + 0.45), a.y2 - head * Math.sin(ang + 0.45)); g.closePath(); g.fill();
+    }else if(a.type === "line"){
+      g.strokeStyle = a.color; g.lineWidth = lw;
+      g.beginPath(); g.moveTo(a.x1, a.y1); g.lineTo(a.x2, a.y2); g.stroke();
     }else if(a.type === "rect"){
       g.strokeStyle = a.color; g.lineWidth = lw; g.strokeRect(a.x, a.y, a.w2, a.h2);
     }else if(a.type === "marker"){
@@ -397,7 +403,8 @@
     $("toolHint").textContent = {
       crop: "枠をドラッグで範囲を選ぶ(四隅・辺で大きさ、内側で移動)。スライドの中をダブルクリックでスライドを自動検出",
       select: "書き込みをクリックで選択 → ドラッグで移動、Delete で削除。文字はダブルクリックで書き直し",
-      arrow: "ドラッグで矢印(始点→矢じり)", rect: "ドラッグで枠", marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)", text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)"
+      line: "ドラッグで直線(Shift を押しながらで水平・垂直・45°)",
+      arrow: "ドラッグで矢印(始点→矢じり。Shift を押しながらで水平・垂直・45°)", rect: "ドラッグで枠", marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)", text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)"
     }[t];
     sync();
   }
@@ -438,7 +445,7 @@
   }
   function toView(a){ // 下書きを表示座標に(draw時は元画像座標から表示のずれを引く)
     const dx = -view.ox, dy = -view.oy, o = JSON.parse(JSON.stringify(a));
-    if(o.type === "arrow"){ o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; }
+    if(o.type === "arrow" || o.type === "line"){ o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; }
     else if(o.type === "marker") o.pts = o.pts.map((p) => [p[0] + dx, p[1] + dy]);
     else { o.x += dx; o.y += dy; }
     return o;
@@ -446,7 +453,7 @@
   const handles = (c) => [[c.x, c.y], [c.x + c.w / 2, c.y], [c.x + c.w, c.y], [c.x + c.w, c.y + c.h / 2], [c.x + c.w, c.y + c.h], [c.x + c.w / 2, c.y + c.h], [c.x, c.y + c.h], [c.x, c.y + c.h / 2]];
   function pos(e){ const r = cv.getBoundingClientRect(), k = cv.width / r.width; return { x: (e.clientX - r.left) * k + view.ox, y: (e.clientY - r.top) * k + view.oy, k }; }
   function bbox(a){
-    if(a.type === "arrow") return { x: Math.min(a.x1, a.x2), y: Math.min(a.y1, a.y2), w: Math.abs(a.x2 - a.x1), h: Math.abs(a.y2 - a.y1) };
+    if(a.type === "arrow" || a.type === "line") return { x: Math.min(a.x1, a.x2), y: Math.min(a.y1, a.y2), w: Math.abs(a.x2 - a.x1), h: Math.abs(a.y2 - a.y1) };
     if(a.type === "rect") return { x: Math.min(a.x, a.x + a.w2), y: Math.min(a.y, a.y + a.h2), w: Math.abs(a.w2), h: Math.abs(a.h2) };
     if(a.type === "marker"){ const xs = a.pts.map((p) => p[0]), ys = a.pts.map((p) => p[1]); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }; }
     const size = baseW(it()) * (6 + a.w * 4), lines = a.text.split("\n");
@@ -459,7 +466,7 @@
     return -1;
   }
   function moveAnnot(a, dx, dy){
-    if(a.type === "arrow"){ a.x1 += dx; a.y1 += dy; a.x2 += dx; a.y2 += dy; }
+    if(a.type === "arrow" || a.type === "line"){ a.x1 += dx; a.y1 += dy; a.x2 += dx; a.y2 += dy; }
     else if(a.type === "marker") a.pts = a.pts.map((p) => [p[0] + dx, p[1] + dy]);
     else { a.x += dx; a.y += dy; }
   }
@@ -486,7 +493,7 @@
       draw(); return;
     }
     const col = color, w = width();
-    if(tool === "arrow") draft = { type: "arrow", x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: col, w };
+    if(tool === "arrow" || tool === "line") draft = { type: tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: col, w };
     else if(tool === "rect") draft = { type: "rect", x: p.x, y: p.y, w2: 0, h2: 0, color: col, w };
     else if(tool === "marker") draft = { type: "marker", pts: [[p.x, p.y]], color: col === "#111111" ? "#facc15" : col, w, sx: p.x, sy: p.y };
     drag = { kind: "draw" };
@@ -505,7 +512,14 @@
     }
     else if(drag.kind === "move"){ moveAnnot(it().annots[selIdx], p.x - drag.lx, p.y - drag.ly); drag.lx = p.x; drag.ly = p.y; }
     else if(drag.kind === "draw" && draft){
-      if(draft.type === "arrow"){ draft.x2 = p.x; draft.y2 = p.y; }
+      if(draft.type === "arrow" || draft.type === "line"){
+        let x2 = p.x, y2 = p.y;
+        if(e.shiftKey){ // 水平・垂直・45°にそろえる
+          const dx = x2 - draft.x1, dy = y2 - draft.y1, len = Math.hypot(dx, dy), ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+          x2 = draft.x1 + Math.cos(ang) * len; y2 = draft.y1 + Math.sin(ang) * len;
+        }
+        draft.x2 = x2; draft.y2 = y2;
+      }
       else if(draft.type === "rect"){ draft.w2 = p.x - draft.x; draft.h2 = p.y - draft.y; }
       else if(draft.type === "marker"){
         if(e.shiftKey){ const dx = p.x - draft.sx, dy = p.y - draft.sy; draft.pts = [[draft.sx, draft.sy], Math.abs(dx) > Math.abs(dy) ? [p.x, draft.sy] : [draft.sx, p.y]]; }
