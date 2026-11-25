@@ -37,11 +37,11 @@
   #lb button.on{background:#3b6fe0; border-color:#3b6fe0; color:#fff;}
   #lb button.ok{background:#1f9d5c; border-color:#1f9d5c; color:#fff;}
   #lbCounter{color:#e6e8ec; font-size:12px; background:rgba(23,26,33,.85); border-radius:8px; padding:6px 10px;}
-  #lbStageWrap{flex:1; position:relative; display:flex; align-items:center; justify-content:center; min-height:0;}
+  #lbStageWrap{flex:1; position:relative; display:flex; align-items:center; justify-content:center; min-height:0; overflow:hidden;}
   #lbCanvas{max-width:calc(100% - 120px); max-height:100%; touch-action:none; box-shadow:0 8px 30px rgba(0,0,0,.5);}
   #lb.editing #lbCanvas{cursor:crosshair;}
   #lb.editing.tool-select #lbCanvas{cursor:default;}
-  .nav{position:absolute; top:50%; transform:translateY(-50%); width:44px; height:64px; font-size:22px;}
+  .nav{z-index:2; position:absolute; top:50%; transform:translateY(-50%); width:44px; height:64px; font-size:22px;}
   #lbPrev{left:10px;} #lbNext{right:10px;}
   #lbCaption{color:#e6e8ec; font-size:14px; text-align:center; padding:8px 16px; min-height:44px;}
   #lbCaption[hidden]{display:none;}
@@ -67,7 +67,7 @@
 <main>
   <div class="note" style="margin-bottom:10px;">
     <b>試し方</b>: 画像をクリック → 拡大表示の右上「✏️ 編集」 → 下の道具で書き込み・トリミング → 「✓ 完了」。← → で次の画像へ移ると、編集はその画像の分が保存されて続けられます。<br>
-    一覧の「✂️ トリミング」は、編集モードを ✂ を選んだ状態で開きます。編集は元の画像を基準に保存しているので、何度でもやり直せます(「元に戻す(全部)」で元の画像に戻る)。
+    一覧の「✏️ 編集」(今の「✂️ トリミング」の代わり)は、最後に使った道具を選んだ状態で編集モードを開きます(最初は ✂)。編集中はホイールで拡大縮小、Space を押しながらドラッグで移動、「⤢ 全体」で元の大きさに戻ります。編集は元の画像を基準に保存しているので、何度でもやり直せます(「元に戻す(全部)」で元の画像に戻る)。
   </div>
   <div id="list"></div>
 </main>
@@ -96,7 +96,10 @@
     <button type="button" data-tool="rect" title="ドラッグで枠">▭ 枠</button>
     <button type="button" data-tool="marker" title="なぞって蛍光マーカー(Shiftで水平・垂直)">🖍 マーカー</button>
     <button type="button" data-tool="text" title="クリックして文字を入力(Enterで確定)">T 文字</button>
-    <span class="sep"></span>
+    <button type="button" data-tool="num" title="クリックするたびに ①②③… と番号を置く">① 番号</button>
+    <button type="button" data-tool="mosaic" title="ドラッグした範囲をモザイクで隠す">▦ モザイク</button>
+    <button type="button" data-tool="fill" title="ドラッグした範囲を選んだ色で塗り潰す">■ 塗り潰し</button>
+    <span style="flex-basis:100%; height:0;"></span>
     <span id="colors"></span>
     <select id="widthSel" title="太さ・文字の大きさ"><option value="1">細</option><option value="2" selected>中</option><option value="3">太</option></select>
     <span class="sep"></span>
@@ -104,6 +107,7 @@
     <button type="button" id="btnRedo" title="やり直し(Ctrl+Y)">↷</button>
     <button type="button" id="btnDelSel" title="選んだものを削除(Delete)">🗑</button>
     <button type="button" id="btnReset" title="トリミングも書き込みも消して元の画像に戻す">元に戻す(全部)</button>
+    <button type="button" id="btnFit" title="拡大をやめて全体を表示(編集中はホイールで拡大縮小、Space+ドラッグで移動)">⤢ 全体</button>
     <span class="sep"></span>
     <button type="button" id="btnCancel">キャンセル</button>
     <button type="button" class="ok" id="btnDone">✓ 完了</button>
@@ -337,6 +341,23 @@
     }else if(a.type === "line"){
       g.strokeStyle = a.color; g.lineWidth = lw;
       g.beginPath(); g.moveTo(a.x1, a.y1); g.lineTo(a.x2, a.y2); g.stroke();
+    }else if(a.type === "num"){
+      const r = baseW(it) * (4 + a.w * 2.5);
+      g.fillStyle = a.color; g.beginPath(); g.arc(a.x, a.y, r, 0, Math.PI * 2); g.fill();
+      g.lineWidth = r * 0.12; g.strokeStyle = "#fff"; g.stroke();
+      g.fillStyle = a.color === "#ffffff" || a.color === "#facc15" ? "#111" : "#fff";
+      g.font = `bold ${r * 1.15}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(a.n), a.x, a.y + r * 0.05);
+    }else if(a.type === "fill"){
+      g.fillStyle = a.color; g.fillRect(a.x, a.y, a.w2, a.h2);
+    }else if(a.type === "mosaic"){
+      // 元の画像の画素を粗いマス目にして上に描く(下の文字が読めなくなる)
+      const x = Math.round(Math.min(a.x, a.x + a.w2)), y = Math.round(Math.min(a.y, a.y + a.h2)), w = Math.round(Math.abs(a.w2)), h = Math.round(Math.abs(a.h2));
+      if(w >= 2 && h >= 2){
+        const cell = Math.max(6, Math.round(it.src.width / 90)), sw = Math.max(1, Math.round(w / cell)), sh = Math.max(1, Math.round(h / cell));
+        const t = document.createElement("canvas"); t.width = sw; t.height = sh;
+        t.getContext("2d").drawImage(it.src, x, y, w, h, 0, 0, sw, sh);
+        g.imageSmoothingEnabled = false; g.drawImage(t, 0, 0, sw, sh, x, y, w, h);
+      }
     }else if(a.type === "rect"){
       g.strokeStyle = a.color; g.lineWidth = lw; g.strokeRect(a.x, a.y, a.w2, a.h2);
     }else if(a.type === "marker"){
@@ -355,7 +376,10 @@
     const cr = (!full && it.crop) || { x: 0, y: 0, w: it.src.width, h: it.src.height };
     const c = document.createElement("canvas"); c.width = cr.w; c.height = cr.h; const g = c.getContext("2d");
     g.drawImage(it.src, cr.x, cr.y, cr.w, cr.h, 0, 0, cr.w, cr.h);
-    g.save(); g.translate(-cr.x, -cr.y); it.annots.forEach((a) => drawAnnot(g, a, it)); g.restore();
+    g.save(); g.translate(-cr.x, -cr.y);
+    const under = (a) => a.type === "mosaic" || a.type === "fill"; // 隠す系は下に、矢印・文字などは上に
+    it.annots.filter(under).forEach((a) => drawAnnot(g, a, it)); it.annots.filter((a) => !under(a)).forEach((a) => drawAnnot(g, a, it));
+    g.restore();
     return c;
   }
 
@@ -367,8 +391,8 @@
       const img = document.createElement("img"); img.src = compose(it).toDataURL("image/jpeg", 0.8);
       img.addEventListener("click", () => openLb(i, false));
       const meta = document.createElement("div"); meta.className = "meta";
-      meta.innerHTML = `画像 ${i + 1}${it.crop ? '<span class="badge">✂ トリミング済</span>' : ""}${it.annots.length ? `<span class="badge">✏️ 書き込み ${it.annots.length}</span>` : ""}<div class="note">${it.memo || "(メモなし)"}</div>`;
-      const btn = document.createElement("button"); btn.textContent = "✂️ トリミング"; btn.addEventListener("click", () => openLb(i, true));
+      meta.innerHTML = `画像 ${i + 1}<div class="note">${it.memo || "(メモなし)"}</div>`;
+      const btn = document.createElement("button"); btn.textContent = "✏️ 編集"; btn.title = "拡大表示の編集モードを開く(トリミング・書き込み)"; btn.addEventListener("click", () => openLb(i, true));
       d.append(img, meta, btn); $("list").appendChild(d);
     });
   }
@@ -388,23 +412,27 @@
 
   function openLb(i, cropMode){
     cur = i; $("lb").hidden = false;
-    if(cropMode){ startEdit(); setTool("crop"); } else { editing = false; }
+    if(cropMode){ const t = lastTool; startEdit(); setTool(t); } else { editing = false; }
     sync();
   }
   function startEdit(){ editing = true; snapStart = snapshot(); undoStack = []; redoStack = []; selIdx = -1; if(tool === "crop") setTool("arrow"); }
   function finishEdit(save){
     commitText();
     if(!save && snapStart) restore(snapStart);
-    editing = false; selIdx = -1; snapStart = null; renderList(); sync();
+    editing = false; selIdx = -1; snapStart = null; resetZoom(); renderList(); sync();
   }
+  let lastTool = "crop"; // 一覧の「✏️ 編集」で開くときの道具(最後に使った道具。最初はトリミング)
   function setTool(t){
-    commitText(); tool = t; selIdx = t === "select" ? selIdx : -1;
+    commitText(); tool = t; lastTool = t; selIdx = t === "select" ? selIdx : -1;
     document.querySelectorAll("#tools [data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
     $("toolHint").textContent = {
       crop: "枠をドラッグで範囲を選ぶ(四隅・辺で大きさ、内側で移動)。スライドの中をダブルクリックでスライドを自動検出",
       select: "書き込みをクリックで選択 → ドラッグで移動、Delete で削除。文字はダブルクリックで書き直し",
       line: "ドラッグで直線(Shift を押しながらで水平・垂直・45°)",
-      arrow: "ドラッグで矢印(始点→矢じり。Shift を押しながらで水平・垂直・45°)", rect: "ドラッグで枠", marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)", text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)"
+      arrow: "ドラッグで矢印(始点→矢じり。Shift を押しながらで水平・垂直・45°)", rect: "ドラッグで枠", marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)", text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)",
+      num: "クリックするたびに ①②③… と番号を置く(消した番号の続きから)",
+      mosaic: "ドラッグした範囲をモザイクで隠す(名前・数字などを隠すとき)",
+      fill: "ドラッグした範囲を選んだ色で塗り潰す"
     }[t];
     sync();
   }
@@ -454,7 +482,8 @@
   function pos(e){ const r = cv.getBoundingClientRect(), k = cv.width / r.width; return { x: (e.clientX - r.left) * k + view.ox, y: (e.clientY - r.top) * k + view.oy, k }; }
   function bbox(a){
     if(a.type === "arrow" || a.type === "line") return { x: Math.min(a.x1, a.x2), y: Math.min(a.y1, a.y2), w: Math.abs(a.x2 - a.x1), h: Math.abs(a.y2 - a.y1) };
-    if(a.type === "rect") return { x: Math.min(a.x, a.x + a.w2), y: Math.min(a.y, a.y + a.h2), w: Math.abs(a.w2), h: Math.abs(a.h2) };
+    if(a.type === "num"){ const r = baseW(it()) * (4 + a.w * 2.5); return { x: a.x - r, y: a.y - r, w: r * 2, h: r * 2 }; }
+    if(a.type === "rect" || a.type === "mosaic" || a.type === "fill") return { x: Math.min(a.x, a.x + a.w2), y: Math.min(a.y, a.y + a.h2), w: Math.abs(a.w2), h: Math.abs(a.h2) };
     if(a.type === "marker"){ const xs = a.pts.map((p) => p[0]), ys = a.pts.map((p) => p[1]); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }; }
     const size = baseW(it()) * (6 + a.w * 4), lines = a.text.split("\n");
     g.font = `bold ${size}px sans-serif`;
@@ -471,11 +500,38 @@
     else { a.x += dx; a.y += dy; }
   }
   const width = () => Number($("widthSel").value);
+  // 編集中の拡大: ホイールで拡大縮小(マウスの位置を中心に)、Space+ドラッグ(または中ボタン)で移動
+  let zoom = 1, panX = 0, panY = 0, spaceDown = false, panDrag = null;
+  function applyZoom(){ cv.style.transformOrigin = "0 0"; cv.style.transform = (zoom === 1 && !panX && !panY) ? "" : `translate(${panX}px, ${panY}px) scale(${zoom})`; }
+  function resetZoom(){ zoom = 1; panX = 0; panY = 0; applyZoom(); }
+  $("lbStageWrap").addEventListener("wheel", (e) => {
+    if(!editing) return;
+    e.preventDefault();
+    const r = cv.getBoundingClientRect(), bx = r.left - panX, by = r.top - panY;
+    const mx = e.clientX - bx, my = e.clientY - by;
+    const nz = Math.max(1, Math.min(6, zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+    panX = mx - (mx - panX) * (nz / zoom); panY = my - (my - panY) * (nz / zoom); zoom = nz;
+    if(zoom === 1){ panX = 0; panY = 0; }
+    applyZoom();
+  }, { passive: false });
+  document.addEventListener("keydown", (e) => { if(e.code === "Space" && editing && $("textInput").hidden){ spaceDown = true; cv.style.cursor = "grab"; e.preventDefault(); } });
+  document.addEventListener("keyup", (e) => { if(e.code === "Space"){ spaceDown = false; cv.style.cursor = ""; } });
+  cv.addEventListener("pointerdown", (e) => {
+    if(!editing || !(spaceDown || e.button === 1)) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    panDrag = { x: e.clientX - panX, y: e.clientY - panY }; cv.setPointerCapture(e.pointerId);
+  }, true);
+  cv.addEventListener("pointermove", (e) => { if(panDrag){ e.stopImmediatePropagation(); panX = e.clientX - panDrag.x; panY = e.clientY - panDrag.y; applyZoom(); } }, true);
+  cv.addEventListener("pointerup", (e) => { if(panDrag){ e.stopImmediatePropagation(); panDrag = null; } }, true);
 
   cv.addEventListener("pointerdown", (e) => {
     if(!editing) return;
     const p = pos(e);
     if(tool === "text"){ if(!$("textInput").hidden){ commitText(); return; } openText(p, null); e.preventDefault(); return; }
+    if(tool === "num"){
+      const n = Math.max(0, ...it().annots.filter((a) => a.type === "num").map((a) => a.n)) + 1;
+      pushUndo(); it().annots.push({ type: "num", x: p.x, y: p.y, n, color, w: width() }); draw(); return;
+    }
     cv.setPointerCapture(e.pointerId);
     if(tool === "crop"){
       const c = it().crop || { x: 0, y: 0, w: it().src.width, h: it().src.height };
@@ -494,7 +550,7 @@
     }
     const col = color, w = width();
     if(tool === "arrow" || tool === "line") draft = { type: tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: col, w };
-    else if(tool === "rect") draft = { type: "rect", x: p.x, y: p.y, w2: 0, h2: 0, color: col, w };
+    else if(tool === "rect" || tool === "mosaic" || tool === "fill") draft = { type: tool, x: p.x, y: p.y, w2: 0, h2: 0, color: col, w };
     else if(tool === "marker") draft = { type: "marker", pts: [[p.x, p.y]], color: col === "#111111" ? "#facc15" : col, w, sx: p.x, sy: p.y };
     drag = { kind: "draw" };
   });
@@ -520,7 +576,7 @@
         }
         draft.x2 = x2; draft.y2 = y2;
       }
-      else if(draft.type === "rect"){ draft.w2 = p.x - draft.x; draft.h2 = p.y - draft.y; }
+      else if(draft.type === "rect" || draft.type === "mosaic" || draft.type === "fill"){ draft.w2 = p.x - draft.x; draft.h2 = p.y - draft.y; }
       else if(draft.type === "marker"){
         if(e.shiftKey){ const dx = p.x - draft.sx, dy = p.y - draft.sy; draft.pts = [[draft.sx, draft.sy], Math.abs(dx) > Math.abs(dy) ? [p.x, draft.sy] : [draft.sx, p.y]]; }
         else draft.pts.push([p.x, p.y]);
@@ -591,6 +647,7 @@
   $("btnUndo").addEventListener("click", undo); $("btnRedo").addEventListener("click", redo);
   const delSel = () => { if(selIdx < 0) return; pushUndo(); it().annots.splice(selIdx, 1); selIdx = -1; draw(); };
   $("btnDelSel").addEventListener("click", delSel);
+  $("btnFit").addEventListener("click", resetZoom);
   $("btnReset").addEventListener("click", () => { pushUndo(); it().crop = null; it().annots = []; selIdx = -1; draw(); });
   $("btnEdit").addEventListener("click", () => { if(editing) finishEdit(true); else { startEdit(); setTool(tool === "crop" ? "arrow" : tool); } });
   $("btnDone").addEventListener("click", () => finishEdit(true));
