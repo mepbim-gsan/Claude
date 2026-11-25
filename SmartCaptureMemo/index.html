@@ -2033,11 +2033,9 @@
     if(typeBadge){
       typeBadge.addEventListener("click", async () => {
         const nowHeading = record.heading !== false;
-        record.heading = !nowHeading;
-        await saveRecordPreservingOrder(record);
-        typeBadge.textContent = record.heading ? "📝 見出し" : "💬 メモ";
-        div.classList.toggle("type-memo", !record.heading);
-        scheduleSectionRefresh();
+        await div._setHeading(!nowHeading);
+        const id = record.id;
+        pushUndo({ label: "見出し/メモの切り替え", undo: async () => { const d = itemById(id); if(d) await d._setHeading(nowHeading); }, redo: async () => { const d = itemById(id); if(d) await d._setHeading(!nowHeading); } });
       });
     }
     const foldBtn = div.querySelector(".btn-fold");
@@ -2079,7 +2077,9 @@
       textarea.hidden = true;
       memoToolbar.hidden = true;
     };
+    let memoAtEditStart = null;
     const showMemoEditor = () => {
+      if(memoAtEditStart === null) memoAtEditStart = textarea.value;
       memoPreview.hidden = true;
       textarea.hidden = false;
       memoToolbar.hidden = false;
@@ -2097,6 +2097,11 @@
     textarea.addEventListener("input", handleMemoChanged);
     // フォーカスが外れた時は即保存し、プレビュー表示に戻す
     textarea.addEventListener("blur", () => {
+      if(memoAtEditStart !== null && memoAtEditStart !== textarea.value){
+        const before = memoAtEditStart, after = textarea.value, id = record.id;
+        pushUndo({ label: isHeading ? "見出しの文章" : "メモの文章", undo: async () => { const d = itemById(id); if(d) await d._setMemo(before); }, redo: async () => { const d = itemById(id); if(d) await d._setMemo(after); } });
+      }
+      memoAtEditStart = null;
       clearTimeout(saveTimer);
       doSave();
       showMemoPreview();
@@ -2205,14 +2210,26 @@
       cropLastBtn.addEventListener("click", () => applyLastCropRatio(record, div.querySelector("img")));
     }
     div.querySelector(".btn-del").addEventListener("click", async () => {
-      await dbDelete(record.id);
-      div.remove();
-      updateCount();
-      scheduleSectionRefresh();
-      if(captureList.children.length === 0){
-        captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
-      }
+      // 元に戻せるよう、消す前の内容と位置(直前の行)を覚えておく
+      const prev = div.previousElementSibling && div.previousElementSibling.classList.contains("item") ? Number(div.previousElementSibling.dataset.id) : null;
+      const saved = { ...record, order: currentDomOrderFor(record.id) };
+      await removeItemNow(div, record.id);
+      pushUndo({
+        label: isHeading ? (record.heading === false ? "メモの削除" : "見出しの削除") : "画像の削除",
+        undo: () => restoreDeletedItem(saved, prev),
+        redo: async () => { const d = itemById(saved.id); if(d) await removeItemNow(d, saved.id); }
+      });
+      showToast(`🗑 ${isHeading ? (record.heading === false ? "メモ" : "見出し") : "画像"}を削除しました(Ctrl+Z / ここをクリックで元に戻す)`, () => undoLast());
     });
+    // 元に戻す/やり直しで、この行の文章・見出し/メモの種類を外から書き換えるための入口
+    div._setMemo = async (v) => { textarea.value = v; record.memo = v; await saveRecordPreservingOrder(record); syncMemoPreview(); if(isHeading) scheduleSectionRefresh(); };
+    div._setHeading = async (h) => {
+      if(!typeBadge) return;
+      record.heading = h; await saveRecordPreservingOrder(record);
+      typeBadge.textContent = record.heading ? "📝 見出し" : "💬 メモ";
+      div.classList.toggle("type-memo", !record.heading);
+      scheduleSectionRefresh();
+    };
     if(afterEl && afterEl.parentNode === captureList){
       captureList.insertBefore(div, afterEl.nextSibling); // afterElの直後(nextSiblingがnullなら末尾)
     }else if(prepend){
@@ -2561,8 +2578,13 @@
   let draggingItem = null;
 
   // 現在のDOM順を正として、全レコードのorderを振り直して保存する(ドラッグ&ドロップ・キーボード並び替え共通)
-  async function persistOrderFromDom(){
+  async function persistOrderFromDom(undoLabel){
     const records = await dbGetAll();
+    if(undoLabel){
+      const before = records.slice().sort((a, b) => (a.order ?? a.id) - (b.order ?? b.id)).map((r) => r.id);
+      const after = Array.from(captureList.querySelectorAll(".item")).map((d) => Number(d.dataset.id));
+      if(before.join(",") !== after.join(",")) pushUndo({ label: undoLabel, undo: () => applyOrder(before), redo: () => applyOrder(after) });
+    }
     const byId = new Map(records.map((r) => [String(r.id), r]));
     const items = Array.from(captureList.querySelectorAll(".item"));
     const updates = [];
@@ -2615,7 +2637,7 @@
     draggingItem.classList.remove("dragging");
     draggingItem = null;
     refreshSections();
-    await persistOrderFromDom();
+    await persistOrderFromDom("並べ替え");
   });
 
   // キーボードでの並び替え: ⠿ハンドルにフォーカスした状態でShift+Alt+↑/↓を押すと
@@ -2643,7 +2665,67 @@
     if(sec && sec !== item && sec._record && sec._record.collapsed) await setSectionCollapsed(sec, false);
     refreshSections();
     handle.focus(); // 同じノードを再配置しているだけだがブラウザ差異に備えて明示的に再フォーカス
+    await persistOrderFromDom("並べ替え");
+  });
+
+  // ---------- 元に戻す/やり直し(一覧の操作) ----------
+  // 削除・並べ替え・メモや見出しの文章・見出し/メモの切り替えを直近10回分だけ覚える(メモリ上のみ。再読み込みで消える)。
+  // Ctrl+Z / Ctrl+Y(Ctrl+Shift+Z)。メモ欄などの入力中はブラウザ標準の文字の取り消しを優先する。全削除は対象外
+  const UNDO_MAX = 10;
+  const undoStack = [], redoStack = [];
+  let undoBusy = false;
+  function pushUndo(entry){ undoStack.push(entry); if(undoStack.length > UNDO_MAX) undoStack.shift(); redoStack.length = 0; }
+  function itemById(id){ return captureList.querySelector(`.item[data-id="${id}"]`); }
+  async function undoLast(){
+    if(undoBusy || !undoStack.length){ if(!undoStack.length) showToast("元に戻せる操作はありません"); return; }
+    undoBusy = true;
+    const e = undoStack.pop();
+    try{ await e.undo(); redoStack.push(e); showToast(`↶ 元に戻しました: ${e.label}(Ctrl+Y でやり直し)`); }
+    catch(err){ console.error("元に戻せませんでした", err); }
+    undoBusy = false;
+  }
+  async function redoLast(){
+    if(undoBusy || !redoStack.length){ if(!redoStack.length) showToast("やり直せる操作はありません"); return; }
+    undoBusy = true;
+    const e = redoStack.pop();
+    try{ await e.redo(); undoStack.push(e); showToast(`↷ やり直しました: ${e.label}`); }
+    catch(err){ console.error("やり直せませんでした", err); }
+    undoBusy = false;
+  }
+  // 行を消す(DBと一覧から)。削除ボタン・やり直し共通
+  async function removeItemNow(div, id){
+    await dbDelete(id);
+    div.remove();
+    updateCount();
+    scheduleSectionRefresh();
+    if(!captureList.querySelector(".item")) captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
+  }
+  // 消した行を元の位置(直前の行の後ろ。無ければ先頭)に戻す
+  async function restoreDeletedItem(saved, prevId){
+    const rec = { ...saved };
+    await dbPut(rec);
+    const prevEl = prevId != null ? itemById(prevId) : null;
+    renderItem(rec, !prevEl, prevEl || null);
     await persistOrderFromDom();
+    updateCount();
+    refreshSections();
+  }
+  // 並びを id の順にそろえる
+  async function applyOrder(ids){
+    ids.forEach((id) => { const d = itemById(id); if(d) captureList.appendChild(d); });
+    refreshSections();
+    await persistOrderFromDom();
+  }
+  document.addEventListener("keydown", (e) => {
+    if(!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if(k !== "z" && k !== "y") return;
+    if(currentTab !== "record") return;
+    const a = document.activeElement;
+    if(a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT" || a.tagName === "SELECT" || a.isContentEditable)) return; // 入力中は文字の取り消し
+    if(lightbox.classList.contains("open") || cropModal.classList.contains("open") || msgModal.classList.contains("open") || settingsModal.classList.contains("open")) return;
+    e.preventDefault();
+    if(k === "y" || (k === "z" && e.shiftKey)) redoLast(); else undoLast();
   });
 
   async function loadAll(){
@@ -3632,9 +3714,11 @@
   // 保存結果を知らせる一時メッセージ。HTML保存ボタンのすぐ右側に表示することで、
   // クリックした手元でそのまま結果が分かるようにする(自動で消える/クリックでも消せる)。
   let toastTimer = null;
-  function showToast(message){
+  function showToast(message, onClick){
     const el = exportStatusMsg;
     el.textContent = message;
+    el.onclick = onClick ? () => { el.classList.remove("show"); onClick(); } : null;
+    el.style.cursor = onClick ? "pointer" : "";
     el.classList.remove("warn", "ok");
     if(message.startsWith("⚠️")) el.classList.add("warn");
     else if(message.startsWith("✅")) el.classList.add("ok");
@@ -4441,7 +4525,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v05_2026-11-25"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v05_2026-11-25.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4480,7 +4564,8 @@
     ["v04_2026-11-20.4","タイトル整理: 下の階層の★だけで残っている「履歴なし」の項目も★で表示し、外すとまとめて外れて消えるように(項目を開いて下の★を外すことも可)"],
     ["v04_2026-11-24","常時表示を開いていなくても最新の画面を撮影できるように(記録タブ表示中も映像を流し続ける。ページが隠れているときは映像から直接取得)"],
     ["v04_2026-11-24.2","⋯メニューに「🖼 画像をZIPで保存」(キャプチャ画像を 番号_見出し名.jpg でまとめて1つのZIPに。保存場所はその都度選択)"],
-    ["v05_2026-11-25",["スライドの自動検出: 範囲タブ・トリミング画面でスライドの中をダブルクリック(範囲タブは「🔍 スライド検出」も)すると、スライドの枠を探して範囲に入れる","スライドが映像の端に接している場合(Web会議でスライドが端いっぱい)にも対応","スライド内の区切り線(タイトル下の線など)を縁と誤認しないよう、縁の内外の色が違う枠を優先"]]
+    ["v05_2026-11-25",["スライドの自動検出: 範囲タブ・トリミング画面でスライドの中をダブルクリック(範囲タブは「🔍 スライド検出」も)すると、スライドの枠を探して範囲に入れる","スライドが映像の端に接している場合(Web会議でスライドが端いっぱい)にも対応","スライド内の区切り線(タイトル下の線など)を縁と誤認しないよう、縁の内外の色が違う枠を優先"]],
+    ["v05_2026-11-25.2","記録一覧の操作を元に戻す/やり直し(Ctrl+Z / Ctrl+Y、直近10回): 削除・並べ替え・メモや見出しの文章・見出し/メモの切り替え。削除時の知らせをクリックしても元に戻せる"]
   ];
 
   const verLabel = $("verLabel");
