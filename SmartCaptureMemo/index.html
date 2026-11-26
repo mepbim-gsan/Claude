@@ -937,7 +937,7 @@
     <span id="edCounter"></span>
     <span id="edTitle">✏️ 編集中(ホイールで拡大縮小・Space+ドラッグで移動。‹ › で前後の画像へ移ると、この画像の編集は保存されます)</span>
     <span class="sp"></span>
-    <button type="button" id="edClose" title="保存して閉じる">✕</button>
+    <button type="button" id="edClose" title="保存して閉じる(Esc)">✕</button>
   </div>
   <div id="edStageWrap">
     <button type="button" class="edNav" id="edPrev" title="前の画像(この画像の編集は保存)">‹</button>
@@ -969,8 +969,7 @@
     <button type="button" id="edReset" title="トリミングも書き込みも消して元の画像に戻す(↶で取り消せます)">元の画像に戻す</button>
     <button type="button" id="edFit" title="拡大をやめて全体を表示(ホイールで拡大縮小、Space+ドラッグで移動)">⤢ 全体</button>
     <span class="sep"></span>
-    <button type="button" id="edCancel" title="この画像の今回の編集をやめて閉じる(Esc)">キャンセル</button>
-    <button type="button" class="ok" id="edDone" title="保存して閉じる">✓ 完了</button>
+    <button type="button" class="ok" id="edDone" title="保存して閉じる(Esc)">✓ 完了</button>
     <div id="edHint"></div>
   </div>
 </div>
@@ -4729,7 +4728,6 @@
   $("edCropLast").addEventListener("click", () => { if(!lastCropRatio || !edItem) return; edPushUndo(); edItem.crop = cropFromLastRatio(edItem.src); edDraw(); });
   $("edDone").addEventListener("click", () => closeImageEditor(true));
   $("edClose").addEventListener("click", () => closeImageEditor(true));
-  $("edCancel").addEventListener("click", () => closeImageEditor(false));
   $("edPrev").addEventListener("click", () => edGo(-1));
   $("edNext").addEventListener("click", () => edGo(1));
   $("lbEdit").addEventListener("click", () => { if(lightboxIndex >= 0) openImageEditor(lightboxIndex, edTool === "crop" ? "arrow" : edTool); });
@@ -4745,7 +4743,7 @@
     if(mod && k === "y"){ e.preventDefault(); edRedo(); return; }
     if(mod && k === "a" && edTool === "select"){ e.preventDefault(); edSel = new Set(edItem.annots.map((_, i) => i)); edDraw(); return; }
     if(e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); edDeleteSel(); return; }
-    if(e.key === "Escape"){ closeImageEditor(false); return; }
+    if(e.key === "Escape"){ closeImageEditor(true); return; } // 編集は常に保存(あとで消す・一覧の Ctrl+Z で戻すことができるため)
   }, true);
   document.addEventListener("keyup", (e) => { if(e.code === "Space" && edSpaceDown){ edSpaceDown = false; edCanvas.style.cursor = ""; } }, true);
   window.addEventListener("resize", () => { if(edItem) edDraw(); });
@@ -4787,7 +4785,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v06_2026-11-26"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v06_2026-11-26.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4829,7 +4827,8 @@
     ["v05_2026-11-25",["スライドの自動検出: 範囲タブ・トリミング画面でスライドの中をダブルクリック(範囲タブは「🔍 スライド検出」も)すると、スライドの枠を探して範囲に入れる","スライドが映像の端に接している場合(Web会議でスライドが端いっぱい)にも対応","スライド内の区切り線(タイトル下の線など)を縁と誤認しないよう、縁の内外の色が違う枠を優先"]],
     ["v05_2026-11-26","記録一覧の操作を元に戻す/やり直し(Ctrl+Z / Ctrl+Y、直近10回): 削除・並べ替え・メモや見出しの文章・見出し/メモの切り替え。削除時の知らせをクリックしても元に戻せる"],
     ["v05_2026-11-26.2","元に戻す/やり直しの対象に資料タイトル・日付の変更を追加"],
-    ["v06_2026-11-26",["画像の編集: 拡大表示・一覧の「✏️ 編集」でトリミングと書き込み(線・矢印・枠・蛍光マーカー・文字・①②③番号・ぼかし・塗り潰し)をまとめて行える(トリミング画面は編集画面に統合)","書き込みは元の画像を基準に保存するので、あとから動かす・消す・色やサイズを変えるのも自由。Ctrl+ホイールでサイズ、ホイールで拡大縮小、Ctrl+Z で元に戻す","編集の確定は一覧の Ctrl+Z でも元に戻せる。書き出したHTMLでは「✏️ 書き込み ON/OFF」で表示を切り替えられ、取り込み直すと書き込みを編集し直せる"]]
+    ["v06_2026-11-26",["画像の編集: 拡大表示・一覧の「✏️ 編集」でトリミングと書き込み(線・矢印・枠・蛍光マーカー・文字・①②③番号・ぼかし・塗り潰し)をまとめて行える(トリミング画面は編集画面に統合)","書き込みは元の画像を基準に保存するので、あとから動かす・消す・色やサイズを変えるのも自由。Ctrl+ホイールでサイズ、ホイールで拡大縮小、Ctrl+Z で元に戻す","編集の確定は一覧の Ctrl+Z でも元に戻せる。書き出したHTMLでは「✏️ 書き込み ON/OFF」で表示を切り替えられ、取り込み直すと書き込みを編集し直せる"]],
+    ["v06_2026-11-26.2","画像の編集: Esc でも保存して閉じるように(キャンセルボタンを廃止。戻したいときは ↶ や一覧の Ctrl+Z で)"]
   ];
 
   const verLabel = $("verLabel");
