@@ -935,7 +935,7 @@
 <div id="imgEditor" hidden>
   <div id="edTop">
     <span id="edCounter"></span>
-    <span id="edTitle">✏️ 編集中(ホイールで拡大縮小・Space+ドラッグで移動。‹ › で前後の画像へ移ると、この画像の編集は保存されます)</span>
+    <span id="edTitle">✏️ 編集中(画像の外をクリック・Esc で保存して閉じる。ホイールで拡大縮小・Space+ドラッグで移動)</span>
     <span class="sp"></span>
     <button type="button" id="edClose" title="保存して閉じる(Esc)">✕</button>
   </div>
@@ -949,6 +949,7 @@
   <div id="edTools">
     <button type="button" data-tool="crop" title="トリミング(範囲を選ぶ。スライドの中をダブルクリックで自動検出)">✂ トリミング</button>
     <button type="button" id="edCropLast" title="直前にトリミングした範囲(比率)をこの画像に当てはめる" hidden>🔁 前回の範囲</button>
+    <button type="button" id="edCropClear" title="トリミングをやめて画像全体に戻す(書き込みはそのまま)" hidden>トリミングなし</button>
     <span class="sep"></span>
     <button type="button" data-tool="select" title="選んで移動・削除(Delete)、文字はダブルクリックで直す">👆 選択</button>
     <button type="button" data-tool="line" title="ドラッグで直線(Shiftで水平・垂直・45°)">／ 線</button>
@@ -4271,7 +4272,7 @@
   const edTextInput = $("edTextInput");
   const ED_COLORS = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#ffffff", "#111111"];
   const ED_TOOL_HINTS = {
-    crop: "枠をドラッグで範囲を選ぶ(四隅・辺で大きさ、内側で移動)。スライドの中をダブルクリックでスライドを自動検出",
+    crop: "ドラッグで範囲を選ぶ(●で大きさ、枠の内側で移動)。スライドの中をダブルクリックでスライドを自動検出。「トリミングなし」で画像全体に戻す",
     select: "クリックで選択(Shift+クリックで追加)、何も無い所からドラッグで範囲選択、Ctrl+A で全部。ドラッグで移動、Delete で削除、色・サイズの変更も選択中のものに反映。文字はダブルクリックで書き直し",
     line: "ドラッグで直線(Shift を押しながらで水平・垂直・45°)",
     arrow: "ドラッグで矢印(始点→矢じり。Shift を押しながらで水平・垂直・45°)",
@@ -4464,11 +4465,12 @@
   function edPushUndo(){ edUndoStack.push(edSnapshot()); edRedoStack = []; }
   function edSetTool(t){
     edCommitText();
-    edTool = t; edLastTool = t;
+    edTool = t; edLastTool = t; edCanvas.style.cursor = "";
     if(t !== "select") edSel.clear();
     imgEditor.querySelectorAll("#edTools [data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
     imgEditor.classList.toggle("tool-select", t === "select");
     $("edCropLast").hidden = !(t === "crop" && lastCropRatio);
+    $("edCropClear").hidden = t !== "crop";
     $("edHint").textContent = ED_TOOL_HINTS[t];
     edDraw();
   }
@@ -4481,13 +4483,16 @@
     edG.drawImage(img, 0, 0);
     const cr = (!full && edItem.crop) || { x: 0, y: 0 };
     edView = { ox: cr.x, oy: cr.y };
-    if(full){
-      const c = edItem.crop || { x: 0, y: 0, w: img.width, h: img.height };
-      edG.save(); edG.fillStyle = "rgba(0,0,0,.5)";
-      edG.beginPath(); edG.rect(0, 0, img.width, img.height); edG.rect(c.x, c.y, c.w, c.h); edG.fill("evenodd");
-      edG.strokeStyle = "#22c55e"; edG.lineWidth = Math.max(2, img.width / 500); edG.strokeRect(c.x, c.y, c.w, c.h);
-      const hs = Math.max(8, img.width / 120); edG.fillStyle = "#22c55e";
-      edHandles(c).forEach(([x, y]) => edG.fillRect(x - hs / 2, y - hs / 2, hs, hs));
+    if(full && edItem.crop){
+      // 範囲タブの範囲選択と同じ見た目(青い枠・薄い青の塗り・白縁の丸いつまみ)。太さ・大きさは画面上の大きさで揃える
+      const c = edItem.crop, r = edCanvas.getBoundingClientRect(), k = r.width ? edCanvas.width / r.width : 1;
+      edG.save();
+      edG.fillStyle = "rgba(79,140,255,.15)"; edG.fillRect(c.x, c.y, c.w, c.h);
+      edG.strokeStyle = "#4f8cff"; edG.lineWidth = 2 * k; edG.strokeRect(c.x + k, c.y + k, c.w - 2 * k, c.h - 2 * k);
+      edHandles(c).forEach(([x, y]) => {
+        edG.beginPath(); edG.arc(x, y, 7 * k, 0, Math.PI * 2);
+        edG.fillStyle = "#4f8cff"; edG.fill(); edG.lineWidth = 2 * k; edG.strokeStyle = "#fff"; edG.stroke();
+      });
       edG.restore();
     }
     // 下書きは元画像の座標のまま、描く位置だけずらす(ぼかしが元画像の同じ位置を使えるように)
@@ -4514,6 +4519,17 @@
       }
       edG.restore();
     }
+  }
+  // トリミング枠のどこにマウスがあるか(つまみ/枠の内側/外側)と、そのときのカーソル
+  const ED_HANDLE_CURSORS = ["nwse-resize", "ns-resize", "nesw-resize", "ew-resize", "nwse-resize", "ns-resize", "nesw-resize", "ew-resize"];
+  function edCropHit(p){
+    const c = edItem.crop;
+    if(!c) return { kind: "none" };
+    const tol = 10 * p.k;
+    const hi = edHandles(c).findIndex(([x, y]) => Math.abs(p.x - x) <= tol && Math.abs(p.y - y) <= tol);
+    if(hi >= 0) return { kind: "handle", hi };
+    if(p.x > c.x && p.x < c.x + c.w && p.y > c.y && p.y < c.y + c.h) return { kind: "move" };
+    return { kind: "none" };
   }
   const edHandles = (c) => [[c.x, c.y], [c.x + c.w / 2, c.y], [c.x + c.w, c.y], [c.x + c.w, c.y + c.h / 2], [c.x + c.w, c.y + c.h], [c.x + c.w / 2, c.y + c.h], [c.x, c.y + c.h], [c.x, c.y + c.h / 2]];
   function edPos(e){ const r = edCanvas.getBoundingClientRect(), k = edCanvas.width / r.width; return { x: (e.clientX - r.left) * k + edView.ox, y: (e.clientY - r.top) * k + edView.oy, k }; }
@@ -4589,12 +4605,10 @@
     if(edTool === "num"){ edPushUndo(); edItem.annots.push({ type: "num", x: p.x, y: p.y, n: edNextNum(), color: edColor, w: edSize }); edDraw(); return; }
     edCanvas.setPointerCapture(e.pointerId);
     if(edTool === "crop"){
-      const c = edItem.crop || { x: 0, y: 0, w: edItem.src.width, h: edItem.src.height };
-      const tol = 14 * p.k;
-      const hi = edHandles(c).findIndex(([x, y]) => Math.abs(p.x - x) < tol && Math.abs(p.y - y) < tol);
+      const c = edItem.crop, hit = edCropHit(p);
       edPushUndo();
-      if(hi >= 0) edDrag = { kind: "cropHandle", hi, c0: { ...c } };
-      else if(edItem.crop && p.x > c.x && p.x < c.x + c.w && p.y > c.y && p.y < c.y + c.h) edDrag = { kind: "cropMove", sx: p.x, sy: p.y, c0: { ...c } };
+      if(hit.kind === "handle") edDrag = { kind: "cropHandle", hi: hit.hi, c0: { ...c } };
+      else if(hit.kind === "move") edDrag = { kind: "cropMove", sx: p.x, sy: p.y, c0: { ...c } };
       else edDrag = { kind: "cropNew", sx: p.x, sy: p.y };
       return;
     }
@@ -4618,7 +4632,12 @@
   });
   edCanvas.addEventListener("pointermove", (e) => {
     if(!edItem) return;
-    if(!edDrag){ edHover = edPos(e); if(!["crop", "select", "mosaic", "fill"].includes(edTool)) edDraw(); return; }
+    if(!edDrag){
+      edHover = edPos(e);
+      if(edTool === "crop" && !edSpaceDown){ const h = edCropHit(edHover); edCanvas.style.cursor = h.kind === "handle" ? ED_HANDLE_CURSORS[h.hi] : h.kind === "move" ? "move" : ""; }
+      if(!["crop", "select", "mosaic", "fill"].includes(edTool)) edDraw();
+      return;
+    }
     const p = edPos(e);
     const W = edItem.src.width, H = edItem.src.height, cl = (v, m) => Math.max(0, Math.min(m, v));
     if(edDrag.kind === "cropNew"){
@@ -4704,7 +4723,7 @@
   edTextInput.addEventListener("keydown", (e) => {
     e.stopPropagation(); // 入力中のキー(Space・Ctrl+Z など)を編集画面やキャプチャの操作に渡さない
     if(e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); edCommitText(); }
-    else if(e.key === "Escape"){ edTextInput.hidden = true; edTextCtx = null; edDraw(); }
+    else if(e.key === "Escape"){ e.preventDefault(); edCommitText(); } // Esc でも入力した文字は残す
   });
 
   // ---------- ボタン・キー ----------
@@ -4725,9 +4744,20 @@
   $("edDelSel").addEventListener("click", edDeleteSel);
   $("edFit").addEventListener("click", edResetZoom);
   $("edReset").addEventListener("click", () => { if(!edItem.crop && !edItem.annots.length) return; edPushUndo(); edItem.crop = null; edItem.annots = []; edSel.clear(); edDraw(); });
+  $("edCropClear").addEventListener("click", () => { if(!edItem || !edItem.crop) return; edPushUndo(); edItem.crop = null; edDraw(); });
   $("edCropLast").addEventListener("click", () => { if(!lastCropRatio || !edItem) return; edPushUndo(); edItem.crop = cropFromLastRatio(edItem.src); edDraw(); });
   $("edDone").addEventListener("click", () => closeImageEditor(true));
   $("edClose").addEventListener("click", () => closeImageEditor(true));
+  // 画像の外(暗い所)をクリックしても保存して閉じる(押した所と離した所がどちらも画像の外のときだけ)
+  let edWrapDown = null;
+  $("edStageWrap").addEventListener("pointerdown", (e) => { edWrapDown = e.target; });
+  $("edStageWrap").addEventListener("click", (e) => {
+    const ok = edWrapDown === $("edStageWrap") && e.target === $("edStageWrap");
+    edWrapDown = null;
+    if(!ok) return;
+    if(!edTextInput.hidden){ edCommitText(); return; }
+    closeImageEditor(true);
+  });
   $("edPrev").addEventListener("click", () => edGo(-1));
   $("edNext").addEventListener("click", () => edGo(1));
   $("lbEdit").addEventListener("click", () => { if(lightboxIndex >= 0) openImageEditor(lightboxIndex, edTool === "crop" ? "arrow" : edTool); });
@@ -4785,7 +4815,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v06_2026-11-26.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v06_2026-11-26.3"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4828,7 +4858,8 @@
     ["v05_2026-11-26","記録一覧の操作を元に戻す/やり直し(Ctrl+Z / Ctrl+Y、直近10回): 削除・並べ替え・メモや見出しの文章・見出し/メモの切り替え。削除時の知らせをクリックしても元に戻せる"],
     ["v05_2026-11-26.2","元に戻す/やり直しの対象に資料タイトル・日付の変更を追加"],
     ["v06_2026-11-26",["画像の編集: 拡大表示・一覧の「✏️ 編集」でトリミングと書き込み(線・矢印・枠・蛍光マーカー・文字・①②③番号・ぼかし・塗り潰し)をまとめて行える(トリミング画面は編集画面に統合)","書き込みは元の画像を基準に保存するので、あとから動かす・消す・色やサイズを変えるのも自由。Ctrl+ホイールでサイズ、ホイールで拡大縮小、Ctrl+Z で元に戻す","編集の確定は一覧の Ctrl+Z でも元に戻せる。書き出したHTMLでは「✏️ 書き込み ON/OFF」で表示を切り替えられ、取り込み直すと書き込みを編集し直せる"]],
-    ["v06_2026-11-26.2","画像の編集: Esc でも保存して閉じるように(キャンセルボタンを廃止。戻したいときは ↶ や一覧の Ctrl+Z で)"]
+    ["v06_2026-11-26.2","画像の編集: Esc でも保存して閉じるように(キャンセルボタンを廃止。戻したいときは ↶ や一覧の Ctrl+Z で)"],
+    ["v06_2026-11-26.3",["画像の編集: 画像の外(暗い所)をクリックしても保存して閉じる。文字の入力中の Esc は入力した文字を残す","トリミングに「トリミングなし」(画像全体に戻す)","トリミング枠を範囲タブと同じ見た目・操作に(青い枠と●、つまみや枠の内側でカーソルが変わる)"]]
   ];
 
   const verLabel = $("verLabel");
