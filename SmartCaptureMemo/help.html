@@ -394,6 +394,14 @@
     <li><code>⠿</code> にフォーカスして <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> でも並び替えできます(折りたたみ中の行は飛ばします)。</li>
     <li>見出し行を動かすと、そのセクションの中身(画像・メモ)も一緒に移動します。前後のセクションと入れ替わる形で動き、ほかのセクションの途中には入りません。</li>
   </ul>
+  <h3 id="multiselect">複数選択(まとめて削除・移動)</h3>
+  <ul>
+    <li><code>⠿</code> または行の余白を <kbd>Ctrl</kbd>+クリックで選択に追加/解除、<kbd>Shift</kbd>+クリックで範囲選択します。選択中は画面下に「N件選択中」のバーが出ます。</li>
+    <li>バーの「🗑 削除」(<kbd>Delete</kbd>)でまとめて削除します。確認は出ませんが、<kbd>Ctrl</kbd>+<kbd>Z</kbd> でまとめて元に戻せます。</li>
+    <li>バーの「📂 見出しへ移動…」で移動先の見出しを選ぶと、そのセクションの末尾へまとめて移動します。</li>
+    <li>選んだ行の <code>⠿</code> をドラッグ、または <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> でもまとめて移動できます(離れていた行は順序を保って隣り合わせになります)。見出しを選んでいるときはセクションの中身も一緒に移動します。</li>
+    <li>選択の解除は <kbd>Esc</kbd>・バーの ✕・行の余白を普通にクリック。</li>
+  </ul>
 
   <p class="sectionDivider">履歴タブ</p>
   <h2 id="history">書き出し履歴</h2>
@@ -454,7 +462,8 @@
     <tr><td><kbd>E</kbd></td><td>拡大表示中: その画像を編集(トリミング・書き込み)</td></tr>
     <tr><td><kbd>Ctrl</kbd>+ホイール</td><td>画像の編集中: 書き込みのサイズ(<kbd>Shift</kbd>も押すと0.5刻み)。ホイールだけで拡大縮小、<kbd>Space</kbd>+ドラッグで移動</td></tr>
     <tr><td><kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd></td><td>前/次の見出しへ(記録タブ)</td></tr>
-    <tr><td><kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd></td><td>行の並び替え(<code>⠿</code>にフォーカス中)</td></tr>
+    <tr><td><kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd></td><td>行の並び替え(<code>⠿</code>にフォーカス中。複数選択中は選んだ行をまとめて)</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>Shift</kbd>+クリック</td><td>記録一覧の複数選択(<code>⠿</code>・行の余白)。<kbd>Delete</kbd> でまとめて削除、<kbd>Esc</kbd> で解除</td></tr>
     <tr><td><kbd>Enter</kbd></td><td>見出しの入力中: 次の見出しを作成(空なら終了)</td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd> / <kbd>Esc</kbd></td><td>メモ・見出しの入力を終えて、その行を選択した状態にする(<kbd>Esc</kbd>は画面・メニューを閉じるときにも使用)</td></tr>
     <tr><td><kbd>Enter</kbd>(行を選択中)</td><td>その行のメモ・見出しの入力を始める</td></tr>

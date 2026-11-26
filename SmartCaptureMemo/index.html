@@ -294,6 +294,15 @@
   .item.dragging{opacity:.4;}
   .item.drag-over{border-top:3px solid var(--accent);}
   .item:focus-within{outline:2px solid var(--accent); outline-offset:2px;}
+  .item.is-selected, .item.item-heading.is-selected{background:color-mix(in srgb, var(--accent) 16%, var(--surface2)); border-color:var(--accent);}
+  #page-record:has(#multiSelBar:not([hidden])) #captureList{padding-bottom:72px;}
+  #multiSelBar{
+    position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:50; display:flex; align-items:center; gap:8px;
+    background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:8px 12px; font-size:13px;
+    box-shadow:0 4px 16px rgba(0,0,0,.35); max-width:calc(100vw - 32px); white-space:nowrap;
+  }
+  #multiSelBar[hidden]{display:none;}
+  #multiSelMove{min-width:0; max-width:220px;}
   .drag-handle{
     align-self:center; flex-shrink:0; cursor:grab; color:var(--sub); font-size:16px;
     padding:4px 2px; user-select:none;
@@ -881,6 +890,12 @@
       <div id="recordMain">
         <div id="captureList"><div class="empty">まだキャプチャがありません</div></div>
       </div>
+    </div>
+    <div id="multiSelBar" hidden>
+      <span><b id="multiSelCount">0</b>件選択中</span>
+      <select id="multiSelMove" aria-label="見出しへ移動" title="選んだ行を、指定した見出しのセクション末尾へ移動します"></select>
+      <button class="secondary" id="btnMultiSelDel" type="button" title="選んだ行を削除(Delete)。Ctrl+Z でまとめて元に戻せます">🗑 削除</button>
+      <button class="icon-btn" id="btnMultiSelClear" type="button" title="選択を解除(Esc)">✕</button>
     </div>
   </section>
 
@@ -2484,6 +2499,7 @@
       : `<div class="tocEmpty">📝見出しを追加すると目次になります</div>`;
 
     updatePipSection();
+    if(selIds.size) refreshSelection();
   }
 
   function escapeHtml(t){
@@ -2589,6 +2605,8 @@
 
   // ---------- 記録一覧のドラッグ&ドロップ並び替え ----------
   let draggingItem = null;
+  const selIds = new Set(); // 複数選択中の行の id
+  let selAnchorId = null, dragGroup = null;
 
   // 現在のDOM順を正として、全レコードのorderを振り直して保存する(ドラッグ&ドロップ・キーボード並び替え共通)
   async function persistOrderFromDom(undoLabel){
@@ -2630,7 +2648,8 @@
     const handle = e.target.closest(".drag-handle");
     if(!handle) return;
     draggingItem = handle.closest(".item");
-    draggingItem.classList.add("dragging");
+    dragGroup = selIds.size > 1 && selIds.has(draggingItem.dataset.id) ? selectionGroup() : null; // 選んだ行はまとめて動かす
+    (dragGroup || [draggingItem]).forEach((d) => d.classList.add("dragging"));
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", draggingItem.dataset.id);
   });
@@ -2663,6 +2682,24 @@
     e.preventDefault();
     const overItem = e.target.closest(".item");
     if(!overItem || overItem === draggingItem) return;
+    if(dragGroup){
+      if(dragGroup.includes(overItem)) return;
+      let ref;
+      if(dragGroup.some(isSectionHeading)){ // 見出しを含むときは行の途中に入れず、セクションの前/後ろへ
+        const overHead = sectionHeadingOf(overItem);
+        if(!overHead || dragGroup.includes(overHead)) return;
+        const g = sectionGroup(overHead).filter((d) => !d.hidden);
+        const top = g[0].getBoundingClientRect().top, bottom = Math.max(...g.map((d) => d.getBoundingClientRect().bottom));
+        const items = listItems(), up = items.indexOf(overHead) < items.indexOf(dragGroup[0]);
+        if(up ? e.clientY >= (top + bottom) / 2 : e.clientY <= (top + bottom) / 2) return;
+        ref = up ? overHead : nextOutside(sectionGroup(overHead).pop(), dragGroup);
+      }else{
+        const r = overItem.getBoundingClientRect();
+        ref = (e.clientY - r.top) < r.height / 2 ? overItem : nextOutside(overItem, dragGroup);
+      }
+      dragGroup.forEach((d) => captureList.insertBefore(d, ref));
+      return;
+    }
     if(isSectionHeading(draggingItem)){
       if(sectionGroup(draggingItem).includes(overItem)) return;
       const overHead = sectionHeadingOf(overItem);
@@ -2681,10 +2718,12 @@
 
   captureList.addEventListener("dragend", async () => {
     if(!draggingItem) return;
-    draggingItem.classList.remove("dragging");
-    draggingItem = null;
+    const moved = dragGroup || [draggingItem];
+    moved.forEach((d) => d.classList.remove("dragging"));
+    draggingItem = null; dragGroup = null;
+    if(moved.length > 1) await openSectionsOf(moved);
     refreshSections();
-    await persistOrderFromDom("並べ替え");
+    await persistOrderFromDom(moved.length > 1 ? `${moved.length}件の並べ替え` : "並べ替え");
   });
 
   // キーボードでの並び替え: ⠿ハンドルにフォーカスした状態でShift+Alt+↑/↓を押すと
@@ -2697,6 +2736,17 @@
     if(!handle) return;
     const item = handle.closest(".item");
     if(!item) return;
+    if(selIds.size > 1 && selIds.has(item.dataset.id)){ // 選んだ行をまとめて動かす
+      e.preventDefault();
+      const group = selectionGroup();
+      if(!moveGroupStep(group, e.key === "ArrowUp" ? -1 : 1)) return;
+      await openSectionsOf(group);
+      refreshSections();
+      handle.focus();
+      item.scrollIntoView({ block: "nearest" });
+      await persistOrderFromDom(`${group.length}件の並べ替え`);
+      return;
+    }
     if(isSectionHeading(item)){ // 見出しは中の行ごと、前/次のセクションと入れ替える
       e.preventDefault();
       if(!moveSectionGroup(item, e.key === "ArrowUp" ? -1 : 1)) return;
@@ -2722,6 +2772,136 @@
     refreshSections();
     handle.focus(); // 同じノードを再配置しているだけだがブラウザ差異に備えて明示的に再フォーカス
     await persistOrderFromDom("並べ替え");
+  });
+
+  // ---------- 複数選択(まとめて削除・移動) ----------
+  // ⠿ または行の余白を Ctrl+クリックで追加/解除、Shift+クリックで範囲選択。Esc・✕・何も押さずにクリックで解除。
+  // 見出しを選んだときの移動はセクションの中身ごと(削除は選んだ行だけ)
+  const multiSelBar = $("multiSelBar"), multiSelCount = $("multiSelCount"), multiSelMove = $("multiSelMove");
+  const SEL_IGNORE = "button, textarea, input, select, a, img, .memoPreview, .memoToolbar, .thumbSplit, .type-badge";
+  function selectedItems(){ return listItems().filter((d) => selIds.has(d.dataset.id)); }
+  // 動かす行(選んだ見出しはセクションの中身も含める)を一覧の順に
+  function selectionGroup(){
+    const set = new Set();
+    selectedItems().forEach((d) => (isSectionHeading(d) ? sectionGroup(d) : [d]).forEach((x) => set.add(x)));
+    return listItems().filter((d) => set.has(d));
+  }
+  function nextOutside(el, group){
+    let n = el.nextSibling;
+    while(n && group.includes(n)) n = n.nextSibling;
+    return n;
+  }
+  function refreshSelection(){
+    for(const id of [...selIds]) if(!itemById(id)) selIds.delete(id);
+    listItems().forEach((d) => d.classList.toggle("is-selected", selIds.has(d.dataset.id)));
+    multiSelBar.hidden = selIds.size === 0;
+    if(!selIds.size) return;
+    multiSelCount.textContent = selIds.size;
+    const group = selectionGroup();
+    const heads = listItems().filter((d) => isSectionHeading(d) && !group.includes(d));
+    multiSelMove.innerHTML = `<option value="">📂 見出しへ移動…</option>` +
+      heads.map((h) => `<option value="${h.dataset.id}">📍 ${escapeHtml(headingLabel(h))}</option>`).join("");
+    multiSelMove.disabled = !heads.length;
+  }
+  function clearSelection(){ selIds.clear(); selAnchorId = null; refreshSelection(); }
+  // 折りたたみ中のセクションへ入った行が見えなくならないよう、そのセクションを開く
+  async function openSectionsOf(group){
+    for(const d of group){
+      const sec = sectionHeadingOf(d);
+      if(sec && sec !== d && !group.includes(sec) && sec._record && sec._record.collapsed) await setSectionCollapsed(sec, false);
+    }
+  }
+  // Shift+Alt+↑/↓: 選んだ行を順序を保って1つ上/下へ(離れていた行は隣り合わせになる)
+  function moveGroupStep(group, dir){
+    const hasHead = group.some(isSectionHeading);
+    if(dir < 0){
+      let prev = group[0].previousElementSibling;
+      while(prev && (prev.hidden || group.includes(prev))) prev = prev.previousElementSibling;
+      const ref = hasHead ? sectionHeadingOf(group[0].previousElementSibling) : prev;
+      if(!ref) return false;
+      group.forEach((d) => captureList.insertBefore(d, ref));
+    }else{
+      let next = group[group.length - 1].nextElementSibling;
+      while(next && next.hidden) next = next.nextElementSibling;
+      if(hasHead) while(next && !isSectionHeading(next)) next = next.nextElementSibling;
+      if(!next) return false;
+      const ref = (hasHead ? sectionEndItem(next) : next).nextSibling;
+      group.forEach((d) => captureList.insertBefore(d, ref));
+    }
+    return true;
+  }
+  captureList.addEventListener("mousedown", (e) => {
+    if(!(e.ctrlKey || e.metaKey || e.shiftKey) || !e.target.closest(".item") || e.target.closest(SEL_IGNORE)) return;
+    e.preventDefault(); // Shift+クリックで文字が選択されないように
+  });
+  captureList.addEventListener("click", (e) => {
+    const item = e.target.closest(".item");
+    if(!item || e.target.closest(SEL_IGNORE)) return;
+    const id = item.dataset.id, anchor = selAnchorId && itemById(selAnchorId);
+    if(e.shiftKey && anchor && !anchor.hidden){
+      const vis = listItems().filter((d) => !d.hidden);
+      const a = vis.indexOf(anchor), b = vis.indexOf(item);
+      if(!(e.ctrlKey || e.metaKey)) selIds.clear();
+      vis.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((d) => selIds.add(d.dataset.id));
+    }else if(e.ctrlKey || e.metaKey || e.shiftKey){
+      if(selIds.has(id)) selIds.delete(id); else selIds.add(id);
+      selAnchorId = id;
+    }else{
+      if(selIds.size) clearSelection();
+      return;
+    }
+    refreshSelection();
+    const h = item.querySelector(".drag-handle");
+    if(h) h.focus({ preventScroll: true });
+  });
+  async function deleteSelection(){
+    const items = selectedItems();
+    if(!items.length) return;
+    const beforeOrder = listItems().map((d) => Number(d.dataset.id));
+    const saved = items.map((d) => ({ ...d._record, order: currentDomOrderFor(Number(d.dataset.id)) }));
+    const ids = saved.map((r) => r.id);
+    clearSelection();
+    for(const d of items) await removeItemNow(d, Number(d.dataset.id));
+    pushUndo({
+      label: `${saved.length}件の削除`,
+      undo: async () => {
+        for(const r of saved){ const rec = { ...r }; await dbPut(rec); renderItem(rec, false); }
+        await applyOrder(beforeOrder);
+        updateCount();
+      },
+      redo: async () => { for(const id of ids){ const d = itemById(id); if(d) await removeItemNow(d, id); } }
+    });
+    showToast(`🗑 ${saved.length}件を削除しました(Ctrl+Z / ここをクリックで元に戻す)`, () => undoLast());
+  }
+  async function moveSelectionToHeading(headId){
+    const head = headingDivById(headId), group = selectionGroup();
+    if(!head || !group.length || group.includes(head)) return;
+    const anchor = sectionGroup(head).filter((d) => !group.includes(d)).pop();
+    const ref = nextOutside(anchor, group);
+    group.forEach((d) => captureList.insertBefore(d, ref));
+    if(head._record && head._record.collapsed) await setSectionCollapsed(head, false);
+    await openSectionsOf(group);
+    refreshSections();
+    refreshSelection();
+    group[0].scrollIntoView({ block: "nearest" });
+    await persistOrderFromDom(`${group.length}件を見出しへ移動`);
+    showToast(`📂 ${group.length}件を「${headingLabel(head)}」へ移動しました(Ctrl+Z で元に戻す)`);
+  }
+  multiSelMove.addEventListener("change", () => {
+    const v = Number(multiSelMove.value);
+    multiSelMove.value = "";
+    if(v) moveSelectionToHeading(v);
+  });
+  $("btnMultiSelDel").addEventListener("click", deleteSelection);
+  $("btnMultiSelClear").addEventListener("click", clearSelection);
+  document.addEventListener("keydown", (e) => {
+    if(!selIds.size || currentTab !== "record") return;
+    if(e.key !== "Escape" && e.key !== "Delete") return;
+    const a = document.activeElement;
+    if(a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT" || a.tagName === "SELECT" || a.isContentEditable)) return;
+    if(lightbox.classList.contains("open") || imgEditorOpen() || msgModal.classList.contains("open") || settingsModal.classList.contains("open") || !moreMenu.hidden) return;
+    e.preventDefault();
+    if(e.key === "Escape") clearSelection(); else deleteSelection();
   });
 
   // ---------- 元に戻す/やり直し(一覧の操作) ----------
@@ -4888,7 +5068,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v06_2026-11-26.5"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v06_2026-11-26.6"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4934,7 +5114,8 @@
     ["v06_2026-11-26.2","画像の編集: Esc でも保存して閉じるように(キャンセルボタンを廃止。戻したいときは ↶ や一覧の Ctrl+Z で)"],
     ["v06_2026-11-26.3",["画像の編集: 画像の外(暗い所)をクリックしても保存して閉じる。文字の入力中の Esc は入力した文字を残す","トリミングに「トリミングなし」(画像全体に戻す)","トリミング枠を範囲タブと同じ見た目・操作に(青い枠と●、つまみや枠の内側でカーソルが変わる)"]],
     ["v06_2026-11-26.4",["見出しを動かすと、そのセクションの画像・メモも一緒に移動(ドラッグ・Shift+Alt+↑/↓とも。前後のセクションと入れ替え)","新しく作った見出しを現在の見出しにする(続けてキャプチャするとその見出しへ入る。複数行の貼り付けでまとめて作ったときは除く)"]],
-    ["v06_2026-11-26.5",["画像の編集の番号: 「番号」をもう一度押すと形を切り替え(❶ 色で塗り潰した丸 / ① 丸と数字だけに色)。👆選択で選んだ番号の形も変えられる","番号は色ごとに数える(赤は ①②…、青は別に ①②…)"]]
+    ["v06_2026-11-26.5",["画像の編集の番号: 「番号」をもう一度押すと形を切り替え(❶ 色で塗り潰した丸 / ① 丸と数字だけに色)。👆選択で選んだ番号の形も変えられる","番号は色ごとに数える(赤は ①②…、青は別に ①②…)"]],
+    ["v06_2026-11-26.6",["記録一覧の複数選択: ⠿ や行の余白を Ctrl+クリックで追加・Shift+クリックで範囲選択(Esc で解除)","「N件選択中」バーから 🗑 まとめて削除(Ctrl+Z で一括復元)・📂 見出しへ移動","選んだ行はドラッグ / Shift+Alt+↑↓ でもまとめて移動(見出しを含むときはセクションの中身ごと)"]]
   ];
 
   const verLabel = $("verLabel");
