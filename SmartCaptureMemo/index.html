@@ -343,6 +343,9 @@
     color:var(--text); font-size:12px; border-left:3px solid transparent;
   }
   #tocList a:hover{background:var(--surface2);}
+  #tocList a.toc-dragging{opacity:.4;}
+  #tocList a.drop-before{box-shadow:inset 0 2px 0 var(--accent);}
+  #tocList a.drop-after{box-shadow:inset 0 -2px 0 var(--accent);}
   #tocList a.active{border-left-color:var(--accent); color:var(--accent); font-weight:700; background:var(--surface2);}
   #tocList .tocLabel{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   #tocList .tocCount{flex-shrink:0; display:flex; gap:6px; font-size:10px; color:var(--sub); font-weight:400;}
@@ -2492,7 +2495,7 @@
     tocList.innerHTML = sections.length
       ? sections.map((sec) => {
           const id = sec.head.dataset.id;
-          return `<a href="#" data-id="${id}" class="${Number(id) === currentSectionId ? "active" : ""}">` +
+          return `<a href="#" draggable="true" title="クリックでこの見出しへ/ドラッグ(Shift+Alt+↑↓)でセクションごと並び替え" data-id="${id}" class="${Number(id) === currentSectionId ? "active" : ""}">` +
             `<span class="tocLabel">${escapeHtml(headingLabel(sec.head))}</span>` +
             `<span class="tocCount">${countCell("📸", sec.caps)}${anyMemos ? countCell("💬", sec.memos) : ""}</span></a>`;
         }).join("")
@@ -2530,6 +2533,61 @@
     if(!a) return;
     e.preventDefault();
     setCurrentSection(Number(a.dataset.id), { scroll: true });
+  });
+  // 目次で見出しを並び替え(セクションの中身ごと)。ドラッグ中は目次を描き直さず、離したときに一覧を動かす
+  let tocDragId = null;
+  function tocDropTarget(e){
+    const a = e.target.closest && e.target.closest("#tocList a[data-id]");
+    if(!a || a.dataset.id === tocDragId) return null;
+    const r = a.getBoundingClientRect();
+    return { a, after: e.clientY > r.top + r.height / 2 };
+  }
+  function clearTocDropMarks(){ tocList.querySelectorAll(".drop-before, .drop-after").forEach((a) => a.classList.remove("drop-before", "drop-after")); }
+  tocList.addEventListener("dragstart", (e) => {
+    const a = e.target.closest("a[data-id]");
+    if(!a) return;
+    tocDragId = a.dataset.id;
+    a.classList.add("toc-dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", "");
+  });
+  tocList.addEventListener("dragover", (e) => {
+    if(!tocDragId) return;
+    e.preventDefault();
+    clearTocDropMarks();
+    const t = tocDropTarget(e);
+    if(t) t.a.classList.add(t.after ? "drop-after" : "drop-before");
+  });
+  tocList.addEventListener("dragleave", (e) => { if(!tocList.contains(e.relatedTarget)) clearTocDropMarks(); });
+  tocList.addEventListener("drop", async (e) => {
+    if(!tocDragId) return;
+    e.preventDefault();
+    const t = tocDropTarget(e), head = headingDivById(Number(tocDragId));
+    tocDragId = null;
+    if(!t || !head) return refreshSections();
+    const target = headingDivById(Number(t.a.dataset.id)), group = sectionGroup(head);
+    if(!target || group.includes(target)) return refreshSections();
+    const ref = t.after ? nextOutside(sectionGroup(target).pop(), group) : target;
+    group.forEach((d) => captureList.insertBefore(d, ref));
+    refreshSections();
+    await persistOrderFromDom("見出しの並べ替え");
+  });
+  tocList.addEventListener("dragend", () => {
+    if(!tocDragId) return;
+    tocDragId = null;
+    tocList.querySelectorAll(".toc-dragging").forEach((a) => a.classList.remove("toc-dragging"));
+    clearTocDropMarks();
+  });
+  tocList.addEventListener("keydown", async (e) => {
+    if(!e.shiftKey || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    const a = e.target.closest("a[data-id]"), head = a && headingDivById(Number(a.dataset.id));
+    if(!head) return;
+    e.preventDefault();
+    if(!moveSectionGroup(head, e.key === "ArrowUp" ? -1 : 1)) return;
+    refreshSections();
+    const na = tocList.querySelector(`a[data-id="${head.dataset.id}"]`);
+    if(na) na.focus();
+    await persistOrderFromDom("見出しの並べ替え");
   });
   $("btnSectionPrev").addEventListener("click", () => moveSection(-1, true));
   $("btnSectionNext").addEventListener("click", () => moveSection(1, true));
@@ -5068,7 +5126,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v06_2026-11-26.6"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v06_2026-11-26.7"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -5115,7 +5173,8 @@
     ["v06_2026-11-26.3",["画像の編集: 画像の外(暗い所)をクリックしても保存して閉じる。文字の入力中の Esc は入力した文字を残す","トリミングに「トリミングなし」(画像全体に戻す)","トリミング枠を範囲タブと同じ見た目・操作に(青い枠と●、つまみや枠の内側でカーソルが変わる)"]],
     ["v06_2026-11-26.4",["見出しを動かすと、そのセクションの画像・メモも一緒に移動(ドラッグ・Shift+Alt+↑/↓とも。前後のセクションと入れ替え)","新しく作った見出しを現在の見出しにする(続けてキャプチャするとその見出しへ入る。複数行の貼り付けでまとめて作ったときは除く)"]],
     ["v06_2026-11-26.5",["画像の編集の番号: 「番号」をもう一度押すと形を切り替え(❶ 色で塗り潰した丸 / ① 丸と数字だけに色)。👆選択で選んだ番号の形も変えられる","番号は色ごとに数える(赤は ①②…、青は別に ①②…)"]],
-    ["v06_2026-11-26.6",["記録一覧の複数選択: ⠿ や行の余白を Ctrl+クリックで追加・Shift+クリックで範囲選択(Esc で解除)","「N件選択中」バーから 🗑 まとめて削除(Ctrl+Z で一括復元)・📂 見出しへ移動","選んだ行はドラッグ / Shift+Alt+↑↓ でもまとめて移動(見出しを含むときはセクションの中身ごと)"]]
+    ["v06_2026-11-26.6",["記録一覧の複数選択: ⠿ や行の余白を Ctrl+クリックで追加・Shift+クリックで範囲選択(Esc で解除)","「N件選択中」バーから 🗑 まとめて削除(Ctrl+Z で一括復元)・📂 見出しへ移動","選んだ行はドラッグ / Shift+Alt+↑↓ でもまとめて移動(見出しを含むときはセクションの中身ごと)"]],
+    ["v06_2026-11-26.7","目次で見出しを並び替え: 目次の項目をドラッグ(または Shift+Alt+↑↓)すると、セクションの中身ごと移動"]
   ];
 
   const verLabel = $("verLabel");
