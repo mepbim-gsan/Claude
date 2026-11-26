@@ -670,41 +670,37 @@
   #exportStatusMsg.warn{color:var(--danger);}
   #exportStatusMsg.ok{color:var(--ok);}
 
-  #cropModal{
-    display:none; position:fixed; inset:0; z-index:110;
-    background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:24px;
-  }
-  #cropModal.open{display:flex;}
-  #cropPanel{
-    background:var(--panel); border-radius:12px; padding:16px; max-width:92vw;
-  }
-  /* #cropStageは幅を指定していない通常のblock要素のため、本来は画像ではなく
-     「親(#cropPanel、padding:16px・max-width:92vw)の中身の幅」いっぱいに
-     広がろうとする。一方、中の画像はwidth:autoのため親のレイアウト幅とは
-     無関係に自分自身のmax-width:88vwだけを基準にサイズを決める。この2つの
-     計算基準(92vwベースの親幅からpaddingを引いた値 と 88vwそのもの)は
-     ビューポート幅によって一致しないことがあり、特に狭い画面では画像の方が
-     ステージより広く計算され、画像がステージの右端からはみ出す(=ステージ
-     基準で%指定している選択枠(青い線)は画像の右端まで届かない)不具合が
-     あった。width:fit-contentでステージ自体を画像の実際のサイズに
-     ぴったり合わせることで、両者の基準のズレをなくす */
-  #cropStage{
-    position:relative; width:fit-content; max-width:88vw; max-height:72vh;
-    margin:0 auto; cursor:crosshair; user-select:none; line-height:0;
-  }
-  /* ステージ側で overflow:hidden にしていると、選択範囲が右端/下端いっぱいまで
-     広がったときに四隅・辺のハンドル(枠の外側にわずかにはみ出す円)が半分
-     だけ切れて見えてしまう(画面が狭いほど目立つ)ため overflow:hiddenにしない。
-     画像にだけ角丸(border-radius)を付けると、選択枠(#cropSelRectは常に
-     直角四隅)との間に隙間が生じ、全体選択時に右端/下端の角がわずかに
-     内側へ寄って見えてしまうため、画像側の角丸も付けずシンプルな直角のまま
-     にする(外側のカード#cropPanel自体は角丸のまま) */
-  #cropStage img{display:block; max-width:88vw; max-height:72vh; width:auto; height:auto;}
-  #cropOverlay{position:absolute; inset:0;}
-  #cropSelRect{
-    position:absolute; border:2px solid var(--accent);
-    background:rgba(79,140,255,.15); display:none;
-  }
+  /* 画像の編集(トリミング+書き込み)。拡大表示の「✏️ 編集」・一覧の「✏️ 編集」から開く全画面の編集画面 */
+  #imgEditor{position:fixed; inset:0; z-index:115; background:#0e1014; display:flex; flex-direction:column;}
+  #imgEditor[hidden]{display:none;}
+  #imgEditor button{height:32px; padding:0 9px; font-size:12px; border-radius:8px; background:rgba(40,44,54,.9); color:#e6e8ec; border:1px solid #3a3f4c; cursor:pointer;}
+  #imgEditor button:hover{border-color:#fff; opacity:1;}
+  #imgEditor button.on{background:#3b6fe0; border-color:#3b6fe0; color:#fff;}
+  #imgEditor button.ok{background:#1f9d5c; border-color:#1f9d5c; color:#fff;}
+  #edTop{display:flex; align-items:center; gap:8px; padding:10px 12px;}
+  #edTop .sp{flex:1;}
+  #edCounter{color:#e6e8ec; font-size:12px; background:rgba(23,26,33,.85); border-radius:8px; padding:6px 10px; font-variant-numeric:tabular-nums;}
+  #edTitle{color:#9aa0ac; font-size:12px;}
+  #edStageWrap{flex:1; position:relative; display:flex; align-items:center; justify-content:center; min-height:0; overflow:hidden;}
+  #edCanvas{max-width:calc(100% - 120px); max-height:100%; touch-action:none; box-shadow:0 8px 30px rgba(0,0,0,.5); cursor:crosshair;}
+  #imgEditor.tool-select #edCanvas{cursor:default;}
+  #imgEditor .edNav{z-index:2; position:absolute; top:50%; transform:translateY(-50%); width:44px; height:64px; font-size:22px;}
+  #edPrev{left:10px;} #edNext{right:10px;}
+  #edCaption{color:#e6e8ec; font-size:13px; line-height:1.5; white-space:pre-wrap; text-align:center; padding:6px 16px; max-height:66px; overflow-y:auto;}
+  #edCaption:empty{display:none;}
+  #edCaption a{color:var(--accent);}
+  #edCaption mark{background:var(--mark-bg); color:var(--mark-fg); padding:0 2px; border-radius:2px;}
+  #edTools{display:flex; flex-wrap:wrap; gap:4px; align-items:center; justify-content:center; padding:8px 10px 12px; border-top:1px solid #2a2e3a;}
+  #edTools .sep{width:1px; height:26px; background:#3a3f4c; margin:0 4px;}
+  #edTools .brk{flex-basis:100%; height:0;}
+  #imgEditor .edColor{width:24px; height:24px; min-width:24px; padding:0; border-radius:50%; border:2px solid #3a3f4c;}
+  #imgEditor .edColor.on{outline:2px solid #fff; outline-offset:2px;}
+  #edHint{color:#9aa0ac; font-size:12px; flex-basis:100%; text-align:center;}
+  #edSizeBox{color:#e6e8ec; font-size:12px; display:inline-flex; align-items:center; gap:4px;}
+  #edSizeBox input{width:110px;}
+  #edSizeLbl{min-width:2.2em; font-variant-numeric:tabular-nums;}
+  #edTextInput{position:absolute; z-index:3; background:rgba(255,255,255,.95); border:2px dashed #3b6fe0; padding:2px 4px; font-family:sans-serif; font-weight:bold; outline:none; min-width:80px; white-space:pre;}
+  #edTextInput[hidden]{display:none;}
 
   /* alert()/confirm()の代替モーダル。Edgeのサイドパネル等、ネイティブの
      ブロッキングダイアログが表示されないブラウザコンテキストでも機能するよう、
@@ -929,38 +925,53 @@
   <div id="lbTools">
     <span id="lbCounter"></span>
     <button id="lbCaptionToggle" type="button" title="コメントの表示/非表示(Cキー)">💬 コメント</button>
+    <button id="lbEdit" type="button" title="この画像を編集(トリミング・書き込み)(Eキー)">✏️ 編集</button>
     <button id="lbClose" type="button" title="閉じる(Esc)">✕</button>
   </div>
   <img id="lightboxImg" alt="拡大表示" draggable="false">
   <div id="lightboxCaption"></div>
 </div>
 
-<div id="cropModal">
-  <div id="cropPanel">
-    <div id="cropStage">
-      <img id="cropImage" alt="トリミング対象" draggable="false">
-      <div id="cropOverlay">
-        <div id="cropSelRect">
-          <div class="handle nw" data-corner="nw"></div>
-          <div class="handle ne" data-corner="ne"></div>
-          <div class="handle sw" data-corner="sw"></div>
-          <div class="handle se" data-corner="se"></div>
-          <div class="handle edge-n" data-corner="n"></div>
-          <div class="handle edge-s" data-corner="s"></div>
-          <div class="handle edge-e" data-corner="e"></div>
-          <div class="handle edge-w" data-corner="w"></div>
-        </div>
-      </div>
-    </div>
-    <div class="hint">ドラッグで範囲を選択/移動、四隅の丸で拡大縮小、辺の丸で幅または高さだけ変更できます。スライドの中をダブルクリックすると、スライドの枠を自動で探して範囲に入れます <span id="cropDetectMsg"></span></div>
-    <div class="row" style="margin-top:10px;">
-      <button class="danger" id="btnCropRevert" style="display:none;">元に戻す(トリミング前の画像)</button>
-      <button class="secondary" id="btnCropUseLast" style="display:none;" title="直前にトリミングした範囲(相対位置)をこの画像にも適用します">前回の範囲</button>
-      <div class="row" style="margin-left:auto; gap:8px;">
-        <button class="secondary" id="btnCropCancel">キャンセル</button>
-        <button class="ok" id="btnCropApply">この範囲でトリミング</button>
-      </div>
-    </div>
+<div id="imgEditor" hidden>
+  <div id="edTop">
+    <span id="edCounter"></span>
+    <span id="edTitle">✏️ 編集中(画像の外をクリック・Esc で保存して閉じる。ホイールで拡大縮小・Space+ドラッグで移動)</span>
+    <span class="sp"></span>
+    <button type="button" id="edClose" title="保存して閉じる(Esc)">✕</button>
+  </div>
+  <div id="edStageWrap">
+    <button type="button" class="edNav" id="edPrev" title="前の画像(この画像の編集は保存)">‹</button>
+    <canvas id="edCanvas"></canvas>
+    <button type="button" class="edNav" id="edNext" title="次の画像(この画像の編集は保存)">›</button>
+    <div id="edTextInput" contenteditable="true" hidden></div>
+  </div>
+  <div id="edCaption"></div>
+  <div id="edTools">
+    <button type="button" data-tool="crop" title="トリミング(範囲を選ぶ。スライドの中をダブルクリックで自動検出)">✂ トリミング</button>
+    <button type="button" id="edCropLast" title="直前にトリミングした範囲(比率)をこの画像に当てはめる" hidden>🔁 前回の範囲</button>
+    <button type="button" id="edCropClear" title="トリミングをやめて画像全体に戻す(書き込みはそのまま)" hidden>トリミングなし</button>
+    <span class="sep"></span>
+    <button type="button" data-tool="select" title="選んで移動・削除(Delete)、文字はダブルクリックで直す">👆 選択</button>
+    <button type="button" data-tool="line" title="ドラッグで直線(Shiftで水平・垂直・45°)">／ 線</button>
+    <button type="button" data-tool="arrow" title="ドラッグで矢印(Shiftで水平・垂直・45°)">➡ 矢印</button>
+    <button type="button" data-tool="rect" title="ドラッグで枠">▭ 枠</button>
+    <button type="button" data-tool="marker" title="なぞって蛍光マーカー(Shiftで水平・垂直)">🖍 マーカー</button>
+    <button type="button" data-tool="text" title="クリックして文字を入力(Enterで確定)">T 文字</button>
+    <button type="button" data-tool="num" title="クリックするたびに ①②③… と番号を置く">① 番号</button>
+    <button type="button" data-tool="mosaic" title="ドラッグした範囲をぼかして隠す(サイズでぼかしの強さを調整)">▦ ぼかし</button>
+    <button type="button" data-tool="fill" title="ドラッグした範囲を選んだ色で塗り潰す">■ 塗り潰し</button>
+    <span class="brk"></span>
+    <span id="edColors"></span>
+    <label id="edSizeBox" title="太さ・大きさ(Ctrl+ホイールで 0.1 ずつ、Ctrl+Shift+ホイールで 0.5 刻みの値(1.0, 1.5, 2.0…)を選ぶ。選択中の書き込みにも反映)">サイズ <input type="range" id="edSizeRange" min="0.5" max="8" step="0.1" value="2"> <span id="edSizeLbl">2.0</span></label>
+    <span class="sep"></span>
+    <button type="button" id="edUndo" title="元に戻す(Ctrl+Z)">↶</button>
+    <button type="button" id="edRedo" title="やり直し(Ctrl+Y)">↷</button>
+    <button type="button" id="edDelSel" title="選んだものを削除(Delete)">🗑</button>
+    <button type="button" id="edReset" title="トリミングも書き込みも消して元の画像に戻す(↶で取り消せます)">元の画像に戻す</button>
+    <button type="button" id="edFit" title="拡大をやめて全体を表示(ホイールで拡大縮小、Space+ドラッグで移動)">⤢ 全体</button>
+    <span class="sep"></span>
+    <button type="button" class="ok" id="edDone" title="保存して閉じる(Esc)">✓ 完了</button>
+    <div id="edHint"></div>
   </div>
 </div>
 
@@ -1685,7 +1696,7 @@
     // 関わらず常に同期する。以前はanchorItemがある時だけ呼んでいたため、選択なしで
     // 追加したレコードのorderが未設定のまま残ることがあった)
     await persistOrderFromDom();
-    afterRecordInserted(div);
+    afterRecordInserted(div, opts && opts.keepCurrent);
     if(userAnchored){
       // 続けてキャプチャ/見出し追加した場合も同じ行の直後に連続して挿入されるよう、
       // フォーカスを新しい行の⠿ハンドルへ移す
@@ -2021,8 +2032,8 @@
             <div class="memoPreview" tabindex="0"></div>
           </div>
           <div class="itemactions">
-            <button class="secondary btn-crop">✂️ トリミング</button>
-            <button class="secondary btn-crop-last" style="display:none;" title="直前にトリミングした範囲(比率)を、モーダルを開かずこの画像にそのまま適用します">🔁 前回の範囲</button>
+            <button class="secondary btn-crop" title="トリミング・書き込み(矢印・枠・文字・番号・ぼかし など)。最後に使った道具を選んだ状態で開きます">✏️ 編集</button>
+            <button class="secondary btn-crop-last" style="display:none;" title="直前にトリミングした範囲(比率)を、編集画面を開かずこの画像にそのまま適用します(書き込みはそのまま)">🔁 前回の範囲</button>
             <button class="icon-btn btn-del" title="削除">🗑</button>
           </div>
         </div>
@@ -2201,7 +2212,7 @@
       });
     });
     if(cropBtn){
-      cropBtn.addEventListener("click", () => openCropModal(record, div.querySelector("img")));
+      cropBtn.addEventListener("click", () => { const img = div.querySelector("img"); openImageEditor(getLightboxImages().indexOf(img), edLastTool); });
     }
     attachThumbSplitter(div);
     const cropLastBtn = div.querySelector(".btn-crop-last");
@@ -2259,6 +2270,7 @@
         let total = EXPORT_TEMPLATE_OVERHEAD_BYTES;
         records.forEach((r) => {
           if(r.dataURL) total += r.dataURL.length;
+          if(r.dataURL && r.originalDataURL && r.annots && r.annots.length) total += r.originalDataURL.length + JSON.stringify(r.annots).length; // 書き込みのある画像は元の画像も入る
           if(r.memo) total += r.memo.length;
         });
         sizeEstimateLabel.textContent = formatBytes(total);
@@ -2352,9 +2364,10 @@
   // レコードを追加した直後: 追加先のセクションを現在の見出しにし、折りたたみ中なら開く。
   // 見出しを追加した場合は、まだ現在の見出しが無いときだけそれを現在にする
   // (議題を3〜4つ先に登録したとき、最初の議題が現在の見出しになる)
-  function afterRecordInserted(div){
+  function afterRecordInserted(div, keepCurrent){
     if(isSectionHeading(div)){
-      if(!headingDivById(currentSectionId)) setCurrentSection(Number(div.dataset.id));
+      // 新しく作った見出しを現在の見出しにする(次のキャプチャがそこへ入る)。複数行の貼り付けでまとめて作った分は除く
+      if(!keepCurrent || !headingDivById(currentSectionId)) setCurrentSection(Number(div.dataset.id));
       return;
     }
     const head = sectionHeadingOf(div);
@@ -2384,7 +2397,7 @@
     let anchor = sectionEndItem(headDiv);
     let lastDiv = null;
     for(const text of texts){
-      const record = await addCaptureRecord(null, anchor);
+      const record = await addCaptureRecord(null, anchor, { keepCurrent: !editLast });
       lastDiv = captureList.querySelector(`.item[data-id="${record.id}"]`);
       if(text){
         record.memo = text;
@@ -2622,11 +2635,45 @@
     e.dataTransfer.setData("text/plain", draggingItem.dataset.id);
   });
 
+  // 見出し(セクション)は中の行ごとまとめて動かす。行の途中には入れず、上の見出しの前/下のセクションの後ろへ入れ替える
+  function sectionGroup(headDiv){
+    const g = [headDiv];
+    let el = headDiv.nextElementSibling;
+    while(el && !isSectionHeading(el)){ if(el.classList.contains("item")) g.push(el); el = el.nextElementSibling; }
+    return g;
+  }
+  function moveSectionGroup(headDiv, dir){
+    const group = sectionGroup(headDiv);
+    if(dir < 0){
+      const prevHead = sectionHeadingOf(headDiv.previousElementSibling);
+      if(!prevHead) return false; // 上は見出しの無い行だけ(その中へは入れない)
+      group.forEach((d) => captureList.insertBefore(d, prevHead));
+    }else{
+      let next = group[group.length - 1].nextElementSibling;
+      while(next && !isSectionHeading(next)) next = next.nextElementSibling;
+      if(!next) return false;
+      const after = sectionEndItem(next).nextSibling;
+      group.forEach((d) => captureList.insertBefore(d, after));
+    }
+    return true;
+  }
+
   captureList.addEventListener("dragover", (e) => {
     if(!draggingItem) return;
     e.preventDefault();
     const overItem = e.target.closest(".item");
     if(!overItem || overItem === draggingItem) return;
+    if(isSectionHeading(draggingItem)){
+      if(sectionGroup(draggingItem).includes(overItem)) return;
+      const overHead = sectionHeadingOf(overItem);
+      if(!overHead) return;
+      // 相手のセクションの上半分まで来たら前へ/下半分まで来たら後ろへ(入れ替え直後に行ったり来たりしないように)
+      const g = sectionGroup(overHead).filter((d) => !d.hidden);
+      const top = g[0].getBoundingClientRect().top, bottom = Math.max(...g.map((d) => d.getBoundingClientRect().bottom));
+      const items = listItems(), up = items.indexOf(overHead) < items.indexOf(draggingItem);
+      if(up ? e.clientY < (top + bottom) / 2 : e.clientY > (top + bottom) / 2) moveSectionGroup(draggingItem, up ? -1 : 1);
+      return;
+    }
     const r = overItem.getBoundingClientRect();
     const before = (e.clientY - r.top) < r.height / 2;
     captureList.insertBefore(draggingItem, before ? overItem : overItem.nextSibling);
@@ -2650,6 +2697,15 @@
     if(!handle) return;
     const item = handle.closest(".item");
     if(!item) return;
+    if(isSectionHeading(item)){ // 見出しは中の行ごと、前/次のセクションと入れ替える
+      e.preventDefault();
+      if(!moveSectionGroup(item, e.key === "ArrowUp" ? -1 : 1)) return;
+      refreshSections();
+      handle.focus();
+      item.scrollIntoView({ block: "nearest" });
+      await persistOrderFromDom("並べ替え");
+      return;
+    }
     // 折りたたみで隠れている行は飛ばして、見えている隣の行と入れ替える
     let sibling = e.key === "ArrowUp" ? item.previousElementSibling : item.nextElementSibling;
     while(sibling && sibling.hidden) sibling = e.key === "ArrowUp" ? sibling.previousElementSibling : sibling.nextElementSibling;
@@ -2695,7 +2751,10 @@
   // 行を消す(DBと一覧から)。削除ボタン・やり直し共通
   async function removeItemNow(div, id){
     await dbDelete(id);
+    // 現在の見出しを消したときは、1つ上の見出しを現在にする(Enterで続けて作った空の見出しを消したときなど)
+    const fallbackHead = isSectionHeading(div) && Number(id) === currentSectionId ? sectionHeadingOf(div.previousElementSibling) : undefined;
     div.remove();
+    if(fallbackHead !== undefined) setCurrentSection(fallbackHead ? Number(fallbackHead.dataset.id) : null);
     updateCount();
     scheduleSectionRefresh();
     if(!captureList.querySelector(".item")) captureList.innerHTML = '<div class="empty">まだキャプチャがありません</div>';
@@ -2723,7 +2782,7 @@
     if(currentTab !== "record") return;
     const a = document.activeElement;
     if(a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT" || a.tagName === "SELECT" || a.isContentEditable)) return; // 入力中は文字の取り消し
-    if(lightbox.classList.contains("open") || cropModal.classList.contains("open") || msgModal.classList.contains("open") || settingsModal.classList.contains("open")) return;
+    if(lightbox.classList.contains("open") || imgEditorOpen() || msgModal.classList.contains("open") || settingsModal.classList.contains("open")) return;
     e.preventDefault();
     if(k === "y" || (k === "z" && e.shiftKey)) redoLast(); else undoLast();
   });
@@ -2857,6 +2916,12 @@
         timestamp: Date.now(),
         heading: dataURL ? undefined : (it.h !== false)
       };
+      // 書き込みのある画像は、元の画像・トリミング範囲・書き込みも戻して編集し直せるようにする
+      if(dataURL && typeof it.o === "string" && it.o.startsWith("data:image/") && Array.isArray(it.a)){
+        record.originalDataURL = it.o;
+        record.cropRect = it.c && typeof it.c === "object" ? it.c : null;
+        record.annots = it.a;
+      }
       const id = await dbAdd(record);
       record.id = id;
       renderItem(record, false);
@@ -2909,11 +2974,17 @@
     }
 
     // メモに万一 "</script" を含んでいてもHTMLパーサーを壊さないようエスケープした上でJSON化
-    const exportData = records.map(r => ({
-      m: r.memo || "",
-      d: r.dataURL || null,
-      h: r.dataURL ? undefined : (r.heading !== false) // 画像なしエントリのみ: true=見出し / false=メモ
-    }));
+    // 書き込みのある画像は、元の画像(o)・トリミング範囲(c)・書き込み(a)も入れる
+    // (書き出したHTMLで書き込みの表示ON/OFFができ、取り込み直すと書き込みを編集し直せる)
+    const exportData = records.map(r => {
+      const e = {
+        m: r.memo || "",
+        d: r.dataURL || null,
+        h: r.dataURL ? undefined : (r.heading !== false) // 画像なしエントリのみ: true=見出し / false=メモ
+      };
+      if(r.dataURL && r.originalDataURL && r.annots && r.annots.length){ e.o = r.originalDataURL; e.c = r.cropRect || null; e.a = r.annots; }
+      return e;
+    });
     const dataJson = JSON.stringify(exportData).replace(/<\/script/gi, "<\\/script");
     const docTitle = (exportTitleInput.value || "").trim() || "SmartCaptureMemo";
     const docTitleEsc = docTitle.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -3105,6 +3176,7 @@
     <h1>${docTitleEsc}</h1>
     <span class="chip">${records.length}件</span>
     <div class="rightGroup">
+      <button id="btnAnnot" type="button" title="画像への書き込み(矢印・文字など)の表示/非表示" style="display:none;">✏️ 書き込み ON</button>
       <button id="btnTheme" type="button" title="ライト/ダーク切替">🌙</button>
       <button id="btnPrint" type="button" title="印刷 / PDF保存">🖨 印刷/PDF</button>
     </div>
@@ -3584,6 +3656,46 @@
   });
 
   btnPrint.addEventListener("click", function(){ window.print(); });
+
+  // 書き込みの表示ON/OFF(書き込みのある画像がある時だけボタンを出す)。OFFでは元の画像をトリミングだけした画像を表示
+  var btnAnnot = document.getElementById("btnAnnot");
+  var ANNOT_KEY = "smart-capture-memo-export-annot";
+  var annotItems = DATA.filter(function(r){ return r.d && r.o; });
+  annotItems.forEach(function(r){ r.dA = r.d; });
+  function plainOf(r){
+    return new Promise(function(resolve){
+      if(r.p){ resolve(); return; }
+      var im = new Image();
+      im.onload = function(){
+        var c = r.c || { x: 0, y: 0, w: im.naturalWidth, h: im.naturalHeight };
+        var cv = document.createElement("canvas"); cv.width = c.w; cv.height = c.h;
+        cv.getContext("2d").drawImage(im, c.x, c.y, c.w, c.h, 0, 0, c.w, c.h);
+        r.p = cv.toDataURL("image/jpeg", 0.9);
+        resolve();
+      };
+      im.onerror = function(){ r.p = r.dA; resolve(); };
+      im.src = r.o;
+    });
+  }
+  function setAnnot(on, save){
+    if(save){ try{ localStorage.setItem(ANNOT_KEY, on ? "on" : "off"); }catch(e){} }
+    btnAnnot.textContent = on ? "✏️ 書き込み ON" : "✏️ 書き込み OFF";
+    btnAnnot.classList.toggle("on", on);
+    Promise.all(on ? [] : annotItems.map(plainOf)).then(function(){
+      annotItems.forEach(function(r){ r.d = on ? r.dA : r.p; });
+      IMG_SRC_LIST = DATA.filter(function(r){ return r.d; }).map(function(r){ return r.d; });
+      var y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+    });
+  }
+  if(annotItems.length){
+    btnAnnot.style.display = "";
+    var annotOn = true;
+    try{ annotOn = localStorage.getItem(ANNOT_KEY) !== "off"; }catch(e){}
+    btnAnnot.addEventListener("click", function(){ annotOn = !annotOn; setAnnot(annotOn, true); });
+    if(annotOn){ btnAnnot.textContent = "✏️ 書き込み ON"; btnAnnot.classList.add("on"); } else setAnnot(false, false);
+  }
 })();
 <\/script>
 </body></html>`;
@@ -4171,334 +4283,547 @@
       toggleLbCaption();
       return;
     }
+    if((e.key === "e" || e.key === "E") && lightbox.classList.contains("open") && !(e.ctrlKey || e.metaKey || e.altKey)){
+      $("lbEdit").click();
+      return;
+    }
     if(e.key !== "Escape") return;
     if(versionModal.classList.contains("open")){ closeVersionModal(); return; }
     if(settingsModal.classList.contains("open")){ closeSettingsModal(); return; }
     if(!moreMenu.hidden){ closeMoreMenu(); return; }
-    if(cropModal.classList.contains("open")){ closeCropModal(); return; }
     if(lightbox.classList.contains("open")) closeLightbox();
   });
 
-  // ---------- トリミング(撮影済み画像の切り抜き) ----------
-  const cropModal = $("cropModal");
-  const cropStage = $("cropStage");
-  const cropImage = $("cropImage");
-  const cropSelRect = $("cropSelRect");
-  const btnCropApply = $("btnCropApply");
-  const btnCropCancel = $("btnCropCancel");
-  const btnCropRevert = $("btnCropRevert");
-  const btnCropUseLast = $("btnCropUseLast");
-
-  let cropRecord = null;
-  let cropThumbImg = null;
-  let cropSelection = null;
-  let cropDragging = false;
-  let cropDragStart = null;
-  let cropMoving = false;
-  let cropMoveOffset = { x:0, y:0 };
-  let cropResizingHandle = null;
-  let cropResizeAnchor = null;
-  // 直前にトリミングを適用した範囲を、画像サイズに依存しない比率(0〜1)で覚えておく。
-  // 画像ごとに解像度が異なりうるため、絶対px座標ではなく比率で保持し「前回の範囲」ボタンで
-  // 現在の画像サイズに合わせてスケールし直して適用する
+  // ---------- 画像の編集(トリミング+書き込み) ----------
+  // 直前にトリミングした範囲を、画像サイズに依存しない比率(0〜1)で覚えておく(「🔁 前回の範囲」用)
   let lastCropRatio = null;
 
-  // selRect(共有パネル側の選択範囲、v96で対応済み)と同じ理由・同じ設計。
-  // cropSelectionをpx(絶対値)でcropSelRectのleft/top/width/heightに直接反映すると、
-  // モーダルを開いたままウィンドウをリサイズ(cropStageはvw/vh基準でサイズが変わる)した時に
-  // 枠が追従せず、見た目がずれるだけでなく実際にトリミングされる範囲までずれてしまう。
-  // %(cropStageに対する比率)指定にすることで、リサイズへの追従をブラウザのネイティブな
-  // CSSレイアウト計算に完全に委ね、JS側の再計算を待つ必要が原理的になくなるようにする
-  function updateCropRectVisual(){
-    const r = cropStage.getBoundingClientRect();
-    if(!r.width || !r.height) return;
-    cropSelRect.style.left = (cropSelection.x / r.width * 100) + "%";
-    cropSelRect.style.top = (cropSelection.y / r.height * 100) + "%";
-    cropSelRect.style.width = (cropSelection.w / r.width * 100) + "%";
-    cropSelRect.style.height = (cropSelection.h / r.height * 100) + "%";
-    cropSelRect.style.display = "block";
-  }
-  function setCropSelection(rect){
-    cropSelection = rect;
-    updateCropRectVisual();
-  }
-  // cropSelection(px)は操作開始時点の値のまま変わらないため、次の操作(移動/リサイズ開始・
-  // トリミング確定)を始める直前に、画面に実際に表示されている枠(cropSelRectの実測位置)から
-  // cropSelectionを読み直し、見た目と実際にトリミングされる範囲が常に一致するようにする
-  function syncCropSelectionFromDisplay(){
-    if(!cropSelection) return;
-    const r = cropStage.getBoundingClientRect();
-    if(!r.width || !r.height) return;
-    const sr = cropSelRect.getBoundingClientRect();
-    cropSelection = { x: sr.left - r.left, y: sr.top - r.top, w: sr.width, h: sr.height };
-  }
-
-  function cropCornerPoint(corner, sel){
-    const right = sel.x + sel.w, bottom = sel.y + sel.h;
-    if(corner === "nw") return { x: right, y: bottom };
-    if(corner === "ne") return { x: sel.x, y: bottom };
-    if(corner === "sw") return { x: right, y: sel.y };
-    if(corner === "se") return { x: sel.x, y: sel.y };
-    if(corner === "n") return { x: sel.x, y: bottom }; // 上辺: 下端を固定
-    if(corner === "s") return { x: sel.x, y: sel.y };  // 下辺: 上端を固定
-    if(corner === "e") return { x: sel.x, y: sel.y };  // 右辺: 左端を固定
-    return { x: right, y: sel.y }; // "w" 左辺: 右端を固定
-  }
-
-  function openCropModal(record, imgEl){
-    cropRecord = record;
-    $("cropDetectMsg").textContent = "";
-    cropDetected = null;
-    cropThumbImg = imgEl;
-    cropSelection = null;
-    cropSelRect.style.display = "none";
-    cropImage.onload = () => {
-      const r = cropStage.getBoundingClientRect();
-      if(record.cropRect && cropImage.naturalWidth && cropImage.naturalHeight){
-        // 前回のトリミング範囲(元画像の実ピクセル座標)を、現在の表示サイズに合わせて復元
-        const scaleX = r.width / cropImage.naturalWidth;
-        const scaleY = r.height / cropImage.naturalHeight;
-        cropSelection = {
-          x: record.cropRect.x * scaleX,
-          y: record.cropRect.y * scaleY,
-          w: record.cropRect.w * scaleX,
-          h: record.cropRect.h * scaleY
-        };
-      }else{
-        // 初回は全体を初期選択範囲にしておく(そのまま適用すれば無変更)
-        cropSelection = { x:0, y:0, w:r.width, h:r.height };
-      }
-      updateCropRectVisual();
-    };
-    // 一度トリミング済みでも、常に元画像から範囲を選び直せるようにする
-    cropImage.src = record.originalDataURL || record.dataURL;
-    btnCropRevert.style.display = record.originalDataURL ? "inline-block" : "none";
-    btnCropUseLast.style.display = lastCropRatio ? "inline-block" : "none";
-    cropModal.classList.add("open");
-    lockBodyScroll();
-  }
-
-  function closeCropModal(){
-    cropModal.classList.remove("open");
-    cropImage.src = "";
-    cropRecord = null;
-    cropThumbImg = null;
-    cropSelection = null;
-    unlockBodyScroll();
-  }
-
-  // スライドの自動検出(トリミング): 元画像で探し、見つかった枠を選択範囲に入れる
-  let cropDetected = null;
-  cropStage.addEventListener("dblclick", (e) => {
-    if(!cropImage.naturalWidth) return;
-    const r = cropStage.getBoundingClientRect();
-    const kx = cropImage.naturalWidth / r.width, ky = cropImage.naturalHeight / r.height;
-    cropDragging = false; cropMoving = false;
-    const found = detectSlideRect(frameToCanvas(cropImage, cropImage.naturalWidth, cropImage.naturalHeight), (e.clientX - r.left) * kx, (e.clientY - r.top) * ky);
-    const msg = $("cropDetectMsg");
-    if(!found){ msg.textContent = "→ スライドの枠を見つけられませんでした"; return; }
-    setCropSelection({ x: found.x / kx, y: found.y / ky, w: found.w / kx, h: found.h / ky });
-    syncCropSelectionFromDisplay();
-    cropDetected = { sel: { ...cropSelection }, px: found };
-    msg.textContent = `→ 検出しました(${found.w}×${found.h})`;
-  });
-
-  cropStage.addEventListener("pointerdown", (e) => {
-    syncCropSelectionFromDisplay();
-    const r = cropStage.getBoundingClientRect();
-    const cx = e.clientX - r.left, cy = e.clientY - r.top;
-    if(cropSelection && cx >= cropSelection.x && cx <= cropSelection.x + cropSelection.w &&
-       cy >= cropSelection.y && cy <= cropSelection.y + cropSelection.h){
-      cropMoving = true;
-      cropMoveOffset = { x: cx - cropSelection.x, y: cy - cropSelection.y };
-      return;
-    }
-    cropMoving = false;
-    cropDragging = true;
-    cropDragStart = { x: cx, y: cy };
-    setCropSelection({ x: cx, y: cy, w: 0, h: 0 });
-  });
-
-  window.addEventListener("pointermove", (e) => {
-    if(!cropMoving && !cropDragging) return;
-    const r = cropStage.getBoundingClientRect();
-    // 画像範囲外までカーソルが出ても追跡が止まらないよう、座標をステージ範囲内にクランプする
-    const cx = Math.max(0, Math.min(e.clientX - r.left, r.width));
-    const cy = Math.max(0, Math.min(e.clientY - r.top, r.height));
-
-    if(cropMoving && cropSelection){
-      let x = Math.max(0, Math.min(cx - cropMoveOffset.x, r.width - cropSelection.w));
-      let y = Math.max(0, Math.min(cy - cropMoveOffset.y, r.height - cropSelection.h));
-      setCropSelection({ x, y, w: cropSelection.w, h: cropSelection.h });
-      return;
-    }
-    const dx = cx - cropDragStart.x, dy = cy - cropDragStart.y;
-    const w = Math.abs(dx), h = Math.abs(dy);
-    const x = dx < 0 ? cropDragStart.x - w : cropDragStart.x;
-    const y = dy < 0 ? cropDragStart.y - h : cropDragStart.y;
-    setCropSelection({ x, y, w, h });
-  });
-
-  document.querySelectorAll("#cropSelRect .handle").forEach((h) => {
-    h.addEventListener("pointerdown", (e) => {
-      if(!cropSelection) return;
-      e.stopPropagation();
-      e.preventDefault();
-      syncCropSelectionFromDisplay();
-      cropResizingHandle = h.dataset.corner;
-      cropResizeAnchor = cropCornerPoint(cropResizingHandle, cropSelection);
-    });
-  });
-
-  window.addEventListener("pointermove", (e) => {
-    if(!cropResizingHandle || !cropSelection || !cropResizeAnchor) return;
-    const r = cropStage.getBoundingClientRect();
-    const cx = Math.max(0, Math.min(e.clientX - r.left, r.width));
-    const cy = Math.max(0, Math.min(e.clientY - r.top, r.height));
-    const MIN = 10;
-    const corner = cropResizingHandle;
-    let { x, y, w, h } = cropSelection;
-
-    if(corner === "n" || corner === "s"){
-      // 辺ハンドル(上下): 高さだけを変更し、x/幅は固定したまま平行にサイズ変更する
-      const ay = cropResizeAnchor.y;
-      let newH = Math.max(MIN, Math.abs(cy - ay));
-      let newY = cy < ay ? ay - newH : ay;
-      if(newY < 0){ newH += newY; newY = 0; }
-      if(newY + newH > r.height){ newH = r.height - newY; }
-      y = newY; h = newH;
-    }else if(corner === "e" || corner === "w"){
-      // 辺ハンドル(左右): 幅だけを変更し、y/高さは固定したまま平行にサイズ変更する
-      const ax = cropResizeAnchor.x;
-      let newW = Math.max(MIN, Math.abs(cx - ax));
-      let newX = cx < ax ? ax - newW : ax;
-      if(newX < 0){ newW += newX; newX = 0; }
-      if(newX + newW > r.width){ newW = r.width - newX; }
-      x = newX; w = newW;
-    }else{
-      // 四隅ハンドル: 従来通り幅・高さ両方を変更
-      const ax = cropResizeAnchor.x, ay = cropResizeAnchor.y;
-      const dx = cx - ax, dy = cy - ay;
-      w = Math.max(MIN, Math.abs(dx));
-      h = Math.max(MIN, Math.abs(dy));
-      x = dx < 0 ? ax - w : ax;
-      y = dy < 0 ? ay - h : ay;
-      if(x < 0){ w += x; x = 0; }
-      if(y < 0){ h += y; y = 0; }
-      if(x + w > r.width){ w = r.width - x; }
-      if(y + h > r.height){ h = r.height - y; }
-    }
-    setCropSelection({ x, y, w, h });
-  });
-
-  window.addEventListener("pointerup", () => {
-    cropDragging = false;
-    cropMoving = false;
-    cropResizingHandle = null;
-    cropResizeAnchor = null;
-  });
-
-  btnCropCancel.addEventListener("click", closeCropModal);
-  let cropBackdropDownTarget = null;
-  cropModal.addEventListener("pointerdown", (e) => {
-    cropBackdropDownTarget = e.target;
-  });
-  cropModal.addEventListener("pointerup", (e) => {
-    // ドラッグ中にモーダル背景まで出てからリリースしても、
-    // 開始(pointerdown)も背景自体でない限りは閉じないようにする
-    if(cropBackdropDownTarget === cropModal && e.target === cropModal){
-      closeCropModal();
-    }
-    cropBackdropDownTarget = null;
-  });
-
-  btnCropApply.addEventListener("click", async () => {
-    if(!cropRecord || !cropSelection || cropSelection.w < 5 || cropSelection.h < 5) return;
-    // 実際に画面に見えている枠(cropSelRectの実測位置)から選択範囲を読み直してから
-    // 確定する。これにより、見た目の枠と実際にトリミングされる範囲が常に一致する
-    syncCropSelectionFromDisplay();
-    const r = cropStage.getBoundingClientRect();
-    const scaleX = cropImage.naturalWidth / r.width;
-    const scaleY = cropImage.naturalHeight / r.height;
-    let sx = Math.round(cropSelection.x * scaleX);
-    let sy = Math.round(cropSelection.y * scaleY);
-    let sw = Math.round(cropSelection.w * scaleX);
-    let sh = Math.round(cropSelection.h * scaleY);
-    // 検出した枠を動かさずに適用したときは、表示座標の丸めを通さず検出値をそのまま使う
-    if(cropDetected && sameSel(cropSelection, cropDetected.sel)) ({ x: sx, y: sy, w: sw, h: sh } = cropDetected.px);
-
-    workCanvas.width = sw;
-    workCanvas.height = sh;
-    ctx.drawImage(cropImage, sx, sy, sw, sh, 0, 0, sw, sh);
-    const newDataURL = canvasToOptimizedDataURL(workCanvas);
-
-    // 初回トリミング時のみ元画像を保存しておく(以後は削除するまで保持し、何度でも選び直せる)
-    if(!cropRecord.originalDataURL){
-      cropRecord.originalDataURL = cropRecord.dataURL;
-    }
-    cropRecord.dataURL = newDataURL;
-    cropRecord.cropRect = { x: sx, y: sy, w: sw, h: sh }; // 次回開いた時にこの範囲から再開できるように
-    // 画像サイズに依存しない比率で記憶し、「前回の範囲」ボタンで別の画像にも適用できるようにする
-    lastCropRatio = {
-      x: sx / cropImage.naturalWidth, y: sy / cropImage.naturalHeight,
-      w: sw / cropImage.naturalWidth, h: sh / cropImage.naturalHeight
-    };
-    showAllCropLastButtons(); // 既に表示済みの行の「🔁前回の範囲」ボタンをここで初めて出す
-    await saveRecordPreservingOrder(cropRecord);
-    if(cropThumbImg) cropThumbImg.src = newDataURL;
-    closeCropModal();
-  });
-
-  btnCropRevert.addEventListener("click", async () => {
-    if(!cropRecord || !cropRecord.originalDataURL) return;
-    if(!(await confirmAsync("トリミング前の元画像に戻します。よろしいですか？"))) return;
-    cropRecord.dataURL = cropRecord.originalDataURL;
-    cropRecord.cropRect = null;
-    await saveRecordPreservingOrder(cropRecord);
-    if(cropThumbImg) cropThumbImg.src = cropRecord.dataURL;
-    closeCropModal();
-  });
-
-  // 直前にトリミングした範囲(比率)を、この画像のサイズに合わせて選択範囲へ反映する。
-  // その場で確定はせず、プレビューとして表示するだけ(必要なら微調整してから「この範囲でトリミング」)
-  btnCropUseLast.addEventListener("click", () => {
-    if(!lastCropRatio || !cropImage.naturalWidth || !cropImage.naturalHeight) return;
-    const r = cropStage.getBoundingClientRect();
-    const MIN = 10;
-    let w = Math.min(r.width, Math.max(MIN, lastCropRatio.w * r.width));
-    let h = Math.min(r.height, Math.max(MIN, lastCropRatio.h * r.height));
-    let x = Math.max(0, Math.min(lastCropRatio.x * r.width, r.width - w));
-    let y = Math.max(0, Math.min(lastCropRatio.y * r.height, r.height - h));
-    setCropSelection({ x, y, w, h });
-  });
-
-  // モーダルを開かず、記録一覧の行から直接「前回の範囲」を適用するためのクイックボタン用。
-  // 比率は元画像サイズ基準で保持されているため、cropStageの表示サイズを介さず直接計算する
+  // 編集画面を開かず、記録一覧の行から直接「前回の範囲」を適用する(書き込みはそのまま)。
+  // 比率は元画像サイズ基準で保持しているため、この画像の元画像の大きさに合わせて当てはめる
   async function applyLastCropRatio(record, imgEl){
     if(!lastCropRatio) return;
-    const srcUrl = record.originalDataURL || record.dataURL;
-    const img = new Image();
-    await new Promise((resolve) => { img.onload = resolve; img.src = srcUrl; });
-    const natW = img.naturalWidth, natH = img.naturalHeight;
-    const sw = Math.max(1, Math.round(lastCropRatio.w * natW));
-    const sh = Math.max(1, Math.round(lastCropRatio.h * natH));
-    const sx = Math.max(0, Math.min(Math.round(lastCropRatio.x * natW), natW - sw));
-    const sy = Math.max(0, Math.min(Math.round(lastCropRatio.y * natH), natH - sh));
-
-    workCanvas.width = sw;
-    workCanvas.height = sh;
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-    const newDataURL = canvasToOptimizedDataURL(workCanvas);
-
-    if(!record.originalDataURL) record.originalDataURL = record.dataURL;
-    record.dataURL = newDataURL;
-    record.cropRect = { x: sx, y: sy, w: sw, h: sh };
-    await saveRecordPreservingOrder(record);
-    if(imgEl) imgEl.src = newDataURL;
+    const src = await loadImageCanvas(record.originalDataURL || record.dataURL);
+    const before = { crop: record.originalDataURL && record.cropRect ? { ...record.cropRect } : null, annots: JSON.parse(JSON.stringify(record.annots || [])) };
+    const after = { crop: cropFromLastRatio(src), annots: before.annots };
+    await applyImageEdit(record.id, src, after.crop, after.annots);
+    pushImageEditUndo(record.id, src, before, after, "前回の範囲でトリミング");
   }
   function showAllCropLastButtons(){
     captureList.querySelectorAll(".btn-crop-last").forEach((btn) => { btn.style.display = "inline-block"; });
   }
+
+  // 編集は元の画像(originalDataURL)を基準に、トリミング範囲(cropRect)と書き込み(annots。元の画像の座標)を保存し、
+  // 一覧・書き出しには焼き込んだ画像(dataURL)を使う。何度開いても書き込みを動かしたり消したりできる
+  const imgEditor = $("imgEditor");
+  const edCanvas = $("edCanvas"), edG = edCanvas.getContext("2d");
+  const edTextInput = $("edTextInput");
+  const ED_COLORS = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#ffffff", "#111111"];
+  const ED_TOOL_HINTS = {
+    crop: "ドラッグで範囲を選ぶ(●で大きさ、枠の内側で移動)。スライドの中をダブルクリックでスライドを自動検出。「トリミングなし」で画像全体に戻す",
+    select: "クリックで選択(Shift+クリックで追加)、何も無い所からドラッグで範囲選択、Ctrl+A で全部。ドラッグで移動、Delete で削除、色・サイズの変更も選択中のものに反映。文字はダブルクリックで書き直し",
+    line: "ドラッグで直線(Shift を押しながらで水平・垂直・45°)",
+    arrow: "ドラッグで矢印(始点→矢じり。Shift を押しながらで水平・垂直・45°)",
+    rect: "ドラッグで枠",
+    marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)",
+    text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)",
+    num: "クリックするたびに ①②③… と番号を置く(消した番号の続きから)",
+    mosaic: "ドラッグした範囲をぼかして隠す(名前・数字などを隠すとき。Ctrl+ホイール・サイズでぼかしの強さを調整)",
+    fill: "ドラッグした範囲を選んだ色で塗り潰す"
+  };
+  $("edColors").innerHTML = ED_COLORS.map((c) => `<button type="button" class="edColor" data-color="${c}" style="background:${c}" title="${c}"></button>`).join("");
+  let edLastTool = "crop"; // 一覧の「✏️ 編集」で開くときの道具(最後に使った道具。最初はトリミング)
+  let edIndex = -1, edItem = null; // edItem: { id, src(元画像のcanvas), crop, annots, start(開いた時点の状態) }
+  let edTool = "arrow", edColor = ED_COLORS[0], edSize = 2;
+  let edUndoStack = [], edRedoStack = [];
+  let edSel = new Set(), edDrag = null, edDraft = null, edHover = null, edView = { ox: 0, oy: 0 };
+  let edZoom = 1, edPanX = 0, edPanY = 0, edSpaceDown = false, edPanDrag = null;
+  let edSizeUndoOpen = false, edSizeUndoTimer = null, edTextCtx = null, edBusy = false;
+  const imgEditorOpen = () => !imgEditor.hidden;
+
+  const edBaseW = (src) => Math.max(2, src.width / 360); // 太さの基準(画像の大きさに比例)
+  function edDrawAnnot(g, a, src){
+    const lw = edBaseW(src) * a.w;
+    g.save(); g.lineCap = "round"; g.lineJoin = "round";
+    if(a.type === "arrow"){
+      const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1), head = lw * 4.5;
+      g.strokeStyle = a.color; g.fillStyle = a.color; g.lineWidth = lw;
+      g.beginPath(); g.moveTo(a.x1, a.y1); g.lineTo(a.x2 - Math.cos(ang) * head * 0.6, a.y2 - Math.sin(ang) * head * 0.6); g.stroke();
+      g.beginPath(); g.moveTo(a.x2, a.y2);
+      g.lineTo(a.x2 - head * Math.cos(ang - 0.45), a.y2 - head * Math.sin(ang - 0.45));
+      g.lineTo(a.x2 - head * Math.cos(ang + 0.45), a.y2 - head * Math.sin(ang + 0.45)); g.closePath(); g.fill();
+    }else if(a.type === "line"){
+      g.strokeStyle = a.color; g.lineWidth = lw;
+      g.beginPath(); g.moveTo(a.x1, a.y1); g.lineTo(a.x2, a.y2); g.stroke();
+    }else if(a.type === "num"){
+      const r = edBaseW(src) * (4 + a.w * 2.5);
+      g.fillStyle = a.color; g.beginPath(); g.arc(a.x, a.y, r, 0, Math.PI * 2); g.fill();
+      g.lineWidth = r * 0.12; g.strokeStyle = "#fff"; g.stroke();
+      g.fillStyle = a.color === "#ffffff" || a.color === "#facc15" ? "#111" : "#fff";
+      g.font = `bold ${r * 1.15}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(a.n), a.x, a.y + r * 0.05);
+    }else if(a.type === "fill"){
+      g.fillStyle = a.color; g.fillRect(a.x, a.y, a.w2, a.h2);
+    }else if(a.type === "mosaic"){
+      // 範囲を元の画像からぼかして上に描く(文字が読めない程度。サイズで強さを変えられる)
+      const x = Math.round(Math.min(a.x, a.x + a.w2)), y = Math.round(Math.min(a.y, a.y + a.h2)), w = Math.round(Math.abs(a.w2)), h = Math.round(Math.abs(a.h2));
+      if(w >= 2 && h >= 2){
+        const r = Math.max(4, edBaseW(src) * a.w * 1.6);
+        g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+        g.filter = `blur(${r}px)`;
+        const m = Math.ceil(r * 2); // 枠の外の画素も少し使ってぼかし、縁が白っぽくならないようにする
+        g.drawImage(src, x - m, y - m, w + m * 2, h + m * 2, x - m, y - m, w + m * 2, h + m * 2);
+        g.filter = "none"; g.restore();
+      }
+    }else if(a.type === "rect"){
+      g.strokeStyle = a.color; g.lineWidth = lw; g.strokeRect(a.x, a.y, a.w2, a.h2);
+    }else if(a.type === "marker"){
+      g.strokeStyle = a.color; g.globalAlpha = 0.38; g.lineWidth = lw * 5; g.lineCap = "butt";
+      g.beginPath(); a.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
+    }else if(a.type === "text"){
+      const size = edBaseW(src) * (6 + a.w * 4);
+      g.font = `bold ${size}px sans-serif`; g.textBaseline = "top";
+      g.lineWidth = size * 0.18; g.strokeStyle = a.color === "#ffffff" ? "#000" : "#fff"; // 縁取りで読みやすく
+      a.text.split("\n").forEach((ln, i) => { g.strokeText(ln, a.x, a.y + i * size * 1.25); g.fillStyle = a.color; g.fillText(ln, a.x, a.y + i * size * 1.25); });
+    }
+    g.restore();
+  }
+  // 元画像+トリミング+書き込みを1枚に。full=true ならトリミングを無視して全体(トリミング道具の表示)
+  function edCompose(src, crop, annots, full){
+    const cr = (!full && crop) || { x: 0, y: 0, w: src.width, h: src.height };
+    const c = document.createElement("canvas"); c.width = cr.w; c.height = cr.h; const g = c.getContext("2d");
+    g.drawImage(src, cr.x, cr.y, cr.w, cr.h, 0, 0, cr.w, cr.h);
+    g.save(); g.translate(-cr.x, -cr.y);
+    const under = (a) => a.type === "mosaic" || a.type === "fill"; // 隠す系は下に、矢印・文字などは上に
+    (annots || []).filter(under).forEach((a) => edDrawAnnot(g, a, src));
+    (annots || []).filter((a) => !under(a)).forEach((a) => edDrawAnnot(g, a, src));
+    g.restore();
+    return c;
+  }
+  async function loadImageCanvas(url){
+    const img = new Image();
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+    const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    c.getContext("2d").drawImage(img, 0, 0);
+    return c;
+  }
+  // 編集結果を記録へ反映して保存(一覧の画像も差し替え)。トリミングも書き込みも無ければ元の画像に戻す
+  async function applyImageEdit(id, src, crop, annots){
+    const div = itemById(id);
+    const record = div && div._record;
+    if(!record) return;
+    if(!crop && !(annots && annots.length)){
+      if(record.originalDataURL) record.dataURL = record.originalDataURL;
+      record.cropRect = null;
+      record.annots = [];
+    }else{
+      if(!record.originalDataURL) record.originalDataURL = record.dataURL; // 初回だけ元の画像を残す
+      record.dataURL = canvasToOptimizedDataURL(edCompose(src, crop, annots, false));
+      record.cropRect = crop ? { ...crop } : null;
+      record.annots = JSON.parse(JSON.stringify(annots || []));
+    }
+    await saveRecordPreservingOrder(record);
+    const img = div.querySelector("img");
+    if(img) img.src = record.dataURL;
+    updateSizeEstimate();
+  }
+  function rememberCropRatio(src, crop){
+    if(!crop) return;
+    lastCropRatio = { x: crop.x / src.width, y: crop.y / src.height, w: crop.w / src.width, h: crop.h / src.height };
+    showAllCropLastButtons();
+  }
+  function cropFromLastRatio(src){
+    const W = src.width, H = src.height;
+    const w = Math.max(10, Math.min(W, Math.round(lastCropRatio.w * W))), h = Math.max(10, Math.min(H, Math.round(lastCropRatio.h * H)));
+    return { x: Math.max(0, Math.min(Math.round(lastCropRatio.x * W), W - w)), y: Math.max(0, Math.min(Math.round(lastCropRatio.y * H), H - h)), w, h };
+  }
+  // 編集の前後を一覧の「元に戻す/やり直し」(Ctrl+Z / Ctrl+Y)にも1回分として記録する
+  function pushImageEditUndo(id, src, before, after, label){
+    pushUndo({ label, undo: () => applyImageEdit(id, src, before.crop, before.annots), redo: () => applyImageEdit(id, src, after.crop, after.annots) });
+  }
+
+  // ---------- 編集画面を開く・閉じる・前後へ ----------
+  async function openImageEditor(index, tool){
+    const imgs = getLightboxImages();
+    const imgEl = imgs[index];
+    if(!imgEl || edBusy) return;
+    const div = imgEl.closest(".item"), record = div && div._record;
+    if(!record) return;
+    edBusy = true;
+    try{
+      const src = await loadImageCanvas(record.originalDataURL || record.dataURL);
+      // 以前のトリミング(cropRect)は元画像の座標。元画像の大きさを超えないようにだけ確かめる
+      let crop = record.cropRect && record.originalDataURL ? { ...record.cropRect } : null;
+      if(crop && (crop.x + crop.w > src.width + 1 || crop.y + crop.h > src.height + 1)) crop = null;
+      edItem = { id: record.id, src, crop, annots: JSON.parse(JSON.stringify(record.annots || [])) };
+      edItem.start = edSnapshot();
+    }catch(err){
+      console.error("画像を開けませんでした", err);
+      edBusy = false;
+      return;
+    }
+    edBusy = false;
+    edIndex = index;
+    edUndoStack = []; edRedoStack = []; edSel.clear(); edDraft = null; edDrag = null;
+    const memo = (div.querySelector("textarea") || {}).value || "";
+    $("edCaption").innerHTML = lbShowCaption ? renderMemoMarkdown(memo.trim()) : "";
+    $("edCounter").textContent = `${index + 1} / ${imgs.length}`;
+    $("edPrev").style.visibility = index > 0 ? "visible" : "hidden";
+    $("edNext").style.visibility = index < imgs.length - 1 ? "visible" : "hidden";
+    if(imgEditor.hidden){ imgEditor.hidden = false; lockBodyScroll(); }
+    edResetZoom();
+    edSetTool(tool || edTool);
+  }
+  // 今の画像の編集を保存(変化が無ければ何もしない)
+  async function saveImageEdit(){
+    edCommitText();
+    const it = edItem;
+    if(!it) return;
+    const after = edSnapshot();
+    if(after === it.start) return;
+    const b = JSON.parse(it.start), a = JSON.parse(after);
+    await applyImageEdit(it.id, it.src, a.crop, a.annots);
+    if(JSON.stringify(a.crop) !== JSON.stringify(b.crop)) rememberCropRatio(it.src, a.crop);
+    pushImageEditUndo(it.id, it.src, b, a, "画像の編集");
+    it.start = after;
+  }
+  async function closeImageEditor(save){
+    if(imgEditor.hidden) return;
+    if(save) await saveImageEdit(); else edTextInput.hidden = true;
+    edTextCtx = null;
+    imgEditor.hidden = true;
+    unlockBodyScroll();
+    const idx = edIndex;
+    edItem = null; edIndex = -1;
+    // 拡大表示から開いたときは、編集後の画像で拡大表示を更新
+    if(lightbox.classList.contains("open")){
+      const imgs = getLightboxImages();
+      if(imgs[idx]) openLightbox(imgs[idx], idx);
+    }
+  }
+  async function edGo(d){
+    const n = edIndex + d, imgs = getLightboxImages();
+    if(n < 0 || n >= imgs.length || edBusy) return;
+    await saveImageEdit();
+    await openImageEditor(n, edTool);
+  }
+
+  // ---------- 道具・表示 ----------
+  function edSnapshot(){ return JSON.stringify({ crop: edItem.crop, annots: edItem.annots }); }
+  function edRestore(s){ const o = JSON.parse(s); edItem.crop = o.crop; edItem.annots = o.annots; }
+  function edPushUndo(){ edUndoStack.push(edSnapshot()); edRedoStack = []; }
+  function edSetTool(t){
+    edCommitText();
+    edTool = t; edLastTool = t; edCanvas.style.cursor = "";
+    if(t !== "select") edSel.clear();
+    imgEditor.querySelectorAll("#edTools [data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
+    imgEditor.classList.toggle("tool-select", t === "select");
+    $("edCropLast").hidden = !(t === "crop" && lastCropRatio);
+    $("edCropClear").hidden = t !== "crop";
+    $("edHint").textContent = ED_TOOL_HINTS[t];
+    edDraw();
+  }
+  const edNextNum = () => Math.max(0, ...edItem.annots.filter((a) => a.type === "num").map((a) => a.n)) + 1;
+  function edDraw(){
+    if(!edItem) return;
+    const src = edItem.src, full = edTool === "crop";
+    const img = edCompose(src, edItem.crop, edItem.annots, full);
+    edCanvas.width = img.width; edCanvas.height = img.height;
+    edG.drawImage(img, 0, 0);
+    const cr = (!full && edItem.crop) || { x: 0, y: 0 };
+    edView = { ox: cr.x, oy: cr.y };
+    if(full && edItem.crop){
+      // 範囲タブの範囲選択と同じ見た目(青い枠・薄い青の塗り・白縁の丸いつまみ)。太さ・大きさは画面上の大きさで揃える
+      const c = edItem.crop, r = edCanvas.getBoundingClientRect(), k = r.width ? edCanvas.width / r.width : 1;
+      edG.save();
+      edG.fillStyle = "rgba(79,140,255,.15)"; edG.fillRect(c.x, c.y, c.w, c.h);
+      edG.strokeStyle = "#4f8cff"; edG.lineWidth = 2 * k; edG.strokeRect(c.x + k, c.y + k, c.w - 2 * k, c.h - 2 * k);
+      edHandles(c).forEach(([x, y]) => {
+        edG.beginPath(); edG.arc(x, y, 7 * k, 0, Math.PI * 2);
+        edG.fillStyle = "#4f8cff"; edG.fill(); edG.lineWidth = 2 * k; edG.strokeStyle = "#fff"; edG.stroke();
+      });
+      edG.restore();
+    }
+    // 下書きは元画像の座標のまま、描く位置だけずらす(ぼかしが元画像の同じ位置を使えるように)
+    if(edDraft){ edG.save(); edG.translate(-edView.ox, -edView.oy); edDrawAnnot(edG, edDraft, src); edG.restore(); }
+    if(edTool === "select"){
+      edG.save(); edG.setLineDash([8, 6]); edG.strokeStyle = "#3b82f6"; edG.lineWidth = Math.max(2, img.width / 600);
+      edSel.forEach((i) => { const a = edItem.annots[i]; if(!a) return; const b = edBBox(a); edG.strokeRect(b.x - edView.ox - 6, b.y - edView.oy - 6, b.w + 12, b.h + 12); });
+      if(edDrag && edDrag.kind === "marquee"){
+        edG.setLineDash([4, 4]); edG.fillStyle = "rgba(59,130,246,.12)";
+        const x = Math.min(edDrag.x0, edDrag.x1) - edView.ox, y = Math.min(edDrag.y0, edDrag.y1) - edView.oy, w = Math.abs(edDrag.x1 - edDrag.x0), h = Math.abs(edDrag.y1 - edDrag.y0);
+        edG.fillRect(x, y, w, h); edG.strokeRect(x, y, w, h);
+      }
+      edG.restore();
+    }
+    // これから置くものの大きさの見本(マウスの位置に薄く表示)
+    if(edHover && !edDrag && !["crop", "select", "mosaic", "fill"].includes(edTool) && edTextInput.hidden){
+      edG.save(); edG.globalAlpha = 0.55; edG.translate(-edView.ox, -edView.oy);
+      if(edTool === "num") edDrawAnnot(edG, { type: "num", x: edHover.x, y: edHover.y, n: edNextNum(), color: edColor, w: edSize }, src);
+      else if(edTool === "text") edDrawAnnot(edG, { type: "text", x: edHover.x, y: edHover.y, text: "文字", color: edColor, w: edSize }, src);
+      else {
+        const lw = edBaseW(src) * edSize * (edTool === "marker" ? 5 : 1);
+        edG.fillStyle = edColor; edG.globalAlpha = edTool === "marker" ? 0.3 : 0.5;
+        edG.beginPath(); edG.arc(edHover.x, edHover.y, Math.max(1.5, lw / 2), 0, Math.PI * 2); edG.fill();
+      }
+      edG.restore();
+    }
+  }
+  // トリミング枠のどこにマウスがあるか(つまみ/枠の内側/外側)と、そのときのカーソル
+  const ED_HANDLE_CURSORS = ["nwse-resize", "ns-resize", "nesw-resize", "ew-resize", "nwse-resize", "ns-resize", "nesw-resize", "ew-resize"];
+  function edCropHit(p){
+    const c = edItem.crop;
+    if(!c) return { kind: "none" };
+    const tol = 10 * p.k;
+    const hi = edHandles(c).findIndex(([x, y]) => Math.abs(p.x - x) <= tol && Math.abs(p.y - y) <= tol);
+    if(hi >= 0) return { kind: "handle", hi };
+    if(p.x > c.x && p.x < c.x + c.w && p.y > c.y && p.y < c.y + c.h) return { kind: "move" };
+    return { kind: "none" };
+  }
+  const edHandles = (c) => [[c.x, c.y], [c.x + c.w / 2, c.y], [c.x + c.w, c.y], [c.x + c.w, c.y + c.h / 2], [c.x + c.w, c.y + c.h], [c.x + c.w / 2, c.y + c.h], [c.x, c.y + c.h], [c.x, c.y + c.h / 2]];
+  function edPos(e){ const r = edCanvas.getBoundingClientRect(), k = edCanvas.width / r.width; return { x: (e.clientX - r.left) * k + edView.ox, y: (e.clientY - r.top) * k + edView.oy, k }; }
+  function edBBox(a){
+    if(a.type === "arrow" || a.type === "line") return { x: Math.min(a.x1, a.x2), y: Math.min(a.y1, a.y2), w: Math.abs(a.x2 - a.x1), h: Math.abs(a.y2 - a.y1) };
+    if(a.type === "num"){ const r = edBaseW(edItem.src) * (4 + a.w * 2.5); return { x: a.x - r, y: a.y - r, w: r * 2, h: r * 2 }; }
+    if(a.type === "rect" || a.type === "mosaic" || a.type === "fill") return { x: Math.min(a.x, a.x + a.w2), y: Math.min(a.y, a.y + a.h2), w: Math.abs(a.w2), h: Math.abs(a.h2) };
+    if(a.type === "marker"){ const xs = a.pts.map((p) => p[0]), ys = a.pts.map((p) => p[1]); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }; }
+    const size = edBaseW(edItem.src) * (6 + a.w * 4), lines = a.text.split("\n");
+    edG.save(); edG.font = `bold ${size}px sans-serif`;
+    const w = Math.max(...lines.map((l) => edG.measureText(l).width)); edG.restore();
+    return { x: a.x, y: a.y, w, h: lines.length * size * 1.25 };
+  }
+  function edHitTest(p){
+    const pad = edBaseW(edItem.src) * 4;
+    for(let i = edItem.annots.length - 1; i >= 0; i--){ const b = edBBox(edItem.annots[i]); if(p.x >= b.x - pad && p.x <= b.x + b.w + pad && p.y >= b.y - pad && p.y <= b.y + b.h + pad) return i; }
+    return -1;
+  }
+  function edMoveAnnot(a, dx, dy){
+    if(a.type === "arrow" || a.type === "line"){ a.x1 += dx; a.y1 += dy; a.x2 += dx; a.y2 += dy; }
+    else if(a.type === "marker") a.pts = a.pts.map((p) => [p[0] + dx, p[1] + dy]);
+    else { a.x += dx; a.y += dy; }
+  }
+  function edSetSize(v, applyToSel){
+    edSize = Math.max(0.5, Math.min(8, Math.round(v * 10) / 10));
+    $("edSizeRange").value = edSize; $("edSizeLbl").textContent = edSize.toFixed(1);
+    if(applyToSel && edTool === "select" && edSel.size) edSel.forEach((i) => { edItem.annots[i].w = edSize; });
+    edDraw();
+  }
+  $("edSizeRange").addEventListener("input", () => {
+    if(edTool === "select" && edSel.size && !edSizeUndoOpen){ edPushUndo(); edSizeUndoOpen = true; }
+    edSetSize(Number($("edSizeRange").value), true);
+  });
+  $("edSizeRange").addEventListener("change", () => { edSizeUndoOpen = false; });
+
+  // 拡大: ホイールで拡大縮小(マウスの位置を中心に)、Space+ドラッグ(または中ボタン)で移動。Ctrl+ホイールはサイズ
+  function edApplyZoom(){ edCanvas.style.transformOrigin = "0 0"; edCanvas.style.transform = (edZoom === 1 && !edPanX && !edPanY) ? "" : `translate(${edPanX}px, ${edPanY}px) scale(${edZoom})`; }
+  function edResetZoom(){ edZoom = 1; edPanX = 0; edPanY = 0; edApplyZoom(); }
+  $("edStageWrap").addEventListener("wheel", (e) => {
+    if(!edItem) return;
+    e.preventDefault();
+    if(e.ctrlKey || e.metaKey){
+      if(edTool === "select" && edSel.size && !edSizeUndoOpen){ edPushUndo(); edSizeUndoOpen = true; }
+      clearTimeout(edSizeUndoTimer); edSizeUndoTimer = setTimeout(() => { edSizeUndoOpen = false; }, 600);
+      // Shift 中はブラウザが横スクロール(deltaX)として送るので両方を見る
+      const d = e.deltaY || e.deltaX;
+      if(e.shiftKey){ // 0.5 の倍数へ(2.3 → 上は 2.5、下は 2.0)
+        const q = edSize / 0.5, eps = 1e-6;
+        edSetSize((d < 0 ? Math.floor(q + eps) + 1 : Math.ceil(q - eps) - 1) * 0.5, true);
+      }else edSetSize(edSize + (d < 0 ? 0.1 : -0.1), true);
+      return;
+    }
+    const r = edCanvas.getBoundingClientRect(), bx = r.left - edPanX, by = r.top - edPanY;
+    const mx = e.clientX - bx, my = e.clientY - by;
+    const nz = Math.max(1, Math.min(6, edZoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+    edPanX = mx - (mx - edPanX) * (nz / edZoom); edPanY = my - (my - edPanY) * (nz / edZoom); edZoom = nz;
+    if(edZoom === 1){ edPanX = 0; edPanY = 0; }
+    edApplyZoom();
+  }, { passive: false });
+  edCanvas.addEventListener("pointerdown", (e) => {
+    if(!(edSpaceDown || e.button === 1)) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    edPanDrag = { x: e.clientX - edPanX, y: e.clientY - edPanY }; edCanvas.setPointerCapture(e.pointerId);
+  }, true);
+  edCanvas.addEventListener("pointermove", (e) => { if(edPanDrag){ e.stopImmediatePropagation(); edPanX = e.clientX - edPanDrag.x; edPanY = e.clientY - edPanDrag.y; edApplyZoom(); } }, true);
+  edCanvas.addEventListener("pointerup", (e) => { if(edPanDrag){ e.stopImmediatePropagation(); edPanDrag = null; } }, true);
+
+  // ---------- 描く・選ぶ・トリミング ----------
+  edCanvas.addEventListener("pointerdown", (e) => {
+    if(!edItem || e.button !== 0) return;
+    const p = edPos(e);
+    if(edTool === "text"){ if(!edTextInput.hidden){ edCommitText(); return; } edOpenText(p, null); e.preventDefault(); return; }
+    if(edTool === "num"){ edPushUndo(); edItem.annots.push({ type: "num", x: p.x, y: p.y, n: edNextNum(), color: edColor, w: edSize }); edDraw(); return; }
+    edCanvas.setPointerCapture(e.pointerId);
+    if(edTool === "crop"){
+      const c = edItem.crop, hit = edCropHit(p);
+      edPushUndo();
+      if(hit.kind === "handle") edDrag = { kind: "cropHandle", hi: hit.hi, c0: { ...c } };
+      else if(hit.kind === "move") edDrag = { kind: "cropMove", sx: p.x, sy: p.y, c0: { ...c } };
+      else edDrag = { kind: "cropNew", sx: p.x, sy: p.y };
+      return;
+    }
+    if(edTool === "select"){
+      const hit = edHitTest(p);
+      if(hit >= 0){
+        if(e.shiftKey){ edSel.has(hit) ? edSel.delete(hit) : edSel.add(hit); }
+        else if(!edSel.has(hit)) edSel = new Set([hit]);
+        if(edSel.size){ edPushUndo(); edDrag = { kind: "move", lx: p.x, ly: p.y, moved: false }; }
+      }else{
+        if(!e.shiftKey) edSel.clear();
+        edDrag = { kind: "marquee", x0: p.x, y0: p.y, x1: p.x, y1: p.y }; // 何も無い所からドラッグ→範囲で選択
+      }
+      edDraw(); return;
+    }
+    const col = edColor, w = edSize;
+    if(edTool === "arrow" || edTool === "line") edDraft = { type: edTool, x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: col, w };
+    else if(edTool === "rect" || edTool === "mosaic" || edTool === "fill") edDraft = { type: edTool, x: p.x, y: p.y, w2: 0, h2: 0, color: col, w };
+    else if(edTool === "marker") edDraft = { type: "marker", pts: [[p.x, p.y]], color: col === "#111111" ? "#facc15" : col, w, sx: p.x, sy: p.y };
+    edDrag = { kind: "draw" };
+  });
+  edCanvas.addEventListener("pointermove", (e) => {
+    if(!edItem) return;
+    if(!edDrag){
+      edHover = edPos(e);
+      if(edTool === "crop" && !edSpaceDown){ const h = edCropHit(edHover); edCanvas.style.cursor = h.kind === "handle" ? ED_HANDLE_CURSORS[h.hi] : h.kind === "move" ? "move" : ""; }
+      if(!["crop", "select", "mosaic", "fill"].includes(edTool)) edDraw();
+      return;
+    }
+    const p = edPos(e);
+    const W = edItem.src.width, H = edItem.src.height, cl = (v, m) => Math.max(0, Math.min(m, v));
+    if(edDrag.kind === "cropNew"){
+      const x1 = cl(Math.min(edDrag.sx, p.x), W), y1 = cl(Math.min(edDrag.sy, p.y), H), x2 = cl(Math.max(edDrag.sx, p.x), W), y2 = cl(Math.max(edDrag.sy, p.y), H);
+      edItem.crop = { x: Math.round(x1), y: Math.round(y1), w: Math.round(x2 - x1), h: Math.round(y2 - y1) };
+    }else if(edDrag.kind === "cropMove"){
+      const c0 = edDrag.c0; edItem.crop = { ...c0, x: Math.round(cl(c0.x + p.x - edDrag.sx, W - c0.w)), y: Math.round(cl(c0.y + p.y - edDrag.sy, H - c0.h)) };
+    }else if(edDrag.kind === "cropHandle"){
+      let { x, y, w, h } = edDrag.c0, x2 = x + w, y2 = y + h; const hi = edDrag.hi, px = cl(p.x, W), py = cl(p.y, H);
+      if([0, 6, 7].includes(hi)) x = Math.min(px, x2 - 10); if([2, 3, 4].includes(hi)) x2 = Math.max(px, x + 10);
+      if([0, 1, 2].includes(hi)) y = Math.min(py, y2 - 10); if([4, 5, 6].includes(hi)) y2 = Math.max(py, y + 10);
+      edItem.crop = { x: Math.round(x), y: Math.round(y), w: Math.round(x2 - x), h: Math.round(y2 - y) };
+    }else if(edDrag.kind === "move"){
+      edSel.forEach((i) => edMoveAnnot(edItem.annots[i], p.x - edDrag.lx, p.y - edDrag.ly)); edDrag.lx = p.x; edDrag.ly = p.y; edDrag.moved = true;
+    }else if(edDrag.kind === "marquee"){ edDrag.x1 = p.x; edDrag.y1 = p.y; }
+    else if(edDrag.kind === "draw" && edDraft){
+      if(edDraft.type === "arrow" || edDraft.type === "line"){
+        let x2 = p.x, y2 = p.y;
+        if(e.shiftKey){ // 水平・垂直・45°にそろえる
+          const dx = x2 - edDraft.x1, dy = y2 - edDraft.y1, len = Math.hypot(dx, dy), ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+          x2 = edDraft.x1 + Math.cos(ang) * len; y2 = edDraft.y1 + Math.sin(ang) * len;
+        }
+        edDraft.x2 = x2; edDraft.y2 = y2;
+      }else if(edDraft.type === "rect" || edDraft.type === "mosaic" || edDraft.type === "fill"){ edDraft.w2 = p.x - edDraft.x; edDraft.h2 = p.y - edDraft.y; }
+      else if(edDraft.type === "marker"){
+        if(e.shiftKey){ const dx = p.x - edDraft.sx, dy = p.y - edDraft.sy; edDraft.pts = [[edDraft.sx, edDraft.sy], Math.abs(dx) > Math.abs(dy) ? [p.x, edDraft.sy] : [edDraft.sx, p.y]]; }
+        else edDraft.pts.push([p.x, p.y]);
+      }
+    }
+    edDraw();
+  });
+  edCanvas.addEventListener("pointerup", () => {
+    if(!edItem || !edDrag) return;
+    if(edDrag.kind === "draw" && edDraft){
+      const b = edBBox(edDraft);
+      if(b.w + b.h > 6){ edPushUndo(); delete edDraft.sx; delete edDraft.sy; edItem.annots.push(edDraft); }
+    }
+    if(edDrag.kind === "move" && !edDrag.moved) edUndoStack.pop(); // クリックしただけ(動かしていない)は記録しない
+    if(edDrag.kind === "marquee"){
+      const x1 = Math.min(edDrag.x0, edDrag.x1), y1 = Math.min(edDrag.y0, edDrag.y1), x2 = Math.max(edDrag.x0, edDrag.x1), y2 = Math.max(edDrag.y0, edDrag.y1);
+      edItem.annots.forEach((a, i) => { const b = edBBox(a); if(b.x <= x2 && b.x + b.w >= x1 && b.y <= y2 && b.y + b.h >= y1) edSel.add(i); }); // 少しでも掛かっていれば選択
+    }
+    if(edDrag.kind.startsWith("crop")){
+      const prev = JSON.parse(edUndoStack[edUndoStack.length - 1]);
+      if(edItem.crop && (edItem.crop.w < 10 || edItem.crop.h < 10)) edItem.crop = prev.crop; // 小さすぎる(クリックだけ)は無効
+      if(JSON.stringify(prev.crop) === JSON.stringify(edItem.crop)) edUndoStack.pop();
+    }
+    edDraft = null; edDrag = null; edDraw();
+  });
+  edCanvas.addEventListener("pointerleave", () => { edHover = null; if(edItem) edDraw(); });
+  edCanvas.addEventListener("dblclick", (e) => {
+    if(!edItem) return;
+    const p = edPos(e);
+    if(edTool === "crop"){
+      const found = detectSlideRect(edItem.src, p.x, p.y);
+      $("edHint").textContent = found ? `スライドを検出しました(${found.w}×${found.h})` : "スライドの枠を見つけられませんでした。ドラッグで指定してください";
+      if(found){ edPushUndo(); edItem.crop = found; edDraw(); }
+      return;
+    }
+    if(edTool === "select"){ const i = edHitTest(p); if(i >= 0 && edItem.annots[i].type === "text") edOpenText(p, i); }
+  });
+
+  // 文字の入力(画像の上に入力欄を重ねる)
+  function edOpenText(p, editIdx){
+    const r = edCanvas.getBoundingClientRect(), k = r.width / edCanvas.width, wrap = $("edStageWrap").getBoundingClientRect();
+    const a = editIdx != null ? edItem.annots[editIdx] : null;
+    const x = a ? a.x : p.x, y = a ? a.y : p.y, w = a ? a.w : edSize;
+    const size = edBaseW(edItem.src) * (6 + w * 4) * k;
+    Object.assign(edTextInput.style, { left: (r.left - wrap.left + (x - edView.ox) * k) + "px", top: (r.top - wrap.top + (y - edView.oy) * k) + "px", fontSize: size + "px", color: a ? a.color : edColor });
+    edTextInput.textContent = a ? a.text : ""; edTextInput.hidden = false;
+    edTextCtx = { x, y, w, editIdx, color: a ? a.color : edColor };
+    edDraw();
+    setTimeout(() => edTextInput.focus(), 0);
+  }
+  function edCommitText(){
+    if(edTextInput.hidden || !edTextCtx || !edItem) return;
+    const t = edTextInput.innerText.replace(/\n$/, "").trim();
+    edTextInput.hidden = true;
+    if(edTextCtx.editIdx != null){ edPushUndo(); if(t) edItem.annots[edTextCtx.editIdx].text = t; else edItem.annots.splice(edTextCtx.editIdx, 1); }
+    else if(t){ edPushUndo(); edItem.annots.push({ type: "text", x: edTextCtx.x, y: edTextCtx.y, text: t, color: edTextCtx.color, w: edTextCtx.w }); }
+    edTextCtx = null; edSel.clear(); edDraw();
+  }
+  edTextInput.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // 入力中のキー(Space・Ctrl+Z など)を編集画面やキャプチャの操作に渡さない
+    if(e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); edCommitText(); }
+    else if(e.key === "Escape"){ e.preventDefault(); edCommitText(); } // Esc でも入力した文字は残す
+  });
+
+  // ---------- ボタン・キー ----------
+  imgEditor.querySelectorAll("#edTools [data-tool]").forEach((b) => b.addEventListener("click", () => edSetTool(b.dataset.tool)));
+  $("edColors").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-color]"); if(!b) return;
+    edColor = b.dataset.color;
+    imgEditor.querySelectorAll(".edColor").forEach((x) => x.classList.toggle("on", x === b));
+    if(edTool === "select" && edSel.size){ edPushUndo(); edSel.forEach((i) => { edItem.annots[i].color = edColor; }); }
+    edDraw();
+  });
+  imgEditor.querySelector(".edColor").classList.add("on");
+  function edUndo(){ edCommitText(); if(!edUndoStack.length) return; edRedoStack.push(edSnapshot()); edRestore(edUndoStack.pop()); edSel.clear(); edDraw(); }
+  function edRedo(){ edCommitText(); if(!edRedoStack.length) return; edUndoStack.push(edSnapshot()); edRestore(edRedoStack.pop()); edSel.clear(); edDraw(); }
+  function edDeleteSel(){ if(!edSel.size) return; edPushUndo(); [...edSel].sort((a, b) => b - a).forEach((i) => edItem.annots.splice(i, 1)); edSel.clear(); edDraw(); }
+  $("edUndo").addEventListener("click", edUndo);
+  $("edRedo").addEventListener("click", edRedo);
+  $("edDelSel").addEventListener("click", edDeleteSel);
+  $("edFit").addEventListener("click", edResetZoom);
+  $("edReset").addEventListener("click", () => { if(!edItem.crop && !edItem.annots.length) return; edPushUndo(); edItem.crop = null; edItem.annots = []; edSel.clear(); edDraw(); });
+  $("edCropClear").addEventListener("click", () => { if(!edItem || !edItem.crop) return; edPushUndo(); edItem.crop = null; edDraw(); });
+  $("edCropLast").addEventListener("click", () => { if(!lastCropRatio || !edItem) return; edPushUndo(); edItem.crop = cropFromLastRatio(edItem.src); edDraw(); });
+  $("edDone").addEventListener("click", () => closeImageEditor(true));
+  $("edClose").addEventListener("click", () => closeImageEditor(true));
+  // 画像の外(暗い所)をクリックしても保存して閉じる(押した所と離した所がどちらも画像の外のときだけ)
+  let edWrapDown = null;
+  $("edStageWrap").addEventListener("pointerdown", (e) => { edWrapDown = e.target; });
+  $("edStageWrap").addEventListener("click", (e) => {
+    const ok = edWrapDown === $("edStageWrap") && e.target === $("edStageWrap");
+    edWrapDown = null;
+    if(!ok) return;
+    if(!edTextInput.hidden){ edCommitText(); return; }
+    closeImageEditor(true);
+  });
+  $("edPrev").addEventListener("click", () => edGo(-1));
+  $("edNext").addEventListener("click", () => edGo(1));
+  $("lbEdit").addEventListener("click", () => { if(lightboxIndex >= 0) openImageEditor(lightboxIndex, edTool === "crop" ? "arrow" : edTool); });
+  // 編集画面が開いている間のキーは、ここで先に受け取って他の操作(Spaceでキャプチャ・← →で拡大表示の切り替え・一覧の元に戻す等)へ渡さない
+  document.addEventListener("keydown", (e) => {
+    if(imgEditor.hidden) return;
+    if(e.target === edTextInput) return; // 文字入力欄のキーは入力欄側で処理
+    if(msgModal.classList.contains("open")) return;
+    e.stopImmediatePropagation();
+    const k = (e.key || "").toLowerCase(), mod = e.ctrlKey || e.metaKey;
+    if(e.code === "Space"){ e.preventDefault(); if(!edSpaceDown){ edSpaceDown = true; edCanvas.style.cursor = "grab"; } return; }
+    if(mod && k === "z"){ e.preventDefault(); e.shiftKey ? edRedo() : edUndo(); return; }
+    if(mod && k === "y"){ e.preventDefault(); edRedo(); return; }
+    if(mod && k === "a" && edTool === "select"){ e.preventDefault(); edSel = new Set(edItem.annots.map((_, i) => i)); edDraw(); return; }
+    if(e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); edDeleteSel(); return; }
+    if(e.key === "Escape"){ closeImageEditor(true); return; } // 編集は常に保存(あとで消す・一覧の Ctrl+Z で戻すことができるため)
+  }, true);
+  document.addEventListener("keyup", (e) => { if(e.code === "Space" && edSpaceDown){ edSpaceDown = false; edCanvas.style.cursor = ""; } }, true);
+  window.addEventListener("resize", () => { if(edItem) edDraw(); });
 
   // タイトル・日付: 前回値をlocalStorageに保持し、リロードしても保持されるように
   const TITLE_KEY = "smart-capture-memo-export-title";
@@ -4537,7 +4862,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v05_2026-11-26.2"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v06_2026-11-26.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4578,7 +4903,11 @@
     ["v04_2026-11-24.2","⋯メニューに「🖼 画像をZIPで保存」(キャプチャ画像を 番号_見出し名.jpg でまとめて1つのZIPに。保存場所はその都度選択)"],
     ["v05_2026-11-25",["スライドの自動検出: 範囲タブ・トリミング画面でスライドの中をダブルクリック(範囲タブは「🔍 スライド検出」も)すると、スライドの枠を探して範囲に入れる","スライドが映像の端に接している場合(Web会議でスライドが端いっぱい)にも対応","スライド内の区切り線(タイトル下の線など)を縁と誤認しないよう、縁の内外の色が違う枠を優先"]],
     ["v05_2026-11-26","記録一覧の操作を元に戻す/やり直し(Ctrl+Z / Ctrl+Y、直近10回): 削除・並べ替え・メモや見出しの文章・見出し/メモの切り替え。削除時の知らせをクリックしても元に戻せる"],
-    ["v05_2026-11-26.2","元に戻す/やり直しの対象に資料タイトル・日付の変更を追加"]
+    ["v05_2026-11-26.2","元に戻す/やり直しの対象に資料タイトル・日付の変更を追加"],
+    ["v06_2026-11-26",["画像の編集: 拡大表示・一覧の「✏️ 編集」でトリミングと書き込み(線・矢印・枠・蛍光マーカー・文字・①②③番号・ぼかし・塗り潰し)をまとめて行える(トリミング画面は編集画面に統合)","書き込みは元の画像を基準に保存するので、あとから動かす・消す・色やサイズを変えるのも自由。Ctrl+ホイールでサイズ、ホイールで拡大縮小、Ctrl+Z で元に戻す","編集の確定は一覧の Ctrl+Z でも元に戻せる。書き出したHTMLでは「✏️ 書き込み ON/OFF」で表示を切り替えられ、取り込み直すと書き込みを編集し直せる"]],
+    ["v06_2026-11-26.2","画像の編集: Esc でも保存して閉じるように(キャンセルボタンを廃止。戻したいときは ↶ や一覧の Ctrl+Z で)"],
+    ["v06_2026-11-26.3",["画像の編集: 画像の外(暗い所)をクリックしても保存して閉じる。文字の入力中の Esc は入力した文字を残す","トリミングに「トリミングなし」(画像全体に戻す)","トリミング枠を範囲タブと同じ見た目・操作に(青い枠と●、つまみや枠の内側でカーソルが変わる)"]],
+    ["v06_2026-11-26.4",["見出しを動かすと、そのセクションの画像・メモも一緒に移動(ドラッグ・Shift+Alt+↑/↓とも。前後のセクションと入れ替え)","新しく作った見出しを現在の見出しにする(続けてキャプチャするとその見出しへ入る。複数行の貼り付けでまとめて作ったときは除く)"]]
   ];
 
   const verLabel = $("verLabel");
