@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>画像の編集 モック</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280;
+    --accent:#3b6fe0; --ok:#1f9d5c; --secondary-bg:#e7e9ee; color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac; --accent:#4f8cff; --ok:#2fbf71; --secondary-bg:#262b38; color-scheme:dark; }
+  }
+  html[data-theme="light"]{color-scheme:light; --bg:#f5f6f8; --panel:#ffffff; --surface2:#eef0f4; --border:#d8dbe2; --text:#1c1f26; --sub:#6b7280; --accent:#3b6fe0; --ok:#1f9d5c; --secondary-bg:#e7e9ee;}
+  html[data-theme="dark"]{color-scheme:dark; --bg:#0f1115; --panel:#171a21; --surface2:#1c2029; --border:#2a2e3a; --text:#e6e8ec; --sub:#9aa0ac; --accent:#4f8cff; --ok:#2fbf71; --secondary-bg:#262b38;}
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text);}
+  header{padding:12px 120px 12px 16px; border-bottom:1px solid var(--border); position:relative;}
+  header h1{font-size:15px; margin:0;} header p{margin:4px 0 0; font-size:12px; color:var(--sub);}
+  .themeBtn{position:absolute; right:16px; top:12px; height:32px;}
+  main{max-width:1000px; margin:0 auto; padding:14px 16px;}
+  button{height:34px; border:none; border-radius:8px; padding:0 12px; font-size:13px; cursor:pointer; font-family:inherit; background:var(--secondary-bg); color:var(--text);}
+  .note{font-size:12px; color:var(--sub); line-height:1.7;}
+  .note b{color:var(--text);}
+  .item{display:flex; gap:12px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:8px;}
+  .item img{width:220px; border-radius:6px; border:1px solid var(--border); cursor:zoom-in; background:#000;}
+  .item .meta{flex:1; font-size:13px;}
+  .badge{font-size:11px; color:var(--sub); border:1px solid var(--border); border-radius:4px; padding:1px 6px; margin-left:6px;}
+
+  /* ---------- 拡大表示 ---------- */
+  #lb{position:fixed; inset:0; background:#0e1014; z-index:50; display:flex; flex-direction:column;}
+  #lb[hidden]{display:none;}
+  #lbTop{display:flex; align-items:center; gap:8px; padding:10px 12px;}
+  #lbTop .sp{flex:1;}
+  #lb button{background:rgba(40,44,54,.9); color:#e6e8ec; border:1px solid #3a3f4c;}
+  #lb button.on{background:#3b6fe0; border-color:#3b6fe0; color:#fff;}
+  #lb button.ok{background:#1f9d5c; border-color:#1f9d5c; color:#fff;}
+  #lbCounter{color:#e6e8ec; font-size:12px; background:rgba(23,26,33,.85); border-radius:8px; padding:6px 10px;}
+  #lbStageWrap{flex:1; position:relative; display:flex; align-items:center; justify-content:center; min-height:0; overflow:hidden;}
+  #lbCanvas{max-width:calc(100% - 120px); max-height:100%; touch-action:none; box-shadow:0 8px 30px rgba(0,0,0,.5);}
+  #lb.editing #lbCanvas{cursor:crosshair;}
+  #lb.editing.tool-select #lbCanvas{cursor:default;}
+  .nav{z-index:2; position:absolute; top:50%; transform:translateY(-50%); width:44px; height:64px; font-size:22px;}
+  #lbPrev{left:10px;} #lbNext{right:10px;}
+  #lbCaption{color:#e6e8ec; font-size:14px; text-align:center; padding:8px 16px; min-height:44px;}
+  #lbCaption[hidden]{display:none;}
+  /* 編集の道具バー */
+  #tools{display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; padding:8px 10px 12px; border-top:1px solid #2a2e3a;}
+  #tools[hidden]{display:none;}
+  #tools .sep{width:1px; height:26px; background:#3a3f4c; margin:0 4px;}
+  #tools button, #tools select{padding:0 9px; font-size:12px; height:32px;}
+  #tools{gap:4px;}
+  .colorBtn{width:24px; height:24px !important; min-width:24px; padding:0 !important; border-radius:50%; border:2px solid #3a3f4c !important;}
+  .colorBtn.on{outline:2px solid #fff; outline-offset:2px;}
+  #tools .hint{color:#9aa0ac; font-size:12px; flex-basis:100%; text-align:center;}
+  #sizeBox{color:#e6e8ec; font-size:12px; display:inline-flex; align-items:center; gap:4px;}
+  #sizeBox input{width:110px;}
+  #textInput{position:absolute; z-index:60; background:rgba(255,255,255,.95); border:2px dashed #3b6fe0; padding:2px 4px; font-family:sans-serif; outline:none; min-width:80px;}
+  #textInput[hidden]{display:none;}
+</style>
+</head>
+<body>
+<header>
+  <button class="themeBtn" id="btnTheme" type="button"></button>
+  <h1>拡大表示の「✏️ 編集」(トリミング+書き込み)モック</h1>
+  <p>動作確認用のモックです。本体には未反映。サンプル画像はこのページを閉じると元に戻ります。</p>
+</header>
+<main>
+  <div class="note" style="margin-bottom:10px;">
+    <b>試し方</b>: 画像をクリック → 拡大表示の右上「✏️ 編集」 → 下の道具で書き込み・トリミング → 「✓ 完了」。← → で次の画像へ移ると、編集はその画像の分が保存されて続けられます。<br>
+    一覧の「✏️ 編集」(今の「✂️ トリミング」の代わり)は、最後に使った道具を選んだ状態で編集モードを開きます(最初は ✂)。編集中はホイールで拡大縮小、Space を押しながらドラッグで移動、「⤢ 全体」で元の大きさに戻ります。編集は元の画像を基準に保存しているので、何度でもやり直せます(「元に戻す(全部)」で元の画像に戻る)。
+  </div>
+  <div id="list"></div>
+</main>
+
+<div id="lb" hidden>
+  <div id="lbTop">
+    <span id="lbCounter"></span>
+    <span class="sp"></span>
+    <button type="button" id="btnCap">💬 コメント ON</button>
+    <button type="button" id="btnEdit">✏️ 編集</button>
+    <button type="button" id="btnClose">✕</button>
+  </div>
+  <div id="lbStageWrap">
+    <button type="button" class="nav" id="lbPrev">‹</button>
+    <canvas id="lbCanvas"></canvas>
+    <button type="button" class="nav" id="lbNext">›</button>
+    <div id="textInput" contenteditable="true" hidden></div>
+  </div>
+  <div id="lbCaption"></div>
+  <div id="tools" hidden>
+    <button type="button" data-tool="crop" title="トリミング(範囲を選ぶ。スライドの中をダブルクリックで自動検出)">✂ トリミング</button>
+    <span class="sep"></span>
+    <button type="button" data-tool="select" title="選んで移動・削除(Delete)、文字はダブルクリックで直す">👆 選択</button>
+    <button type="button" data-tool="line" title="ドラッグで直線(Shiftで水平・垂直・45°)">／ 線</button>
+    <button type="button" data-tool="arrow" title="ドラッグで矢印(Shiftで水平・垂直・45°)">➡ 矢印</button>
+    <button type="button" data-tool="rect" title="ドラッグで枠">▭ 枠</button>
+    <button type="button" data-tool="marker" title="なぞって蛍光マーカー(Shiftで水平・垂直)">🖍 マーカー</button>
+    <button type="button" data-tool="text" title="クリックして文字を入力(Enterで確定)">T 文字</button>
+    <button type="button" data-tool="num" title="クリックするたびに ①②③… と番号を置く">① 番号</button>
+    <button type="button" data-tool="mosaic" title="ドラッグした範囲をぼかして隠す(サイズでぼかしの強さを調整)">▦ ぼかし</button>
+    <button type="button" data-tool="fill" title="ドラッグした範囲を選んだ色で塗り潰す">■ 塗り潰し</button>
+    <span style="flex-basis:100%; height:0;"></span>
+    <span id="colors"></span>
+    <label id="sizeBox" title="太さ・大きさ(Ctrl+ホイールで 0.1 ずつ、Ctrl+Shift+ホイールで 0.5 刻みの値(1.0, 1.5, 2.0…)を選ぶ。選択中の書き込みにも反映)">サイズ <input type="range" id="sizeRange" min="0.5" max="8" step="0.1" value="2"> <span id="sizeLbl">2.0</span></label>
+    <span class="sep"></span>
+    <button type="button" id="btnUndo" title="元に戻す(Ctrl+Z)">↶</button>
+    <button type="button" id="btnRedo" title="やり直し(Ctrl+Y)">↷</button>
+    <button type="button" id="btnDelSel" title="選んだものを削除(Delete)">🗑</button>
+    <button type="button" id="btnReset" title="トリミングも書き込みも消して元の画像に戻す">元に戻す(全部)</button>
+    <button type="button" id="btnFit" title="拡大をやめて全体を表示(編集中はホイールで拡大縮小、Space+ドラッグで移動)">⤢ 全体</button>
+    <span class="sep"></span>
+    <button type="button" id="btnCancel">キャンセル</button>
+    <button type="button" class="ok" id="btnDone">✓ 完了</button>
+    <div class="hint" id="toolHint"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  // ---------- スライドの自動検出(範囲タブ・トリミングで共用) ----------
+  // 画面共有のスライドは傾かない長方形なので、縦・横にまっすぐ続く境目を探し、起点(ダブルクリックした点)を囲む
+  // 4本の組み合わせのうち、4辺とも境目がよく続き・16:9/4:3/16:10/3:2に近く・小さすぎないもののうち一番内側を選ぶ。
+  // 縮小画像で探してから、元の解像度で各辺を境目に合わせ直す。検出に失敗したら null
+  const SLIDE_DETECT_MAXW = 960;
+  function slideAnalyze(src){
+    const s = Math.min(1, SLIDE_DETECT_MAXW / src.width);
+    const W = Math.round(src.width * s), H = Math.round(src.height * s);
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(src, 0, 0, W, H);
+    const d = g.getImageData(0, 0, W, H).data;
+    const T = 8;
+    const hE = new Uint8Array(W * H), vE = new Uint8Array(W * H); // 横線(上下の差)・縦線(左右の差)
+    // 縮小でぼやけた細い線(1px の枠線など)も拾えるよう、2画素離れた画素どうしで差を見る
+    for(let y = 2; y < H; y++){
+      for(let x = 2; x < W; x++){
+        const i = (y * W + x) * 4, u = i - W * 8, l = i - 8;
+        const dy = Math.max(Math.abs(d[i] - d[u]), Math.abs(d[i + 1] - d[u + 1]), Math.abs(d[i + 2] - d[u + 2]));
+        const dx = Math.max(Math.abs(d[i] - d[l]), Math.abs(d[i + 1] - d[l + 1]), Math.abs(d[i + 2] - d[l + 2]));
+        if(dy >= T) hE[y * W + x] = 1;
+        if(dx >= T) vE[y * W + x] = 1;
+      }
+    }
+    // 1画素のずれを許すため、横線は縦に、縦線は横に1画素ふくらませる
+    const hD = new Uint8Array(W * H), vD = new Uint8Array(W * H);
+    for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){
+      const k = y * W + x;
+      hD[k] = hE[k] | (y > 0 ? hE[k - W] : 0) | (y < H - 1 ? hE[k + W] : 0);
+      vD[k] = vE[k] | (x > 0 ? vE[k - 1] : 0) | (x < W - 1 ? vE[k + 1] : 0);
+    }
+    // 行ごと・列ごとの累積和(区間の境目の割合をすぐ求めるため)
+    const rowCum = new Uint32Array((W + 1) * H), colCum = new Uint32Array((H + 1) * W);
+    for(let y = 0; y < H; y++){ let acc = 0; for(let x = 0; x < W; x++){ acc += hD[y * W + x]; rowCum[y * (W + 1) + x + 1] = acc; } }
+    for(let x = 0; x < W; x++){ let acc = 0; for(let y = 0; y < H; y++){ acc += vD[y * W + x]; colCum[x * (H + 1) + y + 1] = acc; } }
+    return { W, H, s, d, hD, vD, rowCum, colCum };
+  }
+  const slideHCov = (A, y, x1, x2) => (A.rowCum[y * (A.W + 1) + x2] - A.rowCum[y * (A.W + 1) + x1]) / Math.max(1, x2 - x1);
+  const slideVCov = (A, x, y1, y2) => (A.colCum[x * (A.H + 1) + y2] - A.colCum[x * (A.H + 1) + y1]) / Math.max(1, y2 - y1);
+
+  // 起点を通る行(列)で、起点を含む境目の連続区間の長さ(途中の小さな切れ目は許す)
+  function slideRunThrough(arr, W, y, x0, maxGap){
+    let a = x0, b = x0, gap = 0;
+    for(let x = x0; x >= 0; x--){ if(arr[y * W + x]) { a = x; gap = 0; } else if(++gap > maxGap) break; }
+    gap = 0;
+    for(let x = x0; x < W; x++){ if(arr[y * W + x]) { b = x; gap = 0; } else if(++gap > maxGap) break; }
+    return [a, b];
+  }
+
+  // 各辺で「枠の内側と外側の色がはっきり違う」か。スライドの縁は内側(スライド)と外側(アプリの背景)で色が変わるが、
+  // スライド内の区切り線(タイトル下の線など)は線の両側が同じ白になる。辺に沿って調べ、色が違う地点が半分以上ある辺を縁とみなす
+  function edgesContrast(A, c){
+    const { W, H, d } = A;
+    const px = (x, y) => { x = Math.max(0, Math.min(W - 1, x)); y = Math.max(0, Math.min(H - 1, y)); const i = (y * W + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
+    const differ = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) > 12;
+    const side = (pts) => { let n = 0, k = 0; pts.forEach(([ix, iy, ox, oy]) => { n++; if(differ(px(ix, iy), px(ox, oy))) k++; }); return n ? k / n : 1; };
+    const off = 4, list = (len) => { const a = []; for(let t = 0.05; t <= 0.95; t += 0.03) a.push(Math.round(t * len)); return a; };
+    const [te, re, be, le] = c.edges;
+    const x2 = c.x + c.w, y2 = c.y + c.h;
+    const r = [
+      te ? 1 : side(list(c.w).map((t) => [c.x + t, c.y + off, c.x + t, c.y - off])),
+      re ? 1 : side(list(c.h).map((t) => [x2 - off, c.y + t, x2 + off, c.y + t])),
+      be ? 1 : side(list(c.w).map((t) => [c.x + t, y2 - off, c.x + t, y2 + off])),
+      le ? 1 : side(list(c.h).map((t) => [c.x + off, c.y + t, c.x - off, c.y + t]))
+    ];
+    return Math.min(...r) >= 0.5;
+  }
+  function slideDetectCore(A, sx, sy){
+    const { W, H } = A;
+    const minLenX = W * 0.12, minLenY = H * 0.12;
+    // 起点の上下にある横線の候補(起点の真上/真下を通り、十分長いもの)
+    const rows = (from, to, step) => {
+      const out = [];
+      for(let y = from; y !== to; y += step){
+        // 起点の列で横線が無くても、近くで繋がっていれば拾えるよう左右±W/40の範囲で探す
+        let best = null;
+        for(let dx = -Math.round(W / 40); dx <= Math.round(W / 40); dx += 3){
+          const x0 = Math.min(W - 1, Math.max(0, sx + dx));
+          if(!A.hD[y * W + x0]) continue;
+          const [a, b] = slideRunThrough(A.hD, W, y, x0, 3);
+          if(b - a >= minLenX && (!best || b - a > best.b - best.a)) best = { y, a, b };
+        }
+        if(best) out.push(best);
+      }
+      return dedupe(out, "y");
+    };
+    const cols = (from, to, step) => {
+      const out = [];
+      for(let x = from; x !== to; x += step){
+        let best = null;
+        for(let dy = -Math.round(H / 40); dy <= Math.round(H / 40); dy += 3){
+          const y0 = Math.min(H - 1, Math.max(0, sy + dy));
+          if(!A.vD[y0 * W + x]) continue;
+          // 縦方向の連続区間
+          let a = y0, b = y0, gap = 0;
+          for(let y = y0; y >= 0; y--){ if(A.vD[y * W + x]) { a = y; gap = 0; } else if(++gap > 3) break; }
+          gap = 0;
+          for(let y = y0; y < H; y++){ if(A.vD[y * W + x]) { b = y; gap = 0; } else if(++gap > 3) break; }
+          if(b - a >= minLenY && (!best || b - a > best.b - best.a)) best = { x, a, b };
+        }
+        if(best) out.push(best);
+      }
+      return dedupe(out, "x");
+    };
+    // 隣り合う行(列)は1本にまとめ、長い順に上位だけ残す
+    function dedupe(list, key){
+      const groups = [];
+      list.forEach((l) => { const gq = groups.find((gr) => Math.abs(gr[key] - l[key]) <= 2); if(!gq) groups.push(l); else if(l.b - l.a > gq.b - gq.a) Object.assign(gq, l); });
+      return groups.sort((p, q) => (q.b - q.a) - (p.b - p.a)).slice(0, 24);
+    }
+    const tops = rows(sy - 1, 0, -1), bottoms = rows(sy + 1, H - 1, 1);
+    const lefts = cols(sx - 1, 0, -1), rights = cols(sx + 1, W - 1, 1);
+    // スライドが映像の端まで来ている(端に接している)場合に備え、映像の四辺も辺の候補にする(境目は「ある」とみなす)
+    tops.push({ y: 0, edge: true }); bottoms.push({ y: H, edge: true }); lefts.push({ x: 0, edge: true }); rights.push({ x: W, edge: true });
+    const STD = [16 / 9, 4 / 3, 16 / 10, 3 / 2];
+    let best = null;
+    const goods = [];
+    for(const t of tops) for(const b of bottoms){
+      const h = b.y - t.y; if(h < H * 0.15) continue;
+      for(const l of lefts) for(const r of rights){
+        const w = r.x - l.x; if(w < W * 0.15) continue;
+        const area = (w * h) / (W * H);
+        if(area > 0.92) continue; // 画面全体の外枠は対象外
+        const c1 = t.edge ? 1 : slideHCov(A, t.y, l.x, r.x), c2 = b.edge ? 1 : slideHCov(A, b.y, l.x, r.x), c3 = l.edge ? 1 : slideVCov(A, l.x, t.y, b.y), c4 = r.edge ? 1 : slideVCov(A, r.x, t.y, b.y);
+        if(t.edge + b.edge + l.edge + r.edge > 2) continue; // 3辺以上が映像の端=ほぼ画面全体なので対象外
+        const minCov = Math.min(c1, c2, c3, c4);
+        if(minCov < 0.7) continue;
+        const asp = w / h;
+        const aspScore = Math.max(...STD.map((v) => Math.exp(-Math.abs(Math.log(asp / v)) * 10)));
+        // 4辺とも境目がしっかり続き、標準の縦横比に近いもののうち「いちばん内側(小さい)」を選ぶ。
+        // 外側にはスクロールバーや編集領域の枠など、スライドを囲む長方形がほかにもあるため
+        const good = minCov >= 0.85 && aspScore >= 0.5 && area >= 0.08;
+        const cand = { x: l.x, y: t.y, w, h, minCov, asp, aspScore, area, good, edges: [t.edge, r.edge, b.edge, l.edge] };
+        if(good) goods.push(cand);
+        else if(!best || minCov * (0.25 + aspScore) > best.minCov * (0.25 + best.aspScore)) best = cand;
+      }
+    }
+    // 条件を満たす候補は内側(小さい)から順に見て、4辺とも「内側と外側の色が違う」(=スライドの縁)ものを選ぶ。
+    // 該当が無ければ一番内側の候補を使う(白い画面に枠線だけのスライドなど)
+    if(goods.length){
+      goods.sort((p, q) => p.area - q.area);
+      best = goods.find((c) => edgesContrast(A, c)) || goods[0];
+    }
+    return best ? { ...best, cand: tops.length * bottoms.length * lefts.length * rights.length } : null;
+  }
+
+  // 縮小画像で見つけた枠を、元の解像度で境目に合わせ直す(各辺を±rad px の範囲で、辺に沿った色の差が最大の位置へ)。
+  // 枠線が1pxの線のときは、上・左は線の外側、下・右も線の外側(線を含む)を選ぶ
+  function slideRefine(src, r, rad){
+    const W = src.width, H = src.height;
+    const d = src.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    const diff = (a, b) => Math.max(Math.abs(d[a] - d[b]), Math.abs(d[a + 1] - d[b + 1]), Math.abs(d[a + 2] - d[b + 2]));
+    const rowScore = (y, x1, x2) => { if(y < 1 || y >= H) return -1; let s = 0; for(let x = x1; x < x2; x += 2) s += diff((y * W + x) * 4, ((y - 1) * W + x) * 4); return s; };
+    const colScore = (x, y1, y2) => { if(x < 1 || x >= W) return -1; let s = 0; for(let y = y1; y < y2; y += 2) s += diff((y * W + x) * 4, (y * W + x - 1) * 4); return s; };
+    const pick = (center, scoreFn, preferLow) => {
+      const list = []; for(let v = center - rad; v <= center + rad; v++) list.push([v, scoreFn(v)]);
+      const max = Math.max(...list.map((p) => p[1])); if(max <= 0) return center;
+      const near = list.filter((p) => p[1] >= max * 0.85).map((p) => p[0]);
+      return preferLow ? Math.min(...near) : Math.max(...near);
+    };
+    const x1 = r.x, x2 = r.x + r.w, y1 = r.y, y2 = r.y + r.h;
+    const ix1 = x1 + rad, ix2 = x2 - rad, iy1 = y1 + rad, iy2 = y2 - rad; // 角の付近は避けて辺の中ほどで測る
+    // 映像の端に接している辺は端のまま(合わせ直さない)
+    const top = y1 <= rad ? 0 : pick(y1, (y) => rowScore(y, ix1, ix2), true);
+    const bottom = y2 >= H - rad ? H : pick(y2, (y) => rowScore(y, ix1, ix2), false);
+    const left = x1 <= rad ? 0 : pick(x1, (x) => colScore(x, iy1, iy2), true);
+    const right = x2 >= W - rad ? W : pick(x2, (x) => colScore(x, iy1, iy2), false);
+    return { x: left, y: top, w: right - left, h: bottom - top };
+  }
+
+  function detectSlideRect(src, sx, sy){
+    const A = slideAnalyze(src);
+    const res = slideDetectCore(A, Math.round(sx * A.s), Math.round(sy * A.s));
+    if(!res) return null;
+    return slideRefine(src, { x: Math.round(res.x / A.s), y: Math.round(res.y / A.s), w: Math.round(res.w / A.s), h: Math.round(res.h / A.s) }, Math.ceil(3 / A.s) + 2);
+  }
+
+
+  // ---------- サンプル画像 ----------
+  function makeSample(kind){
+    const c = document.createElement("canvas"); c.width = 1440; c.height = 860; const g = c.getContext("2d");
+    const text = (t, x, y, size, col) => { g.fillStyle = col; g.font = `${size}px sans-serif`; g.fillText(t, x, y); };
+    if(kind === 0){
+      g.fillStyle = "#1f1f1f"; g.fillRect(0, 0, 1440, 860);
+      g.fillStyle = "#2b2b2b"; g.fillRect(0, 0, 1440, 48); text("オンライン会議 — 画面共有中", 20, 32, 18, "#ddd");
+      g.fillStyle = "#fafafa"; g.fillRect(40, 90, 1024, 576);
+      g.fillStyle = "#2d6cdf"; g.fillRect(40, 90, 1024, 90); text("第3四半期の進捗", 70, 150, 40, "#fff");
+      ["・設計: 80% 完了", "・実装: 45% 完了", "・テスト計画: 作成中"].forEach((t, i) => text(t, 90, 260 + i * 70, 32, "#222"));
+      [0.8, 0.45, 0.3].forEach((v, i) => { g.fillStyle = "#e5e7eb"; g.fillRect(650, 236 + i * 70, 360, 28); g.fillStyle = "#2d6cdf"; g.fillRect(650, 236 + i * 70, 360 * v, 28); });
+      for(let i = 0; i < 4; i++){ g.fillStyle = ["#3a4a5a", "#5a3a4a", "#3a5a4a", "#4a4a3a"][i]; g.fillRect(1100, 90 + i * 150, 300, 135); }
+      g.fillStyle = "#2b2b2b"; g.fillRect(40, 700, 1024, 130); text("Aさん: 資料ありがとうございます", 60, 740, 18, "#bbb");
+    }else if(kind === 1){
+      g.fillStyle = "#e6e6e6"; g.fillRect(0, 0, 1440, 860);
+      g.fillStyle = "#fff"; g.fillRect(180, 110, 1080, 608);
+      text("課題と対策", 230, 200, 48, "#c8562b");
+      ["・調達品の納期遅延リスク", "・代替品の比較検討を開始", "・次回までに見積もりを取得"].forEach((t, i) => text(t, 250, 300 + i * 80, 36, "#333"));
+      g.fillStyle = "#f3d5c9"; g.fillRect(860, 260, 330, 230); text("工程表", 960, 390, 32, "#c8562b");
+    }else{
+      g.fillStyle = "#fff"; g.fillRect(0, 0, 1440, 860);
+      text("図面チェック(サンプル)", 60, 80, 36, "#222");
+      g.strokeStyle = "#555"; g.lineWidth = 3; g.strokeRect(100, 140, 1240, 640);
+      for(let i = 0; i < 6; i++){ g.strokeRect(160 + i * 190, 220, 150, 120); g.strokeRect(160 + i * 190, 520, 150, 120); }
+      g.beginPath(); g.moveTo(100, 430); g.lineTo(1340, 430); g.stroke(); text("廊下", 680, 420, 24, "#555");
+    }
+    return c;
+  }
+  const items = [0, 1, 2].map((k, i) => ({ id: i, src: makeSample(k), crop: null, annots: [], memo: ["進捗の説明。テスト計画は来週", "", "部屋の配置を確認"][i] }));
+
+  // ---------- 合成(元画像+トリミング+書き込み) ----------
+  const baseW = (it) => Math.max(2, it.src.width / 360); // 太さの基準(画像の大きさに比例)
+  function drawAnnot(g, a, it){
+    const lw = baseW(it) * a.w;
+    g.save(); g.lineCap = "round"; g.lineJoin = "round";
+    if(a.type === "arrow"){
+      const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1), head = lw * 4.5;
+      g.strokeStyle = a.color; g.fillStyle = a.color; g.lineWidth = lw;
+      g.beginPath(); g.moveTo(a.x1, a.y1); g.lineTo(a.x2 - Math.cos(ang) * head * 0.6, a.y2 - Math.sin(ang) * head * 0.6); g.stroke();
+      g.beginPath(); g.moveTo(a.x2, a.y2);
+      g.lineTo(a.x2 - head * Math.cos(ang - 0.45), a.y2 - head * Math.sin(ang - 0.45));
+      g.lineTo(a.x2 - head * Math.cos(ang + 0.45), a.y2 - head * Math.sin(ang + 0.45)); g.closePath(); g.fill();
+    }else if(a.type === "line"){
+      g.strokeStyle = a.color; g.lineWidth = lw;
+      g.beginPath(); g.moveTo(a.x1, a.y1); g.lineTo(a.x2, a.y2); g.stroke();
+    }else if(a.type === "num"){
+      const r = baseW(it) * (4 + a.w * 2.5);
+      g.fillStyle = a.color; g.beginPath(); g.arc(a.x, a.y, r, 0, Math.PI * 2); g.fill();
+      g.lineWidth = r * 0.12; g.strokeStyle = "#fff"; g.stroke();
+      g.fillStyle = a.color === "#ffffff" || a.color === "#facc15" ? "#111" : "#fff";
+      g.font = `bold ${r * 1.15}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(a.n), a.x, a.y + r * 0.05);
+    }else if(a.type === "fill"){
+      g.fillStyle = a.color; g.fillRect(a.x, a.y, a.w2, a.h2);
+    }else if(a.type === "mosaic"){
+      // 範囲を元の画像からぼかして上に描く(文字が読めない程度。サイズで強さを変えられる)
+      const x = Math.round(Math.min(a.x, a.x + a.w2)), y = Math.round(Math.min(a.y, a.y + a.h2)), w = Math.round(Math.abs(a.w2)), h = Math.round(Math.abs(a.h2));
+      if(w >= 2 && h >= 2){
+        const r = Math.max(4, baseW(it) * a.w * 1.6);
+        g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+        g.filter = `blur(${r}px)`;
+        // 枠の外の画素も少し使ってぼかし、縁が白っぽくならないようにする
+        const m = Math.ceil(r * 2);
+        g.drawImage(it.src, x - m, y - m, w + m * 2, h + m * 2, x - m, y - m, w + m * 2, h + m * 2);
+        g.filter = "none"; g.restore();
+      }
+    }else if(a.type === "rect"){
+      g.strokeStyle = a.color; g.lineWidth = lw; g.strokeRect(a.x, a.y, a.w2, a.h2);
+    }else if(a.type === "marker"){
+      g.strokeStyle = a.color; g.globalAlpha = 0.38; g.lineWidth = lw * 5; g.lineCap = "butt";
+      g.beginPath(); a.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
+    }else if(a.type === "text"){
+      const size = baseW(it) * (6 + a.w * 4);
+      g.font = `bold ${size}px sans-serif`; g.textBaseline = "top";
+      g.lineWidth = size * 0.18; g.strokeStyle = a.color === "#ffffff" ? "#000" : "#fff"; // 縁取りで読みやすく
+      a.text.split("\n").forEach((ln, i) => { g.strokeText(ln, a.x, a.y + i * size * 1.25); g.fillStyle = a.color; g.fillText(ln, a.x, a.y + i * size * 1.25); });
+    }
+    g.restore();
+  }
+  // 表示用: crop=null なら全体。full=true ならトリミングを無視して全体(トリミング道具の表示)
+  function compose(it, full){
+    const cr = (!full && it.crop) || { x: 0, y: 0, w: it.src.width, h: it.src.height };
+    const c = document.createElement("canvas"); c.width = cr.w; c.height = cr.h; const g = c.getContext("2d");
+    g.drawImage(it.src, cr.x, cr.y, cr.w, cr.h, 0, 0, cr.w, cr.h);
+    g.save(); g.translate(-cr.x, -cr.y);
+    const under = (a) => a.type === "mosaic" || a.type === "fill"; // 隠す系は下に、矢印・文字などは上に
+    it.annots.filter(under).forEach((a) => drawAnnot(g, a, it)); it.annots.filter((a) => !under(a)).forEach((a) => drawAnnot(g, a, it));
+    g.restore();
+    return c;
+  }
+
+  // ---------- 一覧 ----------
+  function renderList(){
+    $("list").innerHTML = "";
+    items.forEach((it, i) => {
+      const d = document.createElement("div"); d.className = "item";
+      const img = document.createElement("img"); img.src = compose(it).toDataURL("image/jpeg", 0.8);
+      img.addEventListener("click", () => openLb(i, false));
+      const meta = document.createElement("div"); meta.className = "meta";
+      meta.innerHTML = `画像 ${i + 1}<div class="note">${it.memo || "(メモなし)"}</div>`;
+      const btn = document.createElement("button"); btn.textContent = "✏️ 編集"; btn.title = "拡大表示の編集モードを開く(トリミング・書き込み)"; btn.addEventListener("click", () => openLb(i, true));
+      d.append(img, meta, btn); $("list").appendChild(d);
+    });
+  }
+
+  // ---------- 拡大表示と編集 ----------
+  const cv = $("lbCanvas"), g = cv.getContext("2d");
+  let cur = 0, editing = false, tool = "arrow", color = "#ef4444", capOn = true;
+  let snapStart = null, undoStack = [], redoStack = [];
+  let selSet = new Set(), drag = null, draft = null, hoverP = null;
+  let size = 2; // 太さ・大きさ(連続値)。Ctrl+ホイールで変更
+  const COLORS = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#ffffff", "#111111"];
+  $("colors").innerHTML = COLORS.map((c) => `<button type="button" class="colorBtn" data-color="${c}" style="background:${c}" title="${c}"></button>`).join("");
+
+  const it = () => items[cur];
+  const snapshot = () => JSON.stringify({ crop: it().crop, annots: it().annots });
+  const restore = (s) => { const o = JSON.parse(s); it().crop = o.crop; it().annots = o.annots; };
+  function pushUndo(){ undoStack.push(snapshot()); redoStack = []; }
+
+  function openLb(i, cropMode){
+    cur = i; $("lb").hidden = false;
+    if(cropMode){ const t = lastTool; startEdit(); setTool(t); } else { editing = false; }
+    sync();
+  }
+  function startEdit(){ editing = true; snapStart = snapshot(); undoStack = []; redoStack = []; selSet.clear(); if(tool === "crop") setTool("arrow"); }
+  function finishEdit(save){
+    commitText();
+    if(!save && snapStart) restore(snapStart);
+    editing = false; selSet.clear(); snapStart = null; resetZoom(); renderList(); sync();
+  }
+  let lastTool = "crop"; // 一覧の「✏️ 編集」で開くときの道具(最後に使った道具。最初はトリミング)
+  function setTool(t){
+    commitText(); tool = t; lastTool = t; if(t !== "select") selSet.clear();
+    document.querySelectorAll("#tools [data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
+    $("toolHint").textContent = {
+      crop: "枠をドラッグで範囲を選ぶ(四隅・辺で大きさ、内側で移動)。スライドの中をダブルクリックでスライドを自動検出",
+      select: "クリックで選択(Shift+クリックで追加)、何も無い所からドラッグで範囲選択、Ctrl+A で全部。ドラッグで移動、Delete で削除、色・サイズの変更も選択中のものに反映。文字はダブルクリックで書き直し",
+      line: "ドラッグで直線(Shift を押しながらで水平・垂直・45°)",
+      arrow: "ドラッグで矢印(始点→矢じり。Shift を押しながらで水平・垂直・45°)", rect: "ドラッグで枠", marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)", text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)",
+      num: "クリックするたびに ①②③… と番号を置く(消した番号の続きから)",
+      mosaic: "ドラッグした範囲をぼかして隠す(名前・数字などを隠すとき。Ctrl+ホイール・サイズでぼかしの強さを調整)",
+      fill: "ドラッグした範囲を選んだ色で塗り潰す"
+    }[t];
+    sync();
+  }
+
+  // 表示の座標 ↔ 元画像の座標
+  let view = null; // { full, ox, oy, k } 元画像座標 = ox + 画面上の位置 * k
+  function sync(){
+    const lb = $("lb");
+    lb.classList.toggle("editing", editing); lb.classList.toggle("tool-select", tool === "select");
+    $("tools").hidden = !editing; $("btnEdit").classList.toggle("on", editing);
+    $("btnEdit").textContent = editing ? "✏️ 編集中" : "✏️ 編集";
+    $("lbPrev").style.visibility = cur > 0 ? "visible" : "hidden"; $("lbNext").style.visibility = cur < items.length - 1 ? "visible" : "hidden";
+    $("lbCounter").textContent = `${cur + 1} / ${items.length}`;
+    $("lbCaption").hidden = !capOn; $("lbCaption").textContent = it().memo || ""; $("btnCap").textContent = capOn ? "💬 コメント ON" : "💬 コメント OFF";
+    draw();
+  }
+  function draw(){
+    const full = editing && tool === "crop";
+    const img = compose(it(), full);
+    cv.width = img.width; cv.height = img.height;
+    g.drawImage(img, 0, 0);
+    const cr = (!full && it().crop) || { x: 0, y: 0 };
+    view = { full, ox: cr.x, oy: cr.y };
+    if(full){
+      const c = it().crop || { x: 0, y: 0, w: img.width, h: img.height };
+      g.save(); g.fillStyle = "rgba(0,0,0,.5)";
+      g.beginPath(); g.rect(0, 0, img.width, img.height); g.rect(c.x, c.y, c.w, c.h); g.fill("evenodd");
+      g.strokeStyle = "#22c55e"; g.lineWidth = Math.max(2, img.width / 500); g.strokeRect(c.x, c.y, c.w, c.h);
+      const hs = Math.max(8, img.width / 120); g.fillStyle = "#22c55e";
+      handles(c).forEach(([x, y]) => g.fillRect(x - hs / 2, y - hs / 2, hs, hs));
+      g.restore();
+    }
+    if(draft){ g.save(); g.translate(-view.ox, -view.oy); drawAnnot(g, draft, it()); g.restore(); } // 座標は元画像のまま、描く位置だけずらす(ぼかしが元画像の同じ位置を使えるように)
+    if(editing && tool === "select"){
+      g.save(); g.setLineDash([8, 6]); g.strokeStyle = "#3b82f6"; g.lineWidth = Math.max(2, img.width / 600);
+      selSet.forEach((i) => { const a = it().annots[i]; if(!a) return; const b = bbox(a); g.strokeRect(b.x - view.ox - 6, b.y - view.oy - 6, b.w + 12, b.h + 12); });
+      if(drag && drag.kind === "marquee"){ g.setLineDash([4, 4]); g.fillStyle = "rgba(59,130,246,.12)"; const x = Math.min(drag.x0, drag.x1) - view.ox, y = Math.min(drag.y0, drag.y1) - view.oy, w = Math.abs(drag.x1 - drag.x0), h = Math.abs(drag.y1 - drag.y0); g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h); }
+      g.restore();
+    }
+    // これから置くものの大きさの見本(マウスの位置に薄く表示)
+    if(editing && hoverP && !drag && !["crop", "select", "mosaic", "fill"].includes(tool)){
+      g.save(); g.globalAlpha = 0.55;
+      const vp = { x: hoverP.x, y: hoverP.y };
+      if(tool === "num") { g.translate(-view.ox, -view.oy); drawAnnot(g, { type: "num", x: vp.x, y: vp.y, n: nextNum(), color, w: size }, it()); g.translate(view.ox, view.oy); }
+      else if(tool === "text") { g.translate(-view.ox, -view.oy); drawAnnot(g, { type: "text", x: vp.x, y: vp.y, text: "文字", color, w: size }, it()); g.translate(view.ox, view.oy); }
+      else {
+        const lw = baseW(it()) * size * (tool === "marker" ? 5 : 1);
+        g.fillStyle = tool === "marker" ? color : color; g.globalAlpha = tool === "marker" ? 0.3 : 0.5;
+        g.beginPath(); g.arc(vp.x - view.ox, vp.y - view.oy, Math.max(1.5, lw / 2), 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
+    }
+  }
+  function toView(a){ // 下書きを表示座標に(draw時は元画像座標から表示のずれを引く)
+    const dx = -view.ox, dy = -view.oy, o = JSON.parse(JSON.stringify(a));
+    if(o.type === "arrow" || o.type === "line"){ o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; }
+    else if(o.type === "marker") o.pts = o.pts.map((p) => [p[0] + dx, p[1] + dy]);
+    else { o.x += dx; o.y += dy; }
+    return o;
+  }
+  const handles = (c) => [[c.x, c.y], [c.x + c.w / 2, c.y], [c.x + c.w, c.y], [c.x + c.w, c.y + c.h / 2], [c.x + c.w, c.y + c.h], [c.x + c.w / 2, c.y + c.h], [c.x, c.y + c.h], [c.x, c.y + c.h / 2]];
+  function pos(e){ const r = cv.getBoundingClientRect(), k = cv.width / r.width; return { x: (e.clientX - r.left) * k + view.ox, y: (e.clientY - r.top) * k + view.oy, k }; }
+  function bbox(a){
+    if(a.type === "arrow" || a.type === "line") return { x: Math.min(a.x1, a.x2), y: Math.min(a.y1, a.y2), w: Math.abs(a.x2 - a.x1), h: Math.abs(a.y2 - a.y1) };
+    if(a.type === "num"){ const r = baseW(it()) * (4 + a.w * 2.5); return { x: a.x - r, y: a.y - r, w: r * 2, h: r * 2 }; }
+    if(a.type === "rect" || a.type === "mosaic" || a.type === "fill") return { x: Math.min(a.x, a.x + a.w2), y: Math.min(a.y, a.y + a.h2), w: Math.abs(a.w2), h: Math.abs(a.h2) };
+    if(a.type === "marker"){ const xs = a.pts.map((p) => p[0]), ys = a.pts.map((p) => p[1]); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }; }
+    const size = baseW(it()) * (6 + a.w * 4), lines = a.text.split("\n");
+    g.font = `bold ${size}px sans-serif`;
+    return { x: a.x, y: a.y, w: Math.max(...lines.map((l) => g.measureText(l).width)), h: lines.length * size * 1.25 };
+  }
+  function hitTest(p){
+    const pad = baseW(it()) * 4;
+    for(let i = it().annots.length - 1; i >= 0; i--){ const b = bbox(it().annots[i]); if(p.x >= b.x - pad && p.x <= b.x + b.w + pad && p.y >= b.y - pad && p.y <= b.y + b.h + pad) return i; }
+    return -1;
+  }
+  function moveAnnot(a, dx, dy){
+    if(a.type === "arrow" || a.type === "line"){ a.x1 += dx; a.y1 += dy; a.x2 += dx; a.y2 += dy; }
+    else if(a.type === "marker") a.pts = a.pts.map((p) => [p[0] + dx, p[1] + dy]);
+    else { a.x += dx; a.y += dy; }
+  }
+  const width = () => size;
+  const nextNum = () => Math.max(0, ...it().annots.filter((a) => a.type === "num").map((a) => a.n)) + 1;
+  function setSize(v, applyToSel){
+    size = Math.max(0.5, Math.min(8, Math.round(v * 10) / 10));
+    $("sizeRange").value = size; $("sizeLbl").textContent = size.toFixed(1);
+    if(applyToSel && tool === "select" && selSet.size){ selSet.forEach((i) => { it().annots[i].w = size; }); }
+    draw();
+  }
+  $("sizeRange").addEventListener("input", () => { if(tool === "select" && selSet.size && !sizeUndoOpen){ pushUndo(); sizeUndoOpen = true; } setSize(Number($("sizeRange").value), true); });
+  $("sizeRange").addEventListener("change", () => { sizeUndoOpen = false; });
+  let sizeUndoOpen = false, sizeUndoTimer = null;
+  // 編集中の拡大: ホイールで拡大縮小(マウスの位置を中心に)、Space+ドラッグ(または中ボタン)で移動
+  let zoom = 1, panX = 0, panY = 0, spaceDown = false, panDrag = null;
+  function applyZoom(){ cv.style.transformOrigin = "0 0"; cv.style.transform = (zoom === 1 && !panX && !panY) ? "" : `translate(${panX}px, ${panY}px) scale(${zoom})`; }
+  function resetZoom(){ zoom = 1; panX = 0; panY = 0; applyZoom(); }
+  $("lbStageWrap").addEventListener("wheel", (e) => {
+    if(!editing) return;
+    e.preventDefault();
+    if(e.ctrlKey || e.metaKey){ // 太さ・大きさを変える(選択中の書き込みがあればそれも)
+      if(tool === "select" && selSet.size && !sizeUndoOpen){ pushUndo(); sizeUndoOpen = true; }
+      clearTimeout(sizeUndoTimer); sizeUndoTimer = setTimeout(() => { sizeUndoOpen = false; }, 600);
+      // 1目盛りずつ同じ幅で増減(Ctrl+ホイール 0.1、Shift も押すと 0.5 の倍数の値へ)。Shift 中はブラウザが横スクロール(deltaX)として送るので両方を見る
+      const d = e.deltaY || e.deltaX;
+      if(e.shiftKey){ // 0.5 の倍数へ(2.3 → 上は 2.5、下は 2.0)
+        const q = size / 0.5, eps = 1e-6;
+        setSize((d < 0 ? Math.floor(q + eps) + 1 : Math.ceil(q - eps) - 1) * 0.5, true);
+      }else setSize(size + (d < 0 ? 0.1 : -0.1), true);
+      return;
+    }
+    const r = cv.getBoundingClientRect(), bx = r.left - panX, by = r.top - panY;
+    const mx = e.clientX - bx, my = e.clientY - by;
+    const nz = Math.max(1, Math.min(6, zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+    panX = mx - (mx - panX) * (nz / zoom); panY = my - (my - panY) * (nz / zoom); zoom = nz;
+    if(zoom === 1){ panX = 0; panY = 0; }
+    applyZoom();
+  }, { passive: false });
+  document.addEventListener("keydown", (e) => { if(e.code === "Space" && editing && $("textInput").hidden){ spaceDown = true; cv.style.cursor = "grab"; e.preventDefault(); } });
+  document.addEventListener("keyup", (e) => { if(e.code === "Space"){ spaceDown = false; cv.style.cursor = ""; } });
+  cv.addEventListener("pointerdown", (e) => {
+    if(!editing || !(spaceDown || e.button === 1)) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    panDrag = { x: e.clientX - panX, y: e.clientY - panY }; cv.setPointerCapture(e.pointerId);
+  }, true);
+  cv.addEventListener("pointermove", (e) => { if(panDrag){ e.stopImmediatePropagation(); panX = e.clientX - panDrag.x; panY = e.clientY - panDrag.y; applyZoom(); } }, true);
+  cv.addEventListener("pointerup", (e) => { if(panDrag){ e.stopImmediatePropagation(); panDrag = null; } }, true);
+
+  cv.addEventListener("pointerdown", (e) => {
+    if(!editing) return;
+    const p = pos(e);
+    if(tool === "text"){ if(!$("textInput").hidden){ commitText(); return; } openText(p, null); e.preventDefault(); return; }
+    if(tool === "num"){
+      const n = nextNum();
+      pushUndo(); it().annots.push({ type: "num", x: p.x, y: p.y, n, color, w: width() }); draw(); return;
+    }
+    cv.setPointerCapture(e.pointerId);
+    if(tool === "crop"){
+      const c = it().crop || { x: 0, y: 0, w: it().src.width, h: it().src.height };
+      const tol = 14 * p.k;
+      const hi = handles(c).findIndex(([x, y]) => Math.abs(p.x - x) < tol && Math.abs(p.y - y) < tol);
+      pushUndo();
+      if(hi >= 0) drag = { kind: "cropHandle", hi, c0: { ...c } };
+      else if(p.x > c.x && p.x < c.x + c.w && p.y > c.y && p.y < c.y + c.h) drag = { kind: "cropMove", sx: p.x, sy: p.y, c0: { ...c } };
+      else drag = { kind: "cropNew", sx: p.x, sy: p.y };
+      return;
+    }
+    if(tool === "select"){
+      const hit = hitTest(p);
+      if(hit >= 0){
+        if(e.shiftKey){ selSet.has(hit) ? selSet.delete(hit) : selSet.add(hit); }
+        else if(!selSet.has(hit)) selSet = new Set([hit]);
+        if(selSet.size){ pushUndo(); drag = { kind: "move", lx: p.x, ly: p.y }; }
+      }else{
+        if(!e.shiftKey) selSet.clear();
+        drag = { kind: "marquee", x0: p.x, y0: p.y, x1: p.x, y1: p.y }; // 何も無い所からドラッグ→範囲で選択
+      }
+      draw(); return;
+    }
+    const col = color, w = width();
+    if(tool === "arrow" || tool === "line") draft = { type: tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: col, w };
+    else if(tool === "rect" || tool === "mosaic" || tool === "fill") draft = { type: tool, x: p.x, y: p.y, w2: 0, h2: 0, color: col, w };
+    else if(tool === "marker") draft = { type: "marker", pts: [[p.x, p.y]], color: col === "#111111" ? "#facc15" : col, w, sx: p.x, sy: p.y };
+    drag = { kind: "draw" };
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if(editing && !drag){ hoverP = pos(e); if(!["crop", "select", "mosaic", "fill"].includes(tool)) draw(); return; }
+    if(!editing || !drag) return;
+    const p = pos(e);
+    const W = it().src.width, H = it().src.height, cl = (v, m) => Math.max(0, Math.min(m, v));
+    if(drag.kind === "cropNew"){ const x1 = cl(Math.min(drag.sx, p.x), W), y1 = cl(Math.min(drag.sy, p.y), H), x2 = cl(Math.max(drag.sx, p.x), W), y2 = cl(Math.max(drag.sy, p.y), H); it().crop = { x: Math.round(x1), y: Math.round(y1), w: Math.round(x2 - x1), h: Math.round(y2 - y1) }; }
+    else if(drag.kind === "cropMove"){ const c0 = drag.c0; it().crop = { ...c0, x: Math.round(cl(c0.x + p.x - drag.sx, W - c0.w)), y: Math.round(cl(c0.y + p.y - drag.sy, H - c0.h)) }; }
+    else if(drag.kind === "cropHandle"){
+      let { x, y, w, h } = drag.c0, x2 = x + w, y2 = y + h; const hi = drag.hi, px = cl(p.x, W), py = cl(p.y, H);
+      if([0, 6, 7].includes(hi)) x = Math.min(px, x2 - 10); if([2, 3, 4].includes(hi)) x2 = Math.max(px, x + 10);
+      if([0, 1, 2].includes(hi)) y = Math.min(py, y2 - 10); if([4, 5, 6].includes(hi)) y2 = Math.max(py, y + 10);
+      it().crop = { x: Math.round(x), y: Math.round(y), w: Math.round(x2 - x), h: Math.round(y2 - y) };
+    }
+    else if(drag.kind === "move"){ selSet.forEach((i) => moveAnnot(it().annots[i], p.x - drag.lx, p.y - drag.ly)); drag.lx = p.x; drag.ly = p.y; }
+    else if(drag.kind === "marquee"){ drag.x1 = p.x; drag.y1 = p.y; }
+    else if(drag.kind === "draw" && draft){
+      if(draft.type === "arrow" || draft.type === "line"){
+        let x2 = p.x, y2 = p.y;
+        if(e.shiftKey){ // 水平・垂直・45°にそろえる
+          const dx = x2 - draft.x1, dy = y2 - draft.y1, len = Math.hypot(dx, dy), ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+          x2 = draft.x1 + Math.cos(ang) * len; y2 = draft.y1 + Math.sin(ang) * len;
+        }
+        draft.x2 = x2; draft.y2 = y2;
+      }
+      else if(draft.type === "rect" || draft.type === "mosaic" || draft.type === "fill"){ draft.w2 = p.x - draft.x; draft.h2 = p.y - draft.y; }
+      else if(draft.type === "marker"){
+        if(e.shiftKey){ const dx = p.x - draft.sx, dy = p.y - draft.sy; draft.pts = [[draft.sx, draft.sy], Math.abs(dx) > Math.abs(dy) ? [p.x, draft.sy] : [draft.sx, p.y]]; }
+        else draft.pts.push([p.x, p.y]);
+      }
+    }
+    draw();
+  });
+  cv.addEventListener("pointerup", () => {
+    if(!editing || !drag) return;
+    if(drag.kind === "draw" && draft){
+      const b = bbox(draft);
+      if(b.w + b.h > 6){ pushUndo(); delete draft.sx; delete draft.sy; it().annots.push(draft); }
+    }
+    if(drag.kind === "marquee"){
+      const x1 = Math.min(drag.x0, drag.x1), y1 = Math.min(drag.y0, drag.y1), x2 = Math.max(drag.x0, drag.x1), y2 = Math.max(drag.y0, drag.y1);
+      it().annots.forEach((a, i) => { const b = bbox(a); if(b.x <= x2 && b.x + b.w >= x1 && b.y <= y2 && b.y + b.h >= y1) selSet.add(i); }); // 少しでも掛かっていれば選択
+    }
+    if(drag.kind.startsWith("crop") && it().crop && (it().crop.w < 10 || it().crop.h < 10)) it().crop = JSON.parse(undoStack[undoStack.length - 1]).crop;
+    draft = null; drag = null; draw();
+  });
+  cv.addEventListener("pointerleave", () => { hoverP = null; if(editing) draw(); });
+  cv.addEventListener("dblclick", (e) => {
+    if(!editing) return;
+    const p = pos(e);
+    if(tool === "crop"){
+      const found = detectSlideRect(it().src, p.x, p.y);
+      $("toolHint").textContent = found ? `スライドを検出しました(${found.w}×${found.h})` : "スライドの枠を見つけられませんでした。ドラッグで指定してください";
+      if(found){ pushUndo(); it().crop = found; draw(); }
+      return;
+    }
+    if(tool === "select"){ const i = hitTest(p); if(i >= 0 && it().annots[i].type === "text") openText(p, i); }
+  });
+
+  // 文字の入力(画像の上に入力欄を重ねる)
+  let textCtx = null;
+  function openText(p, editIdx){
+    const r = cv.getBoundingClientRect(), k = r.width / cv.width, wrap = $("lbStageWrap").getBoundingClientRect();
+    const a = editIdx != null ? it().annots[editIdx] : null;
+    const x = a ? a.x : p.x, y = a ? a.y : p.y, w = a ? a.w : width();
+    const size = baseW(it()) * (6 + w * 4) * k;
+    const ti = $("textInput");
+    Object.assign(ti.style, { left: (r.left - wrap.left + (x - view.ox) * k) + "px", top: (r.top - wrap.top + (y - view.oy) * k) + "px", fontSize: size + "px", color: a ? a.color : color });
+    ti.textContent = a ? a.text : ""; ti.hidden = false;
+    textCtx = { x, y, w, editIdx, color: a ? a.color : color };
+    setTimeout(() => ti.focus(), 0);
+  }
+  function commitText(){
+    const ti = $("textInput"); if(ti.hidden || !textCtx) return;
+    const t = ti.innerText.replace(/\n$/, "").trim();
+    ti.hidden = true;
+    if(textCtx.editIdx != null){ pushUndo(); if(t) it().annots[textCtx.editIdx].text = t; else it().annots.splice(textCtx.editIdx, 1); }
+    else if(t){ pushUndo(); it().annots.push({ type: "text", x: textCtx.x, y: textCtx.y, text: t, color: textCtx.color, w: textCtx.w }); }
+    textCtx = null; draw();
+  }
+  $("textInput").addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if(e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); commitText(); }
+    else if(e.key === "Escape"){ $("textInput").hidden = true; textCtx = null; }
+  });
+
+  // ---------- ボタン・キー ----------
+  document.querySelectorAll("#tools [data-tool]").forEach((b) => b.addEventListener("click", () => setTool(b.dataset.tool)));
+  $("colors").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-color]"); if(!b) return;
+    color = b.dataset.color;
+    document.querySelectorAll(".colorBtn").forEach((x) => x.classList.toggle("on", x === b));
+    if(tool === "select" && selSet.size){ pushUndo(); selSet.forEach((i) => { it().annots[i].color = color; }); }
+    draw();
+  });
+  document.querySelector(".colorBtn").classList.add("on");
+  const undo = () => { if(!undoStack.length) return; redoStack.push(snapshot()); restore(undoStack.pop()); selSet.clear(); draw(); };
+  const redo = () => { if(!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); selSet.clear(); draw(); };
+  $("btnUndo").addEventListener("click", undo); $("btnRedo").addEventListener("click", redo);
+  const delSel = () => { if(!selSet.size) return; pushUndo(); [...selSet].sort((a, b) => b - a).forEach((i) => it().annots.splice(i, 1)); selSet.clear(); draw(); };
+  $("btnDelSel").addEventListener("click", delSel);
+  $("btnFit").addEventListener("click", resetZoom);
+  $("btnReset").addEventListener("click", () => { pushUndo(); it().crop = null; it().annots = []; selSet.clear(); draw(); });
+  $("btnEdit").addEventListener("click", () => { if(editing) finishEdit(true); else { startEdit(); setTool(tool === "crop" ? "arrow" : tool); } });
+  $("btnDone").addEventListener("click", () => finishEdit(true));
+  $("btnCancel").addEventListener("click", () => finishEdit(false));
+  $("btnCap").addEventListener("click", () => { capOn = !capOn; sync(); });
+  $("btnClose").addEventListener("click", () => { if(editing) finishEdit(true); $("lb").hidden = true; });
+  // 編集中に次の画像へ移るときは、今の画像の編集を保存して、次の画像でも編集を続ける
+  function go(d){
+    const n = cur + d; if(n < 0 || n >= items.length) return;
+    const wasEditing = editing, t = tool;
+    if(editing) finishEdit(true);
+    cur = n;
+    if(wasEditing){ startEdit(); setTool(t); }
+    sync();
+  }
+  $("lbPrev").addEventListener("click", () => go(-1)); $("lbNext").addEventListener("click", () => go(1));
+  document.addEventListener("keydown", (e) => {
+    if($("lb").hidden) return;
+    if(editing){
+      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); return; }
+      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y"){ e.preventDefault(); redo(); return; }
+      if(e.key === "Delete" || e.key === "Backspace"){ delSel(); return; }
+      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && tool === "select"){ e.preventDefault(); selSet = new Set(it().annots.map((_, i) => i)); draw(); return; }
+      if(e.key === "Escape"){ finishEdit(false); return; }
+      return; // 編集中は← →で画像を切り替えない(ボタンで移動)
+    }
+    if(e.key === "ArrowLeft") go(-1); else if(e.key === "ArrowRight") go(1);
+    else if(e.key === "Escape") $("lb").hidden = true;
+  });
+  window.addEventListener("resize", () => { if(!$("lb").hidden) draw(); });
+
+  const sysTheme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const themeLabel = () => { const t = document.documentElement.dataset.theme || sysTheme(); $("btnTheme").textContent = t === "dark" ? "☀ ライト" : "🌙 ダーク"; };
+  $("btnTheme").addEventListener("click", () => { const t = document.documentElement.dataset.theme || sysTheme(); document.documentElement.dataset.theme = t === "dark" ? "light" : "dark"; themeLabel(); });
+  themeLabel();
+  renderList();
+  window.__mock = { items, openLb, setTool };
+})();
+</script>
+</body>
+</html>
