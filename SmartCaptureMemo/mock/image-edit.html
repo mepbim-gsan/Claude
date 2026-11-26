@@ -54,6 +54,8 @@
   .colorBtn{width:24px; height:24px !important; min-width:24px; padding:0 !important; border-radius:50%; border:2px solid #3a3f4c !important;}
   .colorBtn.on{outline:2px solid #fff; outline-offset:2px;}
   #tools .hint{color:#9aa0ac; font-size:12px; flex-basis:100%; text-align:center;}
+  #sizeBox{color:#e6e8ec; font-size:12px; display:inline-flex; align-items:center; gap:4px;}
+  #sizeBox input{width:110px;}
   #textInput{position:absolute; z-index:60; background:rgba(255,255,255,.95); border:2px dashed #3b6fe0; padding:2px 4px; font-family:sans-serif; outline:none; min-width:80px;}
   #textInput[hidden]{display:none;}
 </style>
@@ -101,7 +103,7 @@
     <button type="button" data-tool="fill" title="ドラッグした範囲を選んだ色で塗り潰す">■ 塗り潰し</button>
     <span style="flex-basis:100%; height:0;"></span>
     <span id="colors"></span>
-    <select id="widthSel" title="太さ・文字の大きさ"><option value="1">細</option><option value="2" selected>中</option><option value="3">太</option></select>
+    <label id="sizeBox" title="太さ・大きさ(Ctrl+ホイールでも変更。選択中の書き込みにも反映)">サイズ <input type="range" id="sizeRange" min="0.5" max="8" step="0.1" value="2"> <span id="sizeLbl">2.0</span></label>
     <span class="sep"></span>
     <button type="button" id="btnUndo" title="元に戻す(Ctrl+Z)">↶</button>
     <button type="button" id="btnRedo" title="やり直し(Ctrl+Y)">↷</button>
@@ -401,7 +403,8 @@
   const cv = $("lbCanvas"), g = cv.getContext("2d");
   let cur = 0, editing = false, tool = "arrow", color = "#ef4444", capOn = true;
   let snapStart = null, undoStack = [], redoStack = [];
-  let selIdx = -1, drag = null, draft = null;
+  let selSet = new Set(), drag = null, draft = null, hoverP = null;
+  let size = 2; // 太さ・大きさ(連続値)。Ctrl+ホイールで変更
   const COLORS = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#ffffff", "#111111"];
   $("colors").innerHTML = COLORS.map((c) => `<button type="button" class="colorBtn" data-color="${c}" style="background:${c}" title="${c}"></button>`).join("");
 
@@ -415,19 +418,19 @@
     if(cropMode){ const t = lastTool; startEdit(); setTool(t); } else { editing = false; }
     sync();
   }
-  function startEdit(){ editing = true; snapStart = snapshot(); undoStack = []; redoStack = []; selIdx = -1; if(tool === "crop") setTool("arrow"); }
+  function startEdit(){ editing = true; snapStart = snapshot(); undoStack = []; redoStack = []; selSet.clear(); if(tool === "crop") setTool("arrow"); }
   function finishEdit(save){
     commitText();
     if(!save && snapStart) restore(snapStart);
-    editing = false; selIdx = -1; snapStart = null; resetZoom(); renderList(); sync();
+    editing = false; selSet.clear(); snapStart = null; resetZoom(); renderList(); sync();
   }
   let lastTool = "crop"; // 一覧の「✏️ 編集」で開くときの道具(最後に使った道具。最初はトリミング)
   function setTool(t){
-    commitText(); tool = t; lastTool = t; selIdx = t === "select" ? selIdx : -1;
+    commitText(); tool = t; lastTool = t; if(t !== "select") selSet.clear();
     document.querySelectorAll("#tools [data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
     $("toolHint").textContent = {
       crop: "枠をドラッグで範囲を選ぶ(四隅・辺で大きさ、内側で移動)。スライドの中をダブルクリックでスライドを自動検出",
-      select: "書き込みをクリックで選択 → ドラッグで移動、Delete で削除。文字はダブルクリックで書き直し",
+      select: "クリックで選択(Shift+クリックで追加)、何も無い所からドラッグで範囲選択、Ctrl+A で全部。ドラッグで移動、Delete で削除、色・サイズの変更も選択中のものに反映。文字はダブルクリックで書き直し",
       line: "ドラッグで直線(Shift を押しながらで水平・垂直・45°)",
       arrow: "ドラッグで矢印(始点→矢じり。Shift を押しながらで水平・垂直・45°)", rect: "ドラッグで枠", marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)", text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)",
       num: "クリックするたびに ①②③… と番号を置く(消した番号の続きから)",
@@ -466,9 +469,24 @@
       g.restore();
     }
     if(draft) drawAnnot(g, toView(draft), it());
-    if(editing && tool === "select" && selIdx >= 0){
-      const b = bbox(it().annots[selIdx]); g.save(); g.setLineDash([8, 6]); g.strokeStyle = "#3b82f6"; g.lineWidth = Math.max(2, img.width / 600);
-      g.strokeRect(b.x - view.ox - 6, b.y - view.oy - 6, b.w + 12, b.h + 12); g.restore();
+    if(editing && tool === "select"){
+      g.save(); g.setLineDash([8, 6]); g.strokeStyle = "#3b82f6"; g.lineWidth = Math.max(2, img.width / 600);
+      selSet.forEach((i) => { const a = it().annots[i]; if(!a) return; const b = bbox(a); g.strokeRect(b.x - view.ox - 6, b.y - view.oy - 6, b.w + 12, b.h + 12); });
+      if(drag && drag.kind === "marquee"){ g.setLineDash([4, 4]); g.fillStyle = "rgba(59,130,246,.12)"; const x = Math.min(drag.x0, drag.x1) - view.ox, y = Math.min(drag.y0, drag.y1) - view.oy, w = Math.abs(drag.x1 - drag.x0), h = Math.abs(drag.y1 - drag.y0); g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h); }
+      g.restore();
+    }
+    // これから置くものの大きさの見本(マウスの位置に薄く表示)
+    if(editing && hoverP && !drag && !["crop", "select", "mosaic", "fill"].includes(tool)){
+      g.save(); g.globalAlpha = 0.55;
+      const vp = { x: hoverP.x, y: hoverP.y };
+      if(tool === "num") drawAnnot(g, toView({ type: "num", x: vp.x, y: vp.y, n: nextNum(), color, w: size }), it());
+      else if(tool === "text") drawAnnot(g, toView({ type: "text", x: vp.x, y: vp.y, text: "文字", color, w: size }), it());
+      else {
+        const lw = baseW(it()) * size * (tool === "marker" ? 5 : 1);
+        g.fillStyle = tool === "marker" ? color : color; g.globalAlpha = tool === "marker" ? 0.3 : 0.5;
+        g.beginPath(); g.arc(vp.x - view.ox, vp.y - view.oy, Math.max(1.5, lw / 2), 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
     }
   }
   function toView(a){ // 下書きを表示座標に(draw時は元画像座標から表示のずれを引く)
@@ -499,7 +517,17 @@
     else if(a.type === "marker") a.pts = a.pts.map((p) => [p[0] + dx, p[1] + dy]);
     else { a.x += dx; a.y += dy; }
   }
-  const width = () => Number($("widthSel").value);
+  const width = () => size;
+  const nextNum = () => Math.max(0, ...it().annots.filter((a) => a.type === "num").map((a) => a.n)) + 1;
+  function setSize(v, applyToSel){
+    size = Math.max(0.5, Math.min(8, Math.round(v * 10) / 10));
+    $("sizeRange").value = size; $("sizeLbl").textContent = size.toFixed(1);
+    if(applyToSel && tool === "select" && selSet.size){ selSet.forEach((i) => { it().annots[i].w = size; }); }
+    draw();
+  }
+  $("sizeRange").addEventListener("input", () => { if(tool === "select" && selSet.size && !sizeUndoOpen){ pushUndo(); sizeUndoOpen = true; } setSize(Number($("sizeRange").value), true); });
+  $("sizeRange").addEventListener("change", () => { sizeUndoOpen = false; });
+  let sizeUndoOpen = false, sizeUndoTimer = null;
   // 編集中の拡大: ホイールで拡大縮小(マウスの位置を中心に)、Space+ドラッグ(または中ボタン)で移動
   let zoom = 1, panX = 0, panY = 0, spaceDown = false, panDrag = null;
   function applyZoom(){ cv.style.transformOrigin = "0 0"; cv.style.transform = (zoom === 1 && !panX && !panY) ? "" : `translate(${panX}px, ${panY}px) scale(${zoom})`; }
@@ -507,6 +535,12 @@
   $("lbStageWrap").addEventListener("wheel", (e) => {
     if(!editing) return;
     e.preventDefault();
+    if(e.ctrlKey || e.metaKey){ // 太さ・大きさを変える(選択中の書き込みがあればそれも)
+      if(tool === "select" && selSet.size && !sizeUndoOpen){ pushUndo(); sizeUndoOpen = true; }
+      clearTimeout(sizeUndoTimer); sizeUndoTimer = setTimeout(() => { sizeUndoOpen = false; }, 600);
+      setSize(size * (e.deltaY < 0 ? 1.12 : 1 / 1.12), true);
+      return;
+    }
     const r = cv.getBoundingClientRect(), bx = r.left - panX, by = r.top - panY;
     const mx = e.clientX - bx, my = e.clientY - by;
     const nz = Math.max(1, Math.min(6, zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
@@ -529,7 +563,7 @@
     const p = pos(e);
     if(tool === "text"){ if(!$("textInput").hidden){ commitText(); return; } openText(p, null); e.preventDefault(); return; }
     if(tool === "num"){
-      const n = Math.max(0, ...it().annots.filter((a) => a.type === "num").map((a) => a.n)) + 1;
+      const n = nextNum();
       pushUndo(); it().annots.push({ type: "num", x: p.x, y: p.y, n, color, w: width() }); draw(); return;
     }
     cv.setPointerCapture(e.pointerId);
@@ -544,8 +578,15 @@
       return;
     }
     if(tool === "select"){
-      selIdx = hitTest(p);
-      if(selIdx >= 0){ pushUndo(); drag = { kind: "move", lx: p.x, ly: p.y }; }
+      const hit = hitTest(p);
+      if(hit >= 0){
+        if(e.shiftKey){ selSet.has(hit) ? selSet.delete(hit) : selSet.add(hit); }
+        else if(!selSet.has(hit)) selSet = new Set([hit]);
+        if(selSet.size){ pushUndo(); drag = { kind: "move", lx: p.x, ly: p.y }; }
+      }else{
+        if(!e.shiftKey) selSet.clear();
+        drag = { kind: "marquee", x0: p.x, y0: p.y, x1: p.x, y1: p.y }; // 何も無い所からドラッグ→範囲で選択
+      }
       draw(); return;
     }
     const col = color, w = width();
@@ -555,6 +596,7 @@
     drag = { kind: "draw" };
   });
   cv.addEventListener("pointermove", (e) => {
+    if(editing && !drag){ hoverP = pos(e); if(!["crop", "select", "mosaic", "fill"].includes(tool)) draw(); return; }
     if(!editing || !drag) return;
     const p = pos(e);
     const W = it().src.width, H = it().src.height, cl = (v, m) => Math.max(0, Math.min(m, v));
@@ -566,7 +608,8 @@
       if([0, 1, 2].includes(hi)) y = Math.min(py, y2 - 10); if([4, 5, 6].includes(hi)) y2 = Math.max(py, y + 10);
       it().crop = { x: Math.round(x), y: Math.round(y), w: Math.round(x2 - x), h: Math.round(y2 - y) };
     }
-    else if(drag.kind === "move"){ moveAnnot(it().annots[selIdx], p.x - drag.lx, p.y - drag.ly); drag.lx = p.x; drag.ly = p.y; }
+    else if(drag.kind === "move"){ selSet.forEach((i) => moveAnnot(it().annots[i], p.x - drag.lx, p.y - drag.ly)); drag.lx = p.x; drag.ly = p.y; }
+    else if(drag.kind === "marquee"){ drag.x1 = p.x; drag.y1 = p.y; }
     else if(drag.kind === "draw" && draft){
       if(draft.type === "arrow" || draft.type === "line"){
         let x2 = p.x, y2 = p.y;
@@ -590,9 +633,14 @@
       const b = bbox(draft);
       if(b.w + b.h > 6){ pushUndo(); delete draft.sx; delete draft.sy; it().annots.push(draft); }
     }
+    if(drag.kind === "marquee"){
+      const x1 = Math.min(drag.x0, drag.x1), y1 = Math.min(drag.y0, drag.y1), x2 = Math.max(drag.x0, drag.x1), y2 = Math.max(drag.y0, drag.y1);
+      it().annots.forEach((a, i) => { const b = bbox(a); if(b.x <= x2 && b.x + b.w >= x1 && b.y <= y2 && b.y + b.h >= y1) selSet.add(i); }); // 少しでも掛かっていれば選択
+    }
     if(drag.kind.startsWith("crop") && it().crop && (it().crop.w < 10 || it().crop.h < 10)) it().crop = JSON.parse(undoStack[undoStack.length - 1]).crop;
     draft = null; drag = null; draw();
   });
+  cv.addEventListener("pointerleave", () => { hoverP = null; if(editing) draw(); });
   cv.addEventListener("dblclick", (e) => {
     if(!editing) return;
     const p = pos(e);
@@ -638,17 +686,17 @@
     const b = e.target.closest("[data-color]"); if(!b) return;
     color = b.dataset.color;
     document.querySelectorAll(".colorBtn").forEach((x) => x.classList.toggle("on", x === b));
-    if(tool === "select" && selIdx >= 0){ pushUndo(); it().annots[selIdx].color = color; draw(); }
+    if(tool === "select" && selSet.size){ pushUndo(); selSet.forEach((i) => { it().annots[i].color = color; }); }
+    draw();
   });
   document.querySelector(".colorBtn").classList.add("on");
-  $("widthSel").addEventListener("change", () => { if(tool === "select" && selIdx >= 0){ pushUndo(); it().annots[selIdx].w = width(); draw(); } });
-  const undo = () => { if(!undoStack.length) return; redoStack.push(snapshot()); restore(undoStack.pop()); selIdx = -1; draw(); };
-  const redo = () => { if(!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); selIdx = -1; draw(); };
+  const undo = () => { if(!undoStack.length) return; redoStack.push(snapshot()); restore(undoStack.pop()); selSet.clear(); draw(); };
+  const redo = () => { if(!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); selSet.clear(); draw(); };
   $("btnUndo").addEventListener("click", undo); $("btnRedo").addEventListener("click", redo);
-  const delSel = () => { if(selIdx < 0) return; pushUndo(); it().annots.splice(selIdx, 1); selIdx = -1; draw(); };
+  const delSel = () => { if(!selSet.size) return; pushUndo(); [...selSet].sort((a, b) => b - a).forEach((i) => it().annots.splice(i, 1)); selSet.clear(); draw(); };
   $("btnDelSel").addEventListener("click", delSel);
   $("btnFit").addEventListener("click", resetZoom);
-  $("btnReset").addEventListener("click", () => { pushUndo(); it().crop = null; it().annots = []; selIdx = -1; draw(); });
+  $("btnReset").addEventListener("click", () => { pushUndo(); it().crop = null; it().annots = []; selSet.clear(); draw(); });
   $("btnEdit").addEventListener("click", () => { if(editing) finishEdit(true); else { startEdit(); setTool(tool === "crop" ? "arrow" : tool); } });
   $("btnDone").addEventListener("click", () => finishEdit(true));
   $("btnCancel").addEventListener("click", () => finishEdit(false));
@@ -670,6 +718,7 @@
       if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); return; }
       if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y"){ e.preventDefault(); redo(); return; }
       if(e.key === "Delete" || e.key === "Backspace"){ delSel(); return; }
+      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && tool === "select"){ e.preventDefault(); selSet = new Set(it().annots.map((_, i) => i)); draw(); return; }
       if(e.key === "Escape"){ finishEdit(false); return; }
       return; // 編集中は← →で画像を切り替えない(ボタンで移動)
     }
