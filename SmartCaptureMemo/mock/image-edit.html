@@ -99,7 +99,7 @@
     <button type="button" data-tool="marker" title="なぞって蛍光マーカー(Shiftで水平・垂直)">🖍 マーカー</button>
     <button type="button" data-tool="text" title="クリックして文字を入力(Enterで確定)">T 文字</button>
     <button type="button" data-tool="num" title="クリックするたびに ①②③… と番号を置く">① 番号</button>
-    <button type="button" data-tool="mosaic" title="ドラッグした範囲をモザイクで隠す">▦ モザイク</button>
+    <button type="button" data-tool="mosaic" title="ドラッグした範囲をぼかして隠す(サイズでぼかしの強さを調整)">▦ ぼかし</button>
     <button type="button" data-tool="fill" title="ドラッグした範囲を選んだ色で塗り潰す">■ 塗り潰し</button>
     <span style="flex-basis:100%; height:0;"></span>
     <span id="colors"></span>
@@ -352,13 +352,16 @@
     }else if(a.type === "fill"){
       g.fillStyle = a.color; g.fillRect(a.x, a.y, a.w2, a.h2);
     }else if(a.type === "mosaic"){
-      // 元の画像の画素を粗いマス目にして上に描く(下の文字が読めなくなる)
+      // 範囲を元の画像からぼかして上に描く(文字が読めない程度。サイズで強さを変えられる)
       const x = Math.round(Math.min(a.x, a.x + a.w2)), y = Math.round(Math.min(a.y, a.y + a.h2)), w = Math.round(Math.abs(a.w2)), h = Math.round(Math.abs(a.h2));
       if(w >= 2 && h >= 2){
-        const cell = Math.max(6, Math.round(it.src.width / 90)), sw = Math.max(1, Math.round(w / cell)), sh = Math.max(1, Math.round(h / cell));
-        const t = document.createElement("canvas"); t.width = sw; t.height = sh;
-        t.getContext("2d").drawImage(it.src, x, y, w, h, 0, 0, sw, sh);
-        g.imageSmoothingEnabled = false; g.drawImage(t, 0, 0, sw, sh, x, y, w, h);
+        const r = Math.max(4, baseW(it) * a.w * 1.6);
+        g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+        g.filter = `blur(${r}px)`;
+        // 枠の外の画素も少し使ってぼかし、縁が白っぽくならないようにする
+        const m = Math.ceil(r * 2);
+        g.drawImage(it.src, x - m, y - m, w + m * 2, h + m * 2, x - m, y - m, w + m * 2, h + m * 2);
+        g.filter = "none"; g.restore();
       }
     }else if(a.type === "rect"){
       g.strokeStyle = a.color; g.lineWidth = lw; g.strokeRect(a.x, a.y, a.w2, a.h2);
@@ -434,7 +437,7 @@
       line: "ドラッグで直線(Shift を押しながらで水平・垂直・45°)",
       arrow: "ドラッグで矢印(始点→矢じり。Shift を押しながらで水平・垂直・45°)", rect: "ドラッグで枠", marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)", text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)",
       num: "クリックするたびに ①②③… と番号を置く(消した番号の続きから)",
-      mosaic: "ドラッグした範囲をモザイクで隠す(名前・数字などを隠すとき)",
+      mosaic: "ドラッグした範囲をぼかして隠す(名前・数字などを隠すとき。Ctrl+ホイール・サイズでぼかしの強さを調整)",
       fill: "ドラッグした範囲を選んだ色で塗り潰す"
     }[t];
     sync();
