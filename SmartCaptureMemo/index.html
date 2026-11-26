@@ -957,7 +957,7 @@
     <button type="button" data-tool="rect" title="ドラッグで枠">▭ 枠</button>
     <button type="button" data-tool="marker" title="なぞって蛍光マーカー(Shiftで水平・垂直)">🖍 マーカー</button>
     <button type="button" data-tool="text" title="クリックして文字を入力(Enterで確定)">T 文字</button>
-    <button type="button" data-tool="num" title="クリックするたびに ①②③… と番号を置く">① 番号</button>
+    <button type="button" data-tool="num" title="クリックするたびに ①②③… と番号を置く(色ごとに数える)。もう一度押すと形を切り替え(❶ 塗り潰し / ① 丸と数字に色)">❶ 番号</button>
     <button type="button" data-tool="mosaic" title="ドラッグした範囲をぼかして隠す(サイズでぼかしの強さを調整)">▦ ぼかし</button>
     <button type="button" data-tool="fill" title="ドラッグした範囲を選んだ色で塗り潰す">■ 塗り潰し</button>
     <span class="brk"></span>
@@ -4326,7 +4326,7 @@
     rect: "ドラッグで枠",
     marker: "なぞって蛍光マーカー(Shift を押しながらで水平・垂直)",
     text: "置きたい場所をクリック → 入力 → Enter で確定(Shift+Enter で改行)",
-    num: "クリックするたびに ①②③… と番号を置く(消した番号の続きから)",
+    num: "クリックするたびに ①②③… と番号を置く(色ごとに数え、消した番号の続きから)。「番号」をもう一度押すと形を切り替え(❶ 塗り潰し / ① 丸と数字に色)。👆選択で番号を選んで押すと、置いた番号の形も変わる",
     mosaic: "ドラッグした範囲をぼかして隠す(名前・数字などを隠すとき。Ctrl+ホイール・サイズでぼかしの強さを調整)",
     fill: "ドラッグした範囲を選んだ色で塗り潰す"
   };
@@ -4356,10 +4356,20 @@
       g.beginPath(); g.moveTo(a.x1, a.y1); g.lineTo(a.x2, a.y2); g.stroke();
     }else if(a.type === "num"){
       const r = edBaseW(src) * (4 + a.w * 2.5);
-      g.fillStyle = a.color; g.beginPath(); g.arc(a.x, a.y, r, 0, Math.PI * 2); g.fill();
-      g.lineWidth = r * 0.12; g.strokeStyle = "#fff"; g.stroke();
-      g.fillStyle = a.color === "#ffffff" || a.color === "#facc15" ? "#111" : "#fff";
-      g.font = `bold ${r * 1.15}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(a.n), a.x, a.y + r * 0.05);
+      g.font = `bold ${r * 1.15}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      if(a.st === "o"){ // 文字の ① のように丸と数字だけに色(読みやすいよう白い縁取り。白は黒で縁取り)
+        const halo = a.color === "#ffffff" ? "#000" : "#fff";
+        g.beginPath(); g.arc(a.x, a.y, r * 0.92, 0, Math.PI * 2);
+        g.strokeStyle = halo; g.lineWidth = r * 0.34; g.stroke();
+        g.strokeStyle = a.color; g.lineWidth = r * 0.14; g.stroke();
+        g.lineWidth = r * 0.2; g.strokeStyle = halo; g.strokeText(String(a.n), a.x, a.y + r * 0.05);
+        g.fillStyle = a.color; g.fillText(String(a.n), a.x, a.y + r * 0.05);
+      }else{
+        g.fillStyle = a.color; g.beginPath(); g.arc(a.x, a.y, r, 0, Math.PI * 2); g.fill();
+        g.lineWidth = r * 0.12; g.strokeStyle = "#fff"; g.stroke();
+        g.fillStyle = a.color === "#ffffff" || a.color === "#facc15" ? "#111" : "#fff";
+        g.fillText(String(a.n), a.x, a.y + r * 0.05);
+      }
     }else if(a.type === "fill"){
       g.fillStyle = a.color; g.fillRect(a.x, a.y, a.w2, a.h2);
     }else if(a.type === "mosaic"){
@@ -4521,7 +4531,10 @@
     $("edHint").textContent = ED_TOOL_HINTS[t];
     edDraw();
   }
-  const edNextNum = () => Math.max(0, ...edItem.annots.filter((a) => a.type === "num").map((a) => a.n)) + 1;
+  // 番号は色ごとに数える(赤は指摘・青は質問 のように色を分けて使えるように)。❶/① の形が違っても同じ色なら通し番号
+  const edNextNum = () => Math.max(0, ...edItem.annots.filter((a) => a.type === "num" && a.color === edColor).map((a) => a.n)) + 1;
+  let edNumOutline = false; // 番号の形: false=色で塗り潰した丸に白い数字(❶) / true=丸と数字だけに色(①)
+  function edSyncNumBtn(){ imgEditor.querySelector('#edTools [data-tool="num"]').textContent = (edNumOutline ? "①" : "❶") + " 番号"; }
   function edDraw(){
     if(!edItem) return;
     const src = edItem.src, full = edTool === "crop";
@@ -4557,7 +4570,7 @@
     // これから置くものの大きさの見本(マウスの位置に薄く表示)
     if(edHover && !edDrag && !["crop", "select", "mosaic", "fill"].includes(edTool) && edTextInput.hidden){
       edG.save(); edG.globalAlpha = 0.55; edG.translate(-edView.ox, -edView.oy);
-      if(edTool === "num") edDrawAnnot(edG, { type: "num", x: edHover.x, y: edHover.y, n: edNextNum(), color: edColor, w: edSize }, src);
+      if(edTool === "num") edDrawAnnot(edG, { type: "num", x: edHover.x, y: edHover.y, n: edNextNum(), color: edColor, w: edSize, st: edNumOutline ? "o" : undefined }, src);
       else if(edTool === "text") edDrawAnnot(edG, { type: "text", x: edHover.x, y: edHover.y, text: "文字", color: edColor, w: edSize }, src);
       else {
         const lw = edBaseW(src) * edSize * (edTool === "marker" ? 5 : 1);
@@ -4649,7 +4662,7 @@
     if(!edItem || e.button !== 0) return;
     const p = edPos(e);
     if(edTool === "text"){ if(!edTextInput.hidden){ edCommitText(); return; } edOpenText(p, null); e.preventDefault(); return; }
-    if(edTool === "num"){ edPushUndo(); edItem.annots.push({ type: "num", x: p.x, y: p.y, n: edNextNum(), color: edColor, w: edSize }); edDraw(); return; }
+    if(edTool === "num"){ edPushUndo(); edItem.annots.push({ type: "num", x: p.x, y: p.y, n: edNextNum(), color: edColor, w: edSize, st: edNumOutline ? "o" : undefined }); edDraw(); return; }
     edCanvas.setPointerCapture(e.pointerId);
     if(edTool === "crop"){
       const c = edItem.crop, hit = edCropHit(p);
@@ -4774,7 +4787,20 @@
   });
 
   // ---------- ボタン・キー ----------
-  imgEditor.querySelectorAll("#edTools [data-tool]").forEach((b) => b.addEventListener("click", () => edSetTool(b.dataset.tool)));
+  imgEditor.querySelectorAll("#edTools [data-tool]").forEach((b) => b.addEventListener("click", () => {
+    if(b.dataset.tool === "num"){
+      // 👆選択で番号を選んでいれば、その番号の形を切り替える(選択のまま)
+      const sel = edTool === "select" ? [...edSel].filter((i) => edItem.annots[i] && edItem.annots[i].type === "num") : [];
+      if(sel.length){
+        const toOutline = edItem.annots[sel[0]].st !== "o";
+        edPushUndo(); sel.forEach((i) => { edItem.annots[i].st = toOutline ? "o" : undefined; });
+        edNumOutline = toOutline; edSyncNumBtn(); edDraw(); return;
+      }
+      if(edTool === "num"){ edNumOutline = !edNumOutline; edSyncNumBtn(); edDraw(); return; } // 選んだ状態でもう一度押すと形を切り替え
+    }
+    edSetTool(b.dataset.tool);
+  }));
+  edSyncNumBtn();
   $("edColors").addEventListener("click", (e) => {
     const b = e.target.closest("[data-color]"); if(!b) return;
     edColor = b.dataset.color;
@@ -4862,7 +4888,7 @@
   });
 
   // ---------- バージョン履歴(さりげなく表記をクリックすると見られる簡易ログ) ----------
-  const APP_VERSION = "v06_2026-11-26.4"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
+  const APP_VERSION = "v06_2026-11-26.5"; // ← バージョンはここだけ変更(画面表示・更新履歴の先頭はこの定数から反映)
   const VERSION_HISTORY = [
     ["v01","Screen Capture Memo(旧ツール v01〜v104)。画面共有→範囲固定→キャプチャ→メモ→HTML書き出し・書き出し履歴まで"], // 説明は文字列、または箇条書きにする場合は文字列の配列
     ["v02_2026-11-18",["SmartCaptureMemoとして新規作成(Screen Capture Memo v104がベース、保存データは別)","上部タブ(範囲/記録/履歴)+⚙設定へ再編","見出しのセクション化(現在の見出しへ追加・目次・折りたたみ・Enterで連続登録)","履歴の期間フィルタ・検索・ファイルを開く/読み込む","保存先フォルダを毎回の選択ダイアログから許可確認方式へ"]],
@@ -4907,7 +4933,8 @@
     ["v06_2026-11-26",["画像の編集: 拡大表示・一覧の「✏️ 編集」でトリミングと書き込み(線・矢印・枠・蛍光マーカー・文字・①②③番号・ぼかし・塗り潰し)をまとめて行える(トリミング画面は編集画面に統合)","書き込みは元の画像を基準に保存するので、あとから動かす・消す・色やサイズを変えるのも自由。Ctrl+ホイールでサイズ、ホイールで拡大縮小、Ctrl+Z で元に戻す","編集の確定は一覧の Ctrl+Z でも元に戻せる。書き出したHTMLでは「✏️ 書き込み ON/OFF」で表示を切り替えられ、取り込み直すと書き込みを編集し直せる"]],
     ["v06_2026-11-26.2","画像の編集: Esc でも保存して閉じるように(キャンセルボタンを廃止。戻したいときは ↶ や一覧の Ctrl+Z で)"],
     ["v06_2026-11-26.3",["画像の編集: 画像の外(暗い所)をクリックしても保存して閉じる。文字の入力中の Esc は入力した文字を残す","トリミングに「トリミングなし」(画像全体に戻す)","トリミング枠を範囲タブと同じ見た目・操作に(青い枠と●、つまみや枠の内側でカーソルが変わる)"]],
-    ["v06_2026-11-26.4",["見出しを動かすと、そのセクションの画像・メモも一緒に移動(ドラッグ・Shift+Alt+↑/↓とも。前後のセクションと入れ替え)","新しく作った見出しを現在の見出しにする(続けてキャプチャするとその見出しへ入る。複数行の貼り付けでまとめて作ったときは除く)"]]
+    ["v06_2026-11-26.4",["見出しを動かすと、そのセクションの画像・メモも一緒に移動(ドラッグ・Shift+Alt+↑/↓とも。前後のセクションと入れ替え)","新しく作った見出しを現在の見出しにする(続けてキャプチャするとその見出しへ入る。複数行の貼り付けでまとめて作ったときは除く)"]],
+    ["v06_2026-11-26.5",["画像の編集の番号: 「番号」をもう一度押すと形を切り替え(❶ 色で塗り潰した丸 / ① 丸と数字だけに色)。👆選択で選んだ番号の形も変えられる","番号は色ごとに数える(赤は ①②…、青は別に ①②…)"]]
   ];
 
   const verLabel = $("verLabel");
