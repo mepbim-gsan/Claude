@@ -471,7 +471,7 @@
       handles(c).forEach(([x, y]) => g.fillRect(x - hs / 2, y - hs / 2, hs, hs));
       g.restore();
     }
-    if(draft) drawAnnot(g, toView(draft), it());
+    if(draft){ g.save(); g.translate(-view.ox, -view.oy); drawAnnot(g, draft, it()); g.restore(); } // 座標は元画像のまま、描く位置だけずらす(ぼかしが元画像の同じ位置を使えるように)
     if(editing && tool === "select"){
       g.save(); g.setLineDash([8, 6]); g.strokeStyle = "#3b82f6"; g.lineWidth = Math.max(2, img.width / 600);
       selSet.forEach((i) => { const a = it().annots[i]; if(!a) return; const b = bbox(a); g.strokeRect(b.x - view.ox - 6, b.y - view.oy - 6, b.w + 12, b.h + 12); });
@@ -482,8 +482,8 @@
     if(editing && hoverP && !drag && !["crop", "select", "mosaic", "fill"].includes(tool)){
       g.save(); g.globalAlpha = 0.55;
       const vp = { x: hoverP.x, y: hoverP.y };
-      if(tool === "num") drawAnnot(g, toView({ type: "num", x: vp.x, y: vp.y, n: nextNum(), color, w: size }), it());
-      else if(tool === "text") drawAnnot(g, toView({ type: "text", x: vp.x, y: vp.y, text: "文字", color, w: size }), it());
+      if(tool === "num") { g.translate(-view.ox, -view.oy); drawAnnot(g, { type: "num", x: vp.x, y: vp.y, n: nextNum(), color, w: size }, it()); g.translate(view.ox, view.oy); }
+      else if(tool === "text") { g.translate(-view.ox, -view.oy); drawAnnot(g, { type: "text", x: vp.x, y: vp.y, text: "文字", color, w: size }, it()); g.translate(view.ox, view.oy); }
       else {
         const lw = baseW(it()) * size * (tool === "marker" ? 5 : 1);
         g.fillStyle = tool === "marker" ? color : color; g.globalAlpha = tool === "marker" ? 0.3 : 0.5;
