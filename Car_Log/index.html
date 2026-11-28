@@ -475,7 +475,7 @@ table.tbl tr.total td{font-weight:700;border-bottom:none;}
 <div id="toast"></div>
 
 <script>
-const APP_VERSION = 'v09_2026-11-28';
+const APP_VERSION = 'v09_2026-11-28.2';
 const STORAGE_KEY = 'carlog-data-v1';
 const THEME_KEY = 'carlog-theme';
 
@@ -1753,7 +1753,7 @@ function openCostSheet(id){
     ${c && c.subId ? '<div class="hint" style="margin:-6px 0 10px">定期費用から自動で記録された費用です（この記録だけ直せます）</div>' : ''}
     <div class="fld"><label>内容</label><input type="text" id="c-title" value="${esc(v.title)}" placeholder="例：車両本体、オプション、年間保険料"></div>
     <div class="fld"><label>金額（円）</label><input type="text" inputmode="numeric" id="c-amount" value="${esc(v.amount)}"><div class="hint" id="c-loan-note" style="display:none">車両代を購入時の費用に入れている場合、返済額を入れると二重計上になります。金利・手数料のみ記録してください</div></div>
-    <div class="fld"><label>期限・満了日（任意）</label><input type="date" id="c-until" data-opt value="${esc(v.until)}"><div class="hint">任意保険の満期など。ホームに残り日数を表示</div></div>
+    <div class="fld" id="c-until-fld"><label>期限・満了日（任意）</label><input type="date" id="c-until" data-opt value="${esc(v.until)}"><div class="hint">任意保険の満期など。ホームに残り日数を表示</div></div>
     <div class="fld"><label>メモ</label><textarea id="c-memo">${esc(v.memo)}</textarea></div>
   `, () => {
     const rec = {id:c?.id||uid(), date:$('c-date').value, category:$('c-cat').value, title:$('c-title').value.trim(), amount:$('c-amount').value.trim(), until:$('c-until').value, memo:$('c-memo').value.trim()};
@@ -1776,6 +1776,9 @@ function openCostSheet(id){
     };
     $('c-cat').addEventListener('change', copy); copy();
   }
+  // 期限欄は任意保険のときだけ（他の区分でも値が入っていれば表示）
+  const untilFld = () => { $('c-until-fld').style.display = $('c-cat').value==='任意保険' || $('c-until').value ? '' : 'none'; };
+  $('c-cat').addEventListener('change', untilFld); untilFld();
   const loanNote = () => { $('c-loan-note').style.display = /ローン/.test($('c-cat').value) ? '' : 'none'; };
   $('c-cat').addEventListener('change', loanNote); loanNote();
 }
